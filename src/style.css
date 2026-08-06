@@ -1,0 +1,31 @@
+
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 1rem;
+  background-color: #f4f4f4;
+}
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  background: #fff;
+  padding: 1rem;
+  border-radius: 8px;
+}
+input, select, textarea, button {
+  margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+button {
+  cursor: pointer;
+}
+fieldset {
+  margin-bottom: 1rem;
+  border: 1px solid #ccc;
+  padding: 1rem;
+}
+legend {
+  font-weight: bold;
+}
