@@ -2,7 +2,8 @@
   "name": "agenda-tecnica",
   "version": "1.0.0",
   "scripts": {
-    "dev": "vite",
+    "dev": "node start-dev.cjs",
+    "server": "node server.cjs",
     "build": "vite build",
     "preview": "vite preview"
   },
