@@ -1,109 +1,84 @@
+import React, { useEffect, useMemo, useState } from 'react'
 
-import React, { useState } from 'react'
+const SERVICES = ['Instalación de alarma', 'Instalación de cámaras', 'Instalación de cerco eléctrico', 'Service técnico', 'Visita de relevamiento']
+const blankTask = () => ({ time: '', service: '', client: '', address: '', phone: '', detail: '' })
+const blankEmployee = { name: '', role: 'Técnico', phone: '', email: '', password: '', status: 'Activo' }
+const blankCustomer = { account: '', name: '', type: '', street: '', locality: '', province: '', phone: '', address: '', fields: {} }
+const initialRoles = [
+  { id: 1, name: 'Administrador', description: 'Acceso completo a la plataforma', permissions: { agenda: true, accounts: true, employees: true, settings: true } },
+  { id: 2, name: 'Coordinador', description: 'Gestiona agenda, cuentas y técnicos', permissions: { agenda: true, accounts: true, employees: true, settings: false } },
+  { id: 3, name: 'Técnico', description: 'Consulta su agenda asignada', permissions: { agenda: true, accounts: false, employees: false, settings: false } }
+]
+const initialEmployees = [
+  { id: 1, name: 'Rodrigo Fernández', role: 'Técnico', phone: '11 4567-8901', email: 'rodrigo@pignus.com', password: '••••••••', status: 'Activo' },
+  { id: 2, name: 'Mariano López', role: 'Técnico', phone: '11 3456-2210', email: 'mariano@pignus.com', password: '••••••••', status: 'Activo' },
+  { id: 3, name: 'Santos Acosta', role: 'Técnico', phone: '11 6789-1254', email: 'santos@pignus.com', password: '••••••••', status: 'Activo' }
+]
 
-const initialTask = () => ({
-  time: '',
-  service: '',
-  client: '',
-  detail: '',
-  address: '',
-  phone: ''
-})
+function Icon({ name, size = 18 }) {
+  const paths = { menu: 'M3 6h18M3 12h18M3 18h18', calendar: 'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2', users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m18-8a4 4 0 1 0 0-8m-2 2a4 4 0 1 0-8 0', accounts: 'M4 4h16v16H4zM8 8h8M8 12h8M8 16h5', settings: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm0-13v2m0 15v2m9.5-9.5h-2m-15 0h-2m16.2-6.7-1.4 1.4M6.7 17.3l-1.4 1.4m13.4 0-1.4-1.4M6.7 6.7 5.3 5.3', copy: 'M9 8h10v12H9zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1', eye: 'M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6', plus: 'M12 5v14M5 12h14', edit: 'm4 16.5-.5 4 4-.5L19 8.5l-3.5-3.5L4 16.5ZM13.5 7l3.5 3.5', trash: 'M4 7h16m-10 4v6m4-6v6M9 7l1-3h4l1 3m-9 0 1 14h10l1-14', upload: 'M12 16V3m0 0L7 8m5-5 5 5M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5', search: 'm21 21-4.5-4.5m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0', moon: 'M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z', sun: 'M12 3v2m0 14v2M3 12h2m14 0h2m-3.6-5.4 1.4-1.4M5.2 18.8l1.4-1.4m0-10.8L5.2 5.2m13.6 13.6-1.4-1.4M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0', close: 'M6 6l12 12M18 6 6 18', check: 'm5 12 4 4L19 6', lock: 'M6 10V7a6 6 0 0 1 12 0v3M5 10h14v11H5z' }
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] || paths.settings} /></svg>
+}
+const initials = name => name.split(' ').map(x => x[0]).slice(0, 2).join('').toUpperCase()
+const prettyDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, x => x.toUpperCase()) : ''
 
-const initialTeam = () => ({
-  members: [],
-  tasks: [initialTask()]
-})
-
-const App = () => {
-  const [date, setDate] = useState('')
-  const [teams, setTeams] = useState([initialTeam()])
-  const technicians = ['Rodrigo', 'Mariano', 'Santos', 'Pascual', 'Leonardo']
-  const services = [
-    'Instalación de Alarma', 'Instalación de Cámaras', 'Instalación de Cerco Eléctrico', 'Otra Instalación',
-    'Service de Alarma', 'Service de Cámara', 'Service de Cerco Eléctrico', 'Otro Service'
-  ]
-
-  const handleTeamChange = (index, key, value) => {
-    const updatedTeams = [...teams]
-    updatedTeams[index][key] = value
-    setTeams(updatedTeams)
-  }
-
-  const handleTaskChange = (teamIndex, taskIndex, key, value) => {
-    const updatedTeams = [...teams]
-    updatedTeams[teamIndex].tasks[taskIndex][key] = value
-    setTeams(updatedTeams)
-  }
-
-  const addTask = (teamIndex) => {
-    const updatedTeams = [...teams]
-    updatedTeams[teamIndex].tasks.push(initialTask())
-    setTeams(updatedTeams)
-  }
-
-  const addTeam = () => setTeams([...teams, initialTeam()])
-
-  const generateMessage = () => {
-    let msg = `📅 Agenda de trabajo – ${date}\n\n`
-    teams.forEach(team => {
-      if (team.members.length) {
-        msg += `🔧 Equipo: ${team.members.join(' / ')}\n\n`
-        team.tasks.forEach(t => {
-          msg += `🕘 ${t.time} – ${t.service} – ${t.client}\n`
-          msg += `🔸 Detalle: ${t.detail}\n`
-          msg += `📍 Dirección: ${t.address}\n`
-          msg += `📞 Contacto: ${t.phone}\n\n`
-        })
-      }
-    })
-    return msg.trim()
-  }
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(generateMessage())
-    alert('Texto copiado al portapapeles')
-  }
-
-  return (
-    <div className="container">
-      <h2>Agenda Técnica</h2>
-      <label>Fecha:</label>
-      <input type="date" value={date} onChange={e => setDate(e.target.value)} />
-      {teams.map((team, teamIndex) => (
-        <fieldset key={teamIndex}>
-          <legend>Equipo {teamIndex + 1}</legend>
-          <label>Técnicos:</label>
-          <select multiple value={team.members} onChange={e => handleTeamChange(teamIndex, 'members', Array.from(e.target.selectedOptions, o => o.value))}>
-            {technicians.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          {team.tasks.map((task, taskIndex) => (
-            <div key={taskIndex}>
-              <label>Hora:</label>
-              <input type="time" value={task.time} onChange={e => handleTaskChange(teamIndex, taskIndex, 'time', e.target.value)} />
-              <label>Tipo de Servicio:</label>
-              <select value={task.service} onChange={e => handleTaskChange(teamIndex, taskIndex, 'service', e.target.value)}>
-                <option value="">Seleccionar...</option>
-                {services.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <label>Nombre del Titular:</label>
-              <input type="text" value={task.client} onChange={e => handleTaskChange(teamIndex, taskIndex, 'client', e.target.value)} />
-              <label>Observaciones:</label>
-              <textarea value={task.detail} onChange={e => handleTaskChange(teamIndex, taskIndex, 'detail', e.target.value)} />
-              <label>Dirección:</label>
-              <input type="text" value={task.address} onChange={e => handleTaskChange(teamIndex, taskIndex, 'address', e.target.value)} />
-              <label>Contacto:</label>
-              <input type="text" value={task.phone} onChange={e => handleTaskChange(teamIndex, taskIndex, 'phone', e.target.value)} />
-            </div>
-          ))}
-          <button type="button" onClick={() => addTask(teamIndex)}>Agregar Tarea</button>
-        </fieldset>
-      ))}
-      <button type="button" onClick={addTeam}>Agregar Otro Equipo</button>
-      <button type="button" onClick={copyToClipboard}>Copiar Texto</button>
-      <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{generateMessage()}</pre>
-    </div>
-  )
+export default function App() {
+  const [module, setModule] = useState('agenda')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [theme, setTheme] = useState(() => localStorage.getItem('pignus-theme') || 'light')
+  const [roles, setRoles] = useState(() => JSON.parse(localStorage.getItem('pignus-roles') || 'null') || initialRoles)
+  const [employees, setEmployees] = useState(() => JSON.parse(localStorage.getItem('pignus-employees') || 'null') || initialEmployees)
+  const [customers, setCustomers] = useState(() => JSON.parse(localStorage.getItem('pignus-customers') || '[]'))
+  const [teams, setTeams] = useState([{ members: [], tasks: [blankTask()] }])
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [notice, setNotice] = useState('')
+  const [confirmation, setConfirmation] = useState(null)
+  useEffect(() => localStorage.setItem('pignus-theme', theme), [theme])
+  useEffect(() => localStorage.setItem('pignus-roles', JSON.stringify(roles)), [roles])
+  useEffect(() => localStorage.setItem('pignus-employees', JSON.stringify(employees)), [employees])
+  useEffect(() => localStorage.setItem('pignus-customers', JSON.stringify(customers)), [customers])
+  const ask = (title, detail, action, destructive = false) => setConfirmation({ title, detail, action, destructive })
+  const updateTask = (team, task, patch) => setTeams(prev => prev.map((t, ti) => ti !== team ? t : { ...t, tasks: t.tasks.map((x, i) => i !== task ? x : { ...x, ...patch }) }))
+  const activeTechs = employees.filter(x => x.status === 'Activo')
+  const nav = [['agenda', 'calendar', 'Agenda técnica'], ['accounts', 'accounts', 'Administrador de cuentas'], ['employees', 'users', 'Empleados'], ['settings', 'settings', 'Configuración']]
+  const title = { agenda: 'Agenda técnica', accounts: 'Administrador de cuentas', employees: 'Empleados', settings: 'Configuración' }[module]
+  return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} title={theme === 'light' ? 'Activar modo oscuro' : 'Activar modo claro'}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, updateTask, setNotice }} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
 }
 
-export default App
+function Agenda({ date, setDate, teams, setTeams, activeTechs, customers, updateTask, setNotice }) {
+  const [preview, setPreview] = useState(false); const [techOpen, setTechOpen] = useState(null); const [techFilter, setTechFilter] = useState('')
+  const agendaText = `Agenda de trabajo – ${prettyDate(date)}\n\n${teams.map((team, i) => `Equipo ${i + 1}: ${team.members.join(' / ') || 'Sin asignar'}\n${team.tasks.map(t => `${t.time || '--:--'} · ${t.service || 'Servicio'} · ${t.client || 'Cliente'}${t.detail ? `\nDetalle: ${t.detail}` : ''}${t.address ? `\nDirección: ${t.address}` : ''}${t.phone ? `\nContacto: ${t.phone}` : ''}`).join('\n\n')}`).join('\n\n')}`
+  const chooseCustomer = (ti, i, value) => { const c = customers.find(x => x.account === value || x.name === value || `${x.name} · ${x.account}` === value); updateTask(ti, i, c ? { client: c.name, address: c.address, phone: c.phone } : { client: value }) }
+  const toggleTech = (ti, name) => setTeams(prev => prev.map((t, i) => i !== ti ? t : { ...t, members: t.members.includes(name) ? t.members.filter(x => x !== name) : [...t.members, name] }))
+  const addTask = ti => setTeams(prev => prev.map((t, i) => i === ti ? { ...t, tasks: [...t.tasks, blankTask()] } : t))
+  return <>{techOpen !== null && <button className="picker-backdrop" aria-label="Cerrar selector de técnicos" onClick={() => setTechOpen(null)} />}<div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button><button className="primary" onClick={() => { navigator.clipboard?.writeText(agendaText); setNotice('La agenda fue copiada al portapapeles.') }}><Icon name="copy" />Copiar agenda</button></div></div>{!customers.length && <p className="helper">Todavía no hay clientes importados. Podés cargarlos desde <b>Administrador de cuentas</b>.</p>}<div className="agenda-toolbar"><label>Fecha de trabajo<input type="date" value={date} onChange={e => setDate(e.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, ti) => <article className="team-card" key={ti}><div className="team-header"><div><span className="team-number">{ti + 1}</span><strong>Equipo {ti + 1}</strong></div><div className="technicians-picker"><span>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</span><button className="secondary small" onClick={() => { setTechOpen(techOpen === ti ? null : ti); setTechFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === ti && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={e => setTechFilter(e.target.value)} /><div className="tech-list">{activeTechs.filter(t => t.name.toLowerCase().includes(techFilter.toLowerCase())).map(t => <label key={t.id}><input type="checkbox" checked={team.members.includes(t.name)} onChange={() => toggleTech(ti, t.name)} />{t.name}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, i) => <div className="task-row" key={i}><div className="task-title"><span>{i + 1}</span><b>Servicio</b></div><label>Hora<input type="time" value={task.time} onChange={e => updateTask(ti, i, { time: e.target.value })} /></label><label>Tipo de servicio<select value={task.service} onChange={e => updateTask(ti, i, { service: e.target.value })}><option value="">Seleccionar</option>{SERVICES.map(x => <option key={x}>{x}</option>)}</select></label><label>Cliente o cuenta<input list="customer-options" placeholder="Buscá por nombre o cuenta" value={task.client} onChange={e => chooseCustomer(ti, i, e.target.value)} /><datalist id="customer-options">{customers.map(c => <option key={c.account} value={`${c.name} · ${c.account}`} />)}</datalist></label><label>Dirección<input value={task.address} onChange={e => updateTask(ti, i, { address: e.target.value })} /></label><label>Contacto<input value={task.phone} onChange={e => updateTask(ti, i, { phone: e.target.value })} /></label><label className="observations">Observaciones<textarea value={task.detail} onChange={e => updateTask(ti, i, { detail: e.target.value })} /></label>{team.tasks.length > 1 && <button className="icon-btn delete" onClick={() => setTeams(prev => prev.map((t, x) => x !== ti ? t : { ...t, tasks: t.tasks.filter((_, y) => y !== i) }))}><Icon name="trash" size={16} /></button>}</div>)}</div><button className="link-button" onClick={() => addTask(ti)}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={agendaText} close={() => setPreview(false)} />}</>
+}
+
+function Accounts({ customers, setCustomers, setNotice, ask }) {
+  const [search, setSearch] = useState(''); const [form, setForm] = useState(blankCustomer); const [editing, setEditing] = useState(null); const [showForm, setShowForm] = useState(false); const [importOpen, setImportOpen] = useState(false); const [detail, setDetail] = useState(null)
+  const visible = useMemo(() => customers.filter(c => `${c.account} ${c.name} ${c.locality}`.toLowerCase().includes(search.toLowerCase())), [customers, search])
+  const save = e => { e.preventDefault(); const customer = { ...form, address: [form.street, form.locality, form.province].filter(Boolean).join(', ') }; ask(editing ? 'Confirmar edición' : 'Confirmar alta', `¿Querés guardar los cambios de ${customer.name}?`, () => { setCustomers(prev => editing ? prev.map(c => c.account === editing ? customer : c) : [...prev.filter(c => c.account !== customer.account), customer]); setShowForm(false); setEditing(null); setNotice('Los datos del cliente fueron guardados.') }) }
+  const edit = c => { setForm(c); setEditing(c.account); setShowForm(true) }
+  return <><div className="module-intro"><div><p className="eyebrow">BASE DE CLIENTES</p><h1>Administrador de cuentas</h1><p>Centralizá la información de cada cuenta para agilizar la planificación técnica.</p></div><div className="action-group"><button className="secondary" onClick={() => setImportOpen(true)}><Icon name="upload" />Importar clientes</button><button className="primary" onClick={() => { setEditing(null); setForm(blankCustomer); setShowForm(true) }}><Icon name="plus" />Nuevo cliente</button></div></div>{showForm && <CustomerForm form={form} setForm={setForm} editing={editing} save={save} cancel={() => setShowForm(false)} />}<div className="accounts-bar"><div><b>{customers.length}</b> cuentas registradas</div><label><Icon name="search" size={16} /><input placeholder="Buscar por nombre, cuenta o localidad..." value={search} onChange={e => setSearch(e.target.value)} /></label></div><div className="data-card accounts-table"><div className="table-head">{['Cuenta', 'Cliente', 'Dirección', 'Teléfono', 'Acciones'].map(x => <span key={x}>{x}</span>)}</div>{visible.length ? visible.map(c => <div className="account-row" key={c.account}><b>{c.account}</b><div><strong>{c.name}</strong><small>{c.type || 'Cliente'}</small></div><div>{c.address}</div><div>{c.phone || 'Sin teléfono'}</div><div className="row-actions"><button title="Ver información completa" onClick={() => setDetail(c)}><Icon name="eye" size={16} /></button><button title="Editar" onClick={() => edit(c)}><Icon name="edit" size={16} /></button><button className="delete" title="Eliminar" onClick={() => ask('Eliminar cliente', `¿Querés eliminar la cuenta ${c.account}? Esta acción no se puede deshacer.`, () => { setCustomers(x => x.filter(y => y.account !== c.account)); setNotice('El cliente fue eliminado.') }, true)}><Icon name="trash" size={16} /></button></div></div>) : <div className="empty-state">No hay cuentas para mostrar. Importá un archivo o creá un cliente manualmente.</div>}</div>{importOpen && <ImportModal {...{ customers, setCustomers, close: () => setImportOpen(false), setNotice }} />}{detail && <CustomerDetail customer={detail} close={() => setDetail(null)} />}</>
+}
+function CustomerForm({ form, setForm, editing, save, cancel }) { const set = key => e => setForm({ ...form, [key]: e.target.value }); return <form className="customer-form" onSubmit={save}><label>Dealer / Cuenta<input required disabled={!!editing} value={form.account} onChange={set('account')} /></label><label>Nombre<input required value={form.name} onChange={set('name')} /></label><label>Tipo de cuenta<input value={form.type} onChange={set('type')} /></label><label>Calle<input value={form.street} onChange={set('street')} /></label><label>Localidad<input value={form.locality} onChange={set('locality')} /></label><label>Provincia / Estado<input value={form.province} onChange={set('province')} /></label><label>Teléfono<input value={form.phone} onChange={set('phone')} /></label><button className="primary"><Icon name="check" />Guardar cliente</button><button type="button" className="secondary" onClick={cancel}>Cancelar</button></form> }
+
+function Employees({ employees, setEmployees, roles, setNotice, ask }) {
+  const [form, setForm] = useState(blankEmployee); const [editing, setEditing] = useState(null); const [open, setOpen] = useState(false)
+  const save = e => { e.preventDefault(); const record = { ...form, id: editing || Date.now() }; ask(editing ? 'Confirmar edición' : 'Confirmar alta', `¿Querés guardar el perfil de ${record.name}?`, () => { setEmployees(prev => editing ? prev.map(x => x.id === editing ? record : x) : [...prev, record]); setOpen(false); setEditing(null); setNotice('El empleado fue guardado correctamente.') }) }
+  return <><div className="module-intro"><div><p className="eyebrow">EQUIPO PIGNUS</p><h1>Técnicos y colaboradores</h1><p>Administrá accesos, datos de contacto y disponibilidad del equipo.</p></div><button className="primary" onClick={() => { setForm(blankEmployee); setEditing(null); setOpen(true) }}><Icon name="plus" />Nuevo empleado</button></div>{open && <EmployeeForm {...{ form, setForm, roles, save, cancel: () => setOpen(false), editing }} />}<div className="data-card employees-table"><div className="table-head">{['Empleado', 'Rol', 'Correo', 'Contacto', 'Estado', 'Acciones'].map(x => <span key={x}>{x}</span>)}</div>{employees.map(x => <div className="employee-row" key={x.id}><div className="person"><span>{initials(x.name)}</span><b>{x.name}</b></div><div><em className="role-chip">{x.role}</em></div><div>{x.email}</div><div>{x.phone || 'Sin teléfono'}</div><div><button className={`status ${x.status === 'Activo' ? 'on' : ''}`} onClick={() => ask('Cambiar estado', `¿Querés marcar a ${x.name} como ${x.status === 'Activo' ? 'inactivo' : 'activo'}?`, () => setEmployees(prev => prev.map(y => y.id === x.id ? { ...y, status: y.status === 'Activo' ? 'Inactivo' : 'Activo' } : y)))}>{x.status}</button></div><div className="row-actions"><button title="Editar empleado" onClick={() => { setForm(x); setEditing(x.id); setOpen(true) }}><Icon name="edit" size={16} /></button><button className="delete" title="Eliminar empleado" onClick={() => ask('Eliminar empleado', `¿Querés eliminar el perfil de ${x.name}?`, () => { setEmployees(prev => prev.filter(y => y.id !== x.id)); setNotice('El empleado fue eliminado.') }, true)}><Icon name="trash" size={16} /></button></div></div>)}</div></>
+}
+function EmployeeForm({ form, setForm, roles, save, cancel, editing }) { const set = key => e => setForm({ ...form, [key]: e.target.value }); return <form className="employee-form employee-form-wide" onSubmit={save}><label>Nombre completo<input required value={form.name} onChange={set('name')} /></label><label>Rol<select value={form.role} onChange={set('role')}>{roles.map(r => <option key={r.id}>{r.name}</option>)}</select></label><label>Teléfono<input value={form.phone} onChange={set('phone')} /></label><label>Correo electrónico<input required type="email" value={form.email} onChange={set('email')} /></label><label>Contraseña<input required type="password" value={form.password} onChange={set('password')} /></label><button className="primary"><Icon name="check" />{editing ? 'Guardar cambios' : 'Guardar empleado'}</button><button type="button" className="secondary" onClick={cancel}>Cancelar</button></form> }
+
+function Settings({ roles, setRoles, setNotice, ask }) {
+  const [active, setActive] = useState(roles[0]?.id); const [editing, setEditing] = useState(false); const [name, setName] = useState(''); const [description, setDescription] = useState(''); const role = roles.find(x => x.id === active) || roles[0]
+  const startEdit = r => { setActive(r.id); setName(r.name); setDescription(r.description); setEditing(true) }
+  const save = () => { const next = { id: editing === 'new' ? Date.now() : role.id, name, description, permissions: editing === 'new' ? { agenda: true, accounts: false, employees: false, settings: false } : role.permissions }; ask(editing === 'new' ? 'Crear rol' : 'Guardar permisos', `¿Querés confirmar los cambios del rol ${name}?`, () => { setRoles(prev => editing === 'new' ? [...prev, next] : prev.map(x => x.id === role.id ? next : x)); setActive(next.id); setEditing(false); setNotice('La configuración del rol fue guardada.') }) }
+  const toggle = key => ask('Modificar permiso', `¿Querés ${role.permissions[key] ? 'revocar' : 'otorgar'} este permiso al rol ${role.name}?`, () => setRoles(prev => prev.map(x => x.id === role.id ? { ...x, permissions: { ...x.permissions, [key]: !x.permissions[key] } } : x)))
+  return <><div className="module-intro"><div><p className="eyebrow">ADMINISTRACIÓN</p><h1>Roles y permisos</h1><p>Definí el acceso que tendrá cada integrante de la plataforma.</p></div><button className="primary" onClick={() => { setName(''); setDescription(''); setEditing('new') }}><Icon name="plus" />Nuevo rol</button></div><div className="settings-grid"><article className="data-card roles-card"><h2>Roles disponibles</h2>{roles.map(r => <div className={r.id === role?.id ? 'selected-role' : ''} key={r.id} onClick={() => setActive(r.id)}><span className="role-dot">{r.name[0]}</span><div><b>{r.name}</b><p>{r.description}</p></div><button onClick={e => { e.stopPropagation(); startEdit(r) }} title="Editar rol"><Icon name="edit" size={16} /></button></div>)}</article><article className="data-card permissions-card">{editing ? <div className="role-editor"><p className="eyebrow">{editing === 'new' ? 'NUEVO ROL' : 'EDITAR ROL'}</p><label>Nombre del rol<input value={name} onChange={e => setName(e.target.value)} /></label><label>Descripción<input value={description} onChange={e => setDescription(e.target.value)} /></label><button className="primary" onClick={save}><Icon name="check" />Guardar rol</button><button className="secondary" onClick={() => setEditing(false)}>Cancelar</button></div> : <><p className="eyebrow">PERFIL: {role?.name?.toUpperCase()}</p><h2>Permisos del módulo</h2>{[['agenda', 'Agenda técnica', 'Crear y editar equipos y servicios'], ['accounts', 'Administrador de cuentas', 'Consultar y administrar clientes'], ['employees', 'Empleados', 'Administrar técnicos y accesos'], ['settings', 'Configuración', 'Modificar roles y permisos']].map(([key, label, detail]) => <label className="permission" key={key}><span><b>{label}</b><small>{detail}</small></span><input type="checkbox" checked={!!role?.permissions[key]} onChange={() => toggle(key)} /><i /></label>)}<button className="primary save" onClick={() => startEdit(role)}><Icon name="edit" />Editar rol</button></>}</article></div></>
+}
+
+function ImportModal({ customers, setCustomers, close, setNotice }) { const [message, setMessage] = useState(''); const importFile = async e => { const file = e.target.files?.[0]; if (!file) return; const doc = new DOMParser().parseFromString(await file.text(), 'text/html'); const table = [...doc.querySelectorAll('table')].find(t => t.textContent.toLowerCase().includes('dealer/cuenta')); if (!table) return setMessage('No se encontró una tabla con la columna Dealer/Cuenta.'); const rows = [...table.querySelectorAll('tr')].map(r => [...r.querySelectorAll('th,td')].map(c => c.textContent.replace(/\s+/g, ' ').trim())).filter(r => r.length); const headers = rows.shift(); const get = (row, label) => row[headers.findIndex(x => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === label)] || ''; const imported = rows.map(row => { const account = get(row, 'dealercuenta').trim(); const street = get(row, 'calle'), locality = get(row, 'localidad'), province = get(row, 'provinciaestado'); return account ? { account, name: get(row, 'nombre'), type: get(row, 'tipodecuenta'), street, locality, province, phone: get(row, 'telefono'), address: [street, locality, province].filter(Boolean).join(', '), fields: Object.fromEntries(headers.map((h, i) => [h, row[i] || ''])) } : null }).filter(Boolean); if (!imported.length) return setMessage('El archivo no contiene registros válidos.'); const old = new Set(customers.map(x => x.account)), updated = imported.filter(x => old.has(x.account)).length; setCustomers([...customers.filter(x => !imported.some(y => y.account === x.account)), ...imported]); setNotice(`Importación finalizada: ${imported.length - updated} cuentas nuevas y ${updated} actualizadas.`); close() }; return <div className="modal-layer"><div className="modal"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">IMPORTACIÓN MASIVA</p><h2>Importar clientes</h2><p>Seleccioná el reporte exportado. Las coincidencias por <b>Dealer/Cuenta</b> se actualizarán automáticamente.</p><label className="file-drop"><Icon name="upload" size={30} /><b>Seleccioná un archivo .xls</b><small>Formato Maestro de Cuentas</small><input type="file" accept=".xls,.html" onChange={importFile} /></label>{message && <p className="import-error">{message}</p>}<div className="modal-info"><b>Campos importados</b><span>Se conserva toda la información disponible en el reporte.</span></div></div></div> }
+function CustomerDetail({ customer, close }) { const entries = Object.entries(customer.fields || {}).filter(([, v]) => v); return <div className="modal-layer"><div className="modal detail-modal"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">CUENTA {customer.account}</p><h2>{customer.name}</h2><div className="detail-grid">{entries.length ? entries.map(([k, v]) => <div key={k}><b>{k}</b><span>{v}</span></div>) : <><div><b>Dirección</b><span>{customer.address}</span></div><div><b>Teléfono</b><span>{customer.phone}</span></div></>}</div></div></div> }
+function Preview({ title, text, close }) { return <div className="modal-layer"><div className="modal preview-modal"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">AGENDA TÉCNICA</p><h2>{title}</h2><pre>{text}</pre></div></div> }
+function Confirm({ title, detail, action, destructive, close }) { return <div className="modal-layer"><div className="modal confirm-modal"><span className={destructive ? 'confirm-icon danger' : 'confirm-icon'}>{destructive ? <Icon name="trash" /> : <Icon name="lock" />}</span><h2>{title}</h2><p>{detail}</p><div className="confirm-actions"><button className="secondary" onClick={close}>Cancelar</button><button className={destructive ? 'danger-button' : 'primary'} onClick={() => { action(); close() }}>{destructive ? 'Sí, eliminar' : 'Confirmar cambios'}</button></div></div></div> }
