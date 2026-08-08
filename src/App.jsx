@@ -247,6 +247,44 @@ function DashboardStatusView({ history }) {
   const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'].map((label, index) => ({ label, value: history.filter(record => record.date?.startsWith(`${year}-${String(index + 1).padStart(2, '0')}`) && isComplete(record) && record.service?.toLowerCase().includes('instalación de alarma')).length }))
   const max = Math.max(1, ...months.map(item => item.value))
   const download = category => window.location.assign(`/api/history/export?month=${encodeURIComponent(month)}&category=${category}`)
+  const serviceBreakdown = Object.entries(records.reduce((summary, record) => { const name = record.service?.trim() || 'Sin especificar'; summary[name] = (summary[name] || 0) + 1; return summary }, {})).sort(([, left], [, right]) => right - left)
+  const [selectedYear, selectedMonth] = month.split('-').map(Number)
+  const daysInPeriod = new Date(selectedYear, selectedMonth, 0).getDate()
+  const today = new Date()
+  const isCurrentPeriod = today.getFullYear() === selectedYear && today.getMonth() + 1 === selectedMonth
+  const elapsedDays = isCurrentPeriod ? today.getDate() : daysInPeriod
+  const projectedInstallations = elapsedDays ? Math.round(installations.length / elapsedDays * daysInPeriod) : 0
+  const previousDate = new Date(selectedYear, selectedMonth - 2, 1)
+  const previousMonthKey = `${previousDate.getFullYear()}-${String(previousDate.getMonth() + 1).padStart(2, '0')}`
+  const previousInstallations = history.filter(record => record.date?.startsWith(previousMonthKey) && isComplete(record) && record.service?.toLowerCase().includes('instalación')).length
+  const comparisonValue = isCurrentPeriod ? projectedInstallations : installations.length
+  const variation = previousInstallations ? Math.round((comparisonValue - previousInstallations) / previousInstallations * 100) : null
+  const previousMonthLabel = previousDate.toLocaleDateString('es-AR', { month: 'long' })
+  useEffect(() => {
+    const stats = document.querySelector('.stats-grid')
+    if (!stats) return
+    const cards = [...stats.querySelectorAll(':scope > article')]
+    const projectionCard = cards.find(card => card.querySelector('span')?.textContent.includes('Instalaciones') || card.querySelector('span')?.textContent.includes('Proyección'))
+    const alarmsCard = cards.find(card => card.querySelector('span')?.textContent.includes('Alarmas'))
+    if (!projectionCard || !alarmsCard) return
+    stats.prepend(alarmsCard)
+    projectionCard.querySelector('span').textContent = 'Proyección de instalaciones'
+    projectionCard.querySelector('b').textContent = projectedInstallations
+    const comparison = variation === null ? `Sin datos de instalaciones en ${previousMonthLabel}` : `${variation > 0 ? '+' : ''}${variation}% vs. ${previousMonthLabel}`
+    projectionCard.querySelector('small').textContent = isCurrentPeriod ? `Estimación al cierre · ${comparison}` : `Resultado final · ${comparison}`
+  }, [month, installations.length, projectedInstallations, isCurrentPeriod, previousMonthLabel, variation])
+  useEffect(() => {
+    document.querySelector('.service-breakdown')?.remove()
+    const stats = document.querySelector('.stats-grid')
+    if (!stats) return
+    const section = document.createElement('section'); section.className = 'data-card service-breakdown'
+    const title = document.createElement('div'); title.className = 'service-breakdown-title'; title.innerHTML = '<p class="eyebrow">COMPOSICIÓN DEL PERÍODO</p><h2>Trabajos completados por tipo de servicio</h2>'
+    const grid = document.createElement('div'); grid.className = 'service-breakdown-grid'
+    serviceBreakdown.forEach(([name, total]) => { const item = document.createElement('article'); const label = document.createElement('span'); label.textContent = name; const count = document.createElement('b'); count.textContent = total; const suffix = document.createElement('small'); suffix.textContent = total === 1 ? 'trabajo completado' : 'trabajos completados'; item.append(label, count, suffix); grid.append(item) })
+    if (!serviceBreakdown.length) grid.textContent = 'No hay trabajos completados para este período.'
+    section.append(title, grid); stats.after(section)
+    return () => section.remove()
+  }, [month, history])
   return <><div className="module-intro"><div><p className="eyebrow">RESUMEN GERENCIAL</p><h1>Indicadores operativos</h1><p>Las métricas contabilizan únicamente servicios completados.</p></div><label className="month-filter">Mes de análisis<input type="month" value={month} onChange={event => setMonth(event.target.value)} /></label></div>{pending.length > 0 && <button className="pending-reminder" type="button" onClick={openPending}><Icon name="calendar" /><div><b>{pending.length} servicio(s) pendiente(s) de definición</b><span>Revisalos en Historial para completarlos, cancelarlos o reprogramarlos.</span></div></button>}<div className="stats-grid"><article><span>Instalaciones completadas</span><b>{installations.length}</b><small>Todos los tipos de instalación</small></article><article><span>Alarmas completadas</span><b>{alarms.length}</b><small>Servicios registrados en el período</small></article><article><span>Trabajos completados</span><b>{records.length}</b><small>Instalaciones y servicios técnicos</small></article></div><div className="dashboard-analytics"><article className="data-card annual-chart"><div><p className="eyebrow">EVOLUCIÓN ANUAL</p><h2>Instalaciones de alarma · {year}</h2></div><div className="bar-chart">{months.map(item => <div className="bar-item" key={item.label}><span>{item.value}</span><i style={{ height: `${Math.max(4, item.value / max * 100)}%` }}></i><small>{item.label}</small></div>)}</div></article><article className="data-card zone-summary"><p className="eyebrow">ALARMAS COMPLETADAS</p><h2>Detalle por ubicación</h2>{zones.map(([key, label]) => <div key={key}><span>{label}</span><b>{alarms.filter(record => zoneOf(record) === key).length}</b><button className="secondary" onClick={() => download(key)}><Icon name="upload" size={15} />Excel</button></div>)}</article></div></>
 }
 
@@ -272,7 +310,9 @@ function HistoryBulkView({ history, setHistory }) {
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkStatus, setBulkStatus] = useState('Completado')
   const [rescheduleDate, setRescheduleDate] = useState('')
-  const records = history.filter(record => `${record.client} ${record.service} ${record.technicians?.join(' ')}`.toLowerCase().includes(search.toLowerCase())).sort((a, b) => b.date.localeCompare(a.date))
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
+  const records = history.filter(record => `${record.client} ${record.service} ${record.technicians?.join(' ')}`.toLowerCase().includes(search.toLowerCase()) && (!fromDate || record.date >= fromDate) && (!toDate || record.date <= toDate)).sort((a, b) => b.date.localeCompare(a.date))
   const status = record => record.status || 'Pendiente'
   const toggle = id => setSelected(previous => previous.includes(id) ? previous.filter(item => item !== id) : [...previous, id])
   const toggleAll = () => setSelected(selected.length === records.length ? [] : records.map(record => record.id))
@@ -281,6 +321,16 @@ function HistoryBulkView({ history, setHistory }) {
     setHistory(previous => previous.map(record => selected.includes(record.id) ? { ...record, status: bulkStatus, scheduledDate: bulkStatus === 'Reprogramado' ? rescheduleDate : '' } : record))
     setSelected([]); setBulkOpen(false); setRescheduleDate('')
   }
+  useEffect(() => {
+    const toolbar = document.querySelector('.history-toolbar')
+    if (!toolbar) return
+    const filters = document.createElement('div'); filters.className = 'history-date-filters'
+    const createDateInput = (label, value, update) => { const field = document.createElement('label'); field.textContent = label; const input = document.createElement('input'); input.type = 'date'; input.value = value; input.onchange = event => update(event.target.value); field.append(input); return field }
+    filters.append(createDateInput('Desde', fromDate, setFromDate), createDateInput('Hasta', toDate, setToDate))
+    if (fromDate || toDate) { const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'secondary'; clear.textContent = 'Limpiar fechas'; clear.onclick = () => { setFromDate(''); setToDate('') }; filters.append(clear) }
+    toolbar.prepend(filters)
+    return () => filters.remove()
+  }, [fromDate, toDate])
   return <><div className="module-intro"><div><p className="eyebrow">TRABAJOS REALIZADOS</p><h1>Historial técnico</h1><p>Seleccioná varios servicios para confirmarlos, cancelarlos o reprogramarlos en una sola acción.</p></div><button className="primary" disabled={!selected.length} onClick={() => setBulkOpen(true)}><Icon name="check" />{selected.length ? `Gestionar ${selected.length} seleccionados` : 'Gestionar selección'}</button></div><div className="accounts-bar history-toolbar"><div><b>{history.length}</b> trabajos registrados</div><label><Icon name="search" size={16} /><input placeholder="Buscar cliente, servicio o técnico..." value={search} onChange={event => setSearch(event.target.value)} /></label></div><div className="data-card history-table history-bulk"><div className="table-head"><span><input aria-label="Seleccionar todos" type="checkbox" checked={records.length > 0 && selected.length === records.length} onChange={toggleAll} /></span><span>Fecha</span><span>Cliente</span><span>Servicio</span><span>Estado</span><span>Acciones</span></div>{records.length ? records.map(record => <div className="history-row" key={record.id}><span><input aria-label={`Seleccionar ${record.client}`} type="checkbox" checked={selected.includes(record.id)} onChange={() => toggle(record.id)} /></span><b>{prettyDate(record.date)}</b><div className="history-client"><strong>{record.client}</strong><small>{record.address || 'Sin dirección'}</small></div><div><em className="role-chip">{record.service}</em></div><div><span className={`work-status ${status(record).toLowerCase().replace(/\s/g, '-')}`}>{status(record)}</span>{record.scheduledDate && <small className="scheduled-date">Para: {prettyDate(record.scheduledDate)}</small>}</div><div><button className="secondary detail-button" onClick={() => setDetail(record)}><Icon name="eye" size={16} />Gestionar</button></div></div>) : <div className="empty-state">No hay trabajos para mostrar.</div>}</div>{bulkOpen && <div className="modal-layer"><div className="modal bulk-modal"><button className="close-modal" onClick={() => setBulkOpen(false)}><Icon name="close" /></button><p className="eyebrow">GESTIÓN MÚLTIPLE</p><h2>{selected.length} servicio(s) seleccionados</h2><p>La modificación se aplicará a todos los servicios elegidos.</p><label>Nuevo estado<select value={bulkStatus} onChange={event => setBulkStatus(event.target.value)}><option>Completado</option><option>Cancelado</option><option>Reprogramado</option></select></label>{bulkStatus === 'Reprogramado' && <label>Reprogramar para<input type="date" value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} /></label>}<div className="modal-actions"><button className="secondary" onClick={() => setBulkOpen(false)}>Cancelar</button><button className="primary" disabled={bulkStatus === 'Reprogramado' && !rescheduleDate} onClick={applyBulk}>Aplicar cambios</button></div></div></div>}{detail && <HistoryManagementDetail record={detail} setHistory={setHistory} close={() => setDetail(null)} />}</>
 }
 
