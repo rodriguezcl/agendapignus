@@ -3,11 +3,13 @@ const path = require('node:path')
 const fs = require('node:fs')
 const { DatabaseSync } = require('node:sqlite')
 
+// API local: Vite reenvía las rutas /api a este proceso durante el desarrollo.
 const port = 3001
 const dataDir = path.join(__dirname, 'data')
 fs.mkdirSync(dataDir, { recursive: true })
 const db = new DatabaseSync(path.join(dataDir, 'agenda-tecnica.db'))
 
+// Esquema idempotente: permite iniciar el sistema en una instalación nueva.
 db.exec(`
   PRAGMA journal_mode = WAL;
   CREATE TABLE IF NOT EXISTS roles (id TEXT PRIMARY KEY, data TEXT NOT NULL);
@@ -33,6 +35,7 @@ function rows(table) {
   return db.prepare(`SELECT data FROM ${table} ORDER BY rowid`).all().map(row => JSON.parse(row.data))
 }
 
+/** Devuelve el estado completo que consume la interfaz React al iniciar. */
 function readState() {
   const agenda = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
   const theme = db.prepare('SELECT value FROM preferences WHERE key = ?').get('theme')
@@ -53,6 +56,7 @@ function replaceRows(table, records, key) {
   for (const record of records || []) insert.run(String(record[key]), JSON.stringify(record))
 }
 
+/** Guarda todas las entidades dentro de una transacción para evitar estados parciales. */
 function saveState(state) {
   db.exec('BEGIN')
   try {
@@ -87,6 +91,7 @@ function alarmCategory(record) {
   return 'residencial'
 }
 
+/** Genera el reporte Excel compatible solicitado por gerencia, filtrado por ubicación. */
 function exportHistory(res, month, category) {
   const records = rows('work_history').filter(record => record.date?.startsWith(month) && record.service?.toLowerCase().includes('instalación de alarma') && alarmCategory(record) === category)
   const label = { docta: 'Docta Urbanización', 'nobu-town': 'Nobu Town', residencial: 'Residenciales' }[category] || 'Instalaciones de alarma'

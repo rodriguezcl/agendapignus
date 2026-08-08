@@ -1,28 +1,46 @@
-AGENDA TÉCNICA
-==============
+AGENDA TÉCNICA PIGNUS
+=====================
 
-Este proyecto es una aplicación web hecha con React y Vite.
+Aplicación local para planificar agendas, administrar clientes, empleados,
+servicios e historial técnico. La interfaz usa React/Vite y la persistencia
+local se realiza en SQLite mediante una API Node.js.
 
-COMPROBACIÓN RÁPIDA
--------------------
+INICIO
+------
 
-1. Abrí una terminal en esta carpeta.
-2. Ejecutá:
+La forma recomendada en Windows es ejecutar `Iniciar_Agenda_Tecnica.bat`.
+También puede usarse `npm run dev` desde una terminal. El sistema queda
+disponible en http://localhost:5173.
 
-   npm run dev
+ESTRUCTURA
+----------
 
-3. Abrí en el navegador la dirección que muestre la terminal
-   (normalmente http://localhost:5173).
+- `src/`: aplicación React.
+- `src/components/ui/`: componentes visuales reutilizables.
+- `src/features/`: módulos de negocio; cada funcionalidad nueva debe vivir aquí.
+- `src/services/`: cliente de API y servicios compartidos.
+- `server.cjs`: API local, reglas de persistencia y SQLite.
+- `data/`: base de datos e importaciones; no se versiona.
+- `public/`: imágenes y recursos estáticos.
+- `docs/ARQUITECTURA.md`: decisiones técnicas y convenciones de desarrollo.
 
-Si la página de Agenda Técnica se carga sin errores, el proyecto funciona
-correctamente.
+DESARROLLO
+----------
 
-COMPROBACIÓN DE PRODUCCIÓN
---------------------------
+1. Ejecutar `npm install` al clonar el proyecto.
+2. Ejecutar `npm run dev`.
+3. Antes de entregar cambios, ejecutar `npm run build`.
 
-Para verificar que la versión de producción se genera bien, ejecutá:
+PERSISTENCIA
+------------
 
-   npm run build
+Los datos operativos se guardan en `data/agenda-tecnica.db`. No eliminar esta
+carpeta si se desea conservar clientes, agendas e historial. Las copias de
+seguridad deben hacerse con la aplicación detenida.
 
-El proceso debe terminar sin errores y crear la carpeta "dist".
+MANTENIMIENTO
+-------------
 
+El archivo `App.jsx` conserva componentes históricos durante la transición.
+Al modificar una funcionalidad, extraer su módulo a `src/features/` y dejar
+comentadas las reglas de negocio, validaciones y efectos de persistencia.
