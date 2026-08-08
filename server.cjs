@@ -1,6 +1,7 @@
 const http = require('node:http')
 const path = require('node:path')
 const fs = require('node:fs')
+const crypto = require('node:crypto')
 const { DatabaseSync } = require('node:sqlite')
 
 // API local: Vite reenvía las rutas /api a este proceso durante el desarrollo.
@@ -8,6 +9,14 @@ const port = 3001
 const dataDir = path.join(__dirname, 'data')
 fs.mkdirSync(dataDir, { recursive: true })
 const db = new DatabaseSync(path.join(dataDir, 'agenda-tecnica.db'))
+
+// Las sesiones viven sólo en memoria: al cerrar el servidor se invalidan todas.
+// La cookie contiene un identificador aleatorio, nunca la contraseña ni datos del usuario.
+const sessions = new Map()
+const loginAttempts = new Map()
+const SESSION_MAX_AGE = 8 * 60 * 60 * 1000
+const LOGIN_WINDOW = 15 * 60 * 1000
+const LOGIN_MAX_ATTEMPTS = 5
 
 // Esquema idempotente: permite iniciar el sistema en una instalación nueva.
 db.exec(`
@@ -41,7 +50,8 @@ function readState() {
   const theme = db.prepare('SELECT value FROM preferences WHERE key = ?').get('theme')
   return {
     roles: rows('roles'),
-    employees: rows('employees'),
+    // Nunca se exponen hashes ni contraseñas a la interfaz.
+    employees: sanitizeEmployeesForRead(),
     services: rows('services'),
     history: rows('work_history'),
     customers: rows('customers'),
@@ -58,10 +68,24 @@ function replaceRows(table, records, key) {
 
 /** Guarda todas las entidades dentro de una transacción para evitar estados parciales. */
 function saveState(state) {
+  const previousEmployees = new Map(rows('employees').map(employee => [String(employee.id), employee]))
+  const securedEmployees = (state.employees || []).map(employee => {
+    const previous = previousEmployees.get(String(employee.id))
+    const next = { ...employee }
+    if (next.password?.trim() && next.password.trim().length < 8) throw new Error('Las contraseñas deben tener al menos 8 caracteres.')
+    if (!previous && !next.password?.trim()) throw new Error('Todo empleado nuevo requiere una contraseña.')
+    // En una edición sin nueva contraseña se conserva el hash existente.
+    if (next.password?.trim()) next.passwordHash = hashPassword(next.password)
+    else if (previous?.passwordHash) next.passwordHash = previous.passwordHash
+    // Compatibilidad: la primera autenticación convierte automáticamente credenciales antiguas.
+    else if (previous?.password) next.passwordHash = hashPassword(previous.password)
+    delete next.password
+    return next
+  })
   db.exec('BEGIN')
   try {
     replaceRows('roles', state.roles, 'id')
-    replaceRows('employees', state.employees, 'id')
+    replaceRows('employees', securedEmployees, 'id')
     replaceRows('services', state.services, 'id')
     replaceRows('work_history', state.history, 'id')
     replaceRows('customers', state.customers, 'account')
@@ -78,6 +102,77 @@ function send(res, status, data) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(data))
 }
+
+function parseCookies(header = '') {
+  return Object.fromEntries(header.split(';').map(value => value.trim().split('=').map(decodeURIComponent)).filter(([key]) => key))
+}
+
+function publicEmployee(employee) {
+  const { password, passwordHash, ...safeEmployee } = employee
+  return safeEmployee
+}
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  const hash = crypto.scryptSync(String(password), salt, 64).toString('hex')
+  return `${salt}:${hash}`
+}
+
+function verifyPassword(password, storedHash) {
+  if (!storedHash?.includes(':')) return false
+  const [salt, hash] = storedHash.split(':')
+  const calculated = crypto.scryptSync(String(password), salt, 64).toString('hex')
+  return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(calculated, 'hex'))
+}
+
+function sanitizeEmployeesForRead() {
+  return rows('employees').map(publicEmployee)
+}
+
+function sessionUser(req) {
+  const token = parseCookies(req.headers.cookie).pignus_session
+  const session = token && sessions.get(token)
+  if (!session || session.expiresAt < Date.now()) {
+    if (token) sessions.delete(token)
+    return null
+  }
+  return session.user
+}
+
+function requireSession(req, res) {
+  const user = sessionUser(req)
+  if (!user) {
+    send(res, 401, { error: 'Sesión requerida.' })
+    return null
+  }
+  return user
+}
+
+function readJson(req, limit = 50_000) {
+  return new Promise((resolve, reject) => {
+    let body = ''
+    req.on('data', chunk => { body += chunk; if (body.length > limit) reject(new Error('Solicitud demasiado grande.')) })
+    req.on('end', () => {
+      try { resolve(JSON.parse(body || '{}')) } catch { reject(new Error('Datos inválidos.')) }
+    })
+    req.on('error', reject)
+  })
+}
+
+function loginLimited(req) {
+  const ip = req.socket.remoteAddress || 'local'
+  const attempt = loginAttempts.get(ip)
+  if (!attempt || attempt.until < Date.now()) return false
+  return attempt.count >= LOGIN_MAX_ATTEMPTS
+}
+
+function registerLoginFailure(req) {
+  const ip = req.socket.remoteAddress || 'local'
+  const current = loginAttempts.get(ip)
+  const withinWindow = current?.until > Date.now()
+  loginAttempts.set(ip, { count: withinWindow ? current.count + 1 : 1, until: Date.now() + LOGIN_WINDOW })
+}
+
+function clearLoginFailures(req) { loginAttempts.delete(req.socket.remoteAddress || 'local') }
 
 function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]))
@@ -104,15 +199,56 @@ function exportHistory(res, month, category) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`)
-  if (req.method === 'GET' && url.pathname === '/api/history/export') return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial')
-  if (req.method === 'GET' && req.url === '/api/state') return send(res, 200, readState())
+  if (req.method === 'GET' && url.pathname === '/api/auth/session') {
+    const user = sessionUser(req)
+    return user ? send(res, 200, { user }) : send(res, 401, { error: 'Sin sesión activa.' })
+  }
+  if (req.method === 'POST' && url.pathname === '/api/auth/login') {
+    if (loginLimited(req)) return send(res, 429, { error: 'Demasiados intentos. Esperá 15 minutos antes de volver a intentar.' })
+    return readJson(req).then(({ email, password }) => {
+      const employee = rows('employees').find(item => item.status === 'Activo' && item.email?.trim().toLowerCase() === String(email || '').trim().toLowerCase())
+      const legacyPassword = Buffer.from(String(employee?.password || ''))
+      const suppliedPassword = Buffer.from(String(password || ''))
+      const validLegacyPassword = legacyPassword.length === suppliedPassword.length && crypto.timingSafeEqual(suppliedPassword, legacyPassword)
+      const valid = employee && (employee.passwordHash ? verifyPassword(password, employee.passwordHash) : validLegacyPassword)
+      if (!valid) {
+        registerLoginFailure(req)
+        return send(res, 401, { error: 'Usuario o contraseña incorrectos.' })
+      }
+      // Migra contraseñas creadas antes de esta mejora sin conservar texto plano.
+      if (!employee.passwordHash) {
+        employee.passwordHash = hashPassword(employee.password)
+        delete employee.password
+        db.prepare('UPDATE employees SET data = ? WHERE id = ?').run(JSON.stringify(employee), String(employee.id))
+      }
+      clearLoginFailures(req)
+      const user = { id: employee.id, name: employee.name, email: employee.email, role: employee.role }
+      const token = crypto.randomBytes(32).toString('hex')
+      sessions.set(token, { user, expiresAt: Date.now() + SESSION_MAX_AGE })
+      res.setHeader('Set-Cookie', `pignus_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE / 1000}`)
+      return send(res, 200, { user })
+    }).catch(() => send(res, 400, { error: 'No se pudo procesar el acceso.' }))
+  }
+  if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
+    const token = parseCookies(req.headers.cookie).pignus_session
+    if (token) sessions.delete(token)
+    res.setHeader('Set-Cookie', 'pignus_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
+    return send(res, 200, { ok: true })
+  }
+  if (req.method === 'GET' && url.pathname === '/api/history/export') {
+    if (!requireSession(req, res)) return
+    return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial')
+  }
+  if (req.method === 'GET' && req.url === '/api/state') {
+    if (!requireSession(req, res)) return
+    return send(res, 200, readState())
+  }
   if (req.method === 'PUT' && req.url === '/api/state') {
-    let body = ''
-    req.on('data', chunk => { body += chunk; if (body.length > 15_000_000) req.destroy() })
-    req.on('end', () => {
-      try { saveState(JSON.parse(body)); send(res, 200, { ok: true }) }
-      catch (error) { console.error(error); send(res, 400, { error: 'No se pudieron guardar los datos.' }) }
-    })
+    if (!requireSession(req, res)) return
+    readJson(req, 15_000_000).then(state => {
+      saveState(state)
+      send(res, 200, { ok: true })
+    }).catch(error => { console.error(error); send(res, 400, { error: 'No se pudieron guardar los datos.' }) })
     return
   }
   send(res, 404, { error: 'Ruta no encontrada.' })
