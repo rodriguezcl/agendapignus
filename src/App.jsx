@@ -253,13 +253,16 @@ function DashboardStatusView({ history }) {
   const today = new Date()
   const isCurrentPeriod = today.getFullYear() === selectedYear && today.getMonth() + 1 === selectedMonth
   const elapsedDays = isCurrentPeriod ? today.getDate() : daysInPeriod
-  const projectedInstallations = elapsedDays ? Math.round(installations.length / elapsedDays * daysInPeriod) : 0
+  const projectedInstallations = elapsedDays ? Math.round(alarms.length / elapsedDays * daysInPeriod) : 0
   const previousDate = new Date(selectedYear, selectedMonth - 2, 1)
   const previousMonthKey = `${previousDate.getFullYear()}-${String(previousDate.getMonth() + 1).padStart(2, '0')}`
-  const previousInstallations = history.filter(record => record.date?.startsWith(previousMonthKey) && isComplete(record) && record.service?.toLowerCase().includes('instalación')).length
+  const previousInstallations = history.filter(record => record.date?.startsWith(previousMonthKey) && isComplete(record) && record.service?.toLowerCase().includes('instalación de alarma')).length
   const comparisonValue = isCurrentPeriod ? projectedInstallations : installations.length
   const variation = previousInstallations ? Math.round((comparisonValue - previousInstallations) / previousInstallations * 100) : null
   const previousMonthLabel = previousDate.toLocaleDateString('es-AR', { month: 'long' })
+  const yearToDateInstallations = history.filter(record => record.date?.startsWith(`${selectedYear}-`) && Number(record.date.slice(5, 7)) <= selectedMonth && isComplete(record) && record.service?.toLowerCase().includes('instalación de alarma')).length
+  const averageInstallations = yearToDateInstallations / selectedMonth
+  const averageVariation = averageInstallations ? Math.round((comparisonValue - averageInstallations) / averageInstallations * 100) : null
   useEffect(() => {
     const stats = document.querySelector('.stats-grid')
     if (!stats) return
@@ -268,11 +271,13 @@ function DashboardStatusView({ history }) {
     const alarmsCard = cards.find(card => card.querySelector('span')?.textContent.includes('Alarmas'))
     if (!projectionCard || !alarmsCard) return
     stats.prepend(alarmsCard)
-    projectionCard.querySelector('span').textContent = 'Proyección de instalaciones'
+    projectionCard.querySelector('span').textContent = 'Proyección de instalaciones de alarma'
     projectionCard.querySelector('b').textContent = projectedInstallations
-    const comparison = variation === null ? `Sin datos de instalaciones en ${previousMonthLabel}` : `${variation > 0 ? '+' : ''}${variation}% vs. ${previousMonthLabel}`
-    projectionCard.querySelector('small').textContent = isCurrentPeriod ? `Estimación al cierre · ${comparison}` : `Resultado final · ${comparison}`
-  }, [month, installations.length, projectedInstallations, isCurrentPeriod, previousMonthLabel, variation])
+    const comparison = variation === null ? `Sin datos de instalaciones en ${previousMonthLabel}` : `<strong class="projection-variation ${variation >= 0 ? 'positive' : 'negative'}">${variation > 0 ? '+' : ''}${variation}%</strong> vs. ${previousMonthLabel}`
+    const averageValue = Math.round(averageInstallations)
+    const averageComparison = averageVariation === null ? 'Sin promedio anual disponible' : `<strong class="projection-variation ${averageVariation >= 0 ? 'positive' : 'negative'}">${averageVariation > 0 ? '+' : ''}${averageVariation}%</strong> vs. promedio mensual ${selectedYear} (${averageValue})`
+    projectionCard.querySelector('small').innerHTML = `${isCurrentPeriod ? 'Estimación al cierre' : 'Resultado final'} · ${comparison}<br>${averageComparison}`
+  }, [month, alarms.length, projectedInstallations, isCurrentPeriod, previousMonthLabel, variation, averageInstallations, averageVariation, selectedYear])
   useEffect(() => {
     document.querySelector('.service-breakdown')?.remove()
     const stats = document.querySelector('.stats-grid')
