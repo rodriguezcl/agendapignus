@@ -7,6 +7,7 @@ import React from 'react'
 const paths = {
   menu: 'M3 6h18M3 12h18M3 18h18',
   dashboard: 'M4 4h6v7H4zm10 0h6v11h-6zM4 15h6v5H4zm10 4v-4h6v4z',
+  audit: 'M6 3h9l3 3v15H6zM15 3v4h4M9 12h6M9 16h6M9 8h2',
   agenda: 'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2m4 10 2 2 4-4',
   history: 'M3 12a9 9 0 1 0 3-6.7M3 4v5h5m4-4v7l4 2',
   calendar: 'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2',

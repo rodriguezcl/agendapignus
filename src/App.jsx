@@ -16,6 +16,19 @@ const initialRoles = [
   { id: 2, name: 'Coordinador', description: 'Gestiona agenda, cuentas y técnicos', permissions: { agenda: true, accounts: true, employees: true, settings: false } },
   { id: 3, name: 'Técnico', description: 'Consulta su agenda asignada', permissions: { agenda: true, accounts: false, employees: false, settings: false } }
 ]
+// Catálogo único: evita que un módulo quede fuera de la matriz de permisos.
+const MODULE_PERMISSIONS = [
+  ['dashboard', 'Menú principal', 'Ver indicadores y resumen operativo'],
+  ['agenda', 'Agenda técnica', 'Crear y editar equipos y servicios'],
+  ['history', 'Historial', 'Consultar y gestionar trabajos registrados'],
+  ['accounts', 'Administrador de cuentas', 'Consultar y administrar clientes'],
+  ['employees', 'Empleados', 'Administrar técnicos y accesos'],
+  ['services', 'Tipo de servicio', 'Administrar el catálogo de servicios'],
+  ['settings', 'Configuración', 'Modificar roles y permisos'],
+  ['audit', 'Auditoría', 'Consultar acciones y accesos del sistema']
+]
+const DEFAULT_MODULE_PERMISSIONS = Object.fromEntries(MODULE_PERMISSIONS.map(([key]) => [key, false]))
+
 const initialEmployees = [
   { id: 1, name: 'Rodrigo Fernández', role: 'Técnico', phone: '11 4567-8901', email: 'rodrigo@pignus.com', password: '••••••••', status: 'Activo' },
   { id: 2, name: 'Mariano López', role: 'Técnico', phone: '11 3456-2210', email: 'mariano@pignus.com', password: '••••••••', status: 'Activo' },
@@ -29,6 +42,8 @@ function LegacyIcon({ name, size = 18 }) {
 }
 const initials = name => name.split(' ').map(x => x[0]).slice(0, 2).join('').toUpperCase()
 const prettyDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, x => x.toUpperCase()) : ''
+// Unifica el horario operativo en Argentina aunque el servidor guarde fechas en UTC.
+const prettyReportDateTime = value => value ? `${new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: 'numeric', month: 'numeric', year: 'numeric' }).format(new Date(value))}, ${new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(value))} Hs` : ''
 function showAgendaValidationModal(missing) {
   document.getElementById('agenda-validation-modal')?.remove()
   const layer = document.createElement('div'); layer.id = 'agenda-validation-modal'; layer.className = 'modal-layer'
@@ -83,6 +98,7 @@ export default function App() {
   const [databaseReady, setDatabaseReady] = useState(false)
   const [authUser, setAuthUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [profileOpen, setProfileOpen] = useState(false)
   useEffect(() => localStorage.setItem('pignus-theme', theme), [theme])
   useEffect(() => localStorage.setItem('pignus-roles', JSON.stringify(roles)), [roles])
   useEffect(() => localStorage.setItem('pignus-employees', JSON.stringify(employees)), [employees])
@@ -122,33 +138,71 @@ export default function App() {
   useEffect(() => {
     if (!authUser) return
     fetch('/api/state').then(response => response.ok ? response.json() : Promise.reject()).then(data => {
-      if (data.roles?.length) setRoles(data.roles)
+      if (data.roles?.length) setRoles(data.roles.map(role => ({ ...role, permissions: { ...DEFAULT_MODULE_PERMISSIONS, dashboard: true, ...role.permissions, ...(role.name?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'administrador' ? Object.fromEntries(MODULE_PERMISSIONS.map(([key]) => [key, true])) : {}) } })))
       if (data.employees?.length) setEmployees(data.employees)
       if (data.services?.length) setServices(data.services)
-      if (data.history?.length) setHistory(data.history)
+      if (Array.isArray(data.history)) setHistory(data.history)
       if (data.customers?.length) setCustomers(data.customers)
       if (data.agenda?.teams?.length) { setTeams(data.agenda.teams); setDate(data.agenda.date || date) }
       if (data.preferences?.theme) setTheme(data.preferences.theme)
     }).catch(() => setNotice('No se pudo conectar con la base de datos local.')).finally(() => setDatabaseReady(true))
   }, [authUser])
   useEffect(() => {
-    if (!databaseReady || !authUser) return
+    if (!databaseReady || !authUser || authUser.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'tecnico') return
     const timer = setTimeout(() => fetch('/api/state', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ roles, employees, services, history, customers, agenda: { date, teams }, preferences: { theme } })
-    }).catch(() => setNotice('No se pudieron guardar los últimos cambios.')), 300)
+    }).catch(() => setNotice('No se pudieron guardar los últimos cambios.')), 750)
     return () => clearTimeout(timer)
   }, [databaseReady, authUser, roles, employees, services, history, customers, date, teams, theme])
   const ask = (title, detail, action, destructive = false) => setConfirmation({ title, detail, action, destructive })
   const updateTask = (team, task, patch) => setTeams(prev => prev.map((t, ti) => ti !== team ? t : { ...t, tasks: t.tasks.map((x, i) => i !== task ? x : { ...x, ...patch }) }))
   const activeTechs = employees.filter(x => x.status === 'Activo')
+  const isAdministrator = authUser?.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'administrador'
   // Cada módulo tiene un ícono propio para facilitar el reconocimiento visual en la navegación.
   const nav = [['dashboard', 'dashboard', 'Menú principal'], ['agenda', 'agenda', 'Agenda técnica'], ['history', 'history', 'Historial'], ['accounts', 'accounts', 'Administrador de cuentas'], ['employees', 'users', 'Empleados'], ['services', 'tools', 'Tipo de servicio'], ['settings', 'settings', 'Configuración']]
+  const activeRole = roles.find(role => role.name === authUser?.role)
+  const modulePermissions = { ...DEFAULT_MODULE_PERMISSIONS, dashboard: true, ...activeRole?.permissions }
+  if (!isAdministrator) {
+    for (let index = nav.length - 1; index >= 0; index -= 1) if (!modulePermissions[nav[index][0]]) nav.splice(index, 1)
+  }
+  useEffect(() => {
+    if (!isAdministrator && !modulePermissions[module] && nav[0]) setModule(nav[0][0])
+  }, [isAdministrator, module, activeRole?.id])
   const title = { dashboard: 'Menú principal', agenda: 'Agenda técnica', history: 'Historial', accounts: 'Administrador de cuentas', employees: 'Empleados', services: 'Tipo de servicio', settings: 'Configuración' }[module]
-  const logout = async () => { await fetch('/api/auth/logout', { method: 'POST' }); setAuthUser(null); setDatabaseReady(false); setModule('dashboard') }
+  if (isAdministrator) nav.push(['audit', 'audit', 'Auditoría'])
+  const emptyAgenda = () => ({ date: new Date().toISOString().slice(0, 10), teams: [{ members: [], tasks: [blankTask()] }] })
+  // Una agenda se considera pendiente cuando tiene datos que todavía no quedaron registrados en Historial.
+  const hasUnsavedAgenda = teams.some((team, teamIndex) => {
+    const membersChanged = team.members.length > 0 && !history.some(record => record.date === date && record.team === `Equipo ${teamIndex + 1}` && JSON.stringify(record.technicians || []) === JSON.stringify(team.members))
+    const hasPendingTask = team.tasks.some(task => Object.values(task).some(Boolean) && !history.some(record => record.date === date && record.team === `Equipo ${teamIndex + 1}` && record.time === task.time && record.service === task.service && record.client === task.client && record.address === task.address && record.phone === task.phone && record.detail === task.detail))
+    return membersChanged || hasPendingTask
+  })
+  const logout = async () => {
+    // La agenda temporal no debe permanecer disponible para la próxima sesión.
+    if (authUser?.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() !== 'tecnico') {
+      const clean = emptyAgenda()
+      setTeams(clean.teams); setDate(clean.date); localStorage.removeItem('pignus-agenda')
+      if (databaseReady) await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roles, employees, services, history, customers, agenda: clean, preferences: { theme } }) }).catch(() => {})
+    }
+    await fetch('/api/auth/logout', { method: 'POST' }); setAuthUser(null); setDatabaseReady(false); setModule('dashboard')
+  }
+  const requestLogout = () => setConfirmation(hasUnsavedAgenda
+    ? { title: 'Agenda sin guardar', detail: 'Hay servicios cargados que aún no fueron guardados en el historial. Si cerrás sesión, la agenda se limpiará y esos datos se perderán.', action: logout, destructive: true, confirmLabel: 'Cerrar sesión y descartar agenda' }
+    : { title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? La agenda se limpiará para dejar el sistema listo para una nueva sesión.', action: logout, confirmLabel: 'Sí, cerrar sesión' })
+  useEffect(() => {
+    // Intercepta el botón común del encabezado para aplicar la verificación de agenda antes de salir.
+    const button = document.querySelector('.topbar .logout-button')
+    if (!button) return undefined
+    const intercept = event => { event.preventDefault(); event.stopPropagation(); requestLogout() }
+    button.addEventListener('click', intercept, true)
+    return () => button.removeEventListener('click', intercept, true)
+  })
   if (authLoading) return <main className="login-page"><div className="login-loading">Verificando sesión segura…</div></main>
   if (!authUser) return <Login onLogin={setAuthUser} />
-  return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span><button className="logout-button" onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrar sesión"><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} />}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }} />}{module === 'history' && <History history={history} setHistory={setHistory} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
+  if (authUser.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'tecnico') return <TechnicianPortal user={authUser} history={history} setHistory={setHistory} logout={logout} />
+  if (module === 'audit' && isAdministrator) return <AuditShell user={authUser} onNavigate={setModule} logout={logout} />
+  return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><div className="profile-menu"><button className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span></button>{profileOpen && <div className="profile-popover"><b>{authUser.name}</b><span>{authUser.email}</span><small>{authUser.role}</small></div>}</div><button className="logout-button" onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrar sesión"><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} />}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }} />}{module === 'history' && <History history={history} setHistory={setHistory} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} />}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }} />}{module === 'history' && <History history={history} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }} />}{module === 'history' && <History history={history} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, updateTask, setNotice }} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
@@ -185,6 +239,16 @@ function AgendaWorkspace({ date, setDate, teams, setTeams, activeTechs, customer
   const [techOpen, setTechOpen] = useState(null)
   const [filter, setFilter] = useState('')
   const [confirmation, setConfirmation] = useState(null)
+  useEffect(() => {
+    const group = document.querySelector('.module-intro .action-group')
+    if (!group || group.querySelector('.save-agenda-button')) return
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'secondary save-agenda-button'
+    button.textContent = '✓ Guardar agenda'
+    button.onclick = saveAgenda
+    group.insertBefore(button, group.lastElementChild)
+  })
   const activeServices = services.filter(service => service.status === 'Activo')
   const validateAgenda = () => {
     const missing = []
@@ -226,10 +290,23 @@ function AgendaWorkspace({ date, setDate, teams, setTeams, activeTechs, customer
 }
 
 function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, customers, services, setHistory, updateTask, setNotice }) {
+  const saveAgenda = () => { if (registerHistory()) setNotice('La agenda fue guardada en el historial.') }
   const [preview, setPreview] = useState(false)
   const [techOpen, setTechOpen] = useState(null)
   const [filter, setFilter] = useState('')
   const [confirmation, setConfirmation] = useState(null)
+  // El guardado es independiente de copiar: registra la agenda y mantiene los campos cargados.
+  useEffect(() => {
+    const actionGroup = document.querySelector('.module-intro .action-group')
+    if (!actionGroup || actionGroup.querySelector('.save-agenda-button')) return undefined
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'secondary save-agenda-button'
+    button.textContent = '✓ Guardar agenda'
+    button.onclick = saveAgenda
+    actionGroup.insertBefore(button, actionGroup.lastElementChild)
+    return () => button.remove()
+  })
   const activeServices = services.filter(service => service.status === 'Activo')
   const validateAgenda = () => {
     const missing = []
@@ -247,7 +324,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   }
   const clearAgenda = () => { if (confirmation !== 'clear') { if (!registerHistory()) return; setNotice('La agenda fue copiada al portapapeles y registrada en el historial.'); return }; setTeams([{ members: [], tasks: [blankTask()] }]); setDate(new Date().toISOString().slice(0, 10)); setNotice('La agenda quedó limpia y lista para una nueva planificación.') }
   const message = `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n${teams.map((team, index) => `👥 *Equipo ${index + 1}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${team.tasks.map(task => `🕒 ${task.time || '--:--'} Hs\n🛠️ *${task.service || 'Servicio'}*\n👤 *${task.client || 'Cliente'}*${task.detail ? `\n📝 *Detalle:* ${task.detail}` : ''}${task.address ? `\n📍 *Dirección:* ${task.address}` : ''}${task.phone ? `\n📞 *Contacto:* ${task.phone}` : ''}`).join('\n\n')}`).join('\n\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n')}`
-  const registerHistory = () => { if (!validateAgenda()) return false; setHistory(previous => { const records = teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ id: `${date}-${teamIndex}-${taskIndex}-${task.time}-${task.client}-${task.service}`.replace(/[^a-zA-Z0-9]/g, '-'), date, team: `Equipo ${teamIndex + 1}`, technicians: team.members, service: task.service, client: task.client, detail: task.detail, address: task.address, phone: task.phone, installationZone: task.installationZone || '' }))); return [...records.filter(record => !previous.some(item => item.id === record.id)), ...previous] }); return true }
+  const registerHistory = () => { if (!validateAgenda()) return false; setHistory(previous => { const records = teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ id: `${date}-${teamIndex}-${taskIndex}-${task.time}-${task.client}-${task.service}`.replace(/[^a-zA-Z0-9]/g, '-'), date, time: task.time, team: `Equipo ${teamIndex + 1}`, technicians: team.members, service: task.service, client: task.client, detail: task.detail, address: task.address, phone: task.phone, installationZone: task.installationZone || '' }))); return [...records.filter(record => !previous.some(item => item.id === record.id)), ...previous] }); return true }
   const toggleTech = (teamIndex, name) => setTeams(previous => previous.map((team, index) => index !== teamIndex ? team : { ...team, members: team.members.includes(name) ? team.members.filter(member => member !== name) : [...team.members, name] }))
   const customerChange = (teamIndex, taskIndex, value) => { const customer = customers.find(item => item.account === value || item.name === value || `${item.name} · ${item.account}` === value || `${item.account} ${item.name}` === value); updateTask(teamIndex, taskIndex, customer ? { client: `${customer.account} ${customer.name}`, address: customer.address, phone: customer.phone } : { client: value }) }
   return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setConfirmation('clear')}><Icon name="trash" />Limpiar agenda</button><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button><button className="primary" onClick={() => { navigator.clipboard?.writeText(message); clearAgenda() }}><Icon name="copy" />Copiar agenda</button></div></div><div className="agenda-toolbar"><label>Fecha de trabajo<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, teamIndex) => <article className="team-card" key={teamIndex}><div className="team-header"><div><span className="team-number">{teamIndex + 1}</span><strong>Equipo {teamIndex + 1}</strong>{teams.length > 1 && <button className="team-delete" onClick={() => setConfirmation({ type: 'team', index: teamIndex })}><Icon name="trash" size={16} />Eliminar equipo</button>}</div><div className="technicians-picker"><span>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</span><button className="secondary small" onClick={() => { setTechOpen(techOpen === teamIndex ? null : teamIndex); setFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === teamIndex && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={filter} onChange={event => setFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(filter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={team.members.includes(tech.name)} onChange={() => toggleTech(teamIndex, tech.name)} />{tech.name}</label>)}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, taskIndex) => <div className="task-row" key={taskIndex}><div className="task-title"><span>{taskIndex + 1}</span><b>Servicio</b></div><label>Hora<input type="time" value={task.time} onChange={event => updateTask(teamIndex, taskIndex, { time: event.target.value })} /></label><label>Tipo de servicio<select value={task.service} onChange={event => updateTask(teamIndex, taskIndex, { service: event.target.value, installationZone: event.target.value === 'Instalación de alarma' ? task.installationZone : '' })}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id}>{service.name}</option>)}</select></label><label>Cliente o cuenta<input list="customer-options" value={task.client} onChange={event => customerChange(teamIndex, taskIndex, event.target.value)} /><datalist id="customer-options">{customers.map(customer => <option key={customer.account} value={`${customer.name} · ${customer.account}`} />)}</datalist></label><label>Dirección<input value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label>Contacto<input value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations">Observaciones<textarea value={task.detail} onChange={event => updateTask(teamIndex, taskIndex, { detail: event.target.value })} /></label>{task.service === 'Instalación de alarma' && <fieldset className="installation-zone"><legend>Ubicación de la instalación</legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => updateTask(teamIndex, taskIndex, { installationZone: value })} />{label}</label>)}</fieldset>}{team.tasks.length > 1 && <button className="icon-btn delete" onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.filter((_, index) => index !== taskIndex) }))}><Icon name="trash" size={16} /></button>}</div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
@@ -280,12 +357,115 @@ function DashboardView({ history }) {
   return <><div className="module-intro"><div><p className="eyebrow">RESUMEN GERENCIAL</p><h1>Indicadores operativos</h1><p>Seguimiento mensual de instalaciones y reportes de alarmas.</p></div><label className="month-filter">Mes de análisis<input type="month" value={month} onChange={event => setMonth(event.target.value)} /></label></div><div className="stats-grid"><article><span>Instalaciones del mes</span><b>{installations.length}</b><small>Todos los tipos de instalación</small></article><article><span>Instalaciones de alarma</span><b>{alarms.length}</b><small>Servicios registrados en el período</small></article><article><span>Trabajos totales</span><b>{records.length}</b><small>Instalaciones y servicios técnicos</small></article></div><div className="dashboard-analytics"><article className="data-card annual-chart"><div><p className="eyebrow">EVOLUCIÓN ANUAL</p><h2>Instalaciones de alarma · {year}</h2></div><div className="bar-chart">{months.map(item => <div className="bar-item" key={item.label}><span>{item.value}</span><i style={{ height: `${Math.max(4, item.value / max * 100)}%` }}></i><small>{item.label}</small></div>)}</div></article><article className="data-card zone-summary"><p className="eyebrow">INSTALACIONES DE ALARMA</p><h2>Detalle por ubicación</h2>{zones.map(([key, label]) => <div key={key}><span>{label}</span><b>{alarms.filter(record => zoneOf(record) === key).length}</b><button className="secondary" onClick={() => download(key)}><Icon name="upload" size={15} />Excel</button></div>)}</article></div><div className="data-card dashboard-list"><div className="table-head"><span>Últimos trabajos del período</span><span>Cliente</span><span>Servicio</span><span>Técnicos</span></div>{records.slice(0, 8).map(record => <div className="dashboard-row" key={record.id}><span>{prettyDate(record.date)}</span><b>{record.client}</b><span>{record.service}</span><span>{record.technicians?.join(' / ') || 'Sin asignar'}</span></div>)}{!records.length && <div className="empty-state">No hay trabajos registrados para el mes seleccionado.</div>}</div></>
 }
 
+/** Vista restringida: un técnico sólo informa el resultado de sus servicios asignados. */
+/** Registro de trazabilidad exclusivo para las acciones revisadas por Administración. */
+function AuditShell({ user, onNavigate, logout }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const navigation = [['dashboard', 'dashboard', 'Menú principal'], ['agenda', 'agenda', 'Agenda técnica'], ['history', 'history', 'Historial'], ['accounts', 'accounts', 'Administrador de cuentas'], ['employees', 'users', 'Empleados'], ['services', 'tools', 'Tipo de servicio'], ['settings', 'settings', 'Configuración'], ['audit', 'audit', 'Auditoría']]
+  return <div className="audit-shell"><aside className={`sidebar audit-sidebar ${menuOpen ? 'open' : ''}`}><button className="audit-sidebar-brand" onClick={() => onNavigate('dashboard')} title="Ir al menú principal"><img src="/logo-pignus.png" alt="Pignus" /></button><p className="nav-label">MÓDULOS</p><nav>{navigation.map(([id, icon, label]) => <button key={id} className={id === 'audit' ? 'active' : ''} onClick={() => { onNavigate(id); setMenuOpen(false) }}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<AuditPage user={user} onBack={() => onNavigate('dashboard')} onOpenMenu={() => setMenuOpen(true)} logout={logout} /></div>
+}
+
+function AuditPage({ user, onBack, onOpenMenu, logout }) {
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [query, setQuery] = useState('')
+  const [action, setAction] = useState('')
+  const [selected, setSelected] = useState(null)
+  const [confirmLogout, setConfirmLogout] = useState(false)
+  const loadAudit = () => { setLoading(true); fetch('/api/audit?limit=800', { cache: 'no-store' }).then(response => response.ok ? response.json() : Promise.reject()).then(data => { setRecords(Array.isArray(data.records) ? data.records : []); setError('') }).catch(() => setError('No se pudo cargar el registro de auditoría.')).finally(() => setLoading(false)) }
+  useEffect(loadAudit, [])
+  const normalized = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const escapeAuditHtml = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  // Resalta las propiedades cuyo valor no coincide entre la versión anterior y la nueva.
+  const auditJsonMarkup = (value, comparison, tone) => {
+    if (!value) return 'No aplica.'
+    const changedKeys = value && comparison && typeof value === 'object' && typeof comparison === 'object'
+      ? new Set([...Object.keys(value), ...Object.keys(comparison)].filter(key => JSON.stringify(value[key]) !== JSON.stringify(comparison[key])))
+      : new Set()
+    return JSON.stringify(value, null, 2).split('\n').map(line => {
+      const match = line.match(/^\s*"([^\"]+)":/)
+      const changed = match && changedKeys.has(match[1])
+      return changed ? `<span class="audit-change audit-change-${tone}">${escapeAuditHtml(line)}</span>` : escapeAuditHtml(line)
+    }).join('\n')
+  }
+  useEffect(() => {
+    if (!selected) return undefined
+    const panes = document.querySelectorAll('.audit-diff pre')
+    if (panes.length !== 2) return undefined
+    panes[0].innerHTML = auditJsonMarkup(selected.before, selected.after, 'before')
+    panes[1].innerHTML = auditJsonMarkup(selected.after, selected.before, 'after')
+    return undefined
+  }, [selected])
+  const visible = useMemo(() => records.filter(record => (!action || record.action === action) && normalized([record.user?.name, record.user?.email, record.entity, record.entityId, record.action].join(' ')).includes(normalized(query))), [records, action, query])
+  const actionClass = value => normalized(value).includes('elimino') ? 'audit-delete' : normalized(value).includes('creo') ? 'audit-create' : normalized(value).includes('modifico') ? 'audit-edit' : 'audit-status'
+  return <main className="audit-page"><header className="audit-topbar"><button className="mobile-menu audit-mobile-menu" onClick={onOpenMenu}><Icon name="menu" /></button><button className="audit-brand" onClick={onBack} title="Volver al menú principal"><img src="/logo-pignus.png" alt="Pignus" /></button><div><b>Auditoría</b><span>Registro de actividad del sistema</span></div><div className="audit-user"><span>{user.name}</span><small>{user.email}</small></div><button className="secondary small" onClick={onBack}>Volver al menú</button><button className="logout-button" onClick={() => setConfirmLogout(true)}><Icon name="logout" size={17} />Cerrar sesión</button></header><section className="audit-content"><div className="module-intro"><div><p className="eyebrow">CONTROL Y TRAZABILIDAD</p><h1>Auditoría del sistema</h1><p>Consultá quién creó, modificó, eliminó o informó cambios, con fecha y detalle de cada acción.</p></div><button className="secondary" onClick={loadAudit}><Icon name="history" />Actualizar</button></div><div className="audit-filters"><label>Acción<select value={action} onChange={event => setAction(event.target.value)}><option value="">Todas las acciones</option>{[...new Set(records.map(record => record.action))].map(item => <option key={item} value={item}>{item}</option>)}</select></label><label className="audit-search">Buscar usuario, entidad o registro<input value={query} onChange={event => setQuery(event.target.value)} placeholder="Ej.: Leonardo, cliente o PIG-6375" /></label><span><b>{visible.length}</b> acciones registradas</span></div>{error && <div className="notice audit-error">{error}</div>}<div className="audit-table"><div className="audit-table-head"><span>Fecha y hora</span><span>Usuario</span><span>Acción</span><span>Información afectada</span><span>Detalle</span></div>{loading ? <div className="empty-state">Cargando registro de auditoría…</div> : visible.map(record => <div className="audit-row" key={record.id}><span>{prettyReportDateTime(record.at)}</span><span><b>{record.user?.name || 'Usuario desconocido'}</b><small>{record.user?.email}</small></span><span><i className={actionClass(record.action)}>{record.action}</i></span><span><b>{record.entity}</b><small>{record.entityId}</small></span><button className="secondary small" onClick={() => setSelected(record)}><Icon name="eye" size={16} />Ver detalle</button></div>)}{!loading && !visible.length && <div className="empty-state">No hay acciones que coincidan con los filtros seleccionados.</div>}</div></section>{selected && <div className="modal-layer"><div className="modal audit-modal"><button className="modal-close" onClick={() => setSelected(null)}><Icon name="close" /></button><p className="eyebrow">DETALLE DE AUDITORÍA</p><h2>{selected.action} · {selected.entity}</h2><div className="audit-detail-meta"><span><b>Usuario</b>{selected.user?.name} · {selected.user?.email}</span><span><b>Fecha y hora</b>{prettyReportDateTime(selected.at)}</span><span><b>Registro</b>{selected.entityId}</span></div><div className="audit-diff"><section><h3>Antes</h3><pre>{selected.before ? JSON.stringify(selected.before, null, 2) : 'No aplica: es un registro nuevo.'}</pre></section><section><h3>Después</h3><pre>{selected.after ? JSON.stringify(selected.after, null, 2) : 'No aplica: el registro fue eliminado.'}</pre></section></div></div></div>}{confirmLogout && <Confirm title="Cerrar sesión" detail="¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema." action={logout} confirmLabel="Sí, cerrar sesión" close={() => setConfirmLogout(false)} />}</main>
+}
+
+function TechnicianPortal({ user, history, setHistory, logout }) {
+  const [draft, setDraft] = useState(null)
+  const [observation, setObservation] = useState('')
+  const [confirm, setConfirm] = useState(null)
+  const [view, setView] = useState('agenda')
+  const today = new Date().toISOString().slice(0, 10)
+  const resolved = record => Boolean(record.technicalStatus || record.status === 'Completado' || record.status === 'Cancelado' || record.status === 'Reprogramado')
+  const assignedServices = history.filter(record => record.technicians?.includes(user.name)).sort((a, b) => `${a.date}-${a.time || ''}`.localeCompare(`${b.date}-${b.time || ''}`))
+  const services = (view === 'agenda' ? assignedServices.filter(record => record.date >= today && !resolved(record)) : assignedServices.filter(resolved).reverse())
+  useEffect(() => {
+    // Todos los integrantes de un equipo consultan el mismo registro compartido.
+    // Así, al informar un estado un compañero, se retira o actualiza para los demás.
+    const refreshSharedAgenda = () => {
+      if (document.visibilityState === 'hidden') return
+      fetch('/api/state', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(data => { if (Array.isArray(data?.history)) setHistory(data.history) }).catch(() => {})
+    }
+    const interval = window.setInterval(refreshSharedAgenda, 10000)
+    window.addEventListener('focus', refreshSharedAgenda)
+    return () => { window.clearInterval(interval); window.removeEventListener('focus', refreshSharedAgenda) }
+  }, [setHistory])
+  useEffect(() => {
+    const sidebar = document.createElement('aside')
+    sidebar.className = 'technician-sidebar'
+    sidebar.innerHTML = `<img src="/logo-pignus.png" alt="Pignus"><p>MÓDULOS</p><button data-view="agenda">▣ <span>Agenda técnica</span></button><button data-view="history">◷ <span>Historial</span></button>`
+    sidebar.querySelectorAll('button').forEach(button => { button.classList.toggle('active', button.dataset.view === view); button.onclick = () => setView(button.dataset.view) })
+    document.body.append(sidebar)
+    return () => sidebar.remove()
+  }, [view])
+  useEffect(() => {
+    const title = document.querySelector('.technician-content h1')
+    const help = document.querySelector('.technician-help')
+    if (title) title.textContent = view === 'agenda' ? 'Servicios pendientes' : 'Historial de servicios'
+    if (help) help.textContent = view === 'agenda' ? 'Completá cada servicio en el orden indicado. La dirección y el contacto del siguiente se habilitan al informar el estado del actual.' : 'Consultá los servicios que ya informaste y el estado registrado en cada uno.'
+  }, [view])
+  useEffect(() => {
+    document.querySelectorAll('.technician-service .work-status').forEach(badge => {
+      badge.classList.remove('tech-status-completado', 'tech-status-cancelado', 'tech-status-reprogramacion')
+      const label = badge.textContent.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      if (label.includes('cancel')) badge.classList.add('tech-status-cancelado')
+      else if (label.includes('reprogram')) badge.classList.add('tech-status-reprogramacion')
+      else if (label.includes('complet')) badge.classList.add('tech-status-completado')
+    })
+  }, [services])
+  const saveStatus = async () => {
+    const { record, type } = confirm
+    const response = await fetch('/api/technician/status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recordId: record.id, type, observation }) })
+    const data = await response.json()
+    if (!response.ok) return window.alert(data.error || 'No se pudo informar el estado.')
+    setHistory(previous => previous.map(item => item.id === record.id ? data.record : item))
+    setConfirm(null); setDraft(null); setObservation('')
+  }
+  const requestStatus = (record, type) => {
+    if ((type === 'Cancelado' || type === 'Reprogramación solicitada') && !observation.trim()) return
+    setConfirm({ record, type })
+  }
+  return <main className="technician-page"><header className="technician-header"><img src="/logo-pignus.png" alt="Pignus" /><div><b>{user.name}</b><span>{user.email}</span></div><button className="logout-button" onClick={() => setConfirm({ logout: true })}><Icon name="logout" size={17} />Cerrar sesión</button></header><section className="technician-content"><p className="eyebrow">MI AGENDA</p><h1>Servicios asignados</h1><p className="technician-help">Completá cada servicio en el orden indicado. La dirección y el contacto del siguiente se habilitan al informar el estado del actual.</p>{services.length ? services.map((record, index) => { const unlocked = index === 0 || resolved(services[index - 1]); const done = resolved(record); return <article className={`technician-service ${unlocked ? '' : 'locked'}`} key={record.id}><div className="technician-service-head"><span>{index + 1}</span><div><b>{record.time ? `${record.time} Hs` : 'Horario a confirmar'}</b><small>{prettyDate(record.date)}</small></div><em className={`work-status ${done ? 'completado' : 'pendiente'}`}>{record.technicalStatus || record.status || 'Pendiente'}</em></div><h2>{record.service}</h2><p className="tech-client">{record.client}</p><p><b>Detalle:</b> {record.detail || 'Sin observaciones'}</p>{unlocked ? <><p><b>Dirección:</b> {record.address || 'Sin dirección'}</p><p><b>Contacto:</b> {record.phone || 'Sin contacto'}</p></> : <p className="locked-info">La dirección y el contacto se habilitarán al informar el estado del servicio anterior.</p>}{unlocked && !done && <div className="technician-actions"><button className="primary" onClick={() => { setDraft({ record, type: 'Completado' }); setObservation('') }}><Icon name="check" />Marcar completado</button><button className="secondary" onClick={() => { setDraft({ record, type: 'Reprogramación solicitada' }); setObservation('') }}>Solicitar reprogramación</button><button className="secondary" onClick={() => { setDraft({ record, type: 'Cancelado' }); setObservation('') }}>Informar cancelación</button></div>}{done && record.technicalReportedAt && <small className="reported-at">Informado: {prettyReportDateTime(record.technicalReportedAt)}</small>}</article> }) : <div className="empty-state">No tenés servicios asignados pendientes para hoy o fechas futuras.</div>}</section>{draft && <div className="modal-layer"><div className="modal technician-status-modal"><button className="close-modal" onClick={() => setDraft(null)}><Icon name="close" /></button><p className="eyebrow">ACTUALIZAR SERVICIO</p><h2>{draft.type}</h2><p>{draft.record.client} · {draft.record.service}</p>{draft.type !== 'Completado' && <label>Observación obligatoria<textarea required value={observation} onChange={event => setObservation(event.target.value)} placeholder="Explicá el motivo para que Administración pueda gestionarlo." /></label>}<div className="modal-actions"><button className="secondary" onClick={() => setDraft(null)}>Cancelar</button><button className="primary" disabled={draft.type !== 'Completado' && !observation.trim()} onClick={() => setConfirm({ record: draft.record, type: draft.type })}>Continuar</button></div></div></div>}{confirm?.record && <Confirm title="Confirmar estado" detail={`¿Confirmás que querés informar “${confirm.type}”? Luego quedará registrado y cualquier cambio deberá ser revisado por Administración.`} action={saveStatus} confirmLabel="Sí, confirmar estado" close={() => setConfirm(null)} />}{confirm?.logout && <Confirm title="Cerrar sesión" detail="¿Querés cerrar sesión?" action={logout} confirmLabel="Sí, cerrar sesión" close={() => setConfirm(null)} />}</main>
+}
+
 function DashboardStatusView({ history }) {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
   const year = month.slice(0, 4)
   const isComplete = record => record.status === 'Completado'
   const records = history.filter(record => record.date?.startsWith(month) && isComplete(record)).sort((a, b) => b.date.localeCompare(a.date))
-  const pending = history.filter(record => !record.status || record.status === 'Pendiente' || record.status === 'Reprogramado')
+  const pending = history.filter(record => !record.status || record.status === 'Pendiente' || record.status === 'Reprogramado' || record.status === 'Requiere revisión')
   const openPending = () => window.dispatchEvent(new Event('pignus:open-history'))
   const installations = records.filter(record => record.service?.toLowerCase().includes('instalación'))
   const alarms = installations.filter(record => record.service?.toLowerCase().includes('alarma'))
@@ -360,30 +540,75 @@ function HistoryBulkView({ history, setHistory }) {
   const [detail, setDetail] = useState(null)
   const [selected, setSelected] = useState([])
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
   const [bulkStatus, setBulkStatus] = useState('Completado')
   const [rescheduleDate, setRescheduleDate] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
-  const records = history.filter(record => `${record.client} ${record.service} ${record.technicians?.join(' ')}`.toLowerCase().includes(search.toLowerCase()) && (!fromDate || record.date >= fromDate) && (!toDate || record.date <= toDate)).sort((a, b) => b.date.localeCompare(a.date))
+  const [statusFilter, setStatusFilter] = useState('all')
+  const minimumRescheduleDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const records = history.filter(record => `${record.client} ${record.service} ${record.technicians?.join(' ')}`.toLowerCase().includes(search.toLowerCase()) && (!fromDate || record.date >= fromDate) && (!toDate || record.date <= toDate) && (statusFilter === 'all' || (record.status || 'Pendiente') === statusFilter)).sort((a, b) => b.date.localeCompare(a.date))
   const status = record => record.status || 'Pendiente'
   const toggle = id => setSelected(previous => previous.includes(id) ? previous.filter(item => item !== id) : [...previous, id])
   const toggleAll = () => setSelected(selected.length === records.length ? [] : records.map(record => record.id))
   const applyBulk = () => {
-    if (!selected.length || (bulkStatus === 'Reprogramado' && !rescheduleDate)) return
+    if (!selected.length || (bulkStatus === 'Reprogramado' && (!rescheduleDate || rescheduleDate < minimumRescheduleDate))) return
     setHistory(previous => previous.map(record => selected.includes(record.id) ? { ...record, status: bulkStatus, scheduledDate: bulkStatus === 'Reprogramado' ? rescheduleDate : '' } : record))
     setSelected([]); setBulkOpen(false); setRescheduleDate('')
   }
+  // Eliminar en lote requiere una confirmación independiente para evitar borrados accidentales.
+  const deleteSelected = () => {
+    setHistory(previous => previous.filter(record => !selected.includes(record.id)))
+    setSelected([])
+    setBulkOpen(false)
+    setBulkDeleteConfirm(false)
+  }
+  useEffect(() => {
+    if (!bulkOpen || !selected.length) return undefined
+    const actions = document.querySelector('.bulk-modal .modal-actions')
+    if (!actions || actions.querySelector('.bulk-delete-button')) return undefined
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'danger-button bulk-delete-button'
+    button.textContent = `Eliminar ${selected.length} registro(s)`
+    button.onclick = () => setBulkDeleteConfirm(true)
+    actions.prepend(button)
+    return () => button.remove()
+  }, [bulkOpen, selected.length])
+  useEffect(() => {
+    if (!bulkDeleteConfirm) return undefined
+    const layer = document.createElement('div')
+    layer.className = 'modal-layer bulk-delete-confirmation'
+    layer.innerHTML = `<div class="modal confirm-modal"><span class="confirm-icon danger">🗑</span><h2>Eliminar registros</h2><p>¿Querés eliminar ${selected.length} servicio(s) seleccionados? Esta acción no se puede deshacer.</p><div class="confirm-actions"><button type="button" class="secondary">Cancelar</button><button type="button" class="danger-button">Sí, eliminar</button></div></div>`
+    const [cancelButton, confirmButton] = layer.querySelectorAll('button')
+    cancelButton.onclick = () => setBulkDeleteConfirm(false)
+    confirmButton.onclick = deleteSelected
+    document.body.append(layer)
+    return () => layer.remove()
+  }, [bulkDeleteConfirm, selected])
   useEffect(() => {
     const toolbar = document.querySelector('.history-toolbar')
     if (!toolbar) return
     const filters = document.createElement('div'); filters.className = 'history-date-filters'
     const createDateInput = (label, value, update) => { const field = document.createElement('label'); field.textContent = label; const input = document.createElement('input'); input.type = 'date'; input.value = value; input.onchange = event => update(event.target.value); field.append(input); return field }
-    filters.append(createDateInput('Desde', fromDate, setFromDate), createDateInput('Hasta', toDate, setToDate))
-    if (fromDate || toDate) { const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'secondary'; clear.textContent = 'Limpiar fechas'; clear.onclick = () => { setFromDate(''); setToDate('') }; filters.append(clear) }
+    const statusField = document.createElement('label'); statusField.textContent = 'Estado'
+    const statusSelect = document.createElement('select')
+    ;[['all', 'Todos'], ['Pendiente', 'Pendiente'], ['Completado', 'Completado'], ['Requiere revisión', 'Requiere revisión'], ['Reprogramado', 'Reprogramado'], ['Cancelado', 'Cancelado']].forEach(([value, label]) => { const option = document.createElement('option'); option.value = value; option.textContent = label; statusSelect.append(option) })
+    // El valor se asigna después de crear las opciones; de lo contrario el navegador
+    // muestra "Todos" aunque internamente conserva el filtro anterior.
+    statusSelect.value = statusFilter
+    statusSelect.onchange = event => setStatusFilter(event.target.value); statusField.append(statusSelect)
+    filters.append(createDateInput('Desde', fromDate, setFromDate), createDateInput('Hasta', toDate, setToDate), statusField)
+    if (fromDate || toDate || statusFilter !== 'all') { const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'secondary'; clear.textContent = 'Limpiar filtros'; clear.onclick = () => { setFromDate(''); setToDate(''); setStatusFilter('all') }; filters.append(clear) }
     toolbar.prepend(filters)
     return () => filters.remove()
-  }, [fromDate, toDate])
-  return <><div className="module-intro"><div><p className="eyebrow">TRABAJOS REALIZADOS</p><h1>Historial técnico</h1><p>Seleccioná varios servicios para confirmarlos, cancelarlos o reprogramarlos en una sola acción.</p></div><button className="primary" disabled={!selected.length} onClick={() => setBulkOpen(true)}><Icon name="check" />{selected.length ? `Gestionar ${selected.length} seleccionados` : 'Gestionar selección'}</button></div><div className="accounts-bar history-toolbar"><div><b>{history.length}</b> trabajos registrados</div><label><Icon name="search" size={16} /><input placeholder="Buscar cliente, servicio o técnico..." value={search} onChange={event => setSearch(event.target.value)} /></label></div><div className="data-card history-table history-bulk"><div className="table-head"><span><input aria-label="Seleccionar todos" type="checkbox" checked={records.length > 0 && selected.length === records.length} onChange={toggleAll} /></span><span>Fecha</span><span>Cliente</span><span>Servicio</span><span>Estado</span><span>Acciones</span></div>{records.length ? records.map(record => <div className="history-row" key={record.id}><span><input aria-label={`Seleccionar ${record.client}`} type="checkbox" checked={selected.includes(record.id)} onChange={() => toggle(record.id)} /></span><b>{prettyDate(record.date)}</b><div className="history-client"><strong>{record.client}</strong><small>{record.address || 'Sin dirección'}</small></div><div><em className="role-chip">{record.service}</em></div><div><span className={`work-status ${status(record).toLowerCase().replace(/\s/g, '-')}`}>{status(record)}</span>{record.scheduledDate && <small className="scheduled-date">Para: {prettyDate(record.scheduledDate)}</small>}</div><div><button className="secondary detail-button" onClick={() => setDetail(record)}><Icon name="eye" size={16} />Gestionar</button></div></div>) : <div className="empty-state">No hay trabajos para mostrar.</div>}</div>{bulkOpen && <div className="modal-layer"><div className="modal bulk-modal"><button className="close-modal" onClick={() => setBulkOpen(false)}><Icon name="close" /></button><p className="eyebrow">GESTIÓN MÚLTIPLE</p><h2>{selected.length} servicio(s) seleccionados</h2><p>La modificación se aplicará a todos los servicios elegidos.</p><label>Nuevo estado<select value={bulkStatus} onChange={event => setBulkStatus(event.target.value)}><option>Completado</option><option>Cancelado</option><option>Reprogramado</option></select></label>{bulkStatus === 'Reprogramado' && <label>Reprogramar para<input type="date" value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} /></label>}<div className="modal-actions"><button className="secondary" onClick={() => setBulkOpen(false)}>Cancelar</button><button className="primary" disabled={bulkStatus === 'Reprogramado' && !rescheduleDate} onClick={applyBulk}>Aplicar cambios</button></div></div></div>}{detail && <HistoryManagementDetail record={detail} setHistory={setHistory} close={() => setDetail(null)} />}</>
+  }, [fromDate, toDate, statusFilter])
+  useEffect(() => {
+    // El contador representa el resultado del filtro activo, no el total histórico.
+    const counter = document.querySelector('.history-toolbar>div:not(.history-date-filters)')
+    if (counter) counter.innerHTML = `<b>${records.length}</b> ${records.length === history.length ? 'trabajos registrados' : 'trabajos encontrados'}`
+  }, [records.length, history.length])
+  return <><div className="module-intro"><div><p className="eyebrow">TRABAJOS REALIZADOS</p><h1>Historial técnico</h1><p>Seleccioná varios servicios para confirmarlos, cancelarlos o reprogramarlos en una sola acción.</p></div><button className="primary" disabled={!selected.length} onClick={() => setBulkOpen(true)}><Icon name="check" />{selected.length ? `Gestionar ${selected.length} seleccionados` : 'Gestionar selección'}</button></div><div className="accounts-bar history-toolbar"><div><b>{history.length}</b> trabajos registrados</div><label><Icon name="search" size={16} /><input placeholder="Buscar cliente, servicio o técnico..." value={search} onChange={event => setSearch(event.target.value)} /></label></div><div className="data-card history-table history-bulk"><div className="table-head"><span><input aria-label="Seleccionar todos" type="checkbox" checked={records.length > 0 && selected.length === records.length} onChange={toggleAll} /></span><span>Fecha</span><span>Cliente</span><span>Servicio</span><span>Estado</span><span>Acciones</span></div>{records.length ? records.map(record => <div className="history-row" key={record.id}><span><input aria-label={`Seleccionar ${record.client}`} type="checkbox" checked={selected.includes(record.id)} onChange={() => toggle(record.id)} /></span><b>{prettyDate(record.date)}</b><div className="history-client"><strong>{record.client}</strong><small>{record.address || 'Sin dirección'}</small></div><div><em className="role-chip">{record.service}</em></div><div><span className={`work-status ${status(record).toLowerCase().replace(/\s/g, '-')}`}>{status(record)}</span>{record.scheduledDate && <small className="scheduled-date">Para: {prettyDate(record.scheduledDate)}</small>}</div><div><button className="secondary detail-button" onClick={() => setDetail(record)}><Icon name="eye" size={16} />Gestionar</button></div></div>) : <div className="empty-state">No hay trabajos para mostrar.</div>}</div>{bulkOpen && <div className="modal-layer"><div className="modal bulk-modal"><button className="close-modal" onClick={() => setBulkOpen(false)}><Icon name="close" /></button><p className="eyebrow">GESTIÓN MÚLTIPLE</p><h2>{selected.length} servicio(s) seleccionados</h2><p>La modificación se aplicará a todos los servicios elegidos.</p><label>Nuevo estado<select value={bulkStatus} onChange={event => setBulkStatus(event.target.value)}><option>Completado</option><option>Cancelado</option><option>Reprogramado</option></select></label>{bulkStatus === 'Reprogramado' && <label>Reprogramar para<input type="date" min={minimumRescheduleDate} value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} /></label>}<div className="modal-actions"><button className="secondary" onClick={() => setBulkOpen(false)}>Cancelar</button><button className="primary" disabled={bulkStatus === 'Reprogramado' && (!rescheduleDate || rescheduleDate < minimumRescheduleDate)} onClick={applyBulk}>Aplicar cambios</button></div></div></div>}{detail && <HistoryManagementDetail record={detail} setHistory={setHistory} close={() => setDetail(null)} />}</>
 }
 
 function HistoryManagement({ history, setHistory }) {
@@ -397,6 +622,7 @@ function HistoryManagement({ history, setHistory }) {
 
 function HistoryManagementDetail({ record, setHistory, close }) {
   const [rescheduleDate, setRescheduleDate] = useState(record.scheduledDate || '')
+  const minimumRescheduleDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({ client: record.client || '', service: record.service || '', team: record.team || '', technicians: record.technicians?.join(' / ') || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '' })
@@ -405,7 +631,24 @@ function HistoryManagementDetail({ record, setHistory, close }) {
   const saveChanges = () => { const patch = { ...draft, technicians: draft.technicians.split(/[\/|,]/).map(name => name.trim()).filter(Boolean) }; window.dispatchEvent(new CustomEvent('pignus:sync-agenda-service', { detail: { record, patch } })); update(patch) }
   const status = record.status || 'Pendiente'
   const setField = field => event => setDraft(previous => ({ ...previous, [field]: event.target.value }))
-  return <><div className="modal-layer"><div className="modal detail-modal history-detail"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">{prettyDate(record.date)} · {status.toUpperCase()}</p><div className="history-detail-heading"><h2>{editing ? 'Editar servicio' : record.client}</h2><button className="secondary detail-edit" onClick={() => setEditing(!editing)}><Icon name="edit" size={15} />{editing ? 'Cancelar edición' : 'Editar datos'}</button></div>{editing ? <div className="history-edit-grid"><label>Cliente o cuenta<input value={draft.client} onChange={setField('client')} /></label><label>Tipo de servicio<input value={draft.service} onChange={setField('service')} /></label><label>Equipo<input value={draft.team} onChange={setField('team')} /></label><label>Técnicos asignados<input value={draft.technicians} onChange={setField('technicians')} placeholder="Separar por / o coma" /></label><label>Dirección<input value={draft.address} onChange={setField('address')} /></label><label>Contacto<input value={draft.phone} onChange={setField('phone')} /></label><label className="detail-notes">Detalle / observaciones<textarea value={draft.detail} onChange={setField('detail')} /></label></div> : <div className="history-detail-grid"><div><b>Servicio</b><span>{record.service}</span></div><div><b>Equipo</b><span>{record.team}</span></div><div><b>Técnicos asignados</b><span>{record.technicians?.join(' / ') || 'Sin técnicos asignados'}</span></div><div><b>Dirección</b><span>{record.address || 'Sin dirección'}</span></div><div><b>Contacto</b><span>{record.phone || 'Sin contacto'}</span></div><div className="detail-notes"><b>Detalle / observaciones</b><span>{record.detail || 'Sin observaciones'}</span></div></div>}{editing ? <div className="history-actions"><button className="primary" onClick={saveChanges}><Icon name="check" />Guardar cambios</button><button className="secondary" onClick={() => setEditing(false)}>Cancelar</button></div> : <div className="history-actions"><button className="primary" onClick={() => update({ status: 'Completado', scheduledDate: '' })}><Icon name="check" />Marcar completado</button><button className="secondary" onClick={() => update({ status: 'Cancelado', scheduledDate: '' })}><Icon name="close" />Cancelar servicio</button><label>Reprogramar para<input type="date" value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} /></label><button className="secondary" disabled={!rescheduleDate} onClick={() => update({ status: 'Reprogramado', scheduledDate: rescheduleDate })}><Icon name="calendar" />Reprogramar</button><button className="danger-button delete-history" onClick={() => setConfirmDelete(true)}><Icon name="trash" />Eliminar registro</button></div>}</div></div>{confirmDelete && <Confirm title="Eliminar registro" detail="¿Querés eliminar este servicio del historial? Esta acción no se puede deshacer." destructive action={remove} close={() => setConfirmDelete(false)} />}</> }
+  useEffect(() => {
+    if (!record.technicalObservation && !record.technicalReportedAt) return
+    const grid = document.querySelector('.history-detail .history-detail-grid')
+    if (!grid || grid.querySelector('.technician-report-detail')) return
+    const report = document.createElement('div')
+    report.className = 'detail-notes technician-report-detail'
+    const title = document.createElement('b'); title.textContent = `Informe del técnico · ${record.technicalStatus || 'Estado informado'}`
+    const message = document.createElement('span'); message.textContent = record.technicalObservation || 'Servicio marcado como completado por el técnico.'
+    report.append(title, message)
+    if (record.technicalReportedAt) {
+      const time = document.createElement('small')
+      time.textContent = `Informado el ${prettyReportDateTime(record.technicalReportedAt)}`
+      report.append(time)
+    }
+    grid.append(report)
+    return () => report.remove()
+  }, [record, editing])
+  return <><div className="modal-layer"><div className="modal detail-modal history-detail"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">{prettyDate(record.date)} · {status.toUpperCase()}</p><div className="history-detail-heading"><h2>{editing ? 'Editar servicio' : record.client}</h2><button className="secondary detail-edit" onClick={() => setEditing(!editing)}><Icon name="edit" size={15} />{editing ? 'Cancelar edición' : 'Editar datos'}</button></div>{editing ? <div className="history-edit-grid"><label>Cliente o cuenta<input value={draft.client} onChange={setField('client')} /></label><label>Tipo de servicio<input value={draft.service} onChange={setField('service')} /></label><label>Equipo<input value={draft.team} onChange={setField('team')} /></label><label>Técnicos asignados<input value={draft.technicians} onChange={setField('technicians')} placeholder="Separar por / o coma" /></label><label>Dirección<input value={draft.address} onChange={setField('address')} /></label><label>Contacto<input value={draft.phone} onChange={setField('phone')} /></label><label className="detail-notes">Detalle / observaciones<textarea value={draft.detail} onChange={setField('detail')} /></label></div> : <div className="history-detail-grid"><div><b>Servicio</b><span>{record.service}</span></div><div><b>Equipo</b><span>{record.team}</span></div><div><b>Técnicos asignados</b><span>{record.technicians?.join(' / ') || 'Sin técnicos asignados'}</span></div><div><b>Dirección</b><span>{record.address || 'Sin dirección'}</span></div><div><b>Contacto</b><span>{record.phone || 'Sin contacto'}</span></div><div className="detail-notes"><b>Detalle / observaciones</b><span>{record.detail || 'Sin observaciones'}</span></div></div>}{editing ? <div className="history-actions"><button className="primary" onClick={saveChanges}><Icon name="check" />Guardar cambios</button><button className="secondary" onClick={() => setEditing(false)}>Cancelar</button></div> : <div className="history-actions"><button className="primary" onClick={() => update({ status: 'Completado', scheduledDate: '' })}><Icon name="check" />Marcar completado</button><button className="secondary" onClick={() => update({ status: 'Cancelado', scheduledDate: '' })}><Icon name="close" />Cancelar servicio</button><label>Reprogramar para<input type="date" min={minimumRescheduleDate} value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} /></label><button className="secondary" disabled={!rescheduleDate || rescheduleDate < minimumRescheduleDate} onClick={() => { if (rescheduleDate >= minimumRescheduleDate) update({ status: 'Reprogramado', scheduledDate: rescheduleDate }) }}><Icon name="calendar" />Reprogramar</button><button className="danger-button delete-history" onClick={() => setConfirmDelete(true)}><Icon name="trash" />Eliminar registro</button></div>}</div></div>{confirmDelete && <Confirm title="Eliminar registro" detail="¿Querés eliminar este servicio del historial? Esta acción no se puede deshacer." destructive action={remove} close={() => setConfirmDelete(false)} />}</> }
 
 function HistoryDetail({ record, close }) { return <div className="modal-layer"><div className="modal detail-modal history-detail"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">{prettyDate(record.date)}</p><h2>{record.client}</h2><div className="history-detail-grid"><div><b>Servicio</b><span>{record.service}</span></div><div><b>Equipo</b><span>{record.team}</span></div><div><b>Técnicos asignados</b><span>{record.technicians?.join(' / ') || 'Sin técnicos asignados'}</span></div><div><b>Dirección</b><span>{record.address || 'Sin dirección'}</span></div><div><b>Contacto</b><span>{record.phone || 'Sin contacto'}</span></div><div className="detail-notes"><b>Detalle / observaciones</b><span>{record.detail || 'Sin observaciones'}</span></div></div></div></div> }
 
@@ -443,9 +686,9 @@ function EmployeeForm({ form, setForm, roles, save, cancel, editing }) { const s
 function Settings({ roles, setRoles, setNotice, ask }) {
   const [active, setActive] = useState(roles[0]?.id); const [editing, setEditing] = useState(false); const [name, setName] = useState(''); const [description, setDescription] = useState(''); const role = roles.find(x => x.id === active) || roles[0]
   const startEdit = r => { setActive(r.id); setName(r.name); setDescription(r.description); setEditing(true) }
-  const save = () => { const next = { id: editing === 'new' ? Date.now() : role.id, name, description, permissions: editing === 'new' ? { agenda: true, accounts: false, employees: false, settings: false } : role.permissions }; ask(editing === 'new' ? 'Crear rol' : 'Guardar permisos', `¿Querés confirmar los cambios del rol ${name}?`, () => { setRoles(prev => editing === 'new' ? [...prev, next] : prev.map(x => x.id === role.id ? next : x)); setActive(next.id); setEditing(false); setNotice('La configuración del rol fue guardada.') }) }
-  const toggle = key => ask('Modificar permiso', `¿Querés ${role.permissions[key] ? 'revocar' : 'otorgar'} este permiso al rol ${role.name}?`, () => setRoles(prev => prev.map(x => x.id === role.id ? { ...x, permissions: { ...x.permissions, [key]: !x.permissions[key] } } : x)))
-  return <><div className="module-intro"><div><p className="eyebrow">ADMINISTRACIÓN</p><h1>Roles y permisos</h1><p>Definí el acceso que tendrá cada integrante de la plataforma.</p></div><button className="primary" onClick={() => { setName(''); setDescription(''); setEditing('new') }}><Icon name="plus" />Nuevo rol</button></div><div className="settings-grid"><article className="data-card roles-card"><h2>Roles disponibles</h2>{roles.map(r => <div className={r.id === role?.id ? 'selected-role' : ''} key={r.id} onClick={() => setActive(r.id)}><span className="role-dot">{r.name[0]}</span><div><b>{r.name}</b><p>{r.description}</p></div><button onClick={e => { e.stopPropagation(); startEdit(r) }} title="Editar rol"><Icon name="edit" size={16} /></button></div>)}</article><article className="data-card permissions-card">{editing ? <div className="role-editor"><p className="eyebrow">{editing === 'new' ? 'NUEVO ROL' : 'EDITAR ROL'}</p><label>Nombre del rol<input value={name} onChange={e => setName(e.target.value)} /></label><label>Descripción<input value={description} onChange={e => setDescription(e.target.value)} /></label><button className="primary" onClick={save}><Icon name="check" />Guardar rol</button><button className="secondary" onClick={() => setEditing(false)}>Cancelar</button></div> : <><p className="eyebrow">PERFIL: {role?.name?.toUpperCase()}</p><h2>Permisos del módulo</h2>{[['agenda', 'Agenda técnica', 'Crear y editar equipos y servicios'], ['accounts', 'Administrador de cuentas', 'Consultar y administrar clientes'], ['employees', 'Empleados', 'Administrar técnicos y accesos'], ['settings', 'Configuración', 'Modificar roles y permisos']].map(([key, label, detail]) => <label className="permission" key={key}><span><b>{label}</b><small>{detail}</small></span><input type="checkbox" checked={!!role?.permissions[key]} onChange={() => toggle(key)} /><i /></label>)}<button className="primary save" onClick={() => startEdit(role)}><Icon name="edit" />Editar rol</button></>}</article></div></>
+  const save = () => { const next = { id: editing === 'new' ? Date.now() : role.id, name, description, permissions: editing === 'new' ? { ...DEFAULT_MODULE_PERMISSIONS, dashboard: true, agenda: true } : { ...DEFAULT_MODULE_PERMISSIONS, ...role.permissions } }; ask(editing === 'new' ? 'Crear rol' : 'Guardar permisos', `¿Querés confirmar los cambios del rol ${name}?`, () => { setRoles(prev => editing === 'new' ? [...prev, next] : prev.map(x => x.id === role.id ? next : x)); setActive(next.id); setEditing(false); setNotice('La configuración del rol fue guardada.') }) }
+  const toggle = key => ask('Modificar permiso', `¿Querés ${role.permissions?.[key] ? 'revocar' : 'otorgar'} este permiso al rol ${role.name}?`, () => setRoles(prev => prev.map(x => x.id === role.id ? { ...x, permissions: { ...DEFAULT_MODULE_PERMISSIONS, ...x.permissions, [key]: !x.permissions?.[key] } } : x)))
+  return <><div className="module-intro"><div><p className="eyebrow">ADMINISTRACIÓN</p><h1>Roles y permisos</h1><p>Definí el acceso que tendrá cada integrante de la plataforma.</p></div><button className="primary" onClick={() => { setName(''); setDescription(''); setEditing('new') }}><Icon name="plus" />Nuevo rol</button></div><div className="settings-grid"><article className="data-card roles-card"><h2>Roles disponibles</h2>{roles.map(r => <div className={r.id === role?.id ? 'selected-role' : ''} key={r.id} onClick={() => setActive(r.id)}><span className="role-dot">{r.name[0]}</span><div><b>{r.name}</b><p>{r.description}</p></div><button onClick={e => { e.stopPropagation(); startEdit(r) }} title="Editar rol"><Icon name="edit" size={16} /></button></div>)}</article><article className="data-card permissions-card">{editing ? <div className="role-editor"><p className="eyebrow">{editing === 'new' ? 'NUEVO ROL' : 'EDITAR ROL'}</p><label>Nombre del rol<input value={name} onChange={e => setName(e.target.value)} /></label><label>Descripción<input value={description} onChange={e => setDescription(e.target.value)} /></label><button className="primary" onClick={save}><Icon name="check" />Guardar rol</button><button className="secondary" onClick={() => setEditing(false)}>Cancelar</button></div> : <><p className="eyebrow">PERFIL: {role?.name?.toUpperCase()}</p><h2>Permisos del módulo</h2>{MODULE_PERMISSIONS.map(([key, label, detail]) => { const auditOnly = key === 'audit'; const adminRole = role?.name?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'administrador'; return <label className={`permission ${auditOnly ? 'locked-permission' : ''}`} key={key}><span><b>{label}</b><small>{auditOnly ? 'Exclusivo del rol Administrador' : detail}</small></span><input type="checkbox" checked={auditOnly ? adminRole : !!role?.permissions?.[key]} disabled={auditOnly} onChange={() => toggle(key)} /><i /></label> })}<button className="primary save" onClick={() => startEdit(role)}><Icon name="edit" />Editar rol</button></>}</article></div></>
 }
 
 function ImportModal({ customers, setCustomers, close, setNotice }) { const [message, setMessage] = useState(''); const importFile = async e => { const file = e.target.files?.[0]; if (!file) return; const doc = new DOMParser().parseFromString(await file.text(), 'text/html'); const table = [...doc.querySelectorAll('table')].find(t => t.textContent.toLowerCase().includes('dealer/cuenta')); if (!table) return setMessage('No se encontró una tabla con la columna Dealer/Cuenta.'); const rows = [...table.querySelectorAll('tr')].map(r => [...r.querySelectorAll('th,td')].map(c => c.textContent.replace(/\s+/g, ' ').trim())).filter(r => r.length); const headers = rows.shift(); const get = (row, label) => row[headers.findIndex(x => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === label)] || ''; const imported = rows.map(row => { const account = get(row, 'dealercuenta').trim(); const street = get(row, 'calle'), locality = get(row, 'localidad'), province = get(row, 'provinciaestado'); return account ? { account, name: get(row, 'nombre'), type: get(row, 'tipodecuenta'), street, locality, province, phone: get(row, 'telefono'), address: [street, locality, province].filter(Boolean).join(', '), fields: Object.fromEntries(headers.map((h, i) => [h, row[i] || ''])) } : null }).filter(Boolean); if (!imported.length) return setMessage('El archivo no contiene registros válidos.'); const old = new Set(customers.map(x => x.account)), updated = imported.filter(x => old.has(x.account)).length; setCustomers([...customers.filter(x => !imported.some(y => y.account === x.account)), ...imported]); setNotice(`Importación finalizada: ${imported.length - updated} cuentas nuevas y ${updated} actualizadas.`); close() }; return <div className="modal-layer"><div className="modal"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">IMPORTACIÓN MASIVA</p><h2>Importar clientes</h2><p>Seleccioná el reporte exportado. Las coincidencias por <b>Dealer/Cuenta</b> se actualizarán automáticamente.</p><label className="file-drop"><Icon name="upload" size={30} /><b>Seleccioná un archivo .xls</b><small>Formato Maestro de Cuentas</small><input type="file" accept=".xls,.html" onChange={importFile} /></label>{message && <p className="import-error">{message}</p>}<div className="modal-info"><b>Campos importados</b><span>Se conserva toda la información disponible en el reporte.</span></div></div></div> }
