@@ -48,3 +48,5 @@
 @media(max-width:900px){.audit-topbar{padding:10px 18px;gap:10px}.audit-brand img{width:105px}.audit-user{display:none}.audit-content{padding:28px 18px}.audit-filters{grid-template-columns:1fr}.audit-filters>span{padding:0}.audit-table{overflow:auto}.audit-table-head,.audit-row{min-width:860px}.audit-detail-meta,.audit-diff{grid-template-columns:1fr}.audit-topbar .secondary{display:none}}
 @media(max-width:640px){.audit-shell .audit-page{margin-left:0;width:100%}.audit-mobile-menu{display:block!important}.audit-brand{display:none}.audit-topbar>div:nth-child(2){margin-right:auto}.audit-topbar .logout-button span{display:none}.audit-topbar .logout-button{padding:8px!important}}
 .audit-change{display:inline-block;margin-inline:-4px;padding-inline:4px;border-radius:4px;font-weight:700}.audit-change-before{background:#ffe1df;color:#9d2f28;text-decoration:line-through;text-decoration-thickness:1px}.audit-change-after{background:#dff5e7;color:#087844}
+/* La marca lateral comparte exactamente la altura de la barra superior. */
+.app-shell>.sidebar>.brand{height:66px;background-size:165px auto!important}
