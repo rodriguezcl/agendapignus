@@ -28,6 +28,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS customers (account TEXT PRIMARY KEY, data TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS agendas (id TEXT PRIMARY KEY, data TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, data TEXT NOT NULL);
 `)
 
 const historicalImportPath = path.join(dataDir, 'historical-import.json')
@@ -42,6 +43,28 @@ if (fs.existsSync(historicalImportPath)) {
 
 function rows(table) {
   return db.prepare(`SELECT data FROM ${table} ORDER BY rowid`).all().map(row => JSON.parse(row.data))
+}
+
+function auditSafe(record) {
+  if (!record) return null
+  const { password, passwordHash, ...safe } = record
+  return safe
+}
+
+function writeAudit(user, action, entity, entityId, before, after) {
+  const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name, email: user.email, role: user.role }, action, entity, entityId, before: auditSafe(before), after: auditSafe(after) }
+  db.prepare('INSERT INTO audit_log (id, data) VALUES (?, ?)').run(entry.id, JSON.stringify(entry))
+}
+
+function auditChanges(table, records, key, entity, user) {
+  const previous = new Map(rows(table).map(record => [String(record[key]), record]))
+  const incoming = new Map((records || []).map(record => [String(record[key]), record]))
+  for (const [id, record] of incoming) {
+    const old = previous.get(id)
+    if (!old) writeAudit(user, 'Creó', entity, id, null, record)
+    else if (JSON.stringify(auditSafe(old)) !== JSON.stringify(auditSafe(record))) writeAudit(user, 'Modificó', entity, id, old, record)
+  }
+  for (const [id, record] of previous) if (!incoming.has(id)) writeAudit(user, 'Eliminó', entity, id, record, null)
 }
 
 /** Devuelve el estado completo que consume la interfaz React al iniciar. */
@@ -60,15 +83,34 @@ function readState() {
   }
 }
 
+function readTechnicianState(user) {
+  return {
+    roles: [], employees: [], services: [], customers: [], agenda: null, preferences: {},
+    history: rows('work_history').filter(record => record.technicians?.includes(user.name))
+  }
+}
+
 function replaceRows(table, records, key) {
-  db.prepare(`DELETE FROM ${table}`).run()
-  const insert = db.prepare(`INSERT INTO ${table} (${key}, data) VALUES (?, ?)`)
-  for (const record of records || []) insert.run(String(record[key]), JSON.stringify(record))
+  // Sincronización diferencial: evita borrar y recrear cientos de registros
+  // cuando el usuario sólo modificó un servicio, empleado o cliente.
+  const existing = new Map(db.prepare(`SELECT ${key}, data FROM ${table}`).all().map(row => [String(row[key]), row.data]))
+  const upsert = db.prepare(`INSERT OR REPLACE INTO ${table} (${key}, data) VALUES (?, ?)`)
+  const remove = db.prepare(`DELETE FROM ${table} WHERE ${key} = ?`)
+  for (const record of records || []) {
+    const recordKey = String(record[key])
+    const serialized = JSON.stringify(record)
+    if (existing.get(recordKey) !== serialized) upsert.run(recordKey, serialized)
+    existing.delete(recordKey)
+  }
+  for (const recordKey of existing.keys()) remove.run(recordKey)
 }
 
 /** Guarda todas las entidades dentro de una transacción para evitar estados parciales. */
-function saveState(state) {
+function saveState(state, user) {
   const previousEmployees = new Map(rows('employees').map(employee => [String(employee.id), employee]))
+  const storedAgenda = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+  const previousAgenda = storedAgenda ? JSON.parse(storedAgenda.data) : {}
+  const nextAgenda = state.agenda || {}
   const securedEmployees = (state.employees || []).map(employee => {
     const previous = previousEmployees.get(String(employee.id))
     const next = { ...employee }
@@ -84,12 +126,20 @@ function saveState(state) {
   })
   db.exec('BEGIN')
   try {
+    // El registro se realiza dentro de la misma transacción que los datos:
+    // nunca queda una acción auditada que no haya sido guardada (ni al revés).
+    auditChanges('roles', state.roles, 'id', 'Rol', user)
+    auditChanges('employees', securedEmployees, 'id', 'Empleado', user)
+    auditChanges('services', state.services, 'id', 'Tipo de servicio', user)
+    auditChanges('work_history', state.history, 'id', 'Servicio / historial', user)
+    auditChanges('customers', state.customers, 'account', 'Cliente', user)
+    if (JSON.stringify(previousAgenda) !== JSON.stringify(nextAgenda)) writeAudit(user, 'Modificó', 'Agenda técnica', 'agenda-actual', previousAgenda, nextAgenda)
     replaceRows('roles', state.roles, 'id')
     replaceRows('employees', securedEmployees, 'id')
     replaceRows('services', state.services, 'id')
     replaceRows('work_history', state.history, 'id')
     replaceRows('customers', state.customers, 'account')
-    db.prepare('INSERT OR REPLACE INTO agendas (id, data) VALUES (?, ?)').run('current', JSON.stringify(state.agenda || {}))
+    db.prepare('INSERT OR REPLACE INTO agendas (id, data) VALUES (?, ?)').run('current', JSON.stringify(nextAgenda))
     db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('theme', state.preferences?.theme || 'light')
     db.exec('COMMIT')
   } catch (error) {
@@ -225,12 +275,16 @@ const server = http.createServer((req, res) => {
       const user = { id: employee.id, name: employee.name, email: employee.email, role: employee.role }
       const token = crypto.randomBytes(32).toString('hex')
       sessions.set(token, { user, expiresAt: Date.now() + SESSION_MAX_AGE })
+      // La auditoría de acceso permite conocer exactamente cuándo cada usuario ingresó.
+      writeAudit(user, 'Inició sesión', 'Sesión', String(user.id), null, { sessionExpiresAt: new Date(Date.now() + SESSION_MAX_AGE).toISOString() })
       res.setHeader('Set-Cookie', `pignus_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE / 1000}`)
       return send(res, 200, { user })
     }).catch(() => send(res, 400, { error: 'No se pudo procesar el acceso.' }))
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
     const token = parseCookies(req.headers.cookie).pignus_session
+    const session = token && sessions.get(token)
+    if (session) writeAudit(session.user, 'Cerró sesión', 'Sesión', String(session.user.id), { sessionExpiresAt: new Date(session.expiresAt).toISOString() }, null)
     if (token) sessions.delete(token)
     res.setHeader('Set-Cookie', 'pignus_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
     return send(res, 200, { ok: true })
@@ -240,13 +294,41 @@ const server = http.createServer((req, res) => {
     return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial')
   }
   if (req.method === 'GET' && req.url === '/api/state') {
-    if (!requireSession(req, res)) return
-    return send(res, 200, readState())
+    const user = requireSession(req, res)
+    if (!user) return
+    return send(res, 200, user.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'tecnico' ? readTechnicianState(user) : readState())
+  }
+  if (req.method === 'GET' && url.pathname === '/api/audit') {
+    const user = requireSession(req, res)
+    if (!user) return
+    const role = user.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    if (role !== 'administrador') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
+    const requestedLimit = Number(url.searchParams.get('limit')) || 500
+    const limit = Math.min(Math.max(requestedLimit, 1), 1000)
+    return send(res, 200, { records: rows('audit_log').sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit) })
+  }
+  if (req.method === 'POST' && url.pathname === '/api/technician/status') {
+    const user = requireSession(req, res)
+    if (!user) return
+    if (user.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() !== 'tecnico') return send(res, 403, { error: 'Esta acción es exclusiva del rol Técnico.' })
+    return readJson(req).then(({ recordId, type, observation }) => {
+      const record = rows('work_history').find(item => item.id === recordId)
+      const allowed = ['Completado', 'Cancelado', 'Reprogramación solicitada']
+      if (!record || !record.technicians?.includes(user.name) || !allowed.includes(type) || record.technicalStatus) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
+      if (type !== 'Completado' && !String(observation || '').trim()) return send(res, 400, { error: 'La observación es obligatoria.' })
+      const now = new Date().toISOString()
+      const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim(), technicalReportedAt: now, completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type }
+      db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(updated), String(record.id))
+      writeAudit(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, updated)
+      return send(res, 200, { record: updated })
+    }).catch(() => send(res, 400, { error: 'No se pudo informar el estado.' }))
   }
   if (req.method === 'PUT' && req.url === '/api/state') {
-    if (!requireSession(req, res)) return
+    const user = requireSession(req, res)
+    if (!user) return
+    if (user.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'tecnico') return send(res, 403, { error: 'El rol Técnico no puede modificar la agenda.' })
     readJson(req, 15_000_000).then(state => {
-      saveState(state)
+      saveState(state, user)
       send(res, 200, { ok: true })
     }).catch(error => { console.error(error); send(res, 400, { error: 'No se pudieron guardar los datos.' }) })
     return
