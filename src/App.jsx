@@ -170,6 +170,12 @@ export default function App() {
     return () => window.removeEventListener('pignus:open-history', goToHistory)
   }, [])
   useEffect(() => {
+    // Los mensajes que confirman operaciones de agenda no deben ocupar otros módulos.
+    const noticeElement = document.querySelector('.content > .notice')
+    const isAgendaMessage = notice.startsWith('La agenda ')
+    noticeElement?.classList.toggle('agenda-message-hidden', isAgendaMessage && module !== 'agenda')
+  }, [module, notice])
+  useEffect(() => {
     // Mantiene sincronizada la agenda abierta cuando se corrige un servicio desde Historial.
     const syncAgendaService = event => {
       const { record, patch } = event.detail || {}
