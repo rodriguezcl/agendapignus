@@ -1,4 +1,7 @@
-data/
+# La base principal se comparte entre instalaciones mediante Git.
+# SQLite genera archivos WAL/SHM temporales que no deben versionarse.
+data/*
+!data/agenda-tecnica.db
 dist/
 node_modules/
 *.lnk
