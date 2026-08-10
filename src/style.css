@@ -50,3 +50,7 @@
 .audit-change{display:inline-block;margin-inline:-4px;padding-inline:4px;border-radius:4px;font-weight:700}.audit-change-before{background:#ffe1df;color:#9d2f28;text-decoration:line-through;text-decoration-thickness:1px}.audit-change-after{background:#dff5e7;color:#087844}
 /* La marca lateral comparte exactamente la altura de la barra superior. */
 .app-shell>.sidebar>.brand{height:66px;background-size:165px auto!important}
+.technicians-picker>span::after{content:' *';color:#c7443f;font-weight:800}
+.team-members{color:#587062;font-size:13px;font-weight:500;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:640px){.team-members{width:100%;max-width:none;white-space:normal}}
+.duplicate-technicians-modal{max-width:530px}.duplicate-technicians-modal>label{display:grid;gap:6px;margin:12px 0;text-align:left;color:#526a59;font-size:12px;font-weight:700}.duplicate-technicians-modal select{width:100%;height:40px;padding:0 10px;border:1px solid #cddbcf;border-radius:7px;background:#fff;color:#274533}.modal-helper{color:#6c7c71;font-size:13px}
