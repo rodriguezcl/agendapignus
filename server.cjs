@@ -32,10 +32,30 @@ db.exec(`
 `)
 
 const historicalImportPath = path.join(dataDir, 'historical-import.json')
+
+// Los archivos históricos usaban sólo el primer nombre. Esta normalización
+// preserva la trazabilidad al asociarlos con los empleados reales del sistema.
+const HISTORICAL_TECHNICIAN_NAMES = {
+  Santos: 'Santos Diaz',
+  Mariano: 'Mariano Diaz Tillard',
+  Pascual: 'Pascual Gonzalez',
+  Rodrigo: 'Rodrigo Gonzalez',
+  Leonardo: 'Leonardo Rivadero',
+  Gonzalo: 'Gonzalo Rivadero'
+}
+
+function normalizeHistoryTechnicians(records = []) {
+  return records.map(record => {
+    const technicians = (record.technicians || []).map(name => HISTORICAL_TECHNICIAN_NAMES[name] || name)
+    const changed = technicians.some((name, index) => name !== record.technicians?.[index])
+    return changed ? { ...record, technicians } : record
+  })
+}
+
 if (fs.existsSync(historicalImportPath)) {
   db.exec("DELETE FROM work_history WHERE id LIKE 'import-%'")
   const insertHistory = db.prepare('INSERT INTO work_history (id, data) VALUES (?, ?)')
-  for (const record of JSON.parse(fs.readFileSync(historicalImportPath, 'utf8'))) {
+  for (const record of normalizeHistoryTechnicians(JSON.parse(fs.readFileSync(historicalImportPath, 'utf8')))) {
     record.status ||= 'Completado'
     insertHistory.run(String(record.id), JSON.stringify(record))
   }
@@ -111,6 +131,8 @@ function saveState(state, user) {
   const storedAgenda = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
   const previousAgenda = storedAgenda ? JSON.parse(storedAgenda.data) : {}
   const nextAgenda = state.agenda || {}
+  // Evita que un cliente con datos anteriores vuelva a guardar abreviaturas históricas.
+  const normalizedHistory = normalizeHistoryTechnicians(state.history || [])
   const securedEmployees = (state.employees || []).map(employee => {
     const previous = previousEmployees.get(String(employee.id))
     const next = { ...employee }
@@ -131,13 +153,13 @@ function saveState(state, user) {
     auditChanges('roles', state.roles, 'id', 'Rol', user)
     auditChanges('employees', securedEmployees, 'id', 'Empleado', user)
     auditChanges('services', state.services, 'id', 'Tipo de servicio', user)
-    auditChanges('work_history', state.history, 'id', 'Servicio / historial', user)
+    auditChanges('work_history', normalizedHistory, 'id', 'Servicio / historial', user)
     auditChanges('customers', state.customers, 'account', 'Cliente', user)
     if (JSON.stringify(previousAgenda) !== JSON.stringify(nextAgenda)) writeAudit(user, 'Modificó', 'Agenda técnica', 'agenda-actual', previousAgenda, nextAgenda)
     replaceRows('roles', state.roles, 'id')
     replaceRows('employees', securedEmployees, 'id')
     replaceRows('services', state.services, 'id')
-    replaceRows('work_history', state.history, 'id')
+    replaceRows('work_history', normalizedHistory, 'id')
     replaceRows('customers', state.customers, 'account')
     db.prepare('INSERT OR REPLACE INTO agendas (id, data) VALUES (?, ?)').run('current', JSON.stringify(nextAgenda))
     db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('theme', state.preferences?.theme || 'light')
@@ -238,8 +260,10 @@ function alarmCategory(record) {
 
 /** Genera el reporte Excel compatible solicitado por gerencia, filtrado por ubicación. */
 function exportHistory(res, month, category) {
-  const records = rows('work_history').filter(record => record.date?.startsWith(month) && record.service?.toLowerCase().includes('instalación de alarma') && alarmCategory(record) === category)
-  const label = { docta: 'Docta Urbanización', 'nobu-town': 'Nobu Town', residencial: 'Residenciales' }[category] || 'Instalaciones de alarma'
+  // "all" permite obtener un único reporte mensual sin perder los reportes por ubicación.
+  const isAllCategories = category === 'all'
+  const records = rows('work_history').filter(record => record.date?.startsWith(month) && record.service?.toLowerCase().includes('instalación de alarma') && (isAllCategories || alarmCategory(record) === category))
+  const label = { docta: 'Docta Urbanización', 'nobu-town': 'Nobu Town', residencial: 'Residenciales', all: 'Todas las instalaciones de alarma' }[category] || 'Instalaciones de alarma'
   const headers = ['Fecha', 'Cliente', 'Dirección', 'Contacto', 'Técnicos asignados', 'Detalle', 'Equipo']
   const body = records.map(record => `<tr>${[record.date, record.client, record.address, record.phone, record.technicians?.join(' / '), record.detail, record.team].map(value => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('')
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:Arial}th{background:#173b28;color:#fff}th,td{border:1px solid #c8d5ca;padding:8px;text-align:left}h1{font-family:Arial;color:#173b28}</style></head><body><h1>Instalaciones de alarma – ${escapeHtml(label)}</h1><p>Período: ${escapeHtml(month)}</p><table><tr>${headers.map(header => `<th>${header}</th>`).join('')}</tr>${body}</table></body></html>`
