@@ -60,6 +60,55 @@ function showAgendaValidationModal(missing) {
   document.body.append(layer)
 }
 
+// Advertencia previa: permite detectar equipos sin técnicos antes de guardar o copiar.
+function showMissingTechniciansModal(teamNumbers, onContinue) {
+  document.getElementById('agenda-technicians-modal')?.remove()
+  const layer = document.createElement('div'); layer.id = 'agenda-technicians-modal'; layer.className = 'modal-layer'
+  const modal = document.createElement('div'); modal.className = 'modal confirm-modal validation-modal'
+  const icon = document.createElement('span'); icon.className = 'confirm-icon danger'; icon.textContent = '!'
+  const title = document.createElement('h2'); title.textContent = 'Técnicos sin asignar'
+  const detail = document.createElement('p'); detail.textContent = `La asignación de al menos un técnico es obligatoria. ${teamNumbers.join(', ')} no tiene técnicos asignados.`
+  const note = document.createElement('p'); note.className = 'modal-helper'; note.textContent = 'Podés volver para asignarlos o continuar excepcionalmente bajo tu responsabilidad.'
+  const actions = document.createElement('div'); actions.className = 'confirm-actions'
+  const cancel = document.createElement('button'); cancel.className = 'secondary'; cancel.type = 'button'; cancel.textContent = 'Volver y asignar'; cancel.onclick = () => layer.remove()
+  actions.append(cancel); modal.append(icon, title, detail, note, actions); layer.append(modal)
+  layer.addEventListener('click', event => { if (event.target === layer) layer.remove() })
+  document.body.append(layer)
+}
+
+// Evita asignaciones dobles accidentales, sin impedir los casos operativos en que sí son necesarias.
+function showDuplicateTechniciansModal(duplicates, availableTechnicians, onCorrect, onContinue) {
+  document.getElementById('agenda-duplicates-modal')?.remove()
+  const layer = document.createElement('div'); layer.id = 'agenda-duplicates-modal'; layer.className = 'modal-layer'
+  const modal = document.createElement('div'); modal.className = 'modal confirm-modal validation-modal duplicate-technicians-modal'
+  const icon = document.createElement('span'); icon.className = 'confirm-icon danger'; icon.textContent = '!'
+  const title = document.createElement('h2'); title.textContent = 'Técnicos asignados en más de un equipo'
+  const detail = document.createElement('p'); detail.textContent = duplicates.map(item => `${item.name}: ${item.teams.map(team => `Equipo ${team + 1}`).join(' y ')}`).join('. ')
+  const helper = document.createElement('p'); helper.className = 'modal-helper'; helper.textContent = availableTechnicians.length ? 'Podés reemplazar las asignaciones repetidas por técnicos aún disponibles.' : 'No hay técnicos disponibles para reemplazar las asignaciones repetidas.'
+  const replacements = []
+  if (availableTechnicians.length) duplicates.forEach(item => item.teams.slice(1).forEach(teamIndex => {
+    const field = document.createElement('label'); field.textContent = `Reemplazar a ${item.name} en Equipo ${teamIndex + 1}`
+    const select = document.createElement('select'); select.innerHTML = '<option value="">Seleccionar técnico</option>' + availableTechnicians.map(name => `<option value="${name}">${name}</option>`).join('')
+    field.append(select); modal.append(field)
+    replacements.push({ teamIndex, name: item.name, select })
+  }))
+  const actions = document.createElement('div'); actions.className = 'confirm-actions'
+  const correct = document.createElement('button'); correct.className = 'secondary'; correct.type = 'button'; correct.textContent = 'Corregir asignación'; correct.disabled = !availableTechnicians.length
+  correct.onclick = () => { const changes = replacements.filter(item => item.select.value).map(item => ({ teamIndex: item.teamIndex, name: item.name, replacement: item.select.value })); if (!changes.length) return; layer.remove(); onCorrect(changes) }
+  const proceed = document.createElement('button'); proceed.className = 'primary'; proceed.type = 'button'; proceed.textContent = 'Continuar de todos modos'; proceed.onclick = () => { layer.remove(); onContinue() }
+  // Sin técnicos disponibles, el botón permite volver a la agenda para corregir manualmente.
+  correct.disabled = false
+  correct.onclick = () => {
+    if (!availableTechnicians.length) { layer.remove(); return }
+    const changes = replacements.filter(item => item.select.value).map(item => ({ teamIndex: item.teamIndex, name: item.name, replacement: item.select.value }))
+    if (!changes.length) return
+    layer.remove(); onCorrect(changes)
+  }
+  actions.append(correct, proceed); modal.append(icon, title, detail, helper, actions); layer.append(modal)
+  layer.addEventListener('click', event => { if (event.target === layer) layer.remove() })
+  document.body.append(layer)
+}
+
 /** Pantalla aislada de autenticación; la contraseña sólo viaja al endpoint de acceso. */
 function Login({ onLogin }) {
   const [email, setEmail] = useState('')
@@ -157,7 +206,8 @@ export default function App() {
   }, [databaseReady, authUser, roles, employees, services, history, customers, date, teams, theme])
   const ask = (title, detail, action, destructive = false) => setConfirmation({ title, detail, action, destructive })
   const updateTask = (team, task, patch) => setTeams(prev => prev.map((t, ti) => ti !== team ? t : { ...t, tasks: t.tasks.map((x, i) => i !== task ? x : { ...x, ...patch }) }))
-  const activeTechs = employees.filter(x => x.status === 'Activo')
+  // Sólo empleados con rol Técnico pueden integrar equipos de trabajo.
+  const activeTechs = employees.filter(employee => employee.status === 'Activo' && employee.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'tecnico')
   const isAdministrator = authUser?.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'administrador'
   // Cada módulo tiene un ícono propio para facilitar el reconocimiento visual en la navegación.
   const nav = [['dashboard', 'dashboard', 'Menú principal'], ['agenda', 'agenda', 'Agenda técnica'], ['history', 'history', 'Historial'], ['accounts', 'accounts', 'Administrador de cuentas'], ['employees', 'users', 'Empleados'], ['services', 'tools', 'Tipo de servicio'], ['settings', 'settings', 'Configuración']]
@@ -252,6 +302,10 @@ function AgendaWorkspace({ date, setDate, teams, setTeams, activeTechs, customer
   const activeServices = services.filter(service => service.status === 'Activo')
   const validateAgenda = () => {
     const missing = []
+    // Cada equipo debe contar con al menos un técnico antes de registrar la agenda.
+    teams.forEach((team, teamIndex) => {
+      if (!team.members.length) missing.push(`Equipo ${teamIndex + 1}: técnicos asignados`)
+    })
     teams.forEach((team, teamIndex) => team.tasks.forEach((task, taskIndex) => {
       const fields = []
       if (!task.time) fields.push('hora')
@@ -270,7 +324,7 @@ function AgendaWorkspace({ date, setDate, teams, setTeams, activeTechs, customer
     setHistory(previous => [...records.filter(record => !previous.some(item => item.id === record.id)), ...previous])
     return true
   }
-  const clearAgenda = () => { if (confirmation !== 'clear') { if (!registerHistory()) return; setNotice('La agenda fue copiada al portapapeles y registrada en el historial.'); return }; setTeams([{ members: [], tasks: [blankTask()] }]); setDate(new Date().toISOString().slice(0, 10)); setNotice('La agenda quedó limpia y lista para una nueva planificación.') }
+  const clearAgenda = () => { if (confirmation !== 'clear') { requestAgendaAction('copy'); return }; setTeams([{ members: [], tasks: [blankTask()] }]); setDate(new Date().toISOString().slice(0, 10)); setNotice('La agenda quedó limpia y lista para una nueva planificación.') }
   const message = `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n${teams.map((team, index) => `👥 *Equipo ${index + 1}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${team.tasks.map(task => `🕒 ${task.time || '--:--'} Hs\n🛠️ *${task.service || 'Servicio'}*\n👤 *${task.client || 'Cliente'}*${task.detail ? `\n📝 *Detalle:* ${task.detail}` : ''}${task.address ? `\n📍 *Dirección:* ${task.address}` : ''}${task.phone ? `\n📞 *Contacto:* ${task.phone}` : ''}`).join('\n\n')}`).join('\n\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n')}`
   const saveAgenda = () => { if (registerHistory()) setNotice('La agenda fue guardada en el historial.') }
   useEffect(() => {
@@ -289,16 +343,62 @@ function AgendaWorkspace({ date, setDate, teams, setTeams, activeTechs, customer
   return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setConfirmation('clear')}><Icon name="trash" />Limpiar agenda</button><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button><button className="primary" onClick={() => { navigator.clipboard?.writeText(message); clearAgenda() }}><Icon name="copy" />Copiar agenda</button></div></div><div className="agenda-toolbar"><label>Fecha de trabajo<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, teamIndex) => <article className="team-card" key={teamIndex}><div className="team-header"><div><span className="team-number">{teamIndex + 1}</span><strong>Equipo {teamIndex + 1}</strong>{teams.length > 1 && <button className="team-delete" onClick={() => setConfirmation({ type: 'team', index: teamIndex })}><Icon name="trash" size={16} />Eliminar equipo</button>}</div><div className="technicians-picker"><span>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</span><button className="secondary small" onClick={() => { setTechOpen(techOpen === teamIndex ? null : teamIndex); setFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === teamIndex && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={filter} onChange={event => setFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(filter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={team.members.includes(tech.name)} onChange={() => toggleTech(teamIndex, tech.name)} />{tech.name}</label>)}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, taskIndex) => <div className="task-row" key={taskIndex}><div className="task-title"><span>{taskIndex + 1}</span><b>Servicio</b></div><label>Hora<input type="time" value={task.time} onChange={event => updateTask(teamIndex, taskIndex, { time: event.target.value })} /></label><label>Tipo de servicio<select value={task.service} onChange={event => updateTask(teamIndex, taskIndex, { service: event.target.value })}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id}>{service.name}</option>)}</select></label><label>Cliente o cuenta<input list="customer-options" value={task.client} onChange={event => customerChange(teamIndex, taskIndex, event.target.value)} /><datalist id="customer-options">{customers.map(customer => <option key={customer.account} value={`${customer.name} · ${customer.account}`} />)}</datalist></label><label>Dirección<input value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label>Contacto<input value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations">Observaciones<textarea value={task.detail} onChange={event => updateTask(teamIndex, taskIndex, { detail: event.target.value })} /></label>{team.tasks.length > 1 && <button className="icon-btn delete" onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.filter((_, index) => index !== taskIndex) }))}><Icon name="trash" size={16} /></button>}</div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
 }
 
-function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, customers, services, setHistory, updateTask, setNotice }) {
-  const saveAgenda = () => { if (registerHistory()) setNotice('La agenda fue guardada en el historial.') }
+function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }) {
+  const saveAgenda = () => requestAgendaAction('save')
   const [preview, setPreview] = useState(false)
   const [techOpen, setTechOpen] = useState(null)
   const [filter, setFilter] = useState('')
   const [confirmation, setConfirmation] = useState(null)
+  useEffect(() => {
+    // Expone los integrantes junto al título de cada equipo, sin obligar a abrir el selector.
+    document.querySelectorAll('.team-header > div:first-child').forEach((header, teamIndex) => {
+      header.querySelector('.team-members')?.remove()
+      const members = teams[teamIndex]?.members || []
+      if (!members.length) return
+      const names = document.createElement('span')
+      names.className = 'team-members'
+      names.textContent = members.join(' · ')
+      names.title = members.join(', ')
+      header.querySelector('strong')?.insertAdjacentElement('afterend', names)
+    })
+  }, [teams])
+  // Reconstruye la agenda desde los registros ya guardados para la fecha elegida.
+  const loadAgendaForDate = nextDate => {
+    const saved = history.filter(record => record.date === nextDate)
+    setDate(nextDate)
+    if (!saved.length) {
+      setTeams([{ members: [], tasks: [blankTask()] }])
+      setNotice('No hay una agenda guardada para la fecha seleccionada. Podés crear una nueva.')
+      return
+    }
+    const byTeam = new Map()
+    saved.forEach(record => {
+      const number = Number(String(record.team || '').match(/\d+/)?.[0]) || 1
+      const current = byTeam.get(number) || { members: record.technicians || [], tasks: [] }
+      current.members = record.technicians?.length ? record.technicians : current.members
+      // Se aceptan los nombres anteriores del campo para recuperar también agendas ya existentes.
+      current.tasks.push({ time: record.time || record.scheduledTime || record.hora || record.Hora || '', service: record.service || '', client: record.client || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', installationZone: record.installationZone || '' })
+      byTeam.set(number, current)
+    })
+    const lastTeam = Math.max(...byTeam.keys())
+    setTeams(Array.from({ length: lastTeam }, (_, index) => {
+      const team = byTeam.get(index + 1)
+      return team ? { ...team, tasks: team.tasks.sort((a, b) => String(a.time).localeCompare(String(b.time))) } : { members: [], tasks: [blankTask()] }
+    }))
+    setNotice(`Se recuperó la agenda guardada del ${prettyDate(nextDate)}.`)
+  }
+  useEffect(() => {
+    const input = document.querySelector('.agenda-toolbar input[type="date"]')
+    if (!input) return undefined
+    const selectDate = event => { event.stopPropagation(); loadAgendaForDate(event.target.value) }
+    input.addEventListener('change', selectDate, true)
+    return () => input.removeEventListener('change', selectDate, true)
+  }, [history])
   // El guardado es independiente de copiar: registra la agenda y mantiene los campos cargados.
   useEffect(() => {
     const actionGroup = document.querySelector('.module-intro .action-group')
-    if (!actionGroup || actionGroup.querySelector('.save-agenda-button')) return undefined
+    if (!actionGroup) return undefined
+    actionGroup.querySelector('.save-agenda-button')?.remove()
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'secondary save-agenda-button'
@@ -306,7 +406,15 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     button.onclick = saveAgenda
     actionGroup.insertBefore(button, actionGroup.lastElementChild)
     return () => button.remove()
-  })
+  }, [date, teams, history, activeTechs])
+  useEffect(() => {
+    // Evita copiar al portapapeles o guardar antes de validar la asignación de técnicos.
+    const copyButton = document.querySelector('.module-intro .action-group .primary')
+    if (!copyButton) return undefined
+    const intercept = event => { event.preventDefault(); event.stopPropagation(); requestAgendaAction('copy') }
+    copyButton.addEventListener('click', intercept, true)
+    return () => copyButton.removeEventListener('click', intercept, true)
+  }, [date, teams, history, activeTechs])
   const activeServices = services.filter(service => service.status === 'Activo')
   const validateAgenda = () => {
     const missing = []
@@ -324,7 +432,30 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   }
   const clearAgenda = () => { if (confirmation !== 'clear') { if (!registerHistory()) return; setNotice('La agenda fue copiada al portapapeles y registrada en el historial.'); return }; setTeams([{ members: [], tasks: [blankTask()] }]); setDate(new Date().toISOString().slice(0, 10)); setNotice('La agenda quedó limpia y lista para una nueva planificación.') }
   const message = `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n${teams.map((team, index) => `👥 *Equipo ${index + 1}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${team.tasks.map(task => `🕒 ${task.time || '--:--'} Hs\n🛠️ *${task.service || 'Servicio'}*\n👤 *${task.client || 'Cliente'}*${task.detail ? `\n📝 *Detalle:* ${task.detail}` : ''}${task.address ? `\n📍 *Dirección:* ${task.address}` : ''}${task.phone ? `\n📞 *Contacto:* ${task.phone}` : ''}`).join('\n\n')}`).join('\n\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n')}`
-  const registerHistory = () => { if (!validateAgenda()) return false; setHistory(previous => { const records = teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ id: `${date}-${teamIndex}-${taskIndex}-${task.time}-${task.client}-${task.service}`.replace(/[^a-zA-Z0-9]/g, '-'), date, time: task.time, team: `Equipo ${teamIndex + 1}`, technicians: team.members, service: task.service, client: task.client, detail: task.detail, address: task.address, phone: task.phone, installationZone: task.installationZone || '' }))); return [...records.filter(record => !previous.some(item => item.id === record.id)), ...previous] }); return true }
+  const registerHistory = () => { if (!validateAgenda()) return false; setHistory(previous => { const records = teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ id: `${date}-${teamIndex}-${taskIndex}-${task.time}-${task.client}-${task.service}`.replace(/[^a-zA-Z0-9]/g, '-'), date, time: task.time, scheduledTime: task.time, team: `Equipo ${teamIndex + 1}`, technicians: team.members, service: task.service, client: task.client, detail: task.detail, address: task.address, phone: task.phone, installationZone: task.installationZone || '' }))); return [...records.filter(record => !previous.some(item => item.id === record.id)), ...previous] }); return true }
+  const finishAgendaAction = action => {
+    if (!registerHistory()) return
+    if (action === 'copy') navigator.clipboard?.writeText(message)
+    setNotice(action === 'copy' ? 'La agenda fue copiada al portapapeles y registrada en el historial.' : 'La agenda fue guardada en el historial.')
+  }
+  const requestAgendaAction = (action, allowWithoutTechnicians = false) => {
+    if (!validateAgenda()) return
+    const missingTeams = teams.map((team, index) => !team.members.length ? `Equipo ${index + 1}` : '').filter(Boolean)
+    if (missingTeams.length && !allowWithoutTechnicians) { showMissingTechniciansModal(missingTeams, () => requestAgendaAction(action, true)); return }
+    const technicianTeams = new Map()
+    teams.forEach((team, teamIndex) => team.members.forEach(name => technicianTeams.set(name, [...(technicianTeams.get(name) || []), teamIndex])))
+    const duplicates = [...technicianTeams.entries()].filter(([, assignedTeams]) => assignedTeams.length > 1).map(([name, assignedTeams]) => ({ name, teams: assignedTeams }))
+    if (duplicates.length) {
+      const assigned = new Set(teams.flatMap(team => team.members))
+      const available = activeTechs.map(tech => tech.name).filter(name => !assigned.has(name))
+      showDuplicateTechniciansModal(duplicates, available, changes => {
+        setTeams(previous => previous.map((team, teamIndex) => ({ ...team, members: team.members.map(name => changes.find(change => change.teamIndex === teamIndex && change.name === name)?.replacement || name) })))
+        setNotice('La asignación fue corregida. Revisá la agenda y volvé a guardar o copiar.')
+      }, () => finishAgendaAction(action))
+      return
+    }
+    finishAgendaAction(action)
+  }
   const toggleTech = (teamIndex, name) => setTeams(previous => previous.map((team, index) => index !== teamIndex ? team : { ...team, members: team.members.includes(name) ? team.members.filter(member => member !== name) : [...team.members, name] }))
   const customerChange = (teamIndex, taskIndex, value) => { const customer = customers.find(item => item.account === value || item.name === value || `${item.name} · ${item.account}` === value || `${item.account} ${item.name}` === value); updateTask(teamIndex, taskIndex, customer ? { client: `${customer.account} ${customer.name}`, address: customer.address, phone: customer.phone } : { client: value }) }
   return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setConfirmation('clear')}><Icon name="trash" />Limpiar agenda</button><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button><button className="primary" onClick={() => { navigator.clipboard?.writeText(message); clearAgenda() }}><Icon name="copy" />Copiar agenda</button></div></div><div className="agenda-toolbar"><label>Fecha de trabajo<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, teamIndex) => <article className="team-card" key={teamIndex}><div className="team-header"><div><span className="team-number">{teamIndex + 1}</span><strong>Equipo {teamIndex + 1}</strong>{teams.length > 1 && <button className="team-delete" onClick={() => setConfirmation({ type: 'team', index: teamIndex })}><Icon name="trash" size={16} />Eliminar equipo</button>}</div><div className="technicians-picker"><span>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</span><button className="secondary small" onClick={() => { setTechOpen(techOpen === teamIndex ? null : teamIndex); setFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === teamIndex && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={filter} onChange={event => setFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(filter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={team.members.includes(tech.name)} onChange={() => toggleTech(teamIndex, tech.name)} />{tech.name}</label>)}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, taskIndex) => <div className="task-row" key={taskIndex}><div className="task-title"><span>{taskIndex + 1}</span><b>Servicio</b></div><label>Hora<input type="time" value={task.time} onChange={event => updateTask(teamIndex, taskIndex, { time: event.target.value })} /></label><label>Tipo de servicio<select value={task.service} onChange={event => updateTask(teamIndex, taskIndex, { service: event.target.value, installationZone: event.target.value === 'Instalación de alarma' ? task.installationZone : '' })}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id}>{service.name}</option>)}</select></label><label>Cliente o cuenta<input list="customer-options" value={task.client} onChange={event => customerChange(teamIndex, taskIndex, event.target.value)} /><datalist id="customer-options">{customers.map(customer => <option key={customer.account} value={`${customer.name} · ${customer.account}`} />)}</datalist></label><label>Dirección<input value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label>Contacto<input value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations">Observaciones<textarea value={task.detail} onChange={event => updateTask(teamIndex, taskIndex, { detail: event.target.value })} /></label>{task.service === 'Instalación de alarma' && <fieldset className="installation-zone"><legend>Ubicación de la instalación</legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => updateTask(teamIndex, taskIndex, { installationZone: value })} />{label}</label>)}</fieldset>}{team.tasks.length > 1 && <button className="icon-btn delete" onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.filter((_, index) => index !== taskIndex) }))}><Icon name="trash" size={16} /></button>}</div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
@@ -647,6 +778,19 @@ function HistoryManagementDetail({ record, setHistory, close }) {
     }
     grid.append(report)
     return () => report.remove()
+  }, [record, editing])
+  useEffect(() => {
+    if (editing) return undefined
+    const grid = document.querySelector('.history-detail .history-detail-grid')
+    if (!grid || grid.querySelector('.scheduled-time-detail')) return undefined
+    const scheduledTime = document.createElement('div')
+    scheduledTime.className = 'scheduled-time-detail'
+    const title = document.createElement('b'); title.textContent = 'Hora asignada'
+    // Los registros históricos sin horario mantienen el campo vacío.
+    const value = document.createElement('span'); value.textContent = record.time || record.scheduledTime || ''
+    scheduledTime.append(title, value)
+    grid.insertBefore(scheduledTime, grid.children[2] || null)
+    return () => scheduledTime.remove()
   }, [record, editing])
   return <><div className="modal-layer"><div className="modal detail-modal history-detail"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">{prettyDate(record.date)} · {status.toUpperCase()}</p><div className="history-detail-heading"><h2>{editing ? 'Editar servicio' : record.client}</h2><button className="secondary detail-edit" onClick={() => setEditing(!editing)}><Icon name="edit" size={15} />{editing ? 'Cancelar edición' : 'Editar datos'}</button></div>{editing ? <div className="history-edit-grid"><label>Cliente o cuenta<input value={draft.client} onChange={setField('client')} /></label><label>Tipo de servicio<input value={draft.service} onChange={setField('service')} /></label><label>Equipo<input value={draft.team} onChange={setField('team')} /></label><label>Técnicos asignados<input value={draft.technicians} onChange={setField('technicians')} placeholder="Separar por / o coma" /></label><label>Dirección<input value={draft.address} onChange={setField('address')} /></label><label>Contacto<input value={draft.phone} onChange={setField('phone')} /></label><label className="detail-notes">Detalle / observaciones<textarea value={draft.detail} onChange={setField('detail')} /></label></div> : <div className="history-detail-grid"><div><b>Servicio</b><span>{record.service}</span></div><div><b>Equipo</b><span>{record.team}</span></div><div><b>Técnicos asignados</b><span>{record.technicians?.join(' / ') || 'Sin técnicos asignados'}</span></div><div><b>Dirección</b><span>{record.address || 'Sin dirección'}</span></div><div><b>Contacto</b><span>{record.phone || 'Sin contacto'}</span></div><div className="detail-notes"><b>Detalle / observaciones</b><span>{record.detail || 'Sin observaciones'}</span></div></div>}{editing ? <div className="history-actions"><button className="primary" onClick={saveChanges}><Icon name="check" />Guardar cambios</button><button className="secondary" onClick={() => setEditing(false)}>Cancelar</button></div> : <div className="history-actions"><button className="primary" onClick={() => update({ status: 'Completado', scheduledDate: '' })}><Icon name="check" />Marcar completado</button><button className="secondary" onClick={() => update({ status: 'Cancelado', scheduledDate: '' })}><Icon name="close" />Cancelar servicio</button><label>Reprogramar para<input type="date" min={minimumRescheduleDate} value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} /></label><button className="secondary" disabled={!rescheduleDate || rescheduleDate < minimumRescheduleDate} onClick={() => { if (rescheduleDate >= minimumRescheduleDate) update({ status: 'Reprogramado', scheduledDate: rescheduleDate }) }}><Icon name="calendar" />Reprogramar</button><button className="danger-button delete-history" onClick={() => setConfirmDelete(true)}><Icon name="trash" />Eliminar registro</button></div>}</div></div>{confirmDelete && <Confirm title="Eliminar registro" detail="¿Querés eliminar este servicio del historial? Esta acción no se puede deshacer." destructive action={remove} close={() => setConfirmDelete(false)} />}</> }
 
