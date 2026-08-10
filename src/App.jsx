@@ -42,6 +42,18 @@ function LegacyIcon({ name, size = 18 }) {
 }
 const initials = name => name.split(' ').map(x => x[0]).slice(0, 2).join('').toUpperCase()
 const prettyDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, x => x.toUpperCase()) : ''
+// Cada familia de trabajo tiene un color consistente en el historial para facilitar su lectura.
+const serviceColorClass = service => {
+  const normalized = String(service || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  if (normalized.includes('retiro')) return 'service-retirement'
+  if (normalized.includes('titularidad')) return 'service-ownership'
+  if (normalized.includes('camara')) return 'service-cameras'
+  if (normalized.includes('cerco')) return 'service-fence'
+  if (normalized.includes('alarma')) return 'service-alarm'
+  if (normalized.includes('relevamiento')) return 'service-survey'
+  if (normalized.includes('ampliacion') || normalized.includes('mejora')) return 'service-upgrade'
+  return 'service-other'
+}
 // Unifica el horario operativo en Argentina aunque el servidor guarde fechas en UTC.
 const prettyReportDateTime = value => value ? `${new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: 'numeric', month: 'numeric', year: 'numeric' }).format(new Date(value))}, ${new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(value))} Hs` : ''
 function showAgendaValidationModal(missing) {
@@ -225,7 +237,10 @@ export default function App() {
   useEffect(() => {
     if (!isAdministrator && !modulePermissions[module] && nav[0]) setModule(nav[0][0])
   }, [isAdministrator, module, activeRole?.id])
-  const title = { dashboard: 'Menú principal', agenda: 'Agenda técnica', history: 'Historial', accounts: 'Administrador de cuentas', employees: 'Empleados', services: 'Tipo de servicio', settings: 'Configuración' }[module]
+  const title = { dashboard: 'Menú principal', agenda: 'Agenda técnica', history: 'Historial', accounts: 'Administrador de cuentas', employees: 'Empleados', services: 'Tipo de servicio', settings: 'Configuración', audit: 'Auditoría' }[module]
+  useEffect(() => {
+    document.title = `${title || 'Agenda técnica'} | PIGNUS`
+  }, [title])
   if (isAdministrator) nav.push(['audit', 'audit', 'Auditoría'])
   const emptyAgenda = () => ({ date: new Date().toISOString().slice(0, 10), teams: [{ members: [], tasks: [blankTask()] }] })
   // Una agenda se considera pendiente cuando tiene datos que todavía no quedaron registrados en Historial.
@@ -752,6 +767,15 @@ function HistoryBulkView({ history, setHistory }) {
     const counter = document.querySelector('.history-toolbar>div:not(.history-date-filters)')
     if (counter) counter.innerHTML = `<b>${records.length}</b> ${records.length === history.length ? 'trabajos registrados' : 'trabajos encontrados'}`
   }, [records.length, history.length])
+  useEffect(() => {
+    // El componente de historial conserva parte de su estructura legada; aplicar la clase
+    // al chip ya renderizado evita duplicar la tabla y mantiene el color sincronizado al filtrar.
+    const colorClasses = ['service-alarm', 'service-cameras', 'service-retirement', 'service-ownership', 'service-fence', 'service-survey', 'service-upgrade', 'service-other']
+    document.querySelectorAll('.history-bulk .role-chip').forEach(chip => {
+      chip.classList.remove(...colorClasses)
+      chip.classList.add(serviceColorClass(chip.textContent))
+    })
+  }, [records])
   return <><div className="module-intro"><div><p className="eyebrow">TRABAJOS REALIZADOS</p><h1>Historial técnico</h1><p>Seleccioná varios servicios para confirmarlos, cancelarlos o reprogramarlos en una sola acción.</p></div><button className="primary" disabled={!selected.length} onClick={() => setBulkOpen(true)}><Icon name="check" />{selected.length ? `Gestionar ${selected.length} seleccionados` : 'Gestionar selección'}</button></div><div className="accounts-bar history-toolbar"><div><b>{history.length}</b> trabajos registrados</div><label><Icon name="search" size={16} /><input placeholder="Buscar cliente, servicio o técnico..." value={search} onChange={event => setSearch(event.target.value)} /></label></div><div className="data-card history-table history-bulk"><div className="table-head"><span><input aria-label="Seleccionar todos" type="checkbox" checked={records.length > 0 && selected.length === records.length} onChange={toggleAll} /></span><span>Fecha</span><span>Cliente</span><span>Servicio</span><span>Estado</span><span>Acciones</span></div>{records.length ? records.map(record => <div className="history-row" key={record.id}><span><input aria-label={`Seleccionar ${record.client}`} type="checkbox" checked={selected.includes(record.id)} onChange={() => toggle(record.id)} /></span><b>{prettyDate(record.date)}</b><div className="history-client"><strong>{record.client}</strong><small>{record.address || 'Sin dirección'}</small></div><div><em className="role-chip">{record.service}</em></div><div><span className={`work-status ${status(record).toLowerCase().replace(/\s/g, '-')}`}>{status(record)}</span>{record.scheduledDate && <small className="scheduled-date">Para: {prettyDate(record.scheduledDate)}</small>}</div><div><button className="secondary detail-button" onClick={() => setDetail(record)}><Icon name="eye" size={16} />Gestionar</button></div></div>) : <div className="empty-state">No hay trabajos para mostrar.</div>}</div>{bulkOpen && <div className="modal-layer"><div className="modal bulk-modal"><button className="close-modal" onClick={() => setBulkOpen(false)}><Icon name="close" /></button><p className="eyebrow">GESTIÓN MÚLTIPLE</p><h2>{selected.length} servicio(s) seleccionados</h2><p>La modificación se aplicará a todos los servicios elegidos.</p><label>Nuevo estado<select value={bulkStatus} onChange={event => setBulkStatus(event.target.value)}><option>Completado</option><option>Cancelado</option><option>Reprogramado</option></select></label>{bulkStatus === 'Reprogramado' && <label>Reprogramar para<input type="date" min={minimumRescheduleDate} value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} /></label>}<div className="modal-actions"><button className="secondary" onClick={() => setBulkOpen(false)}>Cancelar</button><button className="primary" disabled={bulkStatus === 'Reprogramado' && (!rescheduleDate || rescheduleDate < minimumRescheduleDate)} onClick={applyBulk}>Aplicar cambios</button></div></div></div>}{detail && <HistoryManagementDetail record={detail} setHistory={setHistory} close={() => setDetail(null)} />}</>
 }
 
