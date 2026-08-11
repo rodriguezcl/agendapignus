@@ -126,7 +126,65 @@ function replaceRows(table, records, key) {
 }
 
 /** Guarda todas las entidades dentro de una transacción para evitar estados parciales. */
+function validateState(state) {
+  if (!state || typeof state !== 'object') throw new Error('El estado recibido no es válido.')
+
+  const collections = ['roles', 'employees', 'services', 'customers', 'history']
+  collections.forEach(name => {
+    if (!Array.isArray(state[name])) throw new Error(`La colección ${name} no es válida.`)
+  })
+
+  const ensureUnique = (items, key, label) => {
+    const values = new Set()
+    items.forEach((item, index) => {
+      const value = String(item?.[key] ?? '').trim()
+      if (!value) throw new Error(`${label} ${index + 1}: falta ${key}.`)
+      const normalized = value.toLocaleLowerCase('es-AR')
+      if (values.has(normalized)) throw new Error(`No puede haber ${label.toLowerCase()}s duplicados.`)
+      values.add(normalized)
+    })
+  }
+  const text = (value, limit) => String(value ?? '').trim().length <= limit
+  const email = value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value ?? '').trim())
+  const date = value => !value || /^\d{4}-\d{2}-\d{2}$/.test(String(value))
+  const time = value => !value || /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value))
+
+  ensureUnique(state.roles, 'id', 'Rol')
+  ensureUnique(state.employees, 'id', 'Empleado')
+  ensureUnique(state.services, 'id', 'Tipo de servicio')
+  ensureUnique(state.customers, 'account', 'Cliente')
+  ensureUnique(state.history, 'id', 'Registro de historial')
+
+  const roleIds = new Set(state.roles.map(role => String(role.id)))
+  const roleNames = new Set(state.roles.map(role => String(role.name ?? '').trim().toLocaleLowerCase('es-AR')))
+  state.roles.forEach((role, index) => {
+    if (!String(role.name ?? '').trim() || !text(role.name, 80) || typeof role.permissions !== 'object' || !role.permissions) throw new Error(`Rol ${index + 1}: datos incompletos.`)
+  })
+  state.employees.forEach((employee, index) => {
+    if (!String(employee.name ?? '').trim() || !text(employee.name, 120)) throw new Error(`Empleado ${index + 1}: el nombre es obligatorio.`)
+    if (!email(employee.email) || !text(employee.email, 160)) throw new Error(`Empleado ${index + 1}: el correo electrónico no es válido.`)
+    const employeeRole = employee.roleId ?? employee.role
+    if (!roleIds.has(String(employeeRole)) && !roleNames.has(String(employeeRole ?? '').trim().toLocaleLowerCase('es-AR'))) throw new Error(`Empleado ${index + 1}: debe tener un rol válido.`)
+    if (!['Activo', 'Inactivo'].includes(employee.status)) throw new Error(`Empleado ${index + 1}: el estado no es válido.`)
+    if (!text(employee.phone, 50)) throw new Error(`Empleado ${index + 1}: el teléfono es demasiado extenso.`)
+  })
+  ensureUnique(state.employees.map(employee => ({ email: employee.email })), 'email', 'Correo electrónico')
+  state.services.forEach((service, index) => {
+    if (!String(service.name ?? '').trim() || !text(service.name, 120)) throw new Error(`Tipo de servicio ${index + 1}: el nombre es obligatorio.`)
+    if (!['Activo', 'Inactivo'].includes(service.status)) throw new Error(`Tipo de servicio ${index + 1}: el estado no es válido.`)
+  })
+  state.customers.forEach((customer, index) => {
+    if (!String(customer.name ?? '').trim() || !text(customer.name, 180)) throw new Error(`Cliente ${index + 1}: el titular es obligatorio.`)
+    if (!text(customer.account, 80) || !text(customer.phone, 50) || !text(customer.address, 320)) throw new Error(`Cliente ${index + 1}: uno de los datos supera el máximo permitido.`)
+  })
+  state.history.forEach((record, index) => {
+    if (!date(record.date) || !time(record.time) || !time(record.scheduledTime)) throw new Error(`Historial ${index + 1}: fecha u hora inválida.`)
+    if (!text(record.client, 200) || !text(record.service, 160) || !text(record.address, 320) || !text(record.phone, 50) || !text(record.detail, 4000)) throw new Error(`Historial ${index + 1}: uno de los campos es demasiado extenso.`)
+  })
+}
+
 function saveState(state, user) {
+  validateState(state)
   const previousEmployees = new Map(rows('employees').map(employee => [String(employee.id), employee]))
   const storedAgenda = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
   const previousAgenda = storedAgenda ? JSON.parse(storedAgenda.data) : {}
@@ -136,7 +194,7 @@ function saveState(state, user) {
   const securedEmployees = (state.employees || []).map(employee => {
     const previous = previousEmployees.get(String(employee.id))
     const next = { ...employee }
-    if (next.password?.trim() && next.password.trim().length < 8) throw new Error('Las contraseñas deben tener al menos 8 caracteres.')
+    if (next.password?.trim() && (next.password.trim().length < 8 || !/[a-z]/.test(next.password) || !/[A-Z]/.test(next.password) || !/\d/.test(next.password))) throw new Error('Las contraseñas deben tener al menos 8 caracteres, una mayúscula, una minúscula y un número.')
     if (!previous && !next.password?.trim()) throw new Error('Todo empleado nuevo requiere una contraseña.')
     // En una edición sin nueva contraseña se conserva el hash existente.
     if (next.password?.trim()) next.passwordHash = hashPassword(next.password)
@@ -354,7 +412,7 @@ const server = http.createServer((req, res) => {
     readJson(req, 15_000_000).then(state => {
       saveState(state, user)
       send(res, 200, { ok: true })
-    }).catch(error => { console.error(error); send(res, 400, { error: 'No se pudieron guardar los datos.' }) })
+    }).catch(error => { console.error(error); send(res, 400, { error: error?.message || 'No se pudieron guardar los datos.' }) })
     return
   }
   send(res, 404, { error: 'Ruta no encontrada.' })

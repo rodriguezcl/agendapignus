@@ -1,5 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import Icon from './components/ui/Icon.jsx'
+import './weekly.css'
+import './weekly-enhancements.css'
+import './ui-polish.css'
+import './login.css'
 
 const INITIAL_SERVICES = [
   { id: 1, name: 'Instalación de alarma', description: 'Alta e instalación de sistemas de alarma', status: 'Activo' },
@@ -8,7 +12,7 @@ const INITIAL_SERVICES = [
   { id: 4, name: 'Service técnico', description: 'Mantenimiento y reparación', status: 'Activo' },
   { id: 5, name: 'Visita de relevamiento', description: 'Diagnóstico y presupuesto', status: 'Activo' }
 ]
-const blankTask = () => ({ time: '', service: '', client: '', clientAccount: '', clientNameAtService: '', address: '', phone: '', detail: '' })
+const blankTask = () => ({ time: '', service: '', client: '', clientAccount: '', clientNameAtService: '', address: '', phone: '', detail: '', paymentMethod: '', monthlyFee: '', form: '' })
 const blankEmployee = { name: '', role: 'Técnico', phone: '', email: '', password: '', status: 'Activo' }
 const blankCustomer = { account: '', name: '', type: '', street: '', locality: '', province: '', phone: '', address: '', fields: {} }
 const initialRoles = [
@@ -19,7 +23,8 @@ const initialRoles = [
 // Catálogo único: evita que un módulo quede fuera de la matriz de permisos.
 const MODULE_PERMISSIONS = [
   ['dashboard', 'Menú principal', 'Ver indicadores y resumen operativo'],
-  ['agenda', 'Agenda técnica', 'Crear y editar equipos y servicios'],
+  ['weekly', 'Agenda semanal', 'Planificar los servicios de toda la semana'],
+  ['agenda', 'Agenda del día', 'Crear y editar equipos y servicios'],
   ['history', 'Historial', 'Consultar y gestionar trabajos registrados'],
   ['accounts', 'Administrador de cuentas', 'Consultar y administrar clientes'],
   ['employees', 'Empleados', 'Administrar técnicos y accesos'],
@@ -125,6 +130,7 @@ function showDuplicateTechniciansModal(duplicates, availableTechnicians, onCorre
 function Login({ onLogin }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const submit = async event => {
@@ -140,12 +146,13 @@ function Login({ onLogin }) {
     } catch (loginError) { setError(loginError.message) }
     finally { setSubmitting(false) }
   }
-  return <main className="login-page"><form className="login-card" onSubmit={submit}><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">ACCESO SEGURO</p><h1>Ingresá a Agenda técnica</h1><p>Usá el correo y la contraseña definidos en el módulo Empleados.</p><label>Correo electrónico<input required autoComplete="username" type="email" value={email} onChange={event => setEmail(event.target.value)} /></label><label>Contraseña<input required autoComplete="current-password" minLength="8" type="password" value={password} onChange={event => setPassword(event.target.value)} /></label>{error && <p className="login-error" role="alert">{error}</p>}<button className="primary" disabled={submitting}>{submitting ? 'Verificando acceso...' : 'Iniciar sesión'}</button><small>El acceso se cierra automáticamente al finalizar la sesión.</small></form></main>
+  return <main className="login-page"><form className="login-card" onSubmit={submit}><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">ACCESO SEGURO</p><h1>Ingresá a Agenda técnica</h1><p>Usá el correo y la contraseña definidos en el módulo Empleados.</p><label>Correo electrónico<input required autoComplete="username" type="email" value={email} onChange={event => setEmail(event.target.value)} /></label><label>Contraseña<div className="password-field"><input required autoComplete="current-password" minLength="8" type={showPassword ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} /><button type="button" className="password-visibility" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}><Icon name="eye" size={17} /><span>{showPassword ? 'Ocultar' : 'Mostrar'}</span></button></div></label>{error && <p className="login-error" role="alert">{error}</p>}<button className="primary" disabled={submitting}>{submitting ? 'Verificando acceso...' : 'Iniciar sesión'}</button><small>El acceso se cierra automáticamente al finalizar la sesión.</small></form></main>
 }
 
 export default function App() {
   const [module, setModule] = useState('dashboard')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('pignus-sidebar-collapsed') === 'true')
   const [theme, setTheme] = useState(() => localStorage.getItem('pignus-theme') || 'light')
   const [roles, setRoles] = useState(() => JSON.parse(localStorage.getItem('pignus-roles') || 'null') || initialRoles)
   const [employees, setEmployees] = useState(() => JSON.parse(localStorage.getItem('pignus-employees') || 'null') || initialEmployees)
@@ -154,6 +161,7 @@ export default function App() {
   const [customers, setCustomers] = useState(() => JSON.parse(localStorage.getItem('pignus-customers') || '[]'))
   const [teams, setTeams] = useState(() => JSON.parse(localStorage.getItem('pignus-agenda') || 'null')?.teams || [{ members: [], tasks: [blankTask()] }])
   const [date, setDate] = useState(() => JSON.parse(localStorage.getItem('pignus-agenda') || 'null')?.date || new Date().toISOString().slice(0, 10))
+  const [weekly, setWeekly] = useState(() => JSON.parse(localStorage.getItem('pignus-agenda') || 'null')?.weekly || {})
   const [notice, setNotice] = useState('')
   const [confirmation, setConfirmation] = useState(null)
   const [databaseReady, setDatabaseReady] = useState(false)
@@ -161,12 +169,13 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true)
   const [profileOpen, setProfileOpen] = useState(false)
   useEffect(() => localStorage.setItem('pignus-theme', theme), [theme])
+  useEffect(() => localStorage.setItem('pignus-sidebar-collapsed', String(sidebarCollapsed)), [sidebarCollapsed])
   useEffect(() => localStorage.setItem('pignus-roles', JSON.stringify(roles)), [roles])
   useEffect(() => localStorage.setItem('pignus-employees', JSON.stringify(employees)), [employees])
   useEffect(() => localStorage.setItem('pignus-services', JSON.stringify(services)), [services])
   useEffect(() => localStorage.setItem('pignus-history', JSON.stringify(history)), [history])
   useEffect(() => localStorage.setItem('pignus-customers', JSON.stringify(customers)), [customers])
-  useEffect(() => localStorage.setItem('pignus-agenda', JSON.stringify({ date, teams })), [date, teams])
+  useEffect(() => localStorage.setItem('pignus-agenda', JSON.stringify({ date, teams, weekly })), [date, teams, weekly])
   useEffect(() => {
     fetch('/api/auth/session').then(response => response.ok ? response.json() : null).then(data => setAuthUser(data?.user || null)).catch(() => setAuthUser(null)).finally(() => setAuthLoading(false))
   }, [])
@@ -176,6 +185,33 @@ export default function App() {
     brand?.addEventListener('click', goToDashboard)
     return () => brand?.removeEventListener('click', goToDashboard)
   }, [])
+  useEffect(() => {
+    // El menú compacto conserva los accesos por icono y libera espacio de trabajo.
+    const shell = document.querySelector('.app-shell')
+    const sidebar = shell?.querySelector('.sidebar')
+    if (!shell || !sidebar) return undefined
+    shell.classList.toggle('sidebar-collapsed', sidebarCollapsed)
+    sidebar.classList.toggle('sidebar-compact', sidebarCollapsed)
+    const control = document.createElement('button')
+    control.type = 'button'
+    control.className = `sidebar-collapse-toggle ${sidebarCollapsed ? 'is-collapsed' : ''}`
+    // Estilos críticos en línea: el control no depende del orden de las hojas de estilo.
+    Object.assign(control.style, {
+      position: 'absolute', top: '16px', left: '100%', transform: 'translateX(-50%)',
+      zIndex: '20', display: 'grid', placeItems: 'center', width: '34px', height: '34px',
+      padding: '0', border: '1px solid #54705e', borderRadius: '50%', background: '#1b412d',
+      color: '#fff', fontSize: '22px', lineHeight: '1', boxShadow: '0 3px 9px rgba(5, 26, 14, .25)'
+    })
+    control.setAttribute('aria-label', sidebarCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral')
+    control.title = sidebarCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral'
+    control.textContent = sidebarCollapsed ? '›' : '‹'
+    const toggle = event => { event.preventDefault(); event.stopPropagation(); setSidebarCollapsed(value => !value) }
+    control.addEventListener('click', toggle)
+    sidebar.querySelectorAll('nav button').forEach(button => { button.title = button.textContent.trim() })
+    // Se ubica dentro de la barra: así se mantiene alineado con su borde al cambiar el ancho.
+    sidebar.append(control)
+    return () => { control.removeEventListener('click', toggle); control.remove() }
+  })
   useEffect(() => {
     const goToHistory = () => setModule('history')
     window.addEventListener('pignus:open-history', goToHistory)
@@ -205,12 +241,13 @@ export default function App() {
   useEffect(() => {
     if (!authUser) return
     fetch('/api/state').then(response => response.ok ? response.json() : Promise.reject()).then(data => {
-      if (data.roles?.length) setRoles(data.roles.map(role => ({ ...role, permissions: { ...DEFAULT_MODULE_PERMISSIONS, dashboard: true, ...role.permissions, ...(role.name?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'administrador' ? Object.fromEntries(MODULE_PERMISSIONS.map(([key]) => [key, true])) : {}) } })))
+      if (data.roles?.length) setRoles(data.roles.map(role => { const roleName = role.name?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); return { ...role, permissions: { ...DEFAULT_MODULE_PERMISSIONS, dashboard: true, weekly: role.permissions?.weekly ?? ['administrador', 'usuario', 'coordinador'].includes(roleName), ...role.permissions, ...(roleName === 'administrador' ? Object.fromEntries(MODULE_PERMISSIONS.map(([key]) => [key, true])) : {}) } } }))
       if (data.employees?.length) setEmployees(data.employees)
       if (data.services?.length) setServices(data.services)
       if (Array.isArray(data.history)) setHistory(data.history)
       if (data.customers?.length) setCustomers(data.customers)
       if (data.agenda?.teams?.length) { setTeams(data.agenda.teams); setDate(data.agenda.date || date) }
+      if (data.agenda?.weekly && typeof data.agenda.weekly === 'object') setWeekly(data.agenda.weekly)
       if (data.preferences?.theme) setTheme(data.preferences.theme)
     }).catch(() => setNotice('No se pudo conectar con la base de datos local.')).finally(() => setDatabaseReady(true))
   }, [authUser])
@@ -218,17 +255,35 @@ export default function App() {
     if (!databaseReady || !authUser || authUser.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'tecnico') return
     const timer = setTimeout(() => fetch('/api/state', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roles, employees, services, history, customers, agenda: { date, teams }, preferences: { theme } })
+      body: JSON.stringify({ roles, employees, services, history, customers, agenda: { date, teams, weekly }, preferences: { theme } })
+    }).then(async response => {
+      if (response.ok) return
+      const payload = await response.json().catch(() => ({}))
+      throw new Error(payload.error || 'No se pudieron guardar los últimos cambios.')
     }).catch(() => setNotice('No se pudieron guardar los últimos cambios.')), 750)
     return () => clearTimeout(timer)
-  }, [databaseReady, authUser, roles, employees, services, history, customers, date, teams, theme])
+  }, [databaseReady, authUser, roles, employees, services, history, customers, date, teams, weekly, theme])
+  useEffect(() => {
+    // Sincronización ligera del tablero semanal. Evita recargar la página y no pisa
+    // un campo que el usuario está editando en ese momento.
+    if (!databaseReady || !authUser) return undefined
+    const refreshWeekly = () => {
+      if (document.activeElement?.closest('.weekly-board input, .weekly-board select, .weekly-board textarea')) return
+      fetch('/api/state', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(data => {
+        if (data?.agenda?.weekly && typeof data.agenda.weekly === 'object') setWeekly(previous => JSON.stringify(previous) === JSON.stringify(data.agenda.weekly) ? previous : data.agenda.weekly)
+      }).catch(() => {})
+    }
+    const timer = window.setInterval(refreshWeekly, 4000)
+    window.addEventListener('focus', refreshWeekly)
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', refreshWeekly) }
+  }, [databaseReady, authUser])
   const ask = (title, detail, action, destructive = false) => setConfirmation({ title, detail, action, destructive })
   const updateTask = (team, task, patch) => setTeams(prev => prev.map((t, ti) => ti !== team ? t : { ...t, tasks: t.tasks.map((x, i) => i !== task ? x : { ...x, ...patch }) }))
   // Sólo empleados con rol Técnico pueden integrar equipos de trabajo.
   const activeTechs = employees.filter(employee => employee.status === 'Activo' && employee.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'tecnico')
   const isAdministrator = authUser?.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'administrador'
   // Cada módulo tiene un ícono propio para facilitar el reconocimiento visual en la navegación.
-  const nav = [['dashboard', 'dashboard', 'Menú principal'], ['agenda', 'agenda', 'Agenda técnica'], ['history', 'history', 'Historial'], ['accounts', 'accounts', 'Administrador de cuentas'], ['employees', 'users', 'Empleados'], ['services', 'tools', 'Tipo de servicio'], ['settings', 'settings', 'Configuración']]
+  const nav = [['dashboard', 'dashboard', 'Menú principal'], ['weekly', 'calendar', 'Agenda semanal'], ['agenda', 'agenda', 'Agenda del día'], ['history', 'history', 'Historial'], ['accounts', 'accounts', 'Administrador de cuentas'], ['employees', 'users', 'Empleados'], ['services', 'tools', 'Tipo de servicio'], ['settings', 'settings', 'Configuración']]
   const activeRole = roles.find(role => role.name === authUser?.role)
   const modulePermissions = { ...DEFAULT_MODULE_PERMISSIONS, dashboard: true, ...activeRole?.permissions }
   if (!isAdministrator) {
@@ -237,7 +292,7 @@ export default function App() {
   useEffect(() => {
     if (!isAdministrator && !modulePermissions[module] && nav[0]) setModule(nav[0][0])
   }, [isAdministrator, module, activeRole?.id])
-  const title = { dashboard: 'Menú principal', agenda: 'Agenda técnica', history: 'Historial', accounts: 'Administrador de cuentas', employees: 'Empleados', services: 'Tipo de servicio', settings: 'Configuración', audit: 'Auditoría' }[module]
+  const title = { dashboard: 'Menú principal', weekly: 'Agenda semanal', agenda: 'Agenda del día', history: 'Historial', accounts: 'Administrador de cuentas', employees: 'Empleados', services: 'Tipo de servicio', settings: 'Configuración', audit: 'Auditoría' }[module]
   useEffect(() => {
     document.title = `${title || 'Agenda técnica'} | PIGNUS`
   }, [title])
@@ -254,7 +309,9 @@ export default function App() {
     if (authUser?.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() !== 'tecnico') {
       const clean = emptyAgenda()
       setTeams(clean.teams); setDate(clean.date); localStorage.removeItem('pignus-agenda')
-      if (databaseReady) await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roles, employees, services, history, customers, agenda: clean, preferences: { theme } }) }).catch(() => {})
+      // Sólo se limpia la agenda diaria de la sesión: la planificación semanal es
+      // compartida y debe permanecer disponible para el próximo ingreso.
+      if (databaseReady) await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roles, employees, services, history, customers, agenda: { ...clean, weekly }, preferences: { theme } }) }).catch(() => {})
     }
     await fetch('/api/auth/logout', { method: 'POST' }); setAuthUser(null); setDatabaseReady(false); setModule('dashboard')
   }
@@ -273,7 +330,7 @@ export default function App() {
   if (!authUser) return <Login onLogin={setAuthUser} />
   if (authUser.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'tecnico') return <TechnicianPortal user={authUser} history={history} setHistory={setHistory} logout={logout} />
   if (module === 'audit' && isAdministrator) return <AuditShell user={authUser} onNavigate={setModule} logout={logout} />
-  return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><div className="profile-menu"><button className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span></button>{profileOpen && <div className="profile-popover"><b>{authUser.name}</b><span>{authUser.email}</span><small>{authUser.role}</small></div>}</div><button className="logout-button" onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrar sesión"><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} />}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }} />}{module === 'history' && <History history={history} setHistory={setHistory} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
+  return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><div className="profile-menu"><button className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span></button>{profileOpen && <div className="profile-popover"><b>{authUser.name}</b><span>{authUser.email}</span><small>{authUser.role}</small></div>}</div><button className="logout-button" onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrar sesión"><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} />}{module === 'weekly' && <WeeklyPlanner weekly={weekly} setWeekly={setWeekly} customers={customers} services={services} activeTechs={activeTechs} setNotice={setNotice} openDaily={(nextDate, nextTeams) => { setDate(nextDate); setTeams(nextTeams); setModule('agenda') }} />}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }} />}{module === 'history' && <History history={history} setHistory={setHistory} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} />}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }} />}{module === 'history' && <History history={history} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }} />}{module === 'history' && <History history={history} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, updateTask, setNotice }} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
@@ -332,6 +389,7 @@ function AgendaWorkspace({ date, setDate, teams, setTeams, activeTechs, customer
       if (!task.time) fields.push('hora')
       if (!task.service) fields.push('tipo de servicio')
       if (!task.client) fields.push('cliente o cuenta')
+      if (!task.address) fields.push('dirección')
       if (task.service === 'Instalación de alarma' && !task.installationZone) fields.push('ubicación de la instalación')
       if (fields.length) missing.push(`Equipo ${teamIndex + 1}, servicio ${taskIndex + 1}: ${fields.join(', ')}`)
     }))
@@ -444,6 +502,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       if (!task.time) fields.push('hora')
       if (!task.service) fields.push('tipo de servicio')
       if (!task.client) fields.push('cliente o cuenta')
+      if (!task.address) fields.push('dirección')
       if (task.service === 'Instalación de alarma' && !task.installationZone) fields.push('ubicación de la instalación')
       if (fields.length) missing.push(`Equipo ${teamIndex + 1}, servicio ${taskIndex + 1}: ${fields.join(', ')}`)
     }))
@@ -501,6 +560,141 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   const toggleTech = (teamIndex, name) => setTeams(previous => previous.map((team, index) => index !== teamIndex ? team : { ...team, members: team.members.includes(name) ? team.members.filter(member => member !== name) : [...team.members, name] }))
   const customerChange = (teamIndex, taskIndex, value) => { const customer = customers.find(item => item.account === value || item.name === value || `${item.name} · ${item.account}` === value || `${item.account} ${item.name}` === value); updateTask(teamIndex, taskIndex, customer ? { client: `${customer.account} ${customer.name}`, clientAccount: customer.account, clientNameAtService: customer.name, address: customer.address, phone: customer.phone } : { client: value, clientAccount: '', clientNameAtService: '' }) }
   return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setConfirmation('clear')}><Icon name="trash" />Limpiar agenda</button><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button><button className="primary" onClick={() => { navigator.clipboard?.writeText(message); clearAgenda() }}><Icon name="copy" />Copiar agenda</button></div></div><div className="agenda-toolbar"><label>Fecha de trabajo<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, teamIndex) => <article className="team-card" key={teamIndex}><div className="team-header"><div><span className="team-number">{teamIndex + 1}</span><strong>Equipo {teamIndex + 1}</strong>{teams.length > 1 && <button className="team-delete" onClick={() => setConfirmation({ type: 'team', index: teamIndex })}><Icon name="trash" size={16} />Eliminar equipo</button>}</div><div className="technicians-picker"><span>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</span><button className="secondary small" onClick={() => { setTechOpen(techOpen === teamIndex ? null : teamIndex); setFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === teamIndex && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={filter} onChange={event => setFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(filter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={team.members.includes(tech.name)} onChange={() => toggleTech(teamIndex, tech.name)} />{tech.name}</label>)}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, taskIndex) => <div className="task-row" key={taskIndex}><div className="task-title"><span>{taskIndex + 1}</span><b>Servicio</b></div><label>Hora<input type="time" value={task.time} onChange={event => updateTask(teamIndex, taskIndex, { time: event.target.value })} /></label><label>Tipo de servicio<select value={task.service} onChange={event => updateTask(teamIndex, taskIndex, { service: event.target.value, installationZone: event.target.value === 'Instalación de alarma' ? task.installationZone : '' })}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id}>{service.name}</option>)}</select></label><label>Cliente o cuenta<input list="customer-options" value={task.client} onChange={event => customerChange(teamIndex, taskIndex, event.target.value)} /><datalist id="customer-options">{customers.map(customer => <option key={customer.account} value={`${customer.name} · ${customer.account}`} />)}</datalist></label><label>Dirección<input value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label>Contacto<input value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations">Observaciones<textarea value={task.detail} onChange={event => updateTask(teamIndex, taskIndex, { detail: event.target.value })} /></label>{task.service === 'Instalación de alarma' && <fieldset className="installation-zone"><legend>Ubicación de la instalación</legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => updateTask(teamIndex, taskIndex, { installationZone: value })} />{label}</label>)}</fieldset>}{team.tasks.length > 1 && <button className="icon-btn delete" onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.filter((_, index) => index !== taskIndex) }))}><Icon name="trash" size={16} /></button>}</div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
+}
+
+/**
+ * Planificador semanal: es el espacio de preparación previa. Sus tarjetas no
+ * impactan en el Historial hasta que el operador abre y guarda la agenda diaria.
+ */
+function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, setNotice, openDaily }) {
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const [anchor, setAnchor] = useState(today)
+  const [monthlySetup, setMonthlySetup] = useState(null)
+  const [techPicker, setTechPicker] = useState(null)
+  const [techFilter, setTechFilter] = useState('')
+  const [taskEditor, setTaskEditor] = useState(null)
+  const activeServices = services.filter(service => service.status === 'Activo')
+  const monthKey = anchor.slice(0, 7)
+  const monthlyTeams = weekly._monthlyTeams || {}
+  const previousMonthKey = (() => { const value = new Date(`${monthKey}-01T12:00:00`); value.setMonth(value.getMonth() - 1); return value.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).slice(0, 7) })()
+  const baseTeams = monthlyTeams[monthKey]?.teams
+  const createTeam = (index, source) => ({ members: source?.members || [], tasks: [{ ...blankTask(), time: '08:30' }, { ...blankTask(), time: '13:00' }], label: source?.label || `Equipo ${index + 1}` })
+  const createDay = day => ({ teams: (monthlyTeams[day.slice(0, 7)]?.teams || [null, null, null]).map((team, index) => createTeam(index, team)) })
+  const monday = useMemo(() => {
+    const value = new Date(`${anchor}T12:00:00`)
+    value.setDate(value.getDate() - ((value.getDay() + 6) % 7))
+    return value
+  }, [anchor])
+  const days = useMemo(() => Array.from({ length: 7 }, (_, index) => {
+    const value = new Date(monday)
+    value.setDate(monday.getDate() + index)
+    return value.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+  }), [monday])
+  const dayPlan = day => weekly[day] || createDay(day)
+  const updateDay = (day, mutate) => setWeekly(previous => ({ ...previous, [day]: mutate(previous[day] || createDay(day)) }))
+  const updateTeam = (day, teamIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, ...patch } : team) }))
+  const toggleWeeklyTech = (day, teamIndex, name) => {
+    const currentMembers = dayPlan(day).teams[teamIndex]?.members || []
+    updateTeam(day, teamIndex, { members: currentMembers.includes(name) ? currentMembers.filter(member => member !== name) : [...currentMembers, name] })
+  }
+  const updateTask = (day, teamIndex, taskIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index !== teamIndex ? team : { ...team, tasks: team.tasks.map((task, index) => index === taskIndex ? { ...task, ...patch } : task) }) }))
+  const addTeam = day => updateDay(day, plan => ({ ...plan, teams: [...plan.teams, createTeam(plan.teams.length)] }))
+  const hoursForDay = day => {
+    const weekDay = new Date(`${day}T12:00:00`).getDay()
+    if (weekDay === 0) return null
+    return { min: '08:00', max: weekDay === 5 ? '20:00' : weekDay === 6 ? '12:00' : '17:00', label: weekDay === 5 ? '08:00 a 20:00' : weekDay === 6 ? '08:00 a 12:00' : '08:00 a 17:00' }
+  }
+  const conflictsForDay = day => {
+    const bookings = new Map()
+    dayPlan(day).teams.forEach((team, teamIndex) => team.tasks.filter(task => task.time).forEach(task => (team.members || []).forEach(name => {
+      const key = `${name}-${task.time}`
+      bookings.set(key, [...(bookings.get(key) || []), teamIndex + 1])
+    })))
+    return [...bookings.entries()].filter(([, assignedTeams]) => new Set(assignedTeams).size > 1).map(([key, assignedTeams]) => ({ name: key.slice(0, key.lastIndexOf('-')), time: key.slice(key.lastIndexOf('-') + 1), teams: [...new Set(assignedTeams)] }))
+  }
+  const selectCustomer = (day, teamIndex, taskIndex, value) => {
+    const customer = customers.find(item => item.account === value || item.name === value || `${item.account} ${item.name}` === value)
+    updateTask(day, teamIndex, taskIndex, customer ? { client: `${customer.account} ${customer.name}`, clientAccount: customer.account, clientNameAtService: customer.name, address: customer.address, phone: customer.phone } : { client: value })
+  }
+  const addTask = (day, teamIndex) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, tasks: [...team.tasks, { ...blankTask(), time: '' }] } : team) }))
+  const suggestedMonthlyTeams = () => (monthlyTeams[previousMonthKey]?.teams || [null, null, null]).map((team, index) => ({ label: team?.label || `Equipo ${index + 1}`, members: team?.members || [] }))
+  const openMonthlySetup = () => setMonthlySetup({ month: monthKey, teams: baseTeams ? baseTeams.map(team => ({ label: team.label, members: team.members || [] })) : suggestedMonthlyTeams() })
+  const updateMonthlyTeam = (index, members) => setMonthlySetup(previous => ({ ...previous, teams: previous.teams.map((team, teamIndex) => teamIndex === index ? { ...team, members } : team) }))
+  const addMonthlyTeam = () => setMonthlySetup(previous => ({ ...previous, teams: [...previous.teams, { label: `Equipo ${previous.teams.length + 1}`, members: [] }] }))
+  const saveMonthlySetup = () => {
+    setWeekly(previous => ({ ...previous, _monthlyTeams: { ...(previous._monthlyTeams || {}), [monthlySetup.month]: { teams: monthlySetup.teams } } }))
+    setMonthlySetup(null)
+    setNotice(`Los equipos predeterminados de ${new Date(`${monthKey}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} fueron guardados.`)
+  }
+  useEffect(() => {
+    // Al comenzar un nuevo mes se solicita confirmar la rotación del equipo.
+    if (!monthlyTeams[monthKey] && monthlySetup?.month !== monthKey) setMonthlySetup({ month: monthKey, teams: suggestedMonthlyTeams() })
+  }, [monthKey, monthlyTeams[monthKey]])
+  const openDay = day => {
+    const hours = hoursForDay(day)
+    if (!hours) { setNotice('Los domingos no están habilitados para programar servicios.'); return }
+    const invalidTime = dayPlan(day).teams.flatMap(team => team.tasks).find(task => task.time && (task.time < hours.min || task.time > hours.max))
+    if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
+    const scheduledTasks = dayPlan(day).teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, teamIndex, taskIndex }))).filter(({ task }) => [task.service, task.client, task.address, task.detail, task.phone, task.paymentMethod, task.monthlyFee, task.form].some(value => String(value || '').trim()))
+    const incompleteTask = scheduledTasks.find(({ task }) => !task.time || !task.service || !task.client || !task.address || !task.detail)
+    if (incompleteTask) {
+      const { task, teamIndex, taskIndex } = incompleteTask
+      const missing = [['hora', task.time], ['tipo de servicio', task.service], ['cliente', task.client], ['dirección', task.address], ['detalle', task.detail]].filter(([, value]) => !String(value || '').trim()).map(([label]) => label)
+      setNotice(`Completá los campos obligatorios de Equipo ${teamIndex + 1}, tarjeta ${taskIndex + 1}: ${missing.join(', ')}.`)
+      return
+    }
+    const conflicts = conflictsForDay(day)
+    if (conflicts.length) { setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`); return }
+    const teams = dayPlan(day).teams.map(({ members, tasks }) => ({ members, tasks }))
+    openDaily(day, teams)
+    setNotice(`Se cargó la planificación semanal del ${prettyDate(day)} en la agenda técnica.`)
+  }
+  const displayDate = day => new Date(`${day}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).replace('.', '')
+  return <>
+    {techPicker && <button className="picker-backdrop" aria-label="Cerrar selector de técnicos" onClick={() => setTechPicker(null)} />}
+    {monthlySetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setMonthlySetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de {new Date(`${monthlySetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Estos técnicos se asignarán por defecto a cada nuevo día del mes. Las agendas ya cargadas no se modifican.</p><div className="monthly-team-list">{monthlySetup.teams.map((team, index) => <label key={index}><b>{team.label || `Equipo ${index + 1}`}</b><select multiple value={team.members} onChange={event => updateMonthlyTeam(index, [...event.target.selectedOptions].map(option => option.value))}>{activeTechs.map(tech => <option key={tech.id} value={tech.name}>{tech.name}</option>)}</select><small>Mantené presionada la tecla Ctrl para seleccionar más de un técnico.</small></label>)}</div><button className="secondary monthly-add-team" onClick={addMonthlyTeam}><Icon name="plus" size={15} />Agregar equipo</button><div className="modal-actions"><button className="secondary" onClick={() => setMonthlySetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlySetup}>Guardar equipos del mes</button></div></section></div>}
+    <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Prepará las visitas de cada equipo y luego abrí el día para terminar de validar y guardar la agenda del día.</p></div><div className="weekly-actions"><button className="secondary" onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button><label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
+    <div className="weekly-guide"><Icon name="calendar" size={18} /><span>La semana inicia con <b>3 equipos</b> y dos turnos por equipo: <b>08:30</b> y <b>13:00</b>. Lun–jue 08:00–17:00 · Vie 08:00–20:00 · Sáb 08:00–12:00.</span></div>
+    {taskEditor && (() => {
+      const { day, teamIndex, taskIndex } = taskEditor
+      const task = dayPlan(day).teams[teamIndex]?.tasks[taskIndex]
+      const hours = hoursForDay(day)
+      if (!task || !hours) return null
+      const customerListId = `weekly-customers-editor-${day}-${teamIndex}-${taskIndex}`
+      return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskEditor(null)}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button className="modal-close" onClick={() => setTaskEditor(null)}><Icon name="close" /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>Servicio {taskIndex + 1}</h2><p className="weekly-modal-team">{dayPlan(day).teams[teamIndex]?.label || `Equipo ${teamIndex + 1}`} · {dayPlan(day).teams[teamIndex]?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label>Hora <b>*</b><input type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTask(day, teamIndex, taskIndex, { time: event.target.value })} /></label><label>Tipo de servicio <b>*</b><select value={task.service} onChange={event => updateTask(day, teamIndex, taskIndex, { service: event.target.value })}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.name}>{service.name}</option>)}</select></label></div><label>Cliente o cuenta <b>*</b><input list={customerListId} placeholder="Buscá por nombre o cuenta" value={task.client} onChange={event => selectCustomer(day, teamIndex, taskIndex, event.target.value)} /></label><datalist id={customerListId}>{customers.map(customer => <option key={customer.account} value={`${customer.account} ${customer.name}`} />)}</datalist><label>Dirección <b>*</b><input value={task.address} onChange={event => updateTask(day, teamIndex, taskIndex, { address: event.target.value })} /></label><label>Contacto<input value={task.phone} onChange={event => updateTask(day, teamIndex, taskIndex, { phone: event.target.value })} /></label><label>Detalle <b>*</b><textarea value={task.detail} onChange={event => updateTask(day, teamIndex, taskIndex, { detail: event.target.value })} /></label><div className="weekly-extra-fields"><label>Forma de pago<input value={task.paymentMethod} onChange={event => updateTask(day, teamIndex, taskIndex, { paymentMethod: event.target.value })} /></label><label>Abono mensual<input value={task.monthlyFee} onChange={event => updateTask(day, teamIndex, taskIndex, { monthlyFee: event.target.value })} /></label><label>Formulario<input value={task.form} onChange={event => updateTask(day, teamIndex, taskIndex, { form: event.target.value })} /></label></div></div><div className="modal-actions"><button className="secondary" onClick={() => setTaskEditor(null)}>Cancelar</button><button className="primary" onClick={() => { setTaskEditor(null); setNotice(`Servicio ${taskIndex + 1} actualizado.`) }}><Icon name="check" size={16} />Guardar servicio</button></div></section></div>
+    })()}
+    <div className="weekly-board">
+      {days.map(day => {
+        const plan = dayPlan(day)
+        const hours = hoursForDay(day)
+        const conflicts = conflictsForDay(day)
+        return <section className={`week-day ${!hours ? 'closed-day' : ''}`} key={day}>
+          <header><div><b>{displayDate(day)}</b><small>{!hours ? 'No operativo' : day === today ? 'Hoy' : prettyDate(day)}</small></div><button className="secondary small" disabled={!hours} onClick={() => openDay(day)}>Abrir día</button></header>
+          {!hours ? <p className="closed-day-note">Domingo · sin programación</p> : <>
+            <small className="weekly-hours">Horario habilitado: {hours.label}</small>
+            {conflicts.length > 0 && <p className="weekly-conflict">Conflicto: {conflicts.map(item => `${item.name} ${item.time}`).join(', ')}</p>}
+            <div className="week-teams">{plan.teams.map((team, teamIndex) => {
+              const pickerKey = `${day}-${teamIndex}`
+              return <article className="week-team" key={teamIndex}>
+                <div className="week-team-header"><strong>{team.label || `Equipo ${teamIndex + 1}`}</strong><div className="weekly-technicians-picker"><span>{team.members?.length ? `${team.members.length} técnico(s)` : 'Sin técnicos'}</span><button className="secondary small" onClick={() => { setTechPicker(techPicker === pickerKey ? null : pickerKey); setTechFilter('') }}><Icon name="users" size={15} />Agregar técnicos</button>{techPicker === pickerKey && <div className="tech-popover weekly-tech-popover"><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={event => setTechFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(techFilter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={(team.members || []).includes(tech.name)} onChange={() => toggleWeeklyTech(day, teamIndex, tech.name)} />{tech.name}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div></div>}</div></div>
+                {team.tasks.map((task, taskIndex) => <div className="week-task week-task-summary" key={taskIndex} role="button" tabIndex={0} onClick={() => setTaskEditor({ day, teamIndex, taskIndex })} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setTaskEditor({ day, teamIndex, taskIndex }) } }}>
+                  <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><small>{task.time || '--:--'} Hs</small></div><strong className="week-task-client">{task.client || 'Cliente pendiente'}</strong>
+                  <div className="week-task-top"><label>Hora <b>*</b><input type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTask(day, teamIndex, taskIndex, { time: event.target.value })} /></label><label>Tipo de servicio <b>*</b><select value={task.service} onChange={event => updateTask(day, teamIndex, taskIndex, { service: event.target.value })}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.name}>{service.name}</option>)}</select></label></div>
+                  <label>Cliente o cuenta <b>*</b><input list={`weekly-customers-${day}`} placeholder="Buscá por nombre o cuenta" value={task.client} onChange={event => selectCustomer(day, teamIndex, taskIndex, event.target.value)} /></label><datalist id={`weekly-customers-${day}`}>{customers.map(customer => <option key={customer.account} value={`${customer.account} ${customer.name}`} />)}</datalist>
+                  <label>Dirección <b>*</b><input value={task.address} onChange={event => updateTask(day, teamIndex, taskIndex, { address: event.target.value })} /></label>
+                  <label>Contacto<input value={task.phone} onChange={event => updateTask(day, teamIndex, taskIndex, { phone: event.target.value })} /></label>
+                  <label>Detalle <b>*</b><textarea value={task.detail} onChange={event => updateTask(day, teamIndex, taskIndex, { detail: event.target.value })} /></label>
+                  <div className="weekly-extra-fields"><label>Forma de pago<input value={task.paymentMethod} onChange={event => updateTask(day, teamIndex, taskIndex, { paymentMethod: event.target.value })} /></label><label>Abono mensual<input value={task.monthlyFee} onChange={event => updateTask(day, teamIndex, taskIndex, { monthlyFee: event.target.value })} /></label><label>Formulario<input value={task.form} onChange={event => updateTask(day, teamIndex, taskIndex, { form: event.target.value })} /></label></div>
+                </div>)}
+                <button className="weekly-add-task" onClick={() => addTask(day, teamIndex)}><Icon name="plus" size={15} />Agregar servicio</button>
+              </article>
+            })}</div>
+            <button className="weekly-add-team" onClick={() => addTeam(day)}><Icon name="plus" size={16} />Agregar otro equipo</button>
+          </>}
+        </section>
+      })}
+    </div>
+  </>
 }
 
 function Dashboard({ history }) {

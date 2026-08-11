@@ -1,0 +1,211 @@
+/* Sistema visual transversal: mantiene coherencia entre módulos, formularios y modales. */
+:root {
+  --ui-radius: 10px;
+  --ui-radius-sm: 8px;
+  --ui-border: #ccdaca;
+  --ui-border-strong: #b8cdbb;
+  --ui-surface: #ffffff;
+  --ui-surface-soft: #f4f8f3;
+  --ui-text: #193929;
+  --ui-muted: #66796b;
+  --ui-focus: rgba(204, 147, 16, .18);
+}
+
+/* Controles de ingreso: altura, borde y foco uniformes sin afectar checks ni radios. */
+.content :is(input, select, textarea):not([type='checkbox']):not([type='radio']),
+.modal :is(input, select, textarea):not([type='checkbox']):not([type='radio']),
+.login-card :is(input, select, textarea):not([type='checkbox']):not([type='radio']) {
+  min-height: 42px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  box-shadow: 0 1px 2px rgba(21, 52, 35, .035);
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
+
+.content textarea,
+.modal textarea,
+.login-card textarea {
+  min-height: 82px;
+  line-height: 1.4;
+}
+
+.content :is(input, select, textarea):focus-visible,
+.modal :is(input, select, textarea):focus-visible,
+.login-card :is(input, select, textarea):focus-visible {
+  border-color: #bc890c;
+  box-shadow: 0 0 0 3px var(--ui-focus);
+  outline: none;
+}
+
+/* Botones con una grilla consistente para icono + texto. */
+:is(.primary, .secondary, .danger-button, .detail-button, .logout-button, .icon-btn, .link-button, .save, .all-alarms-export, .monthly-add-team, .weekly-add-task) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  border-radius: var(--ui-radius-sm);
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease;
+}
+
+:is(.primary, .secondary, .danger-button, .detail-button, .logout-button, .icon-btn, .link-button, .save, .all-alarms-export, .monthly-add-team, .weekly-add-task):hover {
+  transform: translateY(-1px);
+}
+
+:is(.primary, .secondary, .danger-button, .detail-button, .logout-button, .icon-btn, .link-button, .save, .all-alarms-export, .monthly-add-team, .weekly-add-task):focus-visible,
+.permission:focus-within {
+  outline: 3px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+:is(.primary, .secondary, .danger-button, .detail-button, .logout-button, .icon-btn, .link-button, .save, .all-alarms-export, .monthly-add-team, .weekly-add-task) svg {
+  flex: 0 0 auto;
+}
+
+.secondary,
+.detail-button,
+.icon-btn {
+  border-color: var(--ui-border-strong);
+  background: #fff;
+}
+
+.secondary:hover,
+.detail-button:hover,
+.icon-btn:hover {
+  border-color: #aa861d;
+  background: #fffdf6;
+}
+
+.primary,
+.save {
+  box-shadow: 0 3px 8px rgba(155, 109, 8, .16);
+}
+
+.danger-button,
+.delete {
+  box-shadow: 0 2px 6px rgba(160, 57, 50, .12);
+}
+
+/* Etiquetas y agrupaciones de campos más legibles. */
+.content label,
+.modal label,
+.employee-form label,
+.customer-form label,
+.service-form label,
+.role-editor label {
+  color: #4c6654;
+  line-height: 1.25;
+}
+
+.employee-form,
+.customer-form,
+.service-form,
+.role-editor,
+.history-toolbar,
+.history-date-filters,
+.agenda-toolbar,
+.installation-zone {
+  border-radius: var(--ui-radius);
+}
+
+/* Checks y switches conservan tamaño cómodo y clara interacción. */
+input[type='checkbox'],
+input[type='radio'] {
+  inline-size: 17px;
+  block-size: 17px;
+  accent-color: #1e7248;
+  vertical-align: middle;
+}
+
+.permission {
+  min-height: 70px;
+  transition: background .16s ease;
+}
+
+.permission:hover {
+  background: #f6faf5;
+}
+
+/* Modales: contenido legible, acciones separadas y cierre fácil de localizar. */
+:is(.modal, .confirm-modal, .detail-modal, .bulk-modal, .alarm-details-modal, .dashboard-insight-modal, .audit-modal) {
+  border: 1px solid rgba(215, 228, 215, .95);
+  border-radius: 16px;
+  box-shadow: 0 20px 55px rgba(7, 28, 17, .28);
+}
+
+:is(.modal, .confirm-modal, .detail-modal, .bulk-modal, .alarm-details-modal, .dashboard-insight-modal, .audit-modal) :is(.modal-close, .close-modal) {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+}
+
+:is(.modal, .confirm-modal, .detail-modal, .bulk-modal, .alarm-details-modal, .dashboard-insight-modal, .audit-modal) :is(.modal-close, .close-modal):hover {
+  background: #f3f7f2;
+}
+
+.modal-actions,
+.confirm-actions,
+.action-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+/* Tablas y tarjetas: separaciones suaves, sin alterar su contenido funcional. */
+:is(.data-card, .history-table, .employees-table, .services-table, .accounts-table, .audit-table) {
+  border-color: #d7e4d7;
+  box-shadow: 0 1px 2px rgba(15, 45, 28, .025);
+}
+
+:is(.employee-row, .service-row, .account-row, .history-row, .audit-row, .dashboard-row) {
+  transition: background .15s ease;
+}
+
+:is(.employee-row, .service-row, .account-row, .history-row, .audit-row, .dashboard-row):hover {
+  background: #fbfdf9;
+}
+
+body.dark .content :is(input, select, textarea):not([type='checkbox']):not([type='radio']),
+body.dark .modal :is(input, select, textarea):not([type='checkbox']):not([type='radio']),
+body.dark .login-card :is(input, select, textarea):not([type='checkbox']):not([type='radio']) {
+  border-color: #47624f;
+  background: #172b20;
+  color: #edf8ef;
+}
+
+body.dark .secondary,
+body.dark .detail-button,
+body.dark .icon-btn {
+  border-color: #48634f;
+  background: #183023;
+}
+
+body.dark .permission:hover,
+body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-row, .dashboard-row):hover {
+  background: #1b3023;
+}
+
+@media (max-width: 640px) {
+  :is(.primary, .secondary, .danger-button, .detail-button, .logout-button, .save) {
+    min-height: 44px;
+  }
+
+  .modal-actions,
+  .confirm-actions,
+  .action-group {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .modal-actions > button,
+  .confirm-actions > button,
+  .action-group > button {
+    width: 100%;
+  }
+}
