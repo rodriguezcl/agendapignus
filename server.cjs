@@ -52,6 +52,33 @@ function normalizeHistoryTechnicians(records = []) {
   })
 }
 
+// Una agenda puede haberse importado históricamente y luego guardarse desde la
+// operación diaria. Para evitar duplicados, la versión operativa (con equipo y
+// horario) prevalece sobre la copia de importación del mismo cliente, fecha y servicio.
+function historyAccountKey(record = {}) {
+  return String(record.clientAccount || record.account || String(record.client || '').trim().split(' ')[0] || '').trim().toUpperCase()
+}
+
+function historyServiceKey(record = {}) {
+  return String(record.service || '').toLowerCase().replace(/nueva/g, '').replace(/\s+/g, ' ').trim()
+}
+
+function removeImportedHistoryDuplicates() {
+  const records = rows('work_history')
+  const operationalKeys = new Set(records.filter(record => !String(record.id || '').startsWith('import-')).map(record => `${record.date}|${historyAccountKey(record)}|${historyServiceKey(record)}`))
+  const redundantIds = records
+    .filter(record => String(record.id || '').startsWith('import-'))
+    .filter(record => {
+      const account = historyAccountKey(record)
+      return account && operationalKeys.has(`${record.date}|${account}|${historyServiceKey(record)}`)
+    })
+    .map(record => String(record.id))
+
+  const remove = db.prepare('DELETE FROM work_history WHERE id = ?')
+  redundantIds.forEach(id => remove.run(id))
+  return redundantIds.length
+}
+
 if (fs.existsSync(historicalImportPath)) {
   db.exec("DELETE FROM work_history WHERE id LIKE 'import-%'")
   const insertHistory = db.prepare('INSERT INTO work_history (id, data) VALUES (?, ?)')
@@ -60,6 +87,8 @@ if (fs.existsSync(historicalImportPath)) {
     insertHistory.run(String(record.id), JSON.stringify(record))
   }
 }
+
+removeImportedHistoryDuplicates()
 
 function rows(table) {
   return db.prepare(`SELECT data FROM ${table} ORDER BY rowid`).all().map(row => JSON.parse(row.data))
