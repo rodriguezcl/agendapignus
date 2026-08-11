@@ -515,7 +515,7 @@ function AgendaWorkspace({ date, setDate, teams, setTeams, activeTechs, customer
   }
   const registerHistory = () => {
     if (!validateAgenda()) return false
-    const records = teams.flatMap((team, teamIndex) => team.tasks.filter(task => task.service || task.client).map((task, taskIndex) => ({ id: `${date}-${teamIndex}-${taskIndex}-${task.time}-${task.client}-${task.service}`, date, team: `Equipo ${teamIndex + 1}`, technicians: team.members, service: task.service || 'Sin especificar', client: task.client || 'Sin especificar', detail: task.detail, address: task.address, phone: task.phone })))
+    const records = teams.flatMap((team, teamIndex) => team.tasks.filter(task => task.service || task.client).map((task, taskIndex) => ({ id: `${date}-${teamIndex}-${taskIndex}-${task.time}-${task.client}-${task.service}`, date, team: `Equipo ${teamIndex + 1}`, technicians: team.members, service: task.service || 'Sin especificar', client: task.client || 'Sin especificar', detail: task.detail, address: task.address, phone: task.phone, status: 'Pendiente' })))
     setHistory(previous => [...records.filter(record => !previous.some(item => item.id === record.id)), ...previous])
     return true
   }
@@ -708,7 +708,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
         const existing = previous.find(item => item.id === record.id || (
           item.date === record.date && accountKey(item) && accountKey(item) === accountKey(record) && serviceKey(item) === serviceKey(record)
         ))
-        return existing ? { ...existing, ...record, id: existing.id } : record
+        return existing ? { ...existing, ...record, id: existing.id } : { ...record, status: 'Pendiente' }
       })
       const replacedIds = new Set(replacements.map(record => record.id))
       return [...replacements, ...previous.filter(record => !replacedIds.has(record.id))]

@@ -193,3 +193,15 @@ test('rechaza cuerpos excesivos sin derribar la API', async () => {
   assert.equal(response.status, 400)
   assert.equal((await api('/api/state')).status, 401)
 })
+
+test('normaliza como pendiente un servicio nuevo sin estado', async () => {
+  const cookie = await login('qa-admin@pignus.test')
+  const current = await state(cookie)
+  const source = current.history[0]
+  const id = `qa-history-without-status-${Date.now()}`
+  current.history.unshift({ ...source, id, status: undefined })
+  const response = await api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(current) })
+  assert.equal(response.status, 200)
+  const saved = await state(cookie)
+  assert.equal(saved.history.find(record => record.id === id).status, 'Pendiente')
+})
