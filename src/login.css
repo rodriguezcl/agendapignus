@@ -1,0 +1,47 @@
+/* Control de visibilidad de contraseña: mantiene el campo legible y el botón accesible. */
+.password-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.login-card .password-field input {
+  width: 100%;
+  padding-right: 96px;
+}
+
+.password-visibility {
+  position: absolute;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 7px;
+  background: transparent;
+  color: #476252;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.password-visibility:hover {
+  background: #edf4ee;
+  color: #173626;
+}
+
+.password-visibility:focus-visible {
+  outline: 2px solid #b8880b;
+  outline-offset: 1px;
+}
+
+body.dark .password-visibility {
+  color: #b9cfbf;
+}
+
+body.dark .password-visibility:hover {
+  background: #244434;
+  color: #fff;
+}

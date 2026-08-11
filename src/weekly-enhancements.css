@@ -1,0 +1,695 @@
+/* Reglas visuales adicionales para el tablero semanal. */
+.weekly-board .closed-day {
+  background: #f1f3f1;
+  opacity: 0.78;
+}
+
+.closed-day-note {
+  margin: 0;
+  padding: 26px 14px;
+  color: #6d796e;
+  text-align: center;
+  font-size: 0.86rem;
+}
+
+.weekly-hours {
+  display: block;
+  padding: 8px 12px 0;
+  color: #6d806f;
+  font-size: 0.72rem;
+}
+
+.weekly-conflict {
+  margin: 8px 10px 0;
+  padding: 8px 9px;
+  border-radius: 7px;
+  background: #fde8e6;
+  color: #a73932;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.weekly-add-team {
+  display: flex;
+  width: calc(100% - 20px);
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 4px 10px 10px;
+  padding: 10px;
+  border: 1px dashed #bfcfbe;
+  border-radius: 8px;
+  background: transparent;
+  color: #756900;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.weekly-add-team:hover {
+  background: #fff8e1;
+}
+
+/* Tarjetas semanales: misma jerarquía visual que los formularios del sistema. */
+.weekly-board {
+  padding: 2px 2px 18px;
+}
+
+.weekly-board .week-day {
+  box-shadow: 0 8px 22px rgba(31, 65, 43, 0.06);
+}
+
+.weekly-board .week-day > header {
+  min-height: 54px;
+}
+
+.weekly-board .week-team {
+  border-radius: 11px;
+  box-shadow: 0 3px 10px rgba(26, 62, 39, 0.04);
+}
+
+.weekly-board .week-team-header {
+  min-height: 42px;
+  padding: 9px 11px;
+}
+
+.week-task {
+  position: relative;
+  gap: 9px;
+  padding: 12px;
+  background: #fff;
+}
+
+.week-task-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: -2px 0 1px;
+}
+
+.week-task-title span {
+  color: #244b36;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.week-task-title small {
+  color: #819084;
+  font-size: 0.68rem;
+}
+
+.week-task > label,
+.week-task-top > label,
+.weekly-extra-fields > label {
+  gap: 5px;
+  color: #48604e;
+  letter-spacing: 0.01em;
+}
+
+.week-task input,
+.week-task select,
+.week-task textarea {
+  border-color: #cfddcf;
+  border-radius: 7px;
+  background: #fbfdfb;
+  box-shadow: none;
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.week-task input:hover,
+.week-task select:hover,
+.week-task textarea:hover {
+  border-color: #a9c2ad;
+}
+
+.week-task input:focus,
+.week-task select:focus,
+.week-task textarea:focus {
+  border-color: #2d7a4d;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(45, 122, 77, 0.12);
+  outline: 0;
+}
+
+.week-task textarea {
+  min-height: 64px;
+  line-height: 1.35;
+}
+
+.week-task-top {
+  grid-template-columns: 94px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.weekly-extra-fields {
+  padding: 9px;
+  border: 1px solid #e1e9e1;
+  border-radius: 8px;
+  background: #f5f8f4;
+}
+
+.weekly-add-task {
+  width: calc(100% - 24px);
+  justify-content: center;
+  margin: 0 12px 12px;
+  border: 1px dashed #d5dfd4;
+  border-radius: 7px;
+  background: #f8faf7;
+}
+
+.weekly-add-task:hover {
+  border-color: #c79a13;
+  background: #fff8e4;
+}
+
+/* El selector replica la interacción de Agenda del día y debe poder sobresalir
+   del equipo sin quedar recortado por la tarjeta semanal. */
+.weekly-board .week-day,
+.weekly-board .week-team {
+  overflow: visible;
+}
+
+.weekly-technicians-picker {
+  position: relative;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.weekly-technicians-picker > span {
+  color: inherit;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.weekly-tech-popover {
+  width: min(310px, calc(100vw - 42px)) !important;
+  z-index: 20;
+}
+
+.week-task > label,
+.week-task-top > label,
+.weekly-extra-fields > label {
+  display: grid;
+  gap: 4px;
+  color: #4d6353;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.week-task label b {
+  color: #c7443f;
+}
+
+.week-task > label input,
+.week-task > label textarea,
+.week-task-top label input,
+.week-task-top label select,
+.weekly-extra-fields label input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.weekly-extra-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+body.dark .week-task > label,
+body.dark .week-task-top > label,
+body.dark .weekly-extra-fields > label {
+  color: #c6dccd;
+}
+
+body.dark .weekly-board .closed-day {
+  background: #1d3025;
+}
+
+body.dark .week-task {
+  background: #11241a;
+}
+
+body.dark .week-task-title span {
+  color: #e4efe5;
+}
+
+body.dark .week-task-title small {
+  color: #a5b7a8;
+}
+
+body.dark .week-task input,
+body.dark .week-task select,
+body.dark .week-task textarea {
+  background: #14291d;
+  border-color: #405c4a;
+}
+
+body.dark .weekly-extra-fields,
+body.dark .weekly-add-task {
+  background: #1a3022;
+  border-color: #405a48;
+}
+
+/* Resumen estilo Trello: la grilla semanal muestra sólo la referencia rápida.
+   El resto de los datos se edita en un modal para conservar espacio visual. */
+.week-task-summary {
+  display: block;
+  min-height: 74px;
+  cursor: pointer;
+  border-left: 3px solid #d39b0a;
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.week-task-summary:hover,
+.week-task-summary:focus-visible {
+  background: #fffdf6;
+  box-shadow: 0 5px 14px rgba(38, 68, 46, .12);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.week-task-summary > :not(.week-task-title):not(.week-task-client) {
+  display: none;
+}
+
+.week-task-summary .week-task-title {
+  margin: 0 0 7px;
+}
+
+.week-task-summary .week-task-title small {
+  color: #166447;
+  font-size: .76rem;
+  font-weight: 800;
+}
+
+.week-task-client {
+  display: block;
+  overflow: hidden;
+  color: #1d3e2a;
+  font-size: .82rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weekly-task-modal {
+  width: min(660px, calc(100vw - 32px));
+  max-height: min(84vh, 760px);
+  overflow-y: auto;
+}
+
+.weekly-modal-team {
+  margin: -4px 0 18px;
+  color: #647b6b;
+  font-size: .88rem;
+}
+
+.weekly-task-form {
+  display: grid;
+  gap: 12px;
+}
+
+.weekly-task-form > label,
+.weekly-task-form .week-task-top > label,
+.weekly-task-form .weekly-extra-fields > label {
+  display: grid;
+  gap: 5px;
+  color: #4d6353;
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+.weekly-task-form label b {
+  color: #c7443f;
+}
+
+.weekly-task-form input,
+.weekly-task-form select,
+.weekly-task-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cfddcf;
+  border-radius: 8px;
+  background: #fbfdfb;
+  padding: 10px 11px;
+  color: inherit;
+  font: inherit;
+}
+
+.weekly-task-form textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.weekly-task-form input:focus,
+.weekly-task-form select:focus,
+.weekly-task-form textarea:focus {
+  border-color: #2d7a4d;
+  box-shadow: 0 0 0 3px rgba(45, 122, 77, .12);
+  outline: 0;
+}
+
+body.dark .week-task-summary:hover,
+body.dark .week-task-summary:focus-visible {
+  background: #193023;
+}
+
+body.dark .week-task-client {
+  color: #e4efe5;
+}
+
+body.dark .weekly-modal-team,
+body.dark .weekly-task-form > label,
+body.dark .weekly-task-form .week-task-top > label,
+body.dark .weekly-task-form .weekly-extra-fields > label {
+  color: #c6dccd;
+}
+
+body.dark .weekly-task-form input,
+body.dark .weekly-task-form select,
+body.dark .weekly-task-form textarea {
+  background: #14291d;
+  border-color: #405c4a;
+  color: #edf7ef;
+}
+
+/* Los modales semanales se posicionan sobre la ventana, no dentro del tablero. */
+.modal-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow-y: auto;
+  background: rgba(6, 24, 14, .58);
+}
+
+.weekly-editor-backdrop .weekly-task-modal {
+  margin: auto;
+}
+
+/* Menú compacto: conserva los íconos y gana superficie para tableros y tablas. */
+.sidebar-collapse-toggle {
+  position: absolute;
+  z-index: 8;
+  top: 16px;
+  left: 100%;
+  transform: translateX(-50%);
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid #54705e;
+  border-radius: 50%;
+  background: #1b412d;
+  color: #fff;
+  box-shadow: 0 3px 9px rgba(5, 26, 14, .25);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.sidebar-collapse-toggle.is-collapsed {
+  left: 100%;
+}
+
+.sidebar-collapse-toggle:hover {
+  background: #cc9310;
+}
+
+.app-shell.sidebar-collapsed .sidebar {
+  width: 72px;
+}
+
+.app-shell.sidebar-collapsed main {
+  width: calc(100% - 72px);
+  margin-left: 72px;
+}
+
+.app-shell.sidebar-collapsed .brand {
+  justify-content: center;
+  padding: 14px 8px;
+}
+
+.app-shell.sidebar-collapsed .brand > div,
+.app-shell.sidebar-collapsed .nav-label,
+.app-shell.sidebar-collapsed .sidebar-bottom {
+  display: none;
+}
+
+.app-shell.sidebar-collapsed .brand-mark {
+  font-size: 31px;
+}
+
+.app-shell.sidebar-collapsed .sidebar nav {
+  padding: 20px 9px 0;
+}
+
+.app-shell.sidebar-collapsed .sidebar nav button {
+  justify-content: center;
+  padding: 12px 7px;
+  font-size: 0;
+}
+
+.app-shell.sidebar-collapsed .sidebar nav button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.app-shell.sidebar-collapsed .sidebar nav button::after {
+  content: attr(title);
+}
+
+/* En modo compacto se elimina el logotipo completo: así nunca queda recortado
+   y la barra mantiene el mismo ancho visual a ambos lados de cada icono. */
+@media (min-width: 641px) {
+  .sidebar.sidebar-compact {
+    width: 72px !important;
+  }
+
+  .sidebar.sidebar-compact .brand {
+    height: 66px !important;
+    min-width: 72px;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background-image: none !important;
+    border-bottom-color: #2a4737;
+    cursor: default;
+  }
+
+  .sidebar.sidebar-compact .brand > * {
+    display: none !important;
+  }
+
+  .sidebar.sidebar-compact .nav-label,
+  .sidebar.sidebar-compact .sidebar-bottom {
+    display: none !important;
+  }
+
+  .sidebar.sidebar-compact nav {
+    padding: 18px 10px 0 !important;
+  }
+
+  .sidebar.sidebar-compact nav button {
+    width: 52px !important;
+    min-height: 48px;
+    justify-content: center !important;
+    margin: 4px 0 !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+  }
+
+  .sidebar.sidebar-compact nav button span,
+  .sidebar.sidebar-compact nav button svg {
+    width: 20px !important;
+    height: 20px !important;
+    margin: 0 !important;
+  }
+
+  .app-shell.sidebar-collapsed main {
+    width: calc(100% - 72px) !important;
+    margin-left: 72px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .sidebar-collapse-toggle {
+    display: none;
+  }
+
+  .app-shell.sidebar-collapsed .sidebar {
+    width: 250px;
+  }
+
+  .app-shell.sidebar-collapsed main {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .app-shell.sidebar-collapsed .brand > div,
+  .app-shell.sidebar-collapsed .nav-label,
+  .app-shell.sidebar-collapsed .sidebar-bottom {
+    display: block;
+  }
+
+  .app-shell.sidebar-collapsed .sidebar nav button {
+    justify-content: flex-start;
+    padding: 12px 11px;
+    font-size: 16px;
+  }
+}
+
+body.dark .closed-day-note,
+body.dark .weekly-hours {
+  color: #a9bcab;
+}
+
+body.dark .weekly-conflict {
+  background: #4d2625;
+  color: #ffc4bc;
+}
+
+body.dark .weekly-add-team {
+  border-color: #48624d;
+  color: #e9c35c;
+}
+
+body.dark .weekly-add-team:hover {
+  background: #34371f;
+}
+
+.weekly-actions {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+}
+
+/* Controles de cabecera de la agenda semanal: mismo lenguaje visual que el resto de la plataforma. */
+.weekly-actions .secondary {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.weekly-actions .secondary svg {
+  flex: 0 0 auto;
+}
+
+.week-selector {
+  display: grid;
+  gap: 6px;
+  min-width: 196px;
+  color: #36513f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.week-selector input[type='date'] {
+  width: 100%;
+  min-height: 48px;
+  margin: 0;
+  padding: 0 13px;
+  border: 1px solid #c9d8ca;
+  border-radius: 9px;
+  background: #fff;
+  color: #183b2a;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  box-shadow: 0 1px 2px rgba(16, 49, 31, .04);
+}
+
+.week-selector input[type='date']:focus {
+  border-color: #b9850a;
+  box-shadow: 0 0 0 3px rgba(204, 147, 16, .16);
+}
+
+body.dark .week-selector {
+  color: #c7dacb;
+}
+
+body.dark .week-selector input[type='date'] {
+  border-color: #42614c;
+  background: #172b20;
+  color: #edf8ef;
+}
+
+.monthly-backdrop {
+  z-index: 40;
+}
+
+.monthly-teams-modal {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.monthly-teams-modal h2 {
+  margin: 4px 0 10px;
+  text-transform: capitalize;
+}
+
+.monthly-teams-modal > p:not(.eyebrow) {
+  margin: 0 0 20px;
+  color: #667568;
+}
+
+.monthly-team-list {
+  display: grid;
+  gap: 12px;
+}
+
+.monthly-team-list label {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #d8e3d7;
+  border-radius: 10px;
+  background: #f8faf7;
+}
+
+.monthly-team-list select {
+  min-height: 82px;
+}
+
+.monthly-team-list small {
+  color: #718073;
+  font-size: 0.75rem;
+}
+
+.monthly-add-team {
+  margin-top: 12px;
+}
+
+body.dark .monthly-teams-modal > p:not(.eyebrow),
+body.dark .monthly-team-list small {
+  color: #aab9ac;
+}
+
+body.dark .monthly-team-list label {
+  border-color: #405a48;
+  background: #1d3025;
+}
+
+@media (max-width: 700px) {
+  .weekly-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .weekly-actions .secondary,
+  .weekly-actions .week-selector {
+    width: 100%;
+  }
+
+  .weekly-extra-fields {
+    grid-template-columns: 1fr;
+  }
+}
