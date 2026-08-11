@@ -64,6 +64,14 @@
   flex: 0 0 auto;
 }
 
+/* Los botones con texto conservan aire lateral aun dentro de grillas estrechas. */
+:is(.primary, .secondary, .danger-button, .detail-button, .logout-button, .save):not(.small) {
+  min-inline-size: max-content;
+  padding-inline: 14px;
+  overflow: visible;
+  white-space: nowrap;
+}
+
 .secondary,
 .detail-button,
 .icon-btn {
