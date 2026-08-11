@@ -399,6 +399,81 @@ function mergeDuplicateCliCustomers() {
 }
 
 mergeDuplicateCliCustomers()
+
+function mergeCliCustomersIntoUniqueSubscribers() {
+  const customers = rows('customers')
+  const baseName = value => normalizedCustomerValue(value)
+    .replace(/\b(?:pig|cli)[ -]?\d+\b/g, '')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/[^a-z0-9ñ]+/g, ' ')
+    .trim().replace(/\s+/g, ' ')
+  const subscribersByName = new Map()
+  customers.filter(customer => customer.kind === 'subscriber').forEach(customer => {
+    const key = baseName(customer.name)
+    subscribersByName.set(key, [...(subscribersByName.get(key) || []), customer])
+  })
+  const redirects = new Map()
+  customers.filter(customer => customer.kind === 'client').forEach(customer => {
+    const matches = subscribersByName.get(baseName(customer.name)) || []
+    if (matches.length === 1) redirects.set(String(customer.customerId), { target: matches[0], sourceAccount: customer.account })
+  })
+  if (!redirects.size) return
+  const redirectReference = item => {
+    const target = redirects.get(String(item.customerId || ''))?.target
+    return target ? { ...item, customerId: target.customerId, clientAccount: target.account, clientNameAtService: target.name, client: `${target.account} - ${target.name}` } : item
+  }
+  const redirectTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(redirectReference) }))
+  const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+  if (agendaRow) {
+    const agenda = JSON.parse(agendaRow.data)
+    const weekly = Object.fromEntries(Object.entries(agenda.weekly || {}).map(([key, value]) => [key, key.startsWith('_') ? value : { ...value, teams: redirectTeams(value?.teams) }]))
+    db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify({ ...agenda, teams: redirectTeams(agenda.teams), weekly }), 'current')
+  }
+  const updateHistory = db.prepare('UPDATE work_history SET data = ? WHERE id = ?')
+  rows('work_history').forEach(record => { const next = redirectReference(record); if (next !== record) updateHistory.run(JSON.stringify(next), String(record.id)) })
+  const updateReview = db.prepare('UPDATE reviews SET data = ? WHERE id = ?')
+  rows('reviews').forEach(review => { const next = redirectReference(review); if (next !== review) updateReview.run(JSON.stringify(next), String(review.id)) })
+  const removeCustomer = db.prepare('DELETE FROM customers WHERE account = ?')
+  redirects.forEach(({ sourceAccount }) => removeCustomer.run(String(sourceAccount)))
+}
+
+mergeCliCustomersIntoUniqueSubscribers()
+
+function mergeConfirmedCliAliases() {
+  const customers = rows('customers')
+  const byAccount = new Map(customers.map(customer => [String(customer.account), customer]))
+  const confirmedAliases = [
+    ['CLI-0018', 'CLI-0052'], // Totem/Edificio Monviso, misma ubicación
+    ['CLI-0056', 'CLI-0032'], // Hugo Wast / La Cuadra, mismo sitio y trabajo
+    ['CLI-0035', 'CLI-0058'], // Totem Okra incluido en el registro operativo conjunto
+    ['CLI-0059', 'CLI-0047']  // Mantenimiento de cámaras de Costa Verde
+  ]
+  const redirects = new Map()
+  confirmedAliases.forEach(([sourceAccount, targetAccount]) => {
+    const source = byAccount.get(sourceAccount), target = byAccount.get(targetAccount)
+    if (source && target) redirects.set(String(source.customerId), { target, sourceAccount })
+  })
+  if (!redirects.size) return
+  const redirectReference = item => {
+    const target = redirects.get(String(item.customerId || ''))?.target
+    return target ? { ...item, customerId: target.customerId, clientAccount: target.account, clientNameAtService: target.name, client: `${target.account} - ${target.name}` } : item
+  }
+  const redirectTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(redirectReference) }))
+  const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+  if (agendaRow) {
+    const agenda = JSON.parse(agendaRow.data)
+    const weekly = Object.fromEntries(Object.entries(agenda.weekly || {}).map(([key, value]) => [key, key.startsWith('_') ? value : { ...value, teams: redirectTeams(value?.teams) }]))
+    db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify({ ...agenda, teams: redirectTeams(agenda.teams), weekly }), 'current')
+  }
+  const updateHistory = db.prepare('UPDATE work_history SET data = ? WHERE id = ?')
+  rows('work_history').forEach(record => { const next = redirectReference(record); if (next !== record) updateHistory.run(JSON.stringify(next), String(record.id)) })
+  const updateReview = db.prepare('UPDATE reviews SET data = ? WHERE id = ?')
+  rows('reviews').forEach(review => { const next = redirectReference(review); if (next !== review) updateReview.run(JSON.stringify(next), String(review.id)) })
+  const removeCustomer = db.prepare('DELETE FROM customers WHERE account = ?')
+  redirects.forEach(({ sourceAccount }) => removeCustomer.run(String(sourceAccount)))
+}
+
+mergeConfirmedCliAliases()
 migrateCustomerReferences()
 
 function stableTeamId(month, index) {
