@@ -20,6 +20,30 @@ const blankTask = () => ({ taskId: createTaskId(), time: '', serviceId: '', serv
 const blankEmployee = { firstName: '', lastName: '', name: '', roleId: 3, role: 'Técnico', phone: '', email: '', password: '', status: 'Activo' }
 const blankCustomer = { customerId: '', kind: 'client', account: '', name: '', type: '', street: '', locality: '', province: '', phone: '', address: '', fields: {} }
 
+// El almacenamiento del navegador es solamente una caché. Un valor antiguo,
+// incompleto o malformado nunca debe impedir que la aplicación arranque.
+const readLocalValue = (key, fallback = '') => {
+  try { return localStorage.getItem(key) ?? fallback }
+  catch { return fallback }
+}
+const readLocalJson = (key, fallback) => {
+  try {
+    const stored = localStorage.getItem(key)
+    return stored == null ? fallback : JSON.parse(stored)
+  } catch {
+    try { localStorage.removeItem(key) } catch { /* almacenamiento no disponible */ }
+    return fallback
+  }
+}
+const writeLocalJson = (key, value) => {
+  try { localStorage.setItem(key, JSON.stringify(value)) }
+  catch { /* la base de datos sigue siendo la fuente de verdad */ }
+}
+const writeLocalValue = (key, value) => {
+  try { localStorage.setItem(key, String(value)) }
+  catch { /* la interfaz puede continuar sin preferencias locales */ }
+}
+
 // Dealer/Cuenta is the external system's unique customer identifier. Keeping a
 // canonical form prevents duplicated clients when an export changes its casing
 // or accidentally includes whitespace around the account code.
@@ -179,17 +203,17 @@ function Login({ onLogin }) {
 export default function App() {
   const [module, setModule] = useState('dashboard')
   const [menuOpen, setMenuOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('pignus-sidebar-collapsed') === 'true')
-  const [theme, setTheme] = useState(() => localStorage.getItem('pignus-theme') || 'light')
-  const [roles, setRoles] = useState(() => JSON.parse(localStorage.getItem('pignus-roles') || 'null') || initialRoles)
-  const [employees, setEmployees] = useState(() => JSON.parse(localStorage.getItem('pignus-employees') || 'null') || initialEmployees)
-  const [services, setServices] = useState(() => JSON.parse(localStorage.getItem('pignus-services') || 'null') || INITIAL_SERVICES)
-  const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('pignus-history') || '[]'))
-  const [customers, setCustomers] = useState(() => JSON.parse(localStorage.getItem('pignus-customers') || '[]'))
-  const [reviews, setReviews] = useState(() => JSON.parse(localStorage.getItem('pignus-reviews') || '[]'))
-  const [teams, setTeams] = useState(() => JSON.parse(localStorage.getItem('pignus-agenda') || 'null')?.teams || [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])
-  const [date, setDate] = useState(() => JSON.parse(localStorage.getItem('pignus-agenda') || 'null')?.date || new Date().toISOString().slice(0, 10))
-  const [weekly, setWeekly] = useState(() => JSON.parse(localStorage.getItem('pignus-agenda') || 'null')?.weekly || {})
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readLocalValue('pignus-sidebar-collapsed') === 'true')
+  const [theme, setTheme] = useState(() => readLocalValue('pignus-theme', 'light'))
+  const [roles, setRoles] = useState(() => readLocalJson('pignus-roles', null) || initialRoles)
+  const [employees, setEmployees] = useState(() => readLocalJson('pignus-employees', null) || initialEmployees)
+  const [services, setServices] = useState(() => readLocalJson('pignus-services', null) || INITIAL_SERVICES)
+  const [history, setHistory] = useState(() => readLocalJson('pignus-history', []))
+  const [customers, setCustomers] = useState(() => readLocalJson('pignus-customers', []))
+  const [reviews, setReviews] = useState(() => readLocalJson('pignus-reviews', []))
+  const [teams, setTeams] = useState(() => readLocalJson('pignus-agenda', null)?.teams || [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])
+  const [date, setDate] = useState(() => readLocalJson('pignus-agenda', null)?.date || new Date().toISOString().slice(0, 10))
+  const [weekly, setWeekly] = useState(() => readLocalJson('pignus-agenda', null)?.weekly || {})
   const [notice, setNotice] = useState('')
   const [confirmation, setConfirmation] = useState(null)
   const [databaseReady, setDatabaseReady] = useState(false)
@@ -197,15 +221,15 @@ export default function App() {
   const [authUser, setAuthUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [profileOpen, setProfileOpen] = useState(false)
-  useEffect(() => localStorage.setItem('pignus-theme', theme), [theme])
-  useEffect(() => localStorage.setItem('pignus-sidebar-collapsed', String(sidebarCollapsed)), [sidebarCollapsed])
-  useEffect(() => localStorage.setItem('pignus-roles', JSON.stringify(roles)), [roles])
-  useEffect(() => localStorage.setItem('pignus-employees', JSON.stringify(employees)), [employees])
-  useEffect(() => localStorage.setItem('pignus-services', JSON.stringify(services)), [services])
-  useEffect(() => localStorage.setItem('pignus-history', JSON.stringify(history)), [history])
-  useEffect(() => localStorage.setItem('pignus-customers', JSON.stringify(customers)), [customers])
-  useEffect(() => localStorage.setItem('pignus-reviews', JSON.stringify(reviews)), [reviews])
-  useEffect(() => localStorage.setItem('pignus-agenda', JSON.stringify({ date, teams, weekly })), [date, teams, weekly])
+  useEffect(() => writeLocalValue('pignus-theme', theme), [theme])
+  useEffect(() => writeLocalValue('pignus-sidebar-collapsed', sidebarCollapsed), [sidebarCollapsed])
+  useEffect(() => writeLocalJson('pignus-roles', roles), [roles])
+  useEffect(() => writeLocalJson('pignus-employees', employees), [employees])
+  useEffect(() => writeLocalJson('pignus-services', services), [services])
+  useEffect(() => writeLocalJson('pignus-history', history), [history])
+  useEffect(() => writeLocalJson('pignus-customers', customers), [customers])
+  useEffect(() => writeLocalJson('pignus-reviews', reviews), [reviews])
+  useEffect(() => writeLocalJson('pignus-agenda', { date, teams, weekly }), [date, teams, weekly])
   useEffect(() => {
     if (!services.length) return
     const normalizeReference = item => {
