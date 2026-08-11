@@ -130,7 +130,9 @@ function showDuplicateTechniciansModal(duplicates, availableTechnicians, onCorre
   const replacements = []
   if (availableTechnicians.length) duplicates.forEach(item => item.teams.slice(1).forEach(teamIndex => {
     const field = document.createElement('label'); field.textContent = `Reemplazar a ${item.name} en Equipo ${teamIndex + 1}`
-    const select = document.createElement('select'); select.innerHTML = '<option value="">Seleccionar técnico</option>' + availableTechnicians.map(name => `<option value="${name}">${name}</option>`).join('')
+    const select = document.createElement('select')
+    const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Seleccionar técnico'; select.append(placeholder)
+    availableTechnicians.forEach(name => { const option = document.createElement('option'); option.value = name; option.textContent = name; select.append(option) })
     field.append(select); modal.append(field)
     replacements.push({ teamIndex, name: item.name, select })
   }))
@@ -171,7 +173,7 @@ function Login({ onLogin }) {
     } catch (loginError) { setError(loginError.message) }
     finally { setSubmitting(false) }
   }
-  return <main className="login-page"><form className="login-card" onSubmit={submit}><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">ACCESO SEGURO</p><h1>Ingresá a Agenda técnica</h1><p>Usá el correo y la contraseña definidos en el módulo Empleados.</p><label>Correo electrónico<input required autoComplete="username" type="email" value={email} onChange={event => setEmail(event.target.value)} /></label><label>Contraseña<div className="password-field"><input required autoComplete="current-password" minLength="8" type={showPassword ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} /><button type="button" className="password-visibility" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}><Icon name="eye" size={17} /><span>{showPassword ? 'Ocultar' : 'Mostrar'}</span></button></div></label>{error && <p className="login-error" role="alert">{error}</p>}<button className="primary" disabled={submitting}>{submitting ? 'Verificando acceso...' : 'Iniciar sesión'}</button><small>El acceso se cierra automáticamente al finalizar la sesión.</small></form></main>
+  return <main className="login-page"><form className="login-card" onSubmit={submit}><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">ACCESO SEGURO</p><h1>Ingresá a Agenda técnica</h1><p>Usá el correo y la contraseña definidos en el módulo Empleados.</p><label>Correo electrónico<input required autoComplete="username" type="email" value={email} onChange={event => setEmail(event.target.value)} /></label><label htmlFor="login-password">Contraseña</label><div className="password-field"><input id="login-password" aria-label="Contraseña" required autoComplete="current-password" minLength="8" type={showPassword ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} /><button type="button" className="password-visibility" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}><Icon name="eye" size={17} /><span>{showPassword ? 'Ocultar' : 'Mostrar'}</span></button></div>{error && <p className="login-error" role="alert">{error}</p>}<button className="primary" disabled={submitting}>{submitting ? 'Verificando acceso...' : 'Iniciar sesión'}</button><small>El acceso se cierra automáticamente al finalizar la sesión.</small></form></main>
 }
 
 export default function App() {
@@ -191,6 +193,7 @@ export default function App() {
   const [notice, setNotice] = useState('')
   const [confirmation, setConfirmation] = useState(null)
   const [databaseReady, setDatabaseReady] = useState(false)
+  const [stateRevision, setStateRevision] = useState(null)
   const [authUser, setAuthUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -317,6 +320,7 @@ export default function App() {
   useEffect(() => {
     if (!authUser) return
     fetch('/api/state').then(response => response.ok ? response.json() : Promise.reject()).then(data => {
+      setStateRevision(Number(data.revision || 0))
       if (data.roles?.length) setRoles(data.roles.map(role => { const code = roleCode(role); return { ...role, code, permissions: { ...DEFAULT_MODULE_PERMISSIONS, dashboard: true, weekly: role.permissions?.weekly ?? ['administrator', 'user', 'coordinator'].includes(code), ...role.permissions, ...(code === 'administrator' ? Object.fromEntries(MODULE_PERMISSIONS.map(([key]) => [key, true])) : {}) } } }))
       if (data.employees?.length) setEmployees(data.employees.map(employee => { const assignedRole = data.roles?.find(role => String(role.id) === String(employee.roleId)) || data.roles?.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role)); return assignedRole ? { ...employee, roleId: assignedRole.id, role: assignedRole.name } : employee }))
       if (data.services?.length) setServices(data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') })))
@@ -329,15 +333,15 @@ export default function App() {
     }).catch(() => setNotice('No se pudo conectar con la base de datos local.')).finally(() => setDatabaseReady(true))
   }, [authUser])
   useEffect(() => {
-    if (!databaseReady || !authUser || authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return
+    if (!databaseReady || stateRevision === null || !authUser || authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return
     const timer = setTimeout(() => fetch('/api/state', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roles, employees, services, history, customers, reviews, agenda: { date, teams, weekly }, preferences: { theme } })
+      body: JSON.stringify({ revision: stateRevision, roles, employees, services, history, customers, reviews, agenda: { date, teams, weekly }, preferences: { theme } })
     }).then(async response => {
-      if (response.ok) return
+      if (response.ok) { const payload = await response.json(); setStateRevision(Number(payload.revision)); return }
       const payload = await response.json().catch(() => ({}))
       throw new Error(payload.error || 'No se pudieron guardar los últimos cambios.')
-    }).catch(() => setNotice('No se pudieron guardar los últimos cambios.')), 750)
+    }).catch(error => setNotice(error.message || 'No se pudieron guardar los últimos cambios.')), 750)
     return () => clearTimeout(timer)
   }, [databaseReady, authUser, roles, employees, services, history, customers, reviews, date, teams, weekly, theme])
   useEffect(() => {
@@ -347,13 +351,14 @@ export default function App() {
     const refreshWeekly = () => {
       if (document.activeElement?.closest('.weekly-board input, .weekly-board select, .weekly-board textarea')) return
       fetch('/api/state', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(data => {
+        if (data && Number(data.revision) !== Number(stateRevision)) { setNotice('Hay cambios guardados desde otra sesión. Recargá la página para continuar sin sobrescribirlos.'); return }
         if (data?.agenda?.weekly && typeof data.agenda.weekly === 'object') setWeekly(previous => JSON.stringify(previous) === JSON.stringify(data.agenda.weekly) ? previous : data.agenda.weekly)
-      }).catch(() => {})
+      }).catch(() => setNotice('No se pudo comprobar si existen cambios de otra sesión.'))
     }
     const timer = window.setInterval(refreshWeekly, 4000)
     window.addEventListener('focus', refreshWeekly)
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refreshWeekly) }
-  }, [databaseReady, authUser])
+  }, [databaseReady, authUser, stateRevision])
   const ask = (title, detail, action, destructive = false) => setConfirmation({ title, detail, action, destructive })
   const updateTask = (team, task, patch) => setTeams(prev => prev.map((t, ti) => ti !== team ? t : { ...t, tasks: t.tasks.map((x, i) => i !== task ? x : { ...x, ...patch }) }))
   const employeeRole = employee => roles.find(role => String(role.id) === String(employee.roleId)) || roles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role))
@@ -372,8 +377,8 @@ export default function App() {
   }, [isAdministrator, module, activeRole?.id])
   const title = { dashboard: 'Menú principal', weekly: 'Agenda semanal', agenda: 'Agenda del día', history: 'Historial', accounts: 'Abonados y clientes', employees: 'Empleados', services: 'Tipo de servicio', settings: 'Configuración', audit: 'Auditoría', reviews: 'Reseñas' }[module]
   useEffect(() => {
-    document.title = `${title || 'Agenda técnica'} | PIGNUS`
-  }, [title])
+    document.title = authUser ? `${title || 'Agenda técnica'} | PIGNUS` : 'Ingresar | PIGNUS'
+  }, [title, authUser])
   if (isAdministrator) nav.push(['audit', 'audit', 'Auditoría'], ['reviews', 'reviews', 'Reseñas'])
   const emptyAgenda = () => ({ date: new Date().toISOString().slice(0, 10), teams: [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }] })
   // Una agenda se considera pendiente cuando tiene datos que todavía no quedaron registrados en Historial.
@@ -385,13 +390,18 @@ export default function App() {
   const logout = async () => {
     // La agenda temporal no debe permanecer disponible para la próxima sesión.
     if (authUser?.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() !== 'tecnico') {
+      if (databaseReady) {
+        try {
+          const response = await fetch('/api/agenda/daily/clear', { method: 'POST' })
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(payload.error || 'No se pudo limpiar la agenda del día.')
+          setStateRevision(Number(payload.revision))
+        } catch (error) { setNotice(error.message); return }
+      }
       const clean = emptyAgenda()
       setTeams(clean.teams); setDate(clean.date); localStorage.removeItem('pignus-agenda')
-      // Sólo se limpia la agenda diaria de la sesión: la planificación semanal es
-      // compartida y debe permanecer disponible para el próximo ingreso.
-      if (databaseReady) await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roles, employees, services, history, customers, reviews, agenda: { ...clean, weekly }, preferences: { theme } }) }).catch(() => {})
     }
-    await fetch('/api/auth/logout', { method: 'POST' }); setAuthUser(null); setDatabaseReady(false); setModule('dashboard')
+    await fetch('/api/auth/logout', { method: 'POST' }); setAuthUser(null); setDatabaseReady(false); setStateRevision(null); setModule('dashboard')
   }
   const requestLogout = () => setConfirmation(hasUnsavedAgenda
     ? { title: 'Agenda sin guardar', detail: 'Hay servicios cargados que aún no fueron guardados en el historial. Si cerrás sesión, la agenda se limpiará y esos datos se perderán.', action: logout, destructive: true, confirmLabel: 'Cerrar sesión y descartar agenda' }
@@ -1147,7 +1157,14 @@ function DashboardStatusView({ history, services }) {
     modal.innerHTML = `<button class="close-modal" aria-label="Cerrar">×</button><p class="eyebrow">TRABAJOS COMPLETADOS</p><h2>Composición del período</h2><p class="insight-period">${records.length} trabajo(s) completado(s) en ${monthName}</p><div class="work-composition"><div class="donut-chart"><span>${records.length}<small>total</small></span></div><div class="donut-legend"></div></div><div class="modal-actions"><button class="primary">Cerrar</button></div>`
     modal.querySelector('.donut-chart').style.background = `conic-gradient(${slices || '#dfe7df 0 100%'})`
     const legend = modal.querySelector('.donut-legend')
-    serviceBreakdown.forEach(([name, count], index) => { const row = document.createElement('div'); const percent = Math.round(count / total * 100); row.innerHTML = `<i style="background:${palette[index % palette.length]}"></i><span>${name}</span><b>${count} <small>${percent}%</small></b>`; legend.append(row) })
+    serviceBreakdown.forEach(([name, count], index) => {
+      const row = document.createElement('div')
+      const marker = document.createElement('i'); marker.style.background = palette[index % palette.length]
+      const label = document.createElement('span'); label.textContent = name
+      const value = document.createElement('b'); value.textContent = `${count} `
+      const percentLabel = document.createElement('small'); percentLabel.textContent = `${Math.round(count / total * 100)}%`
+      value.append(percentLabel); row.append(marker, label, value); legend.append(row)
+    })
     if (!serviceBreakdown.length) legend.textContent = 'No hay trabajos completados para este período.'
     const close = () => setWorkModalOpen(false)
     modal.querySelectorAll('button').forEach(button => { button.onclick = close })
