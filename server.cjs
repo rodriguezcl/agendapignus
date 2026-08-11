@@ -94,6 +94,21 @@ function rows(table) {
   return db.prepare(`SELECT data FROM ${table} ORDER BY rowid`).all().map(row => JSON.parse(row.data))
 }
 
+// Migra registros históricos que guardaban nombre y apellido en un único campo.
+// `name` se conserva como valor derivado para compatibilidad con agendas e historial.
+function migrateEmployeeNameParts() {
+  const update = db.prepare('UPDATE employees SET data = ? WHERE id = ?')
+  for (const employee of rows('employees')) {
+    if (employee.firstName && employee.lastName) continue
+    const [firstName = '', ...lastNameParts] = String(employee.name || '').trim().split(/\s+/)
+    const lastName = lastNameParts.join(' ')
+    if (!firstName || !lastName) continue
+    update.run(JSON.stringify({ ...employee, firstName, lastName, name: `${firstName} ${lastName}` }), String(employee.id))
+  }
+}
+
+migrateEmployeeNameParts()
+
 function auditSafe(record) {
   if (!record) return null
   const { password, passwordHash, ...safe } = record
@@ -190,7 +205,9 @@ function validateState(state) {
     if (!String(role.name ?? '').trim() || !text(role.name, 80) || typeof role.permissions !== 'object' || !role.permissions) throw new Error(`Rol ${index + 1}: datos incompletos.`)
   })
   state.employees.forEach((employee, index) => {
-    if (!String(employee.name ?? '').trim() || !text(employee.name, 120)) throw new Error(`Empleado ${index + 1}: el nombre es obligatorio.`)
+    if (!String(employee.firstName ?? '').trim() || !text(employee.firstName, 80)) throw new Error(`Empleado ${index + 1}: el nombre es obligatorio.`)
+    if (!String(employee.lastName ?? '').trim() || !text(employee.lastName, 120)) throw new Error(`Empleado ${index + 1}: el apellido es obligatorio.`)
+    if (`${employee.firstName} ${employee.lastName}`.trim() !== String(employee.name || '').trim() || !text(employee.name, 200)) throw new Error(`Empleado ${index + 1}: el nombre completo no coincide.`)
     if (!email(employee.email) || !text(employee.email, 160)) throw new Error(`Empleado ${index + 1}: el correo electrónico no es válido.`)
     const employeeRole = employee.roleId ?? employee.role
     if (!roleIds.has(String(employeeRole)) && !roleNames.has(String(employeeRole ?? '').trim().toLocaleLowerCase('es-AR'))) throw new Error(`Empleado ${index + 1}: debe tener un rol válido.`)

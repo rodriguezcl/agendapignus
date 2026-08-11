@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './components/ui/Icon.jsx'
 import './weekly.css'
 import './weekly-enhancements.css'
@@ -16,7 +16,7 @@ const INITIAL_SERVICES = [
 // equipo, que pueden cambiar durante la planificación sin crear otro historial.
 const createTaskId = () => globalThis.crypto?.randomUUID?.() || `task-${Date.now()}-${Math.random().toString(36).slice(2)}`
 const blankTask = () => ({ taskId: createTaskId(), time: '', service: '', client: '', clientAccount: '', clientNameAtService: '', address: '', phone: '', detail: '', paymentMethod: '', monthlyFee: '', form: '' })
-const blankEmployee = { name: '', role: 'Técnico', phone: '', email: '', password: '', status: 'Activo' }
+const blankEmployee = { firstName: '', lastName: '', name: '', role: 'Técnico', phone: '', email: '', password: '', status: 'Activo' }
 const blankCustomer = { account: '', name: '', type: '', street: '', locality: '', province: '', phone: '', address: '', fields: {} }
 
 // Dealer/Cuenta is the external system's unique customer identifier. Keeping a
@@ -43,9 +43,9 @@ const MODULE_PERMISSIONS = [
 const DEFAULT_MODULE_PERMISSIONS = Object.fromEntries(MODULE_PERMISSIONS.map(([key]) => [key, false]))
 
 const initialEmployees = [
-  { id: 1, name: 'Rodrigo Fernández', role: 'Técnico', phone: '11 4567-8901', email: 'rodrigo@pignus.com', password: '••••••••', status: 'Activo' },
-  { id: 2, name: 'Mariano López', role: 'Técnico', phone: '11 3456-2210', email: 'mariano@pignus.com', password: '••••••••', status: 'Activo' },
-  { id: 3, name: 'Santos Acosta', role: 'Técnico', phone: '11 6789-1254', email: 'santos@pignus.com', password: '••••••••', status: 'Activo' }
+  { id: 1, firstName: 'Rodrigo', lastName: 'Gonzalez', name: 'Rodrigo Gonzalez', role: 'Técnico', phone: '11 4567-8901', email: 'rodrigo@pignus.com', password: '••••••••', status: 'Activo' },
+  { id: 2, firstName: 'Mariano', lastName: 'Diaz Tillard', name: 'Mariano Diaz Tillard', role: 'Técnico', phone: '11 3456-2210', email: 'mariano@pignus.com', password: '••••••••', status: 'Activo' },
+  { id: 3, firstName: 'Santos', lastName: 'Diaz', name: 'Santos Diaz', role: 'Técnico', phone: '11 6789-1254', email: 'santos@pignus.com', password: '••••••••', status: 'Activo' }
 ]
 
 // Versión histórica preservada temporalmente durante la migración a components/ui/Icon.jsx.
@@ -626,13 +626,19 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
  * impactan en el Historial hasta que el operador abre y guarda la agenda diaria.
  */
 function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, setNotice, openDaily }) {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const localToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const [today, setToday] = useState(localToday)
   const [anchor, setAnchor] = useState(today)
   const [monthlySetup, setMonthlySetup] = useState(null)
   const [techPicker, setTechPicker] = useState(null)
   const [techFilter, setTechFilter] = useState('')
   const [taskEditor, setTaskEditor] = useState(null)
+  const [teamRemoval, setTeamRemoval] = useState(null)
+  const weeklyBoardRef = useRef(null)
+  const weeklyTopScrollRef = useRef(null)
+  const [weeklyScrollWidth, setWeeklyScrollWidth] = useState(0)
   const activeServices = services.filter(service => service.status === 'Activo')
+  const weeklyTechnicianName = fullName => activeTechs.find(tech => tech.name === fullName)?.firstName || String(fullName || '').split(' ')[0]
   const monthKey = anchor.slice(0, 7)
   const monthlyTeams = weekly._monthlyTeams || {}
   const previousMonthKey = (() => { const value = new Date(`${monthKey}-01T12:00:00`); value.setMonth(value.getMonth() - 1); return value.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).slice(0, 7) })()
@@ -649,6 +655,38 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     value.setDate(monday.getDate() + index)
     return value.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   }), [monday])
+  useEffect(() => {
+    // Mantiene la ventana semanal vigente aunque la pantalla permanezca abierta a medianoche.
+    const refreshDay = () => setToday(localToday())
+    const now = new Date()
+    const nextMidnight = new Date(now)
+    nextMidnight.setHours(24, 0, 1, 0)
+    const timeout = window.setTimeout(refreshDay, nextMidnight.getTime() - now.getTime())
+    return () => window.clearTimeout(timeout)
+  }, [today])
+  useEffect(() => {
+    const board = weeklyBoardRef.current
+    if (!board) return
+    const currentDay = board.querySelector(`[data-day="${today}"]`)
+    if (!currentDay) {
+      board.scrollLeft = 0
+      return
+    }
+    const boardRect = board.getBoundingClientRect()
+    const dayRect = currentDay.getBoundingClientRect()
+    board.scrollLeft += dayRect.left - boardRect.left
+    if (weeklyTopScrollRef.current) weeklyTopScrollRef.current.scrollLeft = board.scrollLeft
+  }, [days, today])
+  useEffect(() => {
+    const board = weeklyBoardRef.current
+    if (!board) return
+    const updateWidth = () => setWeeklyScrollWidth(board.scrollWidth)
+    updateWidth()
+    const observer = new ResizeObserver(updateWidth)
+    observer.observe(board)
+    Array.from(board.children).forEach(column => observer.observe(column))
+    return () => observer.disconnect()
+  }, [days, weekly])
   const dayPlan = day => weekly[day] || createDay(day)
   const updateDay = (day, mutate) => setWeekly(previous => ({ ...previous, [day]: mutate(previous[day] || createDay(day)) }))
   const updateTeam = (day, teamIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, ...patch } : team) }))
@@ -658,6 +696,17 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   }
   const updateTask = (day, teamIndex, taskIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index !== teamIndex ? team : { ...team, tasks: team.tasks.map((task, index) => index === taskIndex ? { ...task, ...patch } : task) }) }))
   const addTeam = day => updateDay(day, plan => ({ ...plan, teams: [...plan.teams, createTeam(plan.teams.length)] }))
+  const removeWeeklyTeam = (day, teamIndex) => {
+    updateDay(day, plan => ({
+      ...plan,
+      teams: plan.teams.filter((_, index) => index !== teamIndex).map((team, index) => ({
+        ...team,
+        label: /^Equipo \d+$/.test(team.label || '') ? `Equipo ${index + 1}` : team.label
+      }))
+    }))
+    setTechPicker(null)
+    setNotice('El equipo fue eliminado.')
+  }
   const hoursForDay = day => {
     const weekDay = new Date(`${day}T12:00:00`).getDay()
     if (weekDay === 0) return null
@@ -711,9 +760,9 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   const displayDate = day => new Date(`${day}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).replace('.', '')
   return <>
     {techPicker && <button className="picker-backdrop" aria-label="Cerrar selector de técnicos" onClick={() => setTechPicker(null)} />}
-    {monthlySetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setMonthlySetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de {new Date(`${monthlySetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Estos técnicos se asignarán por defecto a cada nuevo día del mes. Las agendas ya cargadas no se modifican.</p><div className="monthly-team-list">{monthlySetup.teams.map((team, index) => <label key={index}><b>{team.label || `Equipo ${index + 1}`}</b><select multiple value={team.members} onChange={event => updateMonthlyTeam(index, [...event.target.selectedOptions].map(option => option.value))}>{activeTechs.map(tech => <option key={tech.id} value={tech.name}>{tech.name}</option>)}</select><small>Mantené presionada la tecla Ctrl para seleccionar más de un técnico.</small></label>)}</div><button className="secondary monthly-add-team" onClick={addMonthlyTeam}><Icon name="plus" size={15} />Agregar equipo</button><div className="modal-actions"><button className="secondary" onClick={() => setMonthlySetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlySetup}>Guardar equipos del mes</button></div></section></div>}
+    {teamRemoval && <Confirm title="Quitar equipo" detail={`¿Querés quitar ${teamRemoval.label} de la planificación del ${prettyDate(teamRemoval.day)}? Se eliminarán también sus servicios.`} destructive action={() => removeWeeklyTeam(teamRemoval.day, teamRemoval.teamIndex)} close={() => setTeamRemoval(null)} />}
+    {monthlySetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setMonthlySetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de {new Date(`${monthlySetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Estos técnicos se asignarán por defecto a cada nuevo día del mes. Las agendas ya cargadas no se modifican.</p><div className="monthly-team-list">{monthlySetup.teams.map((team, index) => <label key={index}><b>{team.label || `Equipo ${index + 1}`}</b><select multiple value={team.members} onChange={event => updateMonthlyTeam(index, [...event.target.selectedOptions].map(option => option.value))}>{activeTechs.map(tech => <option key={tech.id} value={tech.name}>{tech.firstName || tech.name.split(' ')[0]}</option>)}</select><small>Mantené presionada la tecla Ctrl para seleccionar más de un técnico.</small></label>)}</div><button className="secondary monthly-add-team" onClick={addMonthlyTeam}><Icon name="plus" size={15} />Agregar equipo</button><div className="modal-actions"><button className="secondary" onClick={() => setMonthlySetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlySetup}>Guardar equipos del mes</button></div></section></div>}
     <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Prepará las visitas de cada equipo y luego abrí el día para terminar de validar y guardar la agenda del día.</p></div><div className="weekly-actions"><button className="secondary" onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button><label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
-    <div className="weekly-guide"><Icon name="calendar" size={18} /><span>La semana inicia con <b>3 equipos</b> y dos turnos por equipo: <b>08:30</b> y <b>13:00</b>. Lun–jue 08:00–17:00 · Vie 08:00–20:00 · Sáb 08:00–12:00.</span></div>
     {taskEditor && (() => {
       const { day, teamIndex, taskIndex } = taskEditor
       const task = dayPlan(day).teams[teamIndex]?.tasks[taskIndex]
@@ -722,12 +771,13 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
       const customerListId = `weekly-customers-editor-${day}-${teamIndex}-${taskIndex}`
       return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskEditor(null)}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button className="modal-close" onClick={() => setTaskEditor(null)}><Icon name="close" /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>Servicio {taskIndex + 1}</h2><p className="weekly-modal-team">{dayPlan(day).teams[teamIndex]?.label || `Equipo ${teamIndex + 1}`} · {dayPlan(day).teams[teamIndex]?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label>Hora <b>*</b><input type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTask(day, teamIndex, taskIndex, { time: event.target.value })} /></label><label>Tipo de servicio <b>*</b><select value={task.service} onChange={event => updateTask(day, teamIndex, taskIndex, { service: event.target.value })}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.name}>{service.name}</option>)}</select></label></div><label>Cliente o cuenta <b>*</b><input list={customerListId} placeholder="Buscá por nombre o cuenta" value={task.client} onChange={event => selectCustomer(day, teamIndex, taskIndex, event.target.value)} /></label><datalist id={customerListId}>{customers.map(customer => <option key={customer.account} value={`${customer.account} ${customer.name}`} />)}</datalist><label>Dirección <b>*</b><input value={task.address} onChange={event => updateTask(day, teamIndex, taskIndex, { address: event.target.value })} /></label><label>Contacto<input value={task.phone} onChange={event => updateTask(day, teamIndex, taskIndex, { phone: event.target.value })} /></label><label>Detalle <b>*</b><textarea value={task.detail} onChange={event => updateTask(day, teamIndex, taskIndex, { detail: event.target.value })} /></label><div className="weekly-extra-fields"><label>Forma de pago<input value={task.paymentMethod} onChange={event => updateTask(day, teamIndex, taskIndex, { paymentMethod: event.target.value })} /></label><label>Abono mensual<input value={task.monthlyFee} onChange={event => updateTask(day, teamIndex, taskIndex, { monthlyFee: event.target.value })} /></label><label>Formulario<input value={task.form} onChange={event => updateTask(day, teamIndex, taskIndex, { form: event.target.value })} /></label></div></div><div className="modal-actions"><button className="secondary" onClick={() => setTaskEditor(null)}>Cancelar</button><button className="primary" onClick={() => { setTaskEditor(null); setNotice(`Servicio ${taskIndex + 1} actualizado.`) }}><Icon name="check" size={16} />Guardar servicio</button></div></section></div>
     })()}
-    <div className="weekly-board">
+    <div className="weekly-scroll-top" ref={weeklyTopScrollRef} tabIndex={0} aria-label="Desplazamiento horizontal superior" onScroll={event => { if (weeklyBoardRef.current) weeklyBoardRef.current.scrollLeft = event.currentTarget.scrollLeft }}><div style={{ width: `${weeklyScrollWidth}px` }} /></div>
+    <div className="weekly-board" ref={weeklyBoardRef} onScroll={event => { if (weeklyTopScrollRef.current) weeklyTopScrollRef.current.scrollLeft = event.currentTarget.scrollLeft }}>
       {days.map(day => {
         const plan = dayPlan(day)
         const hours = hoursForDay(day)
         const conflicts = conflictsForDay(day)
-        return <section className={`week-day ${!hours ? 'closed-day' : ''}`} key={day}>
+        return <section className={`week-day ${!hours ? 'closed-day' : ''}`} data-day={day} key={day}>
           <header><div><b>{displayDate(day)}</b><small>{!hours ? 'No operativo' : day === today ? 'Hoy' : prettyDate(day)}</small></div><button className="secondary small" disabled={!hours} onClick={() => openDay(day)}>Abrir día</button></header>
           {!hours ? <p className="closed-day-note">Domingo · sin programación</p> : <>
             <small className="weekly-hours">Horario habilitado: {hours.label}</small>
@@ -735,9 +785,9 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
             <div className="week-teams">{plan.teams.map((team, teamIndex) => {
               const pickerKey = `${day}-${teamIndex}`
               return <article className="week-team" key={teamIndex}>
-                <div className="week-team-header"><strong>{team.label || `Equipo ${teamIndex + 1}`}</strong><div className="weekly-technicians-picker"><span>{team.members?.length ? `${team.members.length} técnico(s)` : 'Sin técnicos'}</span><button className="secondary small" onClick={() => { setTechPicker(techPicker === pickerKey ? null : pickerKey); setTechFilter('') }}><Icon name="users" size={15} />Agregar técnicos</button>{techPicker === pickerKey && <div className="tech-popover weekly-tech-popover"><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={event => setTechFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(techFilter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={(team.members || []).includes(tech.name)} onChange={() => toggleWeeklyTech(day, teamIndex, tech.name)} />{tech.name}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div></div>}</div></div>
-                {team.tasks.map((task, taskIndex) => <div className="week-task week-task-summary" key={taskIndex} role="button" tabIndex={0} onClick={() => setTaskEditor({ day, teamIndex, taskIndex })} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setTaskEditor({ day, teamIndex, taskIndex }) } }}>
-                  <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><small>{task.time || '--:--'} Hs</small></div><strong className="week-task-client">{task.client || 'Cliente pendiente'}</strong>
+                <div className="week-team-header"><div className="week-team-identity"><strong>{team.label || `Equipo ${teamIndex + 1}`}</strong><span title={team.members?.join(' · ') || 'Sin técnicos'}>{team.members?.length ? team.members.map(weeklyTechnicianName).join(' · ') : 'Sin técnicos'}</span></div><div className="weekly-team-actions">{plan.teams.length > 1 && <button className="weekly-remove-team" title="Quitar equipo" aria-label={`Quitar ${team.label || `Equipo ${teamIndex + 1}`}`} onClick={() => setTeamRemoval({ day, teamIndex, label: team.label || `Equipo ${teamIndex + 1}` })}><Icon name="trash" size={15} /></button>}<div className="weekly-technicians-picker"><button className="secondary small weekly-add-tech-button" title="Agregar técnicos" aria-label="Agregar técnicos" onClick={() => { setTechPicker(techPicker === pickerKey ? null : pickerKey); setTechFilter('') }}><Icon name="users" size={16} /><span aria-hidden="true">+</span></button>{techPicker === pickerKey && <div className="tech-popover weekly-tech-popover"><div className="weekly-tech-popover-title"><div><strong>Asignar técnicos</strong><small>{team.label || `Equipo ${teamIndex + 1}`}</small></div><span>{team.members?.length || 0} seleccionados</span></div><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={event => setTechFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(techFilter.toLowerCase())).map(tech => <label key={tech.id} title={tech.name}><input type="checkbox" checked={(team.members || []).includes(tech.name)} onChange={() => toggleWeeklyTech(day, teamIndex, tech.name)} />{tech.firstName || tech.name.split(' ')[0]}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div></div>}</div></div></div>
+                {team.tasks.map((task, taskIndex) => <div className={`week-task week-task-summary ${!task.client ? 'available-slot' : ''}`} key={taskIndex} role="button" tabIndex={0} onClick={() => setTaskEditor({ day, teamIndex, taskIndex })} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setTaskEditor({ day, teamIndex, taskIndex }) } }}>
+                  <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><small>{task.time || '--:--'} Hs</small></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>
                   <div className="week-task-top"><label>Hora <b>*</b><input type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTask(day, teamIndex, taskIndex, { time: event.target.value })} /></label><label>Tipo de servicio <b>*</b><select value={task.service} onChange={event => updateTask(day, teamIndex, taskIndex, { service: event.target.value })}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.name}>{service.name}</option>)}</select></label></div>
                   <label>Cliente o cuenta <b>*</b><input list={`weekly-customers-${day}`} placeholder="Buscá por nombre o cuenta" value={task.client} onChange={event => selectCustomer(day, teamIndex, taskIndex, event.target.value)} /></label><datalist id={`weekly-customers-${day}`}>{customers.map(customer => <option key={customer.account} value={`${customer.account} ${customer.name}`} />)}</datalist>
                   <label>Dirección <b>*</b><input value={task.address} onChange={event => updateTask(day, teamIndex, taskIndex, { address: event.target.value })} /></label>
@@ -1027,6 +1077,7 @@ function HistoryBulkView({ history, setHistory }) {
   const [statusFilter, setStatusFilter] = useState('all')
   const minimumRescheduleDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const records = history.filter(record => `${record.client} ${record.service} ${record.technicians?.join(' ')}`.toLowerCase().includes(search.toLowerCase()) && (!fromDate || record.date >= fromDate) && (!toDate || record.date <= toDate) && (statusFilter === 'all' || (record.status || 'Pendiente') === statusFilter)).sort((a, b) => b.date.localeCompare(a.date))
+  const technicianNames = record => record.technicians?.map(name => String(name).trim().split(/\s+/)[0]).filter(Boolean).join(' / ') || 'Sin asignar'
   const status = record => record.status || 'Pendiente'
   const toggle = id => setSelected(previous => previous.includes(id) ? previous.filter(item => item !== id) : [...previous, id])
   const toggleAll = () => setSelected(selected.length === records.length ? [] : records.map(record => record.id))
@@ -1101,7 +1152,7 @@ function HistoryBulkView({ history, setHistory }) {
       chip.classList.add(serviceColorClass(chip.textContent))
     })
   }, [records])
-  return <><div className="module-intro"><div><p className="eyebrow">TRABAJOS REALIZADOS</p><h1>Historial técnico</h1><p>Seleccioná varios servicios para confirmarlos, cancelarlos o reprogramarlos en una sola acción.</p></div><button className="primary" disabled={!selected.length} onClick={() => setBulkOpen(true)}><Icon name="check" />{selected.length ? `Gestionar ${selected.length} seleccionados` : 'Gestionar selección'}</button></div><div className="accounts-bar history-toolbar"><div><b>{history.length}</b> trabajos registrados</div><label><Icon name="search" size={16} /><input placeholder="Buscar cliente, servicio o técnico..." value={search} onChange={event => setSearch(event.target.value)} /></label></div><div className="data-card history-table history-bulk"><div className="table-head"><span><input aria-label="Seleccionar todos" type="checkbox" checked={records.length > 0 && selected.length === records.length} onChange={toggleAll} /></span><span>Fecha</span><span>Cliente</span><span>Servicio</span><span>Estado</span><span>Acciones</span></div>{records.length ? records.map(record => <div className="history-row" key={record.id}><span><input aria-label={`Seleccionar ${record.client}`} type="checkbox" checked={selected.includes(record.id)} onChange={() => toggle(record.id)} /></span><b>{prettyDate(record.date)}</b><div className="history-client"><strong>{record.client}</strong><small>{record.address || 'Sin dirección'}</small></div><div><em className="role-chip">{record.service}</em></div><div><span className={`work-status ${status(record).toLowerCase().replace(/\s/g, '-')}`}>{status(record)}</span>{record.scheduledDate && <small className="scheduled-date">Para: {prettyDate(record.scheduledDate)}</small>}</div><div><button className="secondary detail-button" onClick={() => setDetail(record)}><Icon name="eye" size={16} />Gestionar</button></div></div>) : <div className="empty-state">No hay trabajos para mostrar.</div>}</div>{bulkOpen && <div className="modal-layer"><div className="modal bulk-modal"><button className="close-modal" onClick={() => setBulkOpen(false)}><Icon name="close" /></button><p className="eyebrow">GESTIÓN MÚLTIPLE</p><h2>{selected.length} servicio(s) seleccionados</h2><p>La modificación se aplicará a todos los servicios elegidos.</p><label>Nuevo estado<select value={bulkStatus} onChange={event => setBulkStatus(event.target.value)}><option>Completado</option><option>Cancelado</option><option>Reprogramado</option></select></label>{bulkStatus === 'Reprogramado' && <label>Reprogramar para<input type="date" min={minimumRescheduleDate} value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} /></label>}<div className="modal-actions"><button className="secondary" onClick={() => setBulkOpen(false)}>Cancelar</button><button className="primary" disabled={bulkStatus === 'Reprogramado' && (!rescheduleDate || rescheduleDate < minimumRescheduleDate)} onClick={applyBulk}>Aplicar cambios</button></div></div></div>}{detail && <HistoryManagementDetail record={detail} setHistory={setHistory} close={() => setDetail(null)} />}</>
+  return <><div className="module-intro"><div><p className="eyebrow">TRABAJOS REALIZADOS</p><h1>Historial técnico</h1><p>Seleccioná varios servicios para confirmarlos, cancelarlos o reprogramarlos en una sola acción.</p></div><button className="primary" disabled={!selected.length} onClick={() => setBulkOpen(true)}><Icon name="check" />{selected.length ? `Gestionar ${selected.length} seleccionados` : 'Gestionar selección'}</button></div><div className="accounts-bar history-toolbar"><div><b>{history.length}</b> trabajos registrados</div><label><Icon name="search" size={16} /><input placeholder="Buscar cliente, servicio o técnico..." value={search} onChange={event => setSearch(event.target.value)} /></label></div><div className="data-card history-table history-bulk"><div className="table-head"><span><input aria-label="Seleccionar todos" type="checkbox" checked={records.length > 0 && selected.length === records.length} onChange={toggleAll} /></span><span>Fecha</span><span>Cliente</span><span>Servicio</span><span>Técnicos asignados</span><span>Estado</span><span>Acciones</span></div>{records.length ? records.map(record => <div className="history-row" key={record.id}><span><input aria-label={`Seleccionar ${record.client}`} type="checkbox" checked={selected.includes(record.id)} onChange={() => toggle(record.id)} /></span><b>{prettyDate(record.date)}</b><div className="history-client"><strong>{record.client}</strong><small>{record.address || 'Sin dirección'}</small></div><div><em className="role-chip">{record.service}</em></div><div className="history-technicians" title={record.technicians?.join(' / ') || 'Sin asignar'}><span>{technicianNames(record)}</span></div><div><span className={`work-status ${status(record).toLowerCase().replace(/\s/g, '-')}`}>{status(record)}</span>{record.scheduledDate && <small className="scheduled-date">Para: {prettyDate(record.scheduledDate)}</small>}</div><div><button className="secondary detail-button" onClick={() => setDetail(record)}><Icon name="eye" size={16} />Gestionar</button></div></div>) : <div className="empty-state">No hay trabajos para mostrar.</div>}</div>{bulkOpen && <div className="modal-layer"><div className="modal bulk-modal"><button className="close-modal" onClick={() => setBulkOpen(false)}><Icon name="close" /></button><p className="eyebrow">GESTIÓN MÚLTIPLE</p><h2>{selected.length} servicio(s) seleccionados</h2><p>La modificación se aplicará a todos los servicios elegidos.</p><label>Nuevo estado<select value={bulkStatus} onChange={event => setBulkStatus(event.target.value)}><option>Completado</option><option>Cancelado</option><option>Reprogramado</option></select></label>{bulkStatus === 'Reprogramado' && <label>Reprogramar para<input type="date" min={minimumRescheduleDate} value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} /></label>}<div className="modal-actions"><button className="secondary" onClick={() => setBulkOpen(false)}>Cancelar</button><button className="primary" disabled={bulkStatus === 'Reprogramado' && (!rescheduleDate || rescheduleDate < minimumRescheduleDate)} onClick={applyBulk}>Aplicar cambios</button></div></div></div>}{detail && <HistoryManagementDetail record={detail} setHistory={setHistory} close={() => setDetail(null)} />}</>
 }
 
 function HistoryManagement({ history, setHistory }) {
@@ -1230,10 +1281,10 @@ function ServiceTypes({ services, setServices, setNotice, ask }) {
 
 function Employees({ employees, setEmployees, roles, setNotice, ask }) {
   const [form, setForm] = useState(blankEmployee); const [editing, setEditing] = useState(null); const [open, setOpen] = useState(false)
-  const save = e => { e.preventDefault(); const record = { ...form, id: editing || Date.now() }; ask(editing ? 'Confirmar edición' : 'Confirmar alta', `¿Querés guardar el perfil de ${record.name}?`, () => { setEmployees(prev => editing ? prev.map(x => x.id === editing ? record : x) : [...prev, record]); setOpen(false); setEditing(null); setNotice('El empleado fue guardado correctamente.') }) }
+  const save = e => { e.preventDefault(); const firstName = form.firstName.trim(); const lastName = form.lastName.trim(); const record = { ...form, firstName, lastName, name: `${firstName} ${lastName}`.trim(), id: editing || Date.now() }; ask(editing ? 'Confirmar edición' : 'Confirmar alta', `¿Querés guardar el perfil de ${record.name}?`, () => { setEmployees(prev => editing ? prev.map(x => x.id === editing ? record : x) : [...prev, record]); setOpen(false); setEditing(null); setNotice('El empleado fue guardado correctamente.') }) }
   return <><div className="module-intro"><div><p className="eyebrow">EQUIPO PIGNUS</p><h1>Técnicos y colaboradores</h1><p>Administrá accesos, datos de contacto y disponibilidad del equipo.</p></div><button className="primary" onClick={() => { setForm(blankEmployee); setEditing(null); setOpen(true) }}><Icon name="plus" />Nuevo empleado</button></div>{open && <EmployeeForm {...{ form, setForm, roles, save, cancel: () => setOpen(false), editing }} />}<div className="data-card employees-table"><div className="table-head">{['Empleado', 'Rol', 'Correo', 'Contacto', 'Estado', 'Acciones'].map(x => <span key={x}>{x}</span>)}</div>{employees.map(x => <div className="employee-row" key={x.id}><div className="person"><span>{initials(x.name)}</span><b>{x.name}</b></div><div><em className="role-chip">{x.role}</em></div><div>{x.email}</div><div>{x.phone || 'Sin teléfono'}</div><div><button className={`status ${x.status === 'Activo' ? 'on' : ''}`} onClick={() => ask('Cambiar estado', `¿Querés marcar a ${x.name} como ${x.status === 'Activo' ? 'inactivo' : 'activo'}?`, () => setEmployees(prev => prev.map(y => y.id === x.id ? { ...y, status: y.status === 'Activo' ? 'Inactivo' : 'Activo' } : y)))}>{x.status}</button></div><div className="row-actions"><button title="Editar empleado" onClick={() => { setForm(x); setEditing(x.id); setOpen(true) }}><Icon name="edit" size={16} /></button><button className="delete" title="Eliminar empleado" onClick={() => ask('Eliminar empleado', `¿Querés eliminar el perfil de ${x.name}?`, () => { setEmployees(prev => prev.filter(y => y.id !== x.id)); setNotice('El empleado fue eliminado.') }, true)}><Icon name="trash" size={16} /></button></div></div>)}</div></>
 }
-function EmployeeForm({ form, setForm, roles, save, cancel, editing }) { const set = key => e => setForm({ ...form, [key]: e.target.value }); return <form className="employee-form employee-form-wide" onSubmit={save}><label>Nombre completo<input required value={form.name} onChange={set('name')} /></label><label>Rol<select value={form.role} onChange={set('role')}>{roles.map(r => <option key={r.id}>{r.name}</option>)}</select></label><label>Teléfono<input value={form.phone} onChange={set('phone')} /></label><label>Correo electrónico<input required type="email" value={form.email} onChange={set('email')} /></label><label>Contraseña<input required={!editing} minLength="8" autoComplete="new-password" type="password" value={form.password || ''} placeholder={editing ? 'Dejar vacío para conservarla' : 'Mínimo 8 caracteres'} onChange={set('password')} /></label><button className="primary"><Icon name="check" />{editing ? 'Guardar cambios' : 'Guardar empleado'}</button><button type="button" className="secondary" onClick={cancel}>Cancelar</button></form> }
+function EmployeeForm({ form, setForm, roles, save, cancel, editing }) { const set = key => e => setForm({ ...form, [key]: e.target.value }); return <form className="employee-form employee-form-wide" onSubmit={save}><label>Nombre<input required value={form.firstName || ''} onChange={set('firstName')} /></label><label>Apellido<input required value={form.lastName || ''} onChange={set('lastName')} /></label><label>Rol<select value={form.role} onChange={set('role')}>{roles.map(r => <option key={r.id}>{r.name}</option>)}</select></label><label>Teléfono<input value={form.phone} onChange={set('phone')} /></label><label>Correo electrónico<input required type="email" value={form.email} onChange={set('email')} /></label><label>Contraseña<input required={!editing} minLength="8" autoComplete="new-password" type="password" value={form.password || ''} placeholder={editing ? 'Dejar vacío para conservarla' : 'Mínimo 8 caracteres'} onChange={set('password')} /></label><button className="primary"><Icon name="check" />{editing ? 'Guardar cambios' : 'Guardar empleado'}</button><button type="button" className="secondary" onClick={cancel}>Cancelar</button></form> }
 
 function Settings({ roles, setRoles, setNotice, ask }) {
   const [active, setActive] = useState(roles[0]?.id); const [editing, setEditing] = useState(false); const [name, setName] = useState(''); const [description, setDescription] = useState(''); const role = roles.find(x => x.id === active) || roles[0]
