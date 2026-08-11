@@ -94,6 +94,13 @@ const initials = name => name.split(' ').map(x => x[0]).slice(0, 2).join('').toU
 const normalizeRoleName = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 const roleCode = role => role?.code || ({ administrador: 'administrator', tecnico: 'technician', coordinador: 'coordinator', usuario: 'user' }[normalizeRoleName(role?.name)] || `role-${role?.id}`)
 const normalizeServiceName = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+// Las búsquedas operativas no dependen de tildes, mayúsculas, espacios ni
+// signos. "instalacion", "Instalación" y "INSTALACION" son equivalentes.
+const normalizeSearchText = value => String(value ?? '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLocaleLowerCase('es')
+  .replace(/[^a-z0-9]/g, '')
 const serviceCode = service => service?.code || (normalizeServiceName(service?.name) === 'instalacion de alarma' ? 'alarm-installation' : `service-${service?.id}`)
 const prettyDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, x => x.toUpperCase()) : ''
 // Cada familia de trabajo tiene un color consistente en el historial para facilitar su lectura.
@@ -1208,7 +1215,7 @@ function AlarmDetailsModal({ records, month, close, download }) {
 function History({ history, setHistory, customers, services, employees }) {
   return <HistoryView {...{ history, setHistory, customers, services, employees }} />
   const [search, setSearch] = useState('')
-  const records = history.filter(record => `${record.client} ${record.service} ${record.technicians?.join(' ')}`.toLowerCase().includes(search.toLowerCase())).sort((a, b) => b.date.localeCompare(a.date))
+  const records = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizeSearchText(search))).sort((a, b) => b.date.localeCompare(a.date))
   return <><div className="module-intro"><div><p className="eyebrow">TRABAJOS REALIZADOS</p><h1>Historial técnico</h1><p>Consultá los servicios registrados para cada cliente y el equipo asignado.</p></div></div><div className="accounts-bar history-toolbar"><div><b>{history.length}</b> trabajos registrados</div><label><Icon name="search" size={16} /><input placeholder="Buscar cliente, servicio o técnico..." value={search} onChange={event => setSearch(event.target.value)} /></label></div><div className="data-card history-table"><div className="table-head"><span>Fecha</span><span>Cliente</span><span>Servicio</span><span>Técnicos asignados</span><span>Detalle</span></div>{records.length ? records.map(record => <div className="history-row" key={record.id}><b>{prettyDate(record.date)}</b><div><strong>{record.client}</strong><small>{record.address || 'Sin dirección'}</small></div><div><em className="role-chip">{record.service}</em></div><div>{record.technicians?.length ? record.technicians.join(' / ') : 'Sin técnicos asignados'}</div><div>{record.detail || 'Sin observaciones'}</div></div>) : <div className="empty-state">Todavía no hay trabajos registrados. Al copiar una agenda, sus servicios se guardarán aquí.</div>}</div></>
 }
 
@@ -1216,7 +1223,7 @@ function HistoryView({ history, setHistory, customers, services, employees }) {
   return <HistoryManagement {...{ history, setHistory, customers, services, employees }} />
   const [search, setSearch] = useState('')
   const [detail, setDetail] = useState(null)
-  const records = history.filter(record => `${record.client} ${record.service} ${record.technicians?.join(' ')}`.toLowerCase().includes(search.toLowerCase())).sort((a, b) => b.date.localeCompare(a.date))
+  const records = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizeSearchText(search))).sort((a, b) => b.date.localeCompare(a.date))
   return <><div className="module-intro"><div><p className="eyebrow">TRABAJOS REALIZADOS</p><h1>Historial técnico</h1><p>Consultá los servicios registrados para cada cliente y el equipo asignado.</p></div></div><div className="accounts-bar history-toolbar"><div><b>{history.length}</b> trabajos registrados</div><label><Icon name="search" size={16} /><input placeholder="Buscar cliente, servicio o técnico..." value={search} onChange={event => setSearch(event.target.value)} /></label></div><div className="data-card history-table"><div className="table-head"><span>Fecha</span><span>Cliente</span><span>Servicio</span><span>Técnicos asignados</span><span>Detalle</span></div>{records.length ? records.map(record => <div className="history-row" key={record.id}><b>{prettyDate(record.date)}</b><div className="history-client"><strong>{record.client}</strong><small>{record.address || 'Sin dirección'}</small></div><div><em className="role-chip">{record.service}</em></div><div>{record.technicians?.length ? record.technicians.join(' / ') : 'Sin técnicos asignados'}</div><div><button className="secondary detail-button" onClick={() => setDetail(record)}><Icon name="eye" size={16} />Ver detalle</button></div></div>) : <div className="empty-state">No hay trabajos para mostrar.</div>}</div>{detail && <HistoryDetail record={detail} close={() => setDetail(null)} />}</>
 }
 
@@ -1232,7 +1239,8 @@ function HistoryBulkView({ history, setHistory, customers, services, employees }
   const [toDate, setToDate] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const minimumRescheduleDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
-  const records = history.filter(record => `${record.client} ${record.service} ${record.technicians?.join(' ')}`.toLowerCase().includes(search.toLowerCase()) && (!fromDate || record.date >= fromDate) && (!toDate || record.date <= toDate) && (statusFilter === 'all' || (record.status || 'Pendiente') === statusFilter)).sort((a, b) => b.date.localeCompare(a.date))
+  const normalizedSearch = normalizeSearchText(search)
+  const records = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizedSearch) && (!fromDate || record.date >= fromDate) && (!toDate || record.date <= toDate) && (statusFilter === 'all' || (record.status || 'Pendiente') === statusFilter)).sort((a, b) => b.date.localeCompare(a.date))
   const technicianNames = record => record.technicians?.map(name => String(name).trim().split(/\s+/)[0]).filter(Boolean).join(' / ') || 'Sin asignar'
   const status = record => record.status || 'Pendiente'
   const toggle = id => setSelected(previous => previous.includes(id) ? previous.filter(item => item !== id) : [...previous, id])
@@ -1315,7 +1323,7 @@ function HistoryManagement({ history, setHistory, customers, services, employees
   return <HistoryBulkView {...{ history, setHistory, customers, services, employees }} />
   const [search, setSearch] = useState('')
   const [detail, setDetail] = useState(null)
-  const records = history.filter(record => `${record.client} ${record.service} ${record.technicians?.join(' ')}`.toLowerCase().includes(search.toLowerCase())).sort((a, b) => b.date.localeCompare(a.date))
+  const records = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizeSearchText(search))).sort((a, b) => b.date.localeCompare(a.date))
   const status = record => record.status || 'Pendiente'
   return <><div className="module-intro"><div><p className="eyebrow">TRABAJOS REALIZADOS</p><h1>Historial técnico</h1><p>Gestioná la confirmación, cancelación o reprogramación de cada servicio.</p></div></div><div className="accounts-bar history-toolbar"><div><b>{history.length}</b> trabajos registrados</div><label><Icon name="search" size={16} /><input placeholder="Buscar cliente, servicio o técnico..." value={search} onChange={event => setSearch(event.target.value)} /></label></div><div className="data-card history-table"><div className="table-head"><span>Fecha</span><span>Cliente</span><span>Servicio</span><span>Estado</span><span>Detalle</span></div>{records.length ? records.map(record => <div className="history-row" key={record.id}><b>{prettyDate(record.date)}</b><div className="history-client"><strong>{record.client}</strong><small>{record.address || 'Sin dirección'}</small></div><div><em className="role-chip">{record.service}</em></div><div><span className={`work-status ${status(record).toLowerCase().replace(/\s/g, '-')}`}>{status(record)}</span>{record.scheduledDate && <small className="scheduled-date">Para: {prettyDate(record.scheduledDate)}</small>}</div><div><button className="secondary detail-button" onClick={() => setDetail(record)}><Icon name="eye" size={16} />Gestionar</button></div></div>) : <div className="empty-state">No hay trabajos para mostrar.</div>}</div>{detail && <HistoryManagementDetail record={detail} setHistory={setHistory} close={() => setDetail(null)} />}</>
 }
@@ -1427,7 +1435,7 @@ function Reviews({ reviews, setReviews, customers, setNotice, ask }) {
   const [statusFilter, setStatusFilter] = useState('Todos')
   const visible = useMemo(() => reviews
     .filter(review => statusFilter === 'Todos' || review.status === statusFilter)
-    .filter(review => `${review.author} ${review.customerCode} ${review.comment} ${review.channel}`.toLowerCase().includes(search.toLowerCase()))
+    .filter(review => normalizeSearchText(`${review.author} ${review.customerCode} ${review.comment} ${review.channel}`).includes(normalizeSearchText(search)))
     .sort((a, b) => String(b.date).localeCompare(String(a.date))), [reviews, search, statusFilter])
   const chooseCustomer = event => {
     const customer = customers.find(item => String(item.customerId) === event.target.value)
@@ -1449,7 +1457,7 @@ function Accounts({ customers, setCustomers, setNotice, ask, history, teams, wee
   const [search, setSearch] = useState(''); const [form, setForm] = useState(blankCustomer); const [editing, setEditing] = useState(null); const [showForm, setShowForm] = useState(false); const [importOpen, setImportOpen] = useState(false); const [detail, setDetail] = useState(null)
   const [pageSize, setPageSize] = useState(20); const [page, setPage] = useState(1)
   const visible = useMemo(() => customers
-    .filter(c => `${c.account} ${c.name} ${c.locality}`.toLowerCase().includes(search.toLowerCase()))
+    .filter(c => normalizeSearchText(`${c.account} ${c.name} ${c.locality}`).includes(normalizeSearchText(search)))
     .sort((a, b) => String(a.account || '').localeCompare(String(b.account || ''), 'es', { numeric: true, sensitivity: 'base' })), [customers, search])
   const totalPages = Math.max(1, Math.ceil(visible.length / pageSize))
   const currentPage = Math.min(page, totalPages)
