@@ -5,8 +5,9 @@ const crypto = require('node:crypto')
 const { DatabaseSync } = require('node:sqlite')
 
 // API local: Vite reenvía las rutas /api a este proceso durante el desarrollo.
-const port = 3001
-const dataDir = path.join(__dirname, 'data')
+const port = Number(process.env.PIGNUS_PORT || 3001)
+const host = process.env.PIGNUS_HOST || '127.0.0.1'
+const dataDir = process.env.PIGNUS_DATA_DIR ? path.resolve(process.env.PIGNUS_DATA_DIR) : path.join(__dirname, 'data')
 fs.mkdirSync(dataDir, { recursive: true })
 const db = new DatabaseSync(path.join(dataDir, 'agenda-tecnica.db'))
 
@@ -453,6 +454,15 @@ function mergeConfirmedCliAliases() {
     const source = byAccount.get(sourceAccount), target = byAccount.get(targetAccount)
     if (source && target) redirects.set(String(source.customerId), { target, sourceAccount })
   })
+  const confirmedNameAliases = [
+    ['HUGO WAST', 'CLI-0032'],
+    ['MANTENIMIENTO DE CAMARAS', 'CLI-0047']
+  ]
+  confirmedNameAliases.forEach(([sourceName, targetAccount]) => {
+    const target = byAccount.get(targetAccount)
+    customers.filter(customer => customerKind(customer) === 'client' && normalizedCustomerValue(customer.name) === normalizedCustomerValue(sourceName) && customer.account !== targetAccount)
+      .forEach(source => { if (target) redirects.set(String(source.customerId), { target, sourceAccount: source.account }) })
+  })
   if (!redirects.size) return
   const redirectReference = item => {
     const target = redirects.get(String(item.customerId || ''))?.target
@@ -541,6 +551,7 @@ function readState() {
   const agenda = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
   const theme = db.prepare('SELECT value FROM preferences WHERE key = ?').get('theme')
   return {
+    revision: currentStateRevision(),
     roles: rows('roles'),
     // Nunca se exponen hashes ni contraseñas a la interfaz.
     employees: sanitizeEmployeesForRead(),
@@ -555,10 +566,81 @@ function readState() {
 
 function readTechnicianState(user) {
   return {
+    revision: currentStateRevision(),
     roles: [], employees: [], services: [], customers: [], agenda: null, preferences: {},
     // El nombre es solamente una etiqueta visible. El acceso se decide siempre
     // mediante el identificador inmutable del empleado autenticado.
     history: rows('work_history').filter(record => record.technicianIds?.some(id => String(id) === String(user.id)))
+  }
+}
+
+function readStateForUser(user) {
+  if (user.roleCode === 'technician') return readTechnicianState(user)
+  const state = readState()
+  if (user.roleCode === 'administrator') return state
+  const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
+  return {
+    ...state,
+    employees: userCan(user, 'employees') ? state.employees : state.employees.map(({ id, firstName, lastName, name, roleId, role, status }) => ({ id, firstName, lastName, name, roleId, role, status })),
+    services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? state.services : [],
+    customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
+    history: userCan(user, 'history') ? state.history : [],
+    reviews: userCan(user, 'reviews') ? state.reviews : [],
+    agenda: canPlan ? state.agenda : null
+  }
+}
+
+function currentStateRevision() {
+  return Number(db.prepare('SELECT value FROM preferences WHERE key = ?').get('state_revision')?.value || 0)
+}
+
+function roleForEmployee(employee) {
+  return rows('roles').find(role => String(role.id) === String(employee?.roleId)) ||
+    rows('roles').find(role => normalizedRoleName(role.name) === normalizedRoleName(employee?.role))
+}
+
+function userCan(user, permission) {
+  return user?.roleCode === 'administrator' || Boolean(user?.permissions?.[permission])
+}
+
+// La interfaz conserva un estado amplio, pero el servidor nunca acepta cambios
+// sobre colecciones para las que el rol autenticado no tiene permiso.
+function authorizedIncomingState(state, user) {
+  const current = readState()
+  const administrator = user?.roleCode === 'administrator'
+  let employees = current.employees
+  if (administrator) employees = state.employees
+  else if (userCan(user, 'employees')) {
+    const previousById = new Map(current.employees.map(employee => [String(employee.id), employee]))
+    const administratorRoleIds = new Set(current.roles.filter(role => (role.code || legacyRoleCode(role)) === 'administrator').map(role => String(role.id)))
+    employees = (state.employees || []).map(employee => {
+      const previous = previousById.get(String(employee.id))
+      if (previous && administratorRoleIds.has(String(previous.roleId))) return previous
+      if (!previous && administratorRoleIds.has(String(employee.roleId))) {
+        const error = new Error('Solamente un administrador puede crear o asignar cuentas administrativas.')
+        error.statusCode = 403
+        throw error
+      }
+      return previous ? { ...employee, roleId: previous.roleId, role: previous.role } : employee
+    })
+    current.employees.filter(employee => administratorRoleIds.has(String(employee.roleId)) && !employees.some(item => String(item.id) === String(employee.id))).forEach(employee => employees.push(employee))
+  }
+  const currentAgenda = current.agenda || {}
+  const incomingAgenda = state.agenda || {}
+  const agenda = {
+    ...currentAgenda,
+    ...(userCan(user, 'agenda') ? { date: incomingAgenda.date, teams: incomingAgenda.teams } : {}),
+    ...(userCan(user, 'weekly') ? { weekly: incomingAgenda.weekly } : {})
+  }
+  return {
+    ...state,
+    roles: administrator ? state.roles : current.roles,
+    employees,
+    services: userCan(user, 'services') ? state.services : current.services,
+    history: userCan(user, 'history') ? state.history : current.history,
+    customers: userCan(user, 'accounts') ? state.customers : current.customers,
+    reviews: userCan(user, 'reviews') ? state.reviews : current.reviews,
+    agenda
   }
 }
 
@@ -630,6 +712,7 @@ function validateState(state) {
   ensureUnique(state.employees.map(employee => ({ email: employee.email })), 'email', 'Correo electrónico')
   state.services.forEach((service, index) => {
     if (!String(service.name ?? '').trim() || !text(service.name, 120) || !String(service.code ?? '').trim() || !text(service.code, 120)) throw new Error(`Tipo de servicio ${index + 1}: nombre o código inválido.`)
+    if (!text(service.description, 500)) throw new Error(`Tipo de servicio ${index + 1}: la descripción es demasiado extensa.`)
     if (!['Activo', 'Inactivo'].includes(service.status)) throw new Error(`Tipo de servicio ${index + 1}: el estado no es válido.`)
   })
   state.customers.forEach((customer, index) => {
@@ -637,11 +720,13 @@ function validateState(state) {
     if (!['subscriber', 'client'].includes(customer.kind)) throw new Error(`Cliente ${index + 1}: la condición no es válida.`)
     const expectedPrefix = customer.kind === 'subscriber' ? 'PIG-' : 'CLI-'
     if (!String(customer.account || '').toUpperCase().startsWith(expectedPrefix)) throw new Error(`Cliente ${index + 1}: el código debe comenzar con ${expectedPrefix}`)
-    if (!text(customer.account, 80) || !text(customer.phone, 50) || !text(customer.address, 320)) throw new Error(`Cliente ${index + 1}: uno de los datos supera el máximo permitido.`)
+    if (!text(customer.account, 80) || !text(customer.phone, 50) || !text(customer.address, 320) || !text(customer.street, 220) || !text(customer.locality, 120) || !text(customer.province, 120) || !text(customer.type, 120) || JSON.stringify(customer.fields || {}).length > 20_000) throw new Error(`Cliente ${index + 1}: uno de los datos supera el máximo permitido.`)
   })
   state.history.forEach((record, index) => {
     if (!date(record.date) || !time(record.time) || !time(record.scheduledTime)) throw new Error(`Historial ${index + 1}: fecha u hora inválida.`)
     if (!text(record.client, 200) || !text(record.service, 160) || !text(record.address, 320) || !text(record.phone, 50) || !text(record.detail, 4000)) throw new Error(`Historial ${index + 1}: uno de los campos es demasiado extenso.`)
+    if (!['Pendiente', 'Completado', 'Cancelado', 'Reprogramado', 'Requiere revisión'].includes(record.status)) throw new Error(`Historial ${index + 1}: el estado no es válido.`)
+    if (!Array.isArray(record.technicianIds || [])) throw new Error(`Historial ${index + 1}: la asignación de técnicos no es válida.`)
   })
   state.history.forEach((record, index) => {
     if (!customerIds.has(String(record.customerId))) throw new Error(`Historial ${index + 1}: el cliente vinculado no existe.`)
@@ -658,8 +743,10 @@ function validateState(state) {
   })
   agendaTeams.forEach((team, teamIndex) => {
     if (!String(team.teamId || '').trim()) throw new Error(`Agenda: el equipo ${teamIndex + 1} no tiene ID.`)
+    if (!Array.isArray(team.memberIds || []) || !Array.isArray(team.tasks || [])) throw new Error(`Agenda: el equipo ${teamIndex + 1} tiene una estructura inválida.`)
     if ((team.memberIds || []).some(id => !employeeIds.has(String(id)))) throw new Error(`Agenda: el equipo ${teamIndex + 1} contiene un técnico inexistente.`)
     ;(team.tasks || []).forEach((task, taskIndex) => {
+      if (!time(task.time) || !text(task.service, 160) || !text(task.client, 200) || !text(task.address, 320) || !text(task.phone, 50) || !text(task.detail, 4000)) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} contiene datos inválidos.`)
       if (task.serviceId && !serviceIds.has(String(task.serviceId))) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} tiene un tipo inexistente.`)
       if (task.customerId && !customerIds.has(String(task.customerId))) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} tiene un cliente inexistente.`)
     })
@@ -668,10 +755,19 @@ function validateState(state) {
     if (!date(review.date) || ![1, 2, 3, 4, 5].includes(Number(review.rating))) throw new Error(`Reseña ${index + 1}: fecha o calificación inválida.`)
     if (!String(review.author ?? '').trim() || !text(review.author, 180) || !String(review.comment ?? '').trim() || !text(review.comment, 4000)) throw new Error(`Reseña ${index + 1}: autor o comentario inválido.`)
     if (!['Pendiente', 'Publicada', 'Archivada'].includes(review.status)) throw new Error(`Reseña ${index + 1}: el estado no es válido.`)
+    if (!['Google', 'WhatsApp', 'Facebook', 'Instagram', 'Encuesta', 'Otro'].includes(review.channel)) throw new Error(`Reseña ${index + 1}: el canal no es válido.`)
   })
 }
 
 function saveState(state, user) {
+  const expectedRevision = Number(state.revision)
+  const actualRevision = currentStateRevision()
+  if (!Number.isInteger(expectedRevision) || expectedRevision !== actualRevision) {
+    const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de volver a guardar.')
+    error.statusCode = 409
+    throw error
+  }
+  state = authorizedIncomingState(state, user)
   const normalizedRoles = (state.roles || []).map(role => ({ ...role, code: role.code || legacyRoleCode(role) }))
   const roleById = new Map(normalizedRoles.map(role => [String(role.id), role]))
   const roleByName = new Map(normalizedRoles.map(role => [normalizedRoleName(role.name), role]))
@@ -760,7 +856,10 @@ function saveState(state, user) {
     replaceRows('reviews', state.reviews, 'id')
     db.prepare('INSERT OR REPLACE INTO agendas (id, data) VALUES (?, ?)').run('current', JSON.stringify(nextAgenda))
     db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('theme', state.preferences?.theme || 'light')
+    const nextRevision = actualRevision + 1
+    db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(nextRevision))
     db.exec('COMMIT')
+    return nextRevision
   } catch (error) {
     db.exec('ROLLBACK')
     throw error
@@ -768,8 +867,17 @@ function saveState(state, user) {
 }
 
 function send(res, status, data) {
+  setSecurityHeaders(res)
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(data))
+}
+
+function setSecurityHeaders(res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('Referrer-Policy', 'no-referrer')
+  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'")
 }
 
 function parseCookies(header = '') {
@@ -804,7 +912,19 @@ function sessionUser(req) {
     if (token) sessions.delete(token)
     return null
   }
-  return session.user
+  const employee = rows('employees').find(item => String(item.id) === String(session.user.id))
+  if (!employee || employee.status !== 'Activo') {
+    sessions.delete(token)
+    return null
+  }
+  const role = roleForEmployee(employee)
+  if (!role) {
+    sessions.delete(token)
+    return null
+  }
+  const user = { id: employee.id, name: employee.name, email: employee.email, roleId: role.id, roleCode: role.code || legacyRoleCode(role), role: role.name, permissions: role.permissions || {} }
+  session.user = user
+  return user
 }
 
 function requireSession(req, res) {
@@ -819,8 +939,14 @@ function requireSession(req, res) {
 function readJson(req, limit = 50_000) {
   return new Promise((resolve, reject) => {
     let body = ''
-    req.on('data', chunk => { body += chunk; if (body.length > limit) reject(new Error('Solicitud demasiado grande.')) })
+    let tooLarge = false
+    req.on('data', chunk => {
+      if (tooLarge) return
+      body += chunk
+      if (Buffer.byteLength(body, 'utf8') > limit) { tooLarge = true; body = '' }
+    })
     req.on('end', () => {
+      if (tooLarge) return reject(new Error('Solicitud demasiado grande.'))
       try { resolve(JSON.parse(body || '{}')) } catch { reject(new Error('Datos inválidos.')) }
     })
     req.on('error', reject)
@@ -855,22 +981,46 @@ function alarmCategory(record) {
   return 'residencial'
 }
 
+function clearDailyAgenda(user) {
+  const stored = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+  const previous = stored ? JSON.parse(stored.data) : {}
+  const date = new Date().toISOString().slice(0, 10)
+  const next = {
+    ...previous,
+    date,
+    teams: [{ teamId: stableTeamId(date.slice(0, 7), 0), memberIds: [], members: [], tasks: [] }]
+  }
+  const revision = currentStateRevision() + 1
+  db.exec('BEGIN')
+  try {
+    db.prepare('INSERT OR REPLACE INTO agendas (id, data) VALUES (?, ?)').run('current', JSON.stringify(next))
+    writeAudit(user, 'Limpió', 'Agenda del día', 'agenda-diaria', previous, next)
+    db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
+    db.exec('COMMIT')
+    return revision
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+}
+
 /** Genera el reporte Excel compatible solicitado por gerencia, filtrado por ubicación. */
-function exportHistory(res, month, category) {
+function exportHistory(res, month, category, technicianId = null) {
   // "all" permite obtener un único reporte mensual sin perder los reportes por ubicación.
   const isAllCategories = category === 'all'
   const alarmService = rows('services').find(service => service.code === 'alarm-installation')
-  const records = rows('work_history').filter(record => record.date?.startsWith(month) && (String(record.serviceId) === String(alarmService?.id) || (!record.serviceId && normalizedServiceName(record.service) === 'instalacion de alarma')) && (isAllCategories || alarmCategory(record) === category))
+  const records = rows('work_history').filter(record => record.date?.startsWith(month) && (String(record.serviceId) === String(alarmService?.id) || (!record.serviceId && normalizedServiceName(record.service) === 'instalacion de alarma')) && (isAllCategories || alarmCategory(record) === category) && (!technicianId || record.technicianIds?.some(id => String(id) === String(technicianId))))
   const label = { docta: 'Docta Urbanización', 'nobu-town': 'Nobu Town', residencial: 'Residenciales', all: 'Todas las instalaciones de alarma' }[category] || 'Instalaciones de alarma'
   const headers = ['Fecha', 'Cliente', 'Dirección', 'Contacto', 'Técnicos asignados', 'Detalle', 'Equipo']
   const body = records.map(record => `<tr>${[record.date, record.client, record.address, record.phone, record.technicians?.join(' / '), record.detail, record.team].map(value => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('')
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:Arial}th{background:#173b28;color:#fff}th,td{border:1px solid #c8d5ca;padding:8px;text-align:left}h1{font-family:Arial;color:#173b28}</style></head><body><h1>Instalaciones de alarma – ${escapeHtml(label)}</h1><p>Período: ${escapeHtml(month)}</p><table><tr>${headers.map(header => `<th>${header}</th>`).join('')}</tr>${body}</table></body></html>`
+  setSecurityHeaders(res)
   res.writeHead(200, { 'Content-Type': 'application/vnd.ms-excel; charset=utf-8', 'Content-Disposition': `attachment; filename="instalaciones-alarma-${category}-${month}.xls"` })
   res.end(html)
 }
 
 const server = http.createServer((req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`)
+  const url = new URL(req.url, `http://${host}:${port}`)
   if (req.method === 'GET' && url.pathname === '/api/auth/session') {
     const user = sessionUser(req)
     return user ? send(res, 200, { user }) : send(res, 401, { error: 'Sin sesión activa.' })
@@ -913,13 +1063,16 @@ const server = http.createServer((req, res) => {
     return send(res, 200, { ok: true })
   }
   if (req.method === 'GET' && url.pathname === '/api/history/export') {
-    if (!requireSession(req, res)) return
+    const user = requireSession(req, res)
+    if (!user) return
+    if (user.roleCode === 'technician') return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial', user.id)
+    if (!userCan(user, 'history')) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
     return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial')
   }
   if (req.method === 'GET' && req.url === '/api/state') {
     const user = requireSession(req, res)
     if (!user) return
-    return send(res, 200, user.roleCode === 'technician' ? readTechnicianState(user) : readState())
+    return send(res, 200, readStateForUser(user))
   }
   if (req.method === 'GET' && url.pathname === '/api/audit') {
     const user = requireSession(req, res)
@@ -943,22 +1096,37 @@ const server = http.createServer((req, res) => {
       if (type !== 'Completado' && !String(observation || '').trim()) return send(res, 400, { error: 'La observación es obligatoria.' })
       const now = new Date().toISOString()
       const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim(), technicalReportedAt: now, completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type }
-      db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(updated), String(record.id))
-      writeAudit(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, updated)
+      db.exec('BEGIN')
+      try {
+        db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(updated), String(record.id))
+        writeAudit(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, updated)
+        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(currentStateRevision() + 1))
+        db.exec('COMMIT')
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
       return send(res, 200, { record: updated })
     }).catch(() => send(res, 400, { error: 'No se pudo informar el estado.' }))
+  }
+  if (req.method === 'POST' && url.pathname === '/api/agenda/daily/clear') {
+    const user = requireSession(req, res)
+    if (!user) return
+    if (!userCan(user, 'agenda')) return send(res, 403, { error: 'No tenés permiso para limpiar la agenda del día.' })
+    try { return send(res, 200, { ok: true, revision: clearDailyAgenda(user) }) }
+    catch (error) { console.error(error); return send(res, 500, { error: 'No se pudo limpiar la agenda del día.' }) }
   }
   if (req.method === 'PUT' && req.url === '/api/state') {
     const user = requireSession(req, res)
     if (!user) return
     if (user.roleCode === 'technician') return send(res, 403, { error: 'El rol técnico no puede modificar la agenda.' })
     readJson(req, 15_000_000).then(state => {
-      saveState(state, user)
-      send(res, 200, { ok: true })
-    }).catch(error => { console.error(error); send(res, 400, { error: error?.message || 'No se pudieron guardar los datos.' }) })
+      const revision = saveState(state, user)
+      send(res, 200, { ok: true, revision })
+    }).catch(error => { console.error(error); send(res, error?.statusCode || 400, { error: error?.message || 'No se pudieron guardar los datos.' }) })
     return
   }
   send(res, 404, { error: 'Ruta no encontrada.' })
 })
 
-server.listen(port, () => console.log(`Base de datos disponible en http://localhost:${port}`))
+server.listen(port, host, () => console.log(`Base de datos disponible en http://${host}:${port}`))
