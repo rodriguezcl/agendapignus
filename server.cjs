@@ -29,6 +29,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS agendas (id TEXT PRIMARY KEY, data TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS reviews (id TEXT PRIMARY KEY, data TEXT NOT NULL);
 `)
 
 const historicalImportPath = path.join(dataDir, 'historical-import.json')
@@ -109,6 +110,335 @@ function migrateEmployeeNameParts() {
 
 migrateEmployeeNameParts()
 
+function normalizedRoleName(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+}
+
+function legacyRoleCode(role) {
+  const name = normalizedRoleName(role.name)
+  if (name === 'administrador') return 'administrator'
+  if (name === 'tecnico') return 'technician'
+  if (name === 'coordinador') return 'coordinator'
+  if (name === 'usuario') return 'user'
+  return `role-${role.id}`
+}
+
+// Los nombres pueden editarse. El vínculo y el comportamiento del sistema se
+// apoyan en `roleId` y `code`, que permanecen estables aunque cambie la etiqueta.
+function migrateRoleReferences() {
+  const roles = rows('roles')
+  const updateRole = db.prepare('UPDATE roles SET data = ? WHERE id = ?')
+  const normalizedRoles = roles.map(role => {
+    const next = { ...role, code: role.code || legacyRoleCode(role) }
+    if (JSON.stringify(next) !== JSON.stringify(role)) updateRole.run(JSON.stringify(next), String(role.id))
+    return next
+  })
+  const roleByName = new Map(normalizedRoles.map(role => [normalizedRoleName(role.name), role]))
+  const roleById = new Map(normalizedRoles.map(role => [String(role.id), role]))
+  const updateEmployee = db.prepare('UPDATE employees SET data = ? WHERE id = ?')
+  for (const employee of rows('employees')) {
+    const matchedRole = roleById.get(String(employee.roleId ?? '')) || roleByName.get(normalizedRoleName(employee.role))
+    if (!matchedRole) continue
+    const next = { ...employee, roleId: matchedRole.id, role: matchedRole.name }
+    if (JSON.stringify(next) !== JSON.stringify(employee)) updateEmployee.run(JSON.stringify(next), String(employee.id))
+  }
+}
+
+migrateRoleReferences()
+
+function normalizedServiceName(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+}
+
+function legacyServiceCode(service) {
+  return normalizedServiceName(service.name) === 'instalacion de alarma' ? 'alarm-installation' : `service-${service.id}`
+}
+
+function migrateServiceReferences() {
+  const services = rows('services')
+  const updateService = db.prepare('UPDATE services SET data = ? WHERE id = ?')
+  const normalizedServices = services.map(service => {
+    const next = { ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') }
+    if (JSON.stringify(next) !== JSON.stringify(service)) updateService.run(JSON.stringify(next), String(service.id))
+    return next
+  })
+  const byId = new Map(normalizedServices.map(service => [String(service.id), service]))
+  const byName = new Map(normalizedServices.map(service => [normalizedServiceName(service.name), service]))
+  const serviceByTerms = terms => normalizedServices.find(service => terms.every(term => normalizedServiceName(service.name).includes(term)))
+  const legacyService = value => {
+    const name = normalizedServiceName(value)
+    if (name.includes('instalacion nueva') && name.includes('camara')) return serviceByTerms(['instalacion', 'camara'])
+    if (name.includes('instalacion nueva') && name.includes('cerco')) return serviceByTerms(['instalacion', 'cerco'])
+    if (name.includes('service / reparacion') && name.includes('alarma')) return serviceByTerms(['service', 'alarma'])
+    if (name.includes('service / reparacion') && name.includes('camara')) return serviceByTerms(['service', 'camara'])
+    if (name.includes('service / reparacion') && name.includes('cerco')) return serviceByTerms(['service', 'cerco'])
+    if (name.includes('otro') || name.includes('ampliacion / mejora')) return serviceByTerms(['otro'])
+    return null
+  }
+  const normalizeReference = item => {
+    const matched = byId.get(String(item.serviceId ?? '')) || byName.get(normalizedServiceName(item.service)) || legacyService(item.service)
+    return matched ? { ...item, serviceId: matched.id, service: matched.name } : item
+  }
+  const normalizeTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(normalizeReference) }))
+
+  const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+  if (agendaRow) {
+    const agenda = JSON.parse(agendaRow.data)
+    const weekly = Object.fromEntries(Object.entries(agenda.weekly || {}).map(([key, value]) => [key, key.startsWith('_') ? value : { ...value, teams: normalizeTeams(value?.teams) }]))
+    const nextAgenda = { ...agenda, teams: normalizeTeams(agenda.teams), weekly }
+    if (JSON.stringify(nextAgenda) !== JSON.stringify(agenda)) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(nextAgenda), 'current')
+  }
+
+  const updateHistory = db.prepare('UPDATE work_history SET data = ? WHERE id = ?')
+  for (const record of rows('work_history')) {
+    const next = normalizeReference(record)
+    if (JSON.stringify(next) !== JSON.stringify(record)) updateHistory.run(JSON.stringify(next), String(record.id))
+  }
+}
+
+migrateServiceReferences()
+
+function normalizedCustomerValue(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function legacyCustomerId(customer) {
+  const source = String(customer.account || customer.name || crypto.randomUUID()).trim().toUpperCase()
+  return `customer-${crypto.createHash('sha256').update(source).digest('hex').slice(0, 24)}`
+}
+
+function customerKind(customer) {
+  if (customer.kind === 'subscriber' || customer.kind === 'client') return customer.kind
+  return String(customer.account || '').toUpperCase().startsWith('PIG-') ? 'subscriber' : 'client'
+}
+
+function customerCodeFromText(value) {
+  const match = String(value || '').toUpperCase().match(/\b(PIG|CLI)[ -]?(\d+)\b/)
+  return match ? `${match[1]}-${match[2]}` : ''
+}
+
+// PIG identifica a un Abonado; CLI a un Cliente sin abono. La relación real se
+// sostiene mediante customerId, que no cambia si se corrige el código o el nombre.
+function migrateCustomerReferences() {
+  let customers = rows('customers')
+  const updateCustomer = db.prepare('UPDATE customers SET data = ? WHERE account = ?')
+  let normalizedCustomers = customers.map(customer => {
+    const next = { ...customer, customerId: customer.customerId || legacyCustomerId(customer), kind: customerKind(customer) }
+    if (JSON.stringify(next) !== JSON.stringify(customer)) updateCustomer.run(JSON.stringify(next), String(customer.account))
+    return next
+  })
+  const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+  const agenda = agendaRow ? JSON.parse(agendaRow.data) : null
+  const references = [...rows('work_history')]
+  const collectTeams = teams => (teams || []).forEach(team => references.push(...(team.tasks || [])))
+  collectTeams(agenda?.teams)
+  Object.entries(agenda?.weekly || {}).filter(([key]) => !key.startsWith('_')).forEach(([, plan]) => collectTeams(plan?.teams))
+
+  const rebuildIndexes = () => {
+    const byId = new Map(normalizedCustomers.map(customer => [String(customer.customerId), customer]))
+    const byAccount = new Map(normalizedCustomers.map(customer => [String(customer.account).trim().toUpperCase(), customer]))
+    const byName = new Map()
+    normalizedCustomers.forEach(customer => {
+      const key = normalizedCustomerValue(customer.name)
+      byName.set(key, byName.has(key) ? null : customer)
+    })
+    return { byId, byAccount, byName }
+  }
+  let indexes = rebuildIndexes()
+  const corroboratesEmbeddedAccount = (item, target) => {
+    const withoutCode = String(item.clientNameAtService || item.client || '').replace(/\bPIG[ -]?\d+\b/i, '').replace(/^[\s\-–—]+/, '')
+    const sameName = normalizedCustomerValue(withoutCode) === normalizedCustomerValue(target.name)
+    const itemAddress = normalizedCustomerValue(item.address)
+    const targetStreet = normalizedCustomerValue(target.street || target.address)
+    return sameName || Boolean(itemAddress && targetStreet && (itemAddress.includes(targetStreet) || targetStreet.includes(itemAddress)))
+  }
+  const matchCustomer = item => {
+    const account = String(item.clientAccount || item.account || customerCodeFromText(item.client)).trim().toUpperCase()
+    const clientText = normalizedCustomerValue(item.client)
+    const embeddedAccount = customerCodeFromText(item.client)
+    const embeddedTarget = embeddedAccount.startsWith('PIG-') ? indexes.byAccount.get(embeddedAccount) : null
+    if (embeddedTarget && corroboratesEmbeddedAccount(item, embeddedTarget)) return embeddedTarget
+    return indexes.byId.get(String(item.customerId || '')) || indexes.byAccount.get(account) ||
+      normalizedCustomers.find(customer => normalizedCustomerValue(`${customer.account} ${customer.name}`) === clientText) ||
+      indexes.byName.get(normalizedCustomerValue(item.clientNameAtService || item.client))
+  }
+
+  // Todo destinatario de un servicio debe existir como entidad. Los registros
+  // históricos sin PIG se incorporan como clientes CLI y dejan de depender del texto.
+  let nextClientNumber = Math.max(0, ...normalizedCustomers.map(customer => Number(String(customer.account || '').match(/^CLI-(\d+)$/i)?.[1]) || 0)) + 1
+  const insertCustomer = db.prepare('INSERT INTO customers (account, data) VALUES (?, ?)')
+  const pendingByName = new Map()
+  references.forEach(item => {
+    if (matchCustomer(item)) return
+    const name = String(item.clientNameAtService || item.client || '').replace(/^CLI-\d+\s+/i, '').trim()
+    const key = normalizedCustomerValue(name)
+    if (!key || key === 'disponible' || pendingByName.has(key)) return
+    pendingByName.set(key, item)
+  })
+  pendingByName.forEach((item, key) => {
+    const account = `CLI-${String(nextClientNumber++).padStart(4, '0')}`
+    const name = String(item.clientNameAtService || item.client).replace(/^(?:PIG|CLI)-\d+\s+/i, '').trim()
+    const address = String(item.address || '').trim()
+    const customer = { customerId: legacyCustomerId({ account }), kind: 'client', account, name, type: 'Cliente de servicio', street: address, locality: '', province: '', phone: String(item.phone || '').trim(), address, fields: {} }
+    insertCustomer.run(account, JSON.stringify(customer))
+    normalizedCustomers.push(customer)
+  })
+  indexes = rebuildIndexes()
+  const normalizeReference = item => {
+    const matched = matchCustomer(item)
+    const previous = indexes.byId.get(String(item.customerId || ''))
+    const reassigned = previous && String(previous.customerId) !== String(matched?.customerId)
+    const legacySpacedCode = /\bPIG \d+\b/i.test(String(item.client || '')) && corroboratesEmbeddedAccount(item, matched || {})
+    return matched ? { ...item, customerId: matched.customerId, clientAccount: matched.account, ...(reassigned || legacySpacedCode ? { client: `${matched.account} - ${matched.name}`, clientNameAtService: matched.name } : {}) } : item
+  }
+  const normalizeTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(normalizeReference) }))
+
+  if (agendaRow) {
+    const weekly = Object.fromEntries(Object.entries(agenda.weekly || {}).map(([key, value]) => [key, key.startsWith('_') ? value : { ...value, teams: normalizeTeams(value?.teams) }]))
+    const nextAgenda = { ...agenda, teams: normalizeTeams(agenda.teams), weekly }
+    if (JSON.stringify(nextAgenda) !== JSON.stringify(agenda)) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(nextAgenda), 'current')
+  }
+  const updateHistory = db.prepare('UPDATE work_history SET data = ? WHERE id = ?')
+  for (const record of rows('work_history')) {
+    const next = normalizeReference(record)
+    if (JSON.stringify(next) !== JSON.stringify(record)) updateHistory.run(JSON.stringify(next), String(record.id))
+  }
+  const updateReview = db.prepare('UPDATE reviews SET data = ? WHERE id = ?')
+  for (const review of rows('reviews')) {
+    const next = normalizeReference(review)
+    if (JSON.stringify(next) !== JSON.stringify(review)) updateReview.run(JSON.stringify(next), String(review.id))
+  }
+
+  // Consolida clientes CLI creados desde textos históricos que en realidad
+  // contienen un código PIG. Para evitar fusiones peligrosas, además del código
+  // se exige coincidencia del titular o de la calle registrada.
+  const refreshedAgendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+  const referencedCustomerIds = new Set(rows('work_history').map(item => String(item.customerId || '')))
+  rows('reviews').forEach(item => item.customerId && referencedCustomerIds.add(String(item.customerId)))
+  if (refreshedAgendaRow) {
+    const refreshedAgenda = JSON.parse(refreshedAgendaRow.data)
+    const collect = teams => (teams || []).forEach(team => (team.tasks || []).forEach(task => task.customerId && referencedCustomerIds.add(String(task.customerId))))
+    collect(refreshedAgenda.teams)
+    Object.entries(refreshedAgenda.weekly || {}).filter(([key]) => !key.startsWith('_')).forEach(([, plan]) => collect(plan?.teams))
+  }
+  const subscriberByAccount = new Map(normalizedCustomers.filter(customer => customer.kind === 'subscriber').map(customer => [String(customer.account).toUpperCase(), customer]))
+  const removeDuplicate = db.prepare('DELETE FROM customers WHERE account = ?')
+  normalizedCustomers.filter(customer => customer.kind === 'client').forEach(customer => {
+    const embeddedAccount = customerCodeFromText(customer.name)
+    if (!embeddedAccount.startsWith('PIG-')) return
+    const subscriber = subscriberByAccount.get(embeddedAccount)
+    if (!subscriber) return
+    const withoutCode = String(customer.name || '').replace(/\bPIG[ -]?\d+\b/i, '').replace(/^[\s\-–—]+/, '')
+    const sameName = normalizedCustomerValue(withoutCode) === normalizedCustomerValue(subscriber.name)
+    const clientAddress = normalizedCustomerValue(customer.address)
+    const subscriberStreet = normalizedCustomerValue(subscriber.street || subscriber.address)
+    const sameAddress = Boolean(clientAddress && subscriberStreet && (clientAddress.includes(subscriberStreet) || subscriberStreet.includes(clientAddress)))
+    if ((sameName || sameAddress) && !referencedCustomerIds.has(String(customer.customerId))) removeDuplicate.run(String(customer.account))
+  })
+}
+
+migrateCustomerReferences()
+
+function mergeDuplicateCliCustomers() {
+  const clients = rows('customers').filter(customer => customer.kind === 'client')
+  const cleanName = value => normalizedCustomerValue(value)
+    .replace(/\b(?:pig|cli)[ -]?\d+\b/g, '')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/[^a-z0-9ñ]+/g, ' ')
+    .trim().replace(/\s+/g, ' ')
+  const cleanAddress = value => {
+    const normalized = normalizedCustomerValue(value).replace(/[^a-z0-9ñ]+/g, ' ').trim().replace(/\s+/g, ' ')
+    return normalized === '-' || normalized.length < 5 ? '' : normalized
+  }
+  const parent = new Map(clients.map(customer => [String(customer.customerId), String(customer.customerId)]))
+  const root = id => { const current = parent.get(id); if (current !== id) parent.set(id, root(current)); return parent.get(id) }
+  const join = (left, right) => { const a = root(left), b = root(right); if (a !== b) parent.set(b, a) }
+  clients.forEach((left, index) => clients.slice(index + 1).forEach(right => {
+    const leftName = cleanName(left.name), rightName = cleanName(right.name)
+    const leftAddress = cleanAddress(left.address), rightAddress = cleanAddress(right.address)
+    const sameBaseName = leftName && leftName === rightName
+    const containedName = leftName.length >= 5 && rightName.length >= 5 && (leftName.includes(rightName) || rightName.includes(leftName))
+    const wordDifference = Math.abs(leftName.split(' ').length - rightName.split(' ').length)
+    const distinctiveContainedName = containedName && Math.min(leftName.split(' ').length, rightName.split(' ').length) >= 2 && wordDifference <= 1
+    const sameAddressAndContainedName = leftAddress && leftAddress === rightAddress && containedName
+    if (sameBaseName || distinctiveContainedName || sameAddressAndContainedName) join(String(left.customerId), String(right.customerId))
+  }))
+  const groups = new Map()
+  clients.forEach(customer => { const key = root(String(customer.customerId)); groups.set(key, [...(groups.get(key) || []), customer]) })
+  const duplicateGroups = [...groups.values()].filter(group => group.length > 1)
+  if (!duplicateGroups.length) return
+
+  const score = customer => (cleanAddress(customer.address) ? 100 : 0) + (String(customer.phone || '').trim() ? 50 : 0) + (!/[()]/.test(customer.name) ? 20 : 0) + (!/\s-\s/.test(customer.name) ? 10 : 0) + String(customer.name || '').length / 100
+  const redirects = new Map()
+  const updateCustomer = db.prepare('UPDATE customers SET data = ? WHERE account = ?')
+  duplicateGroups.forEach(group => {
+    const canonical = [...group].sort((a, b) => score(b) - score(a))[0]
+    const richestAddress = [...group].sort((a, b) => cleanAddress(b.address).length - cleanAddress(a.address).length)[0]
+    const richestPhone = group.find(customer => String(customer.phone || '').trim())
+    const merged = { ...canonical, address: cleanAddress(canonical.address) ? canonical.address : richestAddress.address, street: canonical.street || richestAddress.street || richestAddress.address, phone: canonical.phone || richestPhone?.phone || '' }
+    updateCustomer.run(JSON.stringify(merged), String(canonical.account))
+    group.filter(customer => customer !== canonical).forEach(customer => redirects.set(String(customer.customerId), { target: merged, sourceAccount: customer.account }))
+  })
+  const redirectReference = item => {
+    const target = redirects.get(String(item.customerId || ''))?.target
+    return target ? { ...item, customerId: target.customerId, clientAccount: target.account, clientNameAtService: target.name, client: `${target.account} - ${target.name}` } : item
+  }
+  const redirectTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(redirectReference) }))
+  const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+  if (agendaRow) {
+    const agenda = JSON.parse(agendaRow.data)
+    const weekly = Object.fromEntries(Object.entries(agenda.weekly || {}).map(([key, value]) => [key, key.startsWith('_') ? value : { ...value, teams: redirectTeams(value?.teams) }]))
+    db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify({ ...agenda, teams: redirectTeams(agenda.teams), weekly }), 'current')
+  }
+  const updateHistory = db.prepare('UPDATE work_history SET data = ? WHERE id = ?')
+  rows('work_history').forEach(record => { const next = redirectReference(record); if (next !== record) updateHistory.run(JSON.stringify(next), String(record.id)) })
+  const updateReview = db.prepare('UPDATE reviews SET data = ? WHERE id = ?')
+  rows('reviews').forEach(review => { const next = redirectReference(review); if (next !== review) updateReview.run(JSON.stringify(next), String(review.id)) })
+  const removeCustomer = db.prepare('DELETE FROM customers WHERE account = ?')
+  redirects.forEach(({ sourceAccount }) => removeCustomer.run(String(sourceAccount)))
+}
+
+mergeDuplicateCliCustomers()
+migrateCustomerReferences()
+
+function stableTeamId(month, index) {
+  return `team-${crypto.createHash('sha256').update(`${month}:${index}`).digest('hex').slice(0, 20)}`
+}
+
+function migrateTeamAndTechnicianReferences() {
+  const employees = rows('employees')
+  const employeeById = new Map(employees.map(employee => [String(employee.id), employee]))
+  const employeeByName = new Map(employees.map(employee => [normalizedCustomerValue(employee.name), employee]))
+  const normalizeMembers = team => {
+    const matched = (team.memberIds || []).map(id => employeeById.get(String(id))).filter(Boolean)
+    const fromNames = (team.members || []).map(name => employeeByName.get(normalizedCustomerValue(name))).filter(Boolean)
+    const assigned = [...new Map([...matched, ...fromNames].map(employee => [String(employee.id), employee])).values()]
+    return { ...team, memberIds: assigned.map(employee => employee.id), members: assigned.map(employee => employee.name) }
+  }
+  const normalizeTeams = (teams, month) => (teams || []).map((team, index) => ({ ...normalizeMembers(team), teamId: team.teamId || stableTeamId(month, index) }))
+  const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+  if (agendaRow) {
+    const agenda = JSON.parse(agendaRow.data)
+    const weekly = { ...(agenda.weekly || {}) }
+    weekly._monthlyTeams = Object.fromEntries(Object.entries(weekly._monthlyTeams || {}).map(([month, config]) => [month, { ...config, teams: normalizeTeams(config?.teams, month) }]))
+    Object.entries(weekly).filter(([key]) => !key.startsWith('_')).forEach(([day, plan]) => { weekly[day] = { ...plan, teams: normalizeTeams(plan?.teams, day.slice(0, 7)) } })
+    const nextAgenda = { ...agenda, teams: normalizeTeams(agenda.teams, String(agenda.date || '').slice(0, 7)), weekly }
+    if (JSON.stringify(nextAgenda) !== JSON.stringify(agenda)) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(nextAgenda), 'current')
+  }
+  const updateHistory = db.prepare('UPDATE work_history SET data = ? WHERE id = ?')
+  for (const record of rows('work_history')) {
+    const technicians = (record.technicianIds || []).map(id => employeeById.get(String(id))).filter(Boolean)
+    const named = (record.technicians || []).map(name => employeeByName.get(normalizedCustomerValue(name))).filter(Boolean)
+    const assigned = [...new Map([...technicians, ...named].map(employee => [String(employee.id), employee])).values()]
+    const teamIndex = Number(String(record.team || '').match(/\d+/)?.[0]) - 1
+    const teamId = record.teamId ?? (teamIndex >= 0 && record.date ? stableTeamId(String(record.date).slice(0, 7), teamIndex) : null)
+    const next = { ...record, teamId, technicianIds: assigned.map(employee => employee.id), technicians: assigned.map(employee => employee.name) }
+    if (JSON.stringify(next) !== JSON.stringify(record)) updateHistory.run(JSON.stringify(next), String(record.id))
+  }
+}
+
+migrateTeamAndTechnicianReferences()
+
 function auditSafe(record) {
   if (!record) return null
   const { password, passwordHash, ...safe } = record
@@ -142,6 +472,7 @@ function readState() {
     services: rows('services'),
     history: rows('work_history'),
     customers: rows('customers'),
+    reviews: rows('reviews'),
     agenda: agenda ? JSON.parse(agenda.data) : null,
     preferences: theme ? { theme: theme.value } : {}
   }
@@ -150,7 +481,9 @@ function readState() {
 function readTechnicianState(user) {
   return {
     roles: [], employees: [], services: [], customers: [], agenda: null, preferences: {},
-    history: rows('work_history').filter(record => record.technicians?.includes(user.name))
+    // El nombre es solamente una etiqueta visible. El acceso se decide siempre
+    // mediante el identificador inmutable del empleado autenticado.
+    history: rows('work_history').filter(record => record.technicianIds?.some(id => String(id) === String(user.id)))
   }
 }
 
@@ -173,7 +506,7 @@ function replaceRows(table, records, key) {
 function validateState(state) {
   if (!state || typeof state !== 'object') throw new Error('El estado recibido no es válido.')
 
-  const collections = ['roles', 'employees', 'services', 'customers', 'history']
+  const collections = ['roles', 'employees', 'services', 'customers', 'history', 'reviews']
   collections.forEach(name => {
     if (!Array.isArray(state[name])) throw new Error(`La colección ${name} no es válida.`)
   })
@@ -194,42 +527,125 @@ function validateState(state) {
   const time = value => !value || /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value))
 
   ensureUnique(state.roles, 'id', 'Rol')
+  ensureUnique(state.roles, 'code', 'Código de rol')
   ensureUnique(state.employees, 'id', 'Empleado')
   ensureUnique(state.services, 'id', 'Tipo de servicio')
+  ensureUnique(state.services, 'code', 'Código de servicio')
+  ensureUnique(state.customers, 'customerId', 'Cliente')
   ensureUnique(state.customers, 'account', 'Cliente')
   ensureUnique(state.history, 'id', 'Registro de historial')
+  ensureUnique(state.reviews, 'id', 'Reseña')
 
   const roleIds = new Set(state.roles.map(role => String(role.id)))
-  const roleNames = new Set(state.roles.map(role => String(role.name ?? '').trim().toLocaleLowerCase('es-AR')))
+  const employeeIds = new Set(state.employees.map(employee => String(employee.id)))
+  const serviceIds = new Set(state.services.map(service => String(service.id)))
+  const customerIds = new Set(state.customers.map(customer => String(customer.customerId)))
   state.roles.forEach((role, index) => {
-    if (!String(role.name ?? '').trim() || !text(role.name, 80) || typeof role.permissions !== 'object' || !role.permissions) throw new Error(`Rol ${index + 1}: datos incompletos.`)
+    if (!String(role.name ?? '').trim() || !text(role.name, 80) || !String(role.code ?? '').trim() || !text(role.code, 80) || typeof role.permissions !== 'object' || !role.permissions) throw new Error(`Rol ${index + 1}: datos incompletos.`)
   })
   state.employees.forEach((employee, index) => {
     if (!String(employee.firstName ?? '').trim() || !text(employee.firstName, 80)) throw new Error(`Empleado ${index + 1}: el nombre es obligatorio.`)
     if (!String(employee.lastName ?? '').trim() || !text(employee.lastName, 120)) throw new Error(`Empleado ${index + 1}: el apellido es obligatorio.`)
     if (`${employee.firstName} ${employee.lastName}`.trim() !== String(employee.name || '').trim() || !text(employee.name, 200)) throw new Error(`Empleado ${index + 1}: el nombre completo no coincide.`)
     if (!email(employee.email) || !text(employee.email, 160)) throw new Error(`Empleado ${index + 1}: el correo electrónico no es válido.`)
-    const employeeRole = employee.roleId ?? employee.role
-    if (!roleIds.has(String(employeeRole)) && !roleNames.has(String(employeeRole ?? '').trim().toLocaleLowerCase('es-AR'))) throw new Error(`Empleado ${index + 1}: debe tener un rol válido.`)
+    if (!roleIds.has(String(employee.roleId ?? ''))) throw new Error(`Empleado ${index + 1}: debe tener un rol válido.`)
     if (!['Activo', 'Inactivo'].includes(employee.status)) throw new Error(`Empleado ${index + 1}: el estado no es válido.`)
     if (!text(employee.phone, 50)) throw new Error(`Empleado ${index + 1}: el teléfono es demasiado extenso.`)
   })
   ensureUnique(state.employees.map(employee => ({ email: employee.email })), 'email', 'Correo electrónico')
   state.services.forEach((service, index) => {
-    if (!String(service.name ?? '').trim() || !text(service.name, 120)) throw new Error(`Tipo de servicio ${index + 1}: el nombre es obligatorio.`)
+    if (!String(service.name ?? '').trim() || !text(service.name, 120) || !String(service.code ?? '').trim() || !text(service.code, 120)) throw new Error(`Tipo de servicio ${index + 1}: nombre o código inválido.`)
     if (!['Activo', 'Inactivo'].includes(service.status)) throw new Error(`Tipo de servicio ${index + 1}: el estado no es válido.`)
   })
   state.customers.forEach((customer, index) => {
     if (!String(customer.name ?? '').trim() || !text(customer.name, 180)) throw new Error(`Cliente ${index + 1}: el titular es obligatorio.`)
+    if (!['subscriber', 'client'].includes(customer.kind)) throw new Error(`Cliente ${index + 1}: la condición no es válida.`)
+    const expectedPrefix = customer.kind === 'subscriber' ? 'PIG-' : 'CLI-'
+    if (!String(customer.account || '').toUpperCase().startsWith(expectedPrefix)) throw new Error(`Cliente ${index + 1}: el código debe comenzar con ${expectedPrefix}`)
     if (!text(customer.account, 80) || !text(customer.phone, 50) || !text(customer.address, 320)) throw new Error(`Cliente ${index + 1}: uno de los datos supera el máximo permitido.`)
   })
   state.history.forEach((record, index) => {
     if (!date(record.date) || !time(record.time) || !time(record.scheduledTime)) throw new Error(`Historial ${index + 1}: fecha u hora inválida.`)
     if (!text(record.client, 200) || !text(record.service, 160) || !text(record.address, 320) || !text(record.phone, 50) || !text(record.detail, 4000)) throw new Error(`Historial ${index + 1}: uno de los campos es demasiado extenso.`)
   })
+  state.history.forEach((record, index) => {
+    if (!customerIds.has(String(record.customerId))) throw new Error(`Historial ${index + 1}: el cliente vinculado no existe.`)
+    if (!serviceIds.has(String(record.serviceId))) throw new Error(`Historial ${index + 1}: el tipo de servicio vinculado no existe.`)
+    if ((record.technicianIds || []).some(id => !employeeIds.has(String(id)))) throw new Error(`Historial ${index + 1}: contiene un técnico inexistente.`)
+  })
+  state.reviews.forEach((review, index) => {
+    if (review.customerId && !customerIds.has(String(review.customerId))) throw new Error(`Reseña ${index + 1}: el cliente vinculado no existe.`)
+  })
+  const agendaTeams = [...(state.agenda?.teams || [])]
+  Object.entries(state.agenda?.weekly || {}).forEach(([key, value]) => {
+    if (key === '_monthlyTeams') Object.values(value || {}).forEach(config => agendaTeams.push(...(config?.teams || [])))
+    else if (!key.startsWith('_')) agendaTeams.push(...(value?.teams || []))
+  })
+  agendaTeams.forEach((team, teamIndex) => {
+    if (!String(team.teamId || '').trim()) throw new Error(`Agenda: el equipo ${teamIndex + 1} no tiene ID.`)
+    if ((team.memberIds || []).some(id => !employeeIds.has(String(id)))) throw new Error(`Agenda: el equipo ${teamIndex + 1} contiene un técnico inexistente.`)
+    ;(team.tasks || []).forEach((task, taskIndex) => {
+      if (task.serviceId && !serviceIds.has(String(task.serviceId))) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} tiene un tipo inexistente.`)
+      if (task.customerId && !customerIds.has(String(task.customerId))) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} tiene un cliente inexistente.`)
+    })
+  })
+  state.reviews.forEach((review, index) => {
+    if (!date(review.date) || ![1, 2, 3, 4, 5].includes(Number(review.rating))) throw new Error(`Reseña ${index + 1}: fecha o calificación inválida.`)
+    if (!String(review.author ?? '').trim() || !text(review.author, 180) || !String(review.comment ?? '').trim() || !text(review.comment, 4000)) throw new Error(`Reseña ${index + 1}: autor o comentario inválido.`)
+    if (!['Pendiente', 'Publicada', 'Archivada'].includes(review.status)) throw new Error(`Reseña ${index + 1}: el estado no es válido.`)
+  })
 }
 
 function saveState(state, user) {
+  const normalizedRoles = (state.roles || []).map(role => ({ ...role, code: role.code || legacyRoleCode(role) }))
+  const roleById = new Map(normalizedRoles.map(role => [String(role.id), role]))
+  const roleByName = new Map(normalizedRoles.map(role => [normalizedRoleName(role.name), role]))
+  const normalizedEmployees = (state.employees || []).map(employee => {
+    const matchedRole = roleById.get(String(employee.roleId ?? '')) || roleByName.get(normalizedRoleName(employee.role))
+    return matchedRole ? { ...employee, roleId: matchedRole.id, role: matchedRole.name } : employee
+  })
+  const employeeById = new Map(normalizedEmployees.map(employee => [String(employee.id), employee]))
+  const employeeByName = new Map(normalizedEmployees.map(employee => [normalizedCustomerValue(employee.name), employee]))
+  const normalizedServices = (state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') }))
+  const serviceById = new Map(normalizedServices.map(service => [String(service.id), service]))
+  const serviceByName = new Map(normalizedServices.map(service => [normalizedServiceName(service.name), service]))
+  const normalizeServiceReference = item => {
+    const matched = serviceById.get(String(item.serviceId ?? '')) || serviceByName.get(normalizedServiceName(item.service))
+    return matched ? { ...item, serviceId: matched.id, service: matched.name } : item
+  }
+  const normalizedCustomers = (state.customers || []).map(customer => ({ ...customer, customerId: customer.customerId || legacyCustomerId(customer), kind: customerKind(customer) }))
+  const customerById = new Map(normalizedCustomers.map(customer => [String(customer.customerId), customer]))
+  const customerByAccount = new Map(normalizedCustomers.map(customer => [String(customer.account).trim().toUpperCase(), customer]))
+  const customerByName = new Map()
+  normalizedCustomers.forEach(customer => { const key = normalizedCustomerValue(customer.name); customerByName.set(key, customerByName.has(key) ? null : customer) })
+  const normalizeCustomerReference = item => {
+    const clientText = normalizedCustomerValue(item.client)
+    const matched = customerById.get(String(item.customerId || '')) || customerByAccount.get(String(item.clientAccount || item.account || customerCodeFromText(item.client)).trim().toUpperCase()) ||
+      normalizedCustomers.find(customer => normalizedCustomerValue(`${customer.account} ${customer.name}`) === clientText) || customerByName.get(clientText)
+    return matched ? { ...item, customerId: matched.customerId, clientAccount: matched.account } : item
+  }
+  const normalizeReference = item => normalizeCustomerReference(normalizeServiceReference(item))
+  const normalizeTeam = (team, index, month) => {
+    const byId = (team.memberIds || []).map(id => employeeById.get(String(id))).filter(Boolean)
+    const byName = (team.members || []).map(name => employeeByName.get(normalizedCustomerValue(name))).filter(Boolean)
+    const members = [...new Map([...byId, ...byName].map(employee => [String(employee.id), employee])).values()]
+    return { ...team, teamId: team.teamId || stableTeamId(month || 'current', index), memberIds: members.map(employee => employee.id), members: members.map(employee => employee.name), tasks: (team.tasks || []).map(normalizeReference) }
+  }
+  const normalizeTeams = (teams, month) => (teams || []).map((team, index) => normalizeTeam(team, index, month))
+  const incomingAgenda = state.agenda || {}
+  const normalizedWeekly = Object.fromEntries(Object.entries(incomingAgenda.weekly || {}).map(([key, value]) => {
+    if (key === '_monthlyTeams') return [key, Object.fromEntries(Object.entries(value || {}).map(([month, config]) => [month, { ...config, teams: normalizeTeams(config?.teams, month) }]))]
+    return [key, key.startsWith('_') ? value : { ...value, teams: normalizeTeams(value?.teams, key.slice(0, 7)) }]
+  }))
+  const normalizeHistoryRecord = record => {
+    const base = normalizeReference(record)
+    const byId = (base.technicianIds || []).map(id => employeeById.get(String(id))).filter(Boolean)
+    const byName = (base.technicians || []).map(name => employeeByName.get(normalizedCustomerValue(name))).filter(Boolean)
+    const technicians = [...new Map([...byId, ...byName].map(employee => [String(employee.id), employee])).values()]
+    const teamIndex = Number(String(base.team || '').match(/\d+/)?.[0]) - 1
+    return { ...base, teamId: base.teamId ?? (teamIndex >= 0 ? stableTeamId(String(base.date || '').slice(0, 7), teamIndex) : null), technicianIds: technicians.map(employee => employee.id), technicians: technicians.map(employee => employee.name) }
+  }
+  state = { ...state, roles: normalizedRoles, employees: normalizedEmployees, services: normalizedServices, customers: normalizedCustomers, history: (state.history || []).map(normalizeHistoryRecord), agenda: { ...incomingAgenda, teams: normalizeTeams(incomingAgenda.teams, String(incomingAgenda.date || '').slice(0, 7)), weekly: normalizedWeekly } }
   validateState(state)
   const previousEmployees = new Map(rows('employees').map(employee => [String(employee.id), employee]))
   const storedAgenda = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
@@ -258,13 +674,15 @@ function saveState(state, user) {
     auditChanges('employees', securedEmployees, 'id', 'Empleado', user)
     auditChanges('services', state.services, 'id', 'Tipo de servicio', user)
     auditChanges('work_history', normalizedHistory, 'id', 'Servicio / historial', user)
-    auditChanges('customers', state.customers, 'account', 'Cliente', user)
+    auditChanges('customers', state.customers, 'customerId', 'Abonado / Cliente', user)
+    auditChanges('reviews', state.reviews, 'id', 'Reseña', user)
     if (JSON.stringify(previousAgenda) !== JSON.stringify(nextAgenda)) writeAudit(user, 'Modificó', 'Agenda técnica', 'agenda-actual', previousAgenda, nextAgenda)
     replaceRows('roles', state.roles, 'id')
     replaceRows('employees', securedEmployees, 'id')
     replaceRows('services', state.services, 'id')
     replaceRows('work_history', normalizedHistory, 'id')
     replaceRows('customers', state.customers, 'account')
+    replaceRows('reviews', state.reviews, 'id')
     db.prepare('INSERT OR REPLACE INTO agendas (id, data) VALUES (?, ?)').run('current', JSON.stringify(nextAgenda))
     db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('theme', state.preferences?.theme || 'light')
     db.exec('COMMIT')
@@ -366,7 +784,8 @@ function alarmCategory(record) {
 function exportHistory(res, month, category) {
   // "all" permite obtener un único reporte mensual sin perder los reportes por ubicación.
   const isAllCategories = category === 'all'
-  const records = rows('work_history').filter(record => record.date?.startsWith(month) && record.service?.toLowerCase().includes('instalación de alarma') && (isAllCategories || alarmCategory(record) === category))
+  const alarmService = rows('services').find(service => service.code === 'alarm-installation')
+  const records = rows('work_history').filter(record => record.date?.startsWith(month) && (String(record.serviceId) === String(alarmService?.id) || (!record.serviceId && normalizedServiceName(record.service) === 'instalacion de alarma')) && (isAllCategories || alarmCategory(record) === category))
   const label = { docta: 'Docta Urbanización', 'nobu-town': 'Nobu Town', residencial: 'Residenciales', all: 'Todas las instalaciones de alarma' }[category] || 'Instalaciones de alarma'
   const headers = ['Fecha', 'Cliente', 'Dirección', 'Contacto', 'Técnicos asignados', 'Detalle', 'Equipo']
   const body = records.map(record => `<tr>${[record.date, record.client, record.address, record.phone, record.technicians?.join(' / '), record.detail, record.team].map(value => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('')
@@ -400,7 +819,8 @@ const server = http.createServer((req, res) => {
         db.prepare('UPDATE employees SET data = ? WHERE id = ?').run(JSON.stringify(employee), String(employee.id))
       }
       clearLoginFailures(req)
-      const user = { id: employee.id, name: employee.name, email: employee.email, role: employee.role }
+      const assignedRole = rows('roles').find(role => String(role.id) === String(employee.roleId)) || rows('roles').find(role => normalizedRoleName(role.name) === normalizedRoleName(employee.role))
+      const user = { id: employee.id, name: employee.name, email: employee.email, roleId: assignedRole?.id, roleCode: assignedRole?.code || legacyRoleCode(assignedRole || { id: employee.roleId, name: employee.role }), role: assignedRole?.name || employee.role }
       const token = crypto.randomBytes(32).toString('hex')
       sessions.set(token, { user, expiresAt: Date.now() + SESSION_MAX_AGE })
       // La auditoría de acceso permite conocer exactamente cuándo cada usuario ingresó.
@@ -424,13 +844,12 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/api/state') {
     const user = requireSession(req, res)
     if (!user) return
-    return send(res, 200, user.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'tecnico' ? readTechnicianState(user) : readState())
+    return send(res, 200, user.roleCode === 'technician' ? readTechnicianState(user) : readState())
   }
   if (req.method === 'GET' && url.pathname === '/api/audit') {
     const user = requireSession(req, res)
     if (!user) return
-    const role = user.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-    if (role !== 'administrador') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
+    if (user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
     const requestedLimit = Number(url.searchParams.get('limit')) || 500
     const limit = Math.min(Math.max(requestedLimit, 1), 1000)
     return send(res, 200, { records: rows('audit_log').sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit) })
@@ -438,11 +857,14 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/technician/status') {
     const user = requireSession(req, res)
     if (!user) return
-    if (user.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() !== 'tecnico') return send(res, 403, { error: 'Esta acción es exclusiva del rol Técnico.' })
+    if (user.roleCode !== 'technician') return send(res, 403, { error: 'Esta acción es exclusiva del rol técnico.' })
     return readJson(req).then(({ recordId, type, observation }) => {
       const record = rows('work_history').find(item => item.id === recordId)
       const allowed = ['Completado', 'Cancelado', 'Reprogramación solicitada']
-      if (!record || !record.technicians?.includes(user.name) || !allowed.includes(type) || record.technicalStatus) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
+      if (!record) return send(res, 404, { error: 'El servicio no existe.' })
+      const assigned = record.technicianIds?.some(id => String(id) === String(user.id))
+      if (!assigned) return send(res, 403, { error: 'El servicio no está asignado al técnico autenticado.' })
+      if (!allowed.includes(type) || record.technicalStatus) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
       if (type !== 'Completado' && !String(observation || '').trim()) return send(res, 400, { error: 'La observación es obligatoria.' })
       const now = new Date().toISOString()
       const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim(), technicalReportedAt: now, completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type }
@@ -454,7 +876,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'PUT' && req.url === '/api/state') {
     const user = requireSession(req, res)
     if (!user) return
-    if (user.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'tecnico') return send(res, 403, { error: 'El rol Técnico no puede modificar la agenda.' })
+    if (user.roleCode === 'technician') return send(res, 403, { error: 'El rol técnico no puede modificar la agenda.' })
     readJson(req, 15_000_000).then(state => {
       saveState(state, user)
       send(res, 200, { ok: true })
