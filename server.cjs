@@ -814,7 +814,7 @@ function saveState(state, user) {
     const byName = (base.technicians || []).map(name => employeeByName.get(normalizedCustomerValue(name))).filter(Boolean)
     const technicians = [...new Map([...byId, ...byName].map(employee => [String(employee.id), employee])).values()]
     const teamIndex = Number(String(base.team || '').match(/\d+/)?.[0]) - 1
-    return { ...base, teamId: base.teamId ?? (teamIndex >= 0 ? stableTeamId(String(base.date || '').slice(0, 7), teamIndex) : null), technicianIds: technicians.map(employee => employee.id), technicians: technicians.map(employee => employee.name) }
+    return { ...base, status: base.status || 'Pendiente', teamId: base.teamId ?? (teamIndex >= 0 ? stableTeamId(String(base.date || '').slice(0, 7), teamIndex) : null), technicianIds: technicians.map(employee => employee.id), technicians: technicians.map(employee => employee.name) }
   }
   state = { ...state, roles: normalizedRoles, employees: normalizedEmployees, services: normalizedServices, customers: normalizedCustomers, history: (state.history || []).map(normalizeHistoryRecord), agenda: { ...incomingAgenda, teams: normalizeTeams(incomingAgenda.teams, String(incomingAgenda.date || '').slice(0, 7)), weekly: normalizedWeekly } }
   validateState(state)
