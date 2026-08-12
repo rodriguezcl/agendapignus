@@ -17,6 +17,27 @@ const INITIAL_SERVICES = [
 const createTaskId = () => globalThis.crypto?.randomUUID?.() || `task-${Date.now()}-${Math.random().toString(36).slice(2)}`
 const createTeamId = () => globalThis.crypto?.randomUUID?.() || `team-${Date.now()}-${Math.random().toString(36).slice(2)}`
 const blankTask = () => ({ taskId: createTaskId(), time: '', serviceId: '', service: '', customerId: '', client: '', clientAccount: '', clientNameAtService: '', address: '', phone: '', detail: '', paymentMethod: '', monthlyFee: '', form: '' })
+
+const moveRecordInWeeklyAgenda = (weekly, record, nextDate) => {
+  if (!record?.id || !record?.date || !nextDate) return weekly
+  const matchesRecord = task => String(task.historyId || '') === String(record.id) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
+  const removeRecord = day => day?.teams?.length ? { ...day, teams: day.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !matchesRecord(task)) })) } : day
+  const next = { ...(weekly || {}) }
+  next[record.date] = removeRecord(next[record.date])
+  const destination = removeRecord(next[nextDate]) || { teams: [] }
+  const teams = [...(destination.teams || [])]
+  const teamNumber = Number(String(record.team || '').match(/\d+/)?.[0]) || 1
+  let teamIndex = teams.findIndex(team => record.teamId && String(team.teamId || '') === String(record.teamId))
+  if (teamIndex < 0 && !record.teamId && teams[teamNumber - 1]) teamIndex = teamNumber - 1
+  if (teamIndex < 0) {
+    teamIndex = teams.length
+    teams.push({ teamId: record.teamId || createTeamId(), label: record.team || `Equipo ${teamNumber}`, memberIds: record.technicianIds || [], members: record.technicians || [], tasks: [] })
+  }
+  const task = { taskId: record.sourceTaskId || record.id, historyId: record.id, time: record.time || record.scheduledTime || '', serviceId: record.serviceId || '', service: record.service || '', customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', installationZone: record.installationZone || '' }
+  teams[teamIndex] = { ...teams[teamIndex], teamId: record.teamId || teams[teamIndex].teamId || createTeamId(), memberIds: record.technicianIds?.length ? record.technicianIds : teams[teamIndex].memberIds || [], members: record.technicians?.length ? record.technicians : teams[teamIndex].members || [], tasks: [...(teams[teamIndex].tasks || []), task].sort((a, b) => String(a.time || '').localeCompare(String(b.time || ''))) }
+  next[nextDate] = { ...destination, teams }
+  return next
+}
 const blankEmployee = { firstName: '', lastName: '', name: '', roleId: 3, role: 'Técnico', phone: '', email: '', password: '', status: 'Activo' }
 const blankCustomer = { customerId: '', kind: 'client', account: '', name: '', type: '', street: '', locality: '', province: '', phone: '', address: '', fields: {} }
 
@@ -225,6 +246,7 @@ export default function App() {
   const [confirmation, setConfirmation] = useState(null)
   const [databaseReady, setDatabaseReady] = useState(false)
   const [stateRevision, setStateRevision] = useState(null)
+  const pendingStateSaves = useRef(0)
   const [authUser, setAuthUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -349,6 +371,15 @@ export default function App() {
     return () => window.removeEventListener('pignus:sync-agenda-service', syncAgendaService)
   }, [])
   useEffect(() => {
+    const moveWeeklyService = event => {
+      const { record, nextDate } = event.detail || {}
+      if (!record || !nextDate) return
+      setWeekly(previous => moveRecordInWeeklyAgenda(previous, record, nextDate))
+    }
+    window.addEventListener('pignus:reschedule-service', moveWeeklyService)
+    return () => window.removeEventListener('pignus:reschedule-service', moveWeeklyService)
+  }, [])
+  useEffect(() => {
     if (!authUser) return
     fetch('/api/state').then(response => response.ok ? response.json() : Promise.reject()).then(data => {
       setStateRevision(Number(data.revision || 0))
@@ -365,14 +396,18 @@ export default function App() {
   }, [authUser])
   useEffect(() => {
     if (!databaseReady || stateRevision === null || !authUser || authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return
-    const timer = setTimeout(() => fetch('/api/state', {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ revision: stateRevision, roles, employees, services, history, customers, reviews, agenda: { date, teams, weekly }, preferences: { theme } })
-    }).then(async response => {
-      if (response.ok) { const payload = await response.json(); setStateRevision(Number(payload.revision)); return }
-      const payload = await response.json().catch(() => ({}))
-      throw new Error(payload.error || 'No se pudieron guardar los últimos cambios.')
-    }).catch(error => setNotice(error.message || 'No se pudieron guardar los últimos cambios.')), 750)
+    const timer = setTimeout(() => {
+      pendingStateSaves.current += 1
+      fetch('/api/state', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ revision: stateRevision, roles, employees, services, history, customers, reviews, agenda: { date, teams, weekly }, preferences: { theme } })
+      }).then(async response => {
+        if (response.ok) { const payload = await response.json(); setStateRevision(Number(payload.revision)); return }
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error || 'No se pudieron guardar los últimos cambios.')
+      }).catch(error => setNotice(error.message || 'No se pudieron guardar los últimos cambios.'))
+        .finally(() => { pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1) })
+    }, 750)
     return () => clearTimeout(timer)
   }, [databaseReady, authUser, roles, employees, services, history, customers, reviews, date, teams, weekly, theme])
   useEffect(() => {
@@ -380,6 +415,10 @@ export default function App() {
     // un campo que el usuario está editando en ese momento.
     if (!databaseReady || !authUser) return undefined
     const refreshWeekly = () => {
+      // Un PUT de esta misma pestaña aumenta la revisión del servidor antes de
+      // que React alcance a actualizar stateRevision. No debe tratarse como un
+      // cambio externo durante esa pequeña ventana.
+      if (pendingStateSaves.current > 0) return
       if (document.activeElement?.closest('.weekly-board input, .weekly-board select, .weekly-board textarea')) return
       fetch('/api/state', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(data => {
         if (data && Number(data.revision) !== Number(stateRevision)) { setNotice('Hay cambios guardados desde otra sesión. Recargá la página para continuar sin sobrescribirlos.'); return }
@@ -598,25 +637,27 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   }, [teams])
   // Reconstruye la agenda desde los registros ya guardados para la fecha elegida.
   const loadAgendaForDate = nextDate => {
-    const saved = history.filter(record => record.date === nextDate)
+    const saved = history.filter(record => record.date === nextDate && ['Pendiente', 'Reprogramado', 'Requiere revisión'].includes(record.status || 'Pendiente'))
     setDate(nextDate)
     const weeklyDay = weekly?.[nextDate]
-    if (!saved.length && weeklyDay?.teams?.length) {
-      setTeams(weeklyDay.teams.map((team, index) => ({
-        ...team,
-        label: team.label || `Equipo ${index + 1}`,
-        members: team.members || [],
-        tasks: (team.tasks?.length ? team.tasks : [blankTask()]).map(task => ({ ...blankTask(), ...task }))
-      })))
-      setNotice(`Se cargó la planificación semanal del ${prettyDate(nextDate)}.`)
-      return
-    }
-    if (!saved.length) {
+    if (!saved.length && !weeklyDay?.teams?.length) {
       setTeams([{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])
       setNotice('No hay una agenda guardada para la fecha seleccionada. Podés crear una nueva.')
       return
     }
     const byTeam = new Map()
+    ;(weeklyDay?.teams || []).forEach((team, index) => {
+      const position = Number(String(team.label || '').match(/\d+/)?.[0]) || index + 1
+      const teamKey = team.teamId || `legacy-team-${position}`
+      byTeam.set(teamKey, {
+        ...team,
+        position,
+        teamId: team.teamId || createTeamId(),
+        memberIds: team.memberIds || [],
+        members: team.members || [],
+        tasks: (team.tasks || []).filter(task => task.service || task.client || task.historyId).map(task => ({ ...blankTask(), ...task }))
+      })
+    })
     saved.forEach(record => {
       const number = Number(String(record.team || '').match(/\d+/)?.[0]) || 1
       const teamKey = record.teamId || `legacy-team-${number}`
@@ -625,16 +666,22 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       current.memberIds = record.technicianIds?.length ? record.technicianIds : current.memberIds
       current.members = record.technicians?.length ? record.technicians : current.members
       // Se aceptan los nombres anteriores del campo para recuperar también agendas ya existentes.
-      current.tasks.push({ taskId: record.sourceTaskId || record.id || createTaskId(), historyId: record.id, time: record.time || record.scheduledTime || record.hora || record.Hora || '', serviceId: record.serviceId || '', service: record.service || '', customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', installationZone: record.installationZone || '' })
+      const recoveredTask = { taskId: record.sourceTaskId || record.id || createTaskId(), historyId: record.id, time: record.time || record.scheduledTime || record.hora || record.Hora || '', serviceId: record.serviceId || '', service: record.service || '', customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', installationZone: record.installationZone || '' }
+      const sameTask = task => (record.id && String(task.historyId || '') === String(record.id)) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
+      if (current.tasks.some(sameTask)) current.tasks = current.tasks.map(task => sameTask(task) ? { ...task, ...recoveredTask } : task)
+      else current.tasks.push(recoveredTask)
       byTeam.set(teamKey, current)
     })
-    setTeams([...byTeam.values()].sort((a, b) => a.position - b.position).map(({ position, ...team }) => ({ ...team, tasks: team.tasks.sort((a, b) => String(a.time).localeCompare(String(b.time))) })))
-    setNotice(`Se recuperó la agenda guardada del ${prettyDate(nextDate)}.`)
+    setTeams([...byTeam.values()].sort((a, b) => a.position - b.position).map(({ position, ...team }) => ({ ...team, tasks: (team.tasks.length ? team.tasks : [blankTask()]).sort((a, b) => String(a.time).localeCompare(String(b.time))) })))
+    const reprogrammedCount = saved.filter(record => record.rescheduledFrom).length
+    setNotice(reprogrammedCount
+      ? `Se cargó la agenda del ${prettyDate(nextDate)} con ${reprogrammedCount} servicio(s) reprogramado(s).`
+      : `Se recuperó la agenda guardada del ${prettyDate(nextDate)}.`)
   }
   useEffect(() => {
     const input = document.querySelector('.agenda-toolbar input[type="date"]')
     if (!input) return undefined
-    const selectDate = event => { event.stopPropagation(); loadAgendaForDate(event.target.value) }
+    const selectDate = event => loadAgendaForDate(event.target.value)
     input.addEventListener('change', selectDate, true)
     return () => input.removeEventListener('change', selectDate, true)
   }, [history, weekly])
@@ -1093,6 +1140,7 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
 function DashboardStatusView({ history, services }) {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
   const [alarmModalOpen, setAlarmModalOpen] = useState(false)
+  const [retirementModalOpen, setRetirementModalOpen] = useState(false)
   const [projectionModalOpen, setProjectionModalOpen] = useState(false)
   const [workModalOpen, setWorkModalOpen] = useState(false)
   const year = month.slice(0, 4)
@@ -1104,6 +1152,9 @@ function DashboardStatusView({ history, services }) {
   const isAlarmRecord = record => serviceCode(serviceForRecord(record)) === 'alarm-installation' || (!record.serviceId && normalizeServiceName(record.service).includes('alarma'))
   const installations = records.filter(record => serviceForRecord(record)?.category === 'installation' || (!record.serviceId && normalizeServiceName(record.service).includes('instalacion')))
   const alarms = installations.filter(isAlarmRecord)
+  const isRetirementRecord = record => normalizeServiceName(serviceForRecord(record)?.name || record.service).includes('retiro')
+  const retirements = records.filter(isRetirementRecord)
+  const netGrowth = alarms.length - retirements.length
   const zoneOf = record => record.installationZone || (`${record.address || ''} ${record.client || ''}`.toLowerCase().includes('docta') ? 'docta' : `${record.address || ''} ${record.client || ''}`.toLowerCase().includes('nobu') ? 'nobu-town' : 'residencial')
   const zones = [['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residenciales']]
   const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'].map((label, index) => ({ label, value: history.filter(record => record.date?.startsWith(`${year}-${String(index + 1).padStart(2, '0')}`) && isComplete(record) && isAlarmRecord(record)).length }))
@@ -1115,31 +1166,34 @@ function DashboardStatusView({ history, services }) {
   const today = new Date()
   const isCurrentPeriod = today.getFullYear() === selectedYear && today.getMonth() + 1 === selectedMonth
   const elapsedDays = isCurrentPeriod ? today.getDate() : daysInPeriod
-  const projectedInstallations = elapsedDays ? Math.round(alarms.length / elapsedDays * daysInPeriod) : 0
+  const projectedInstallations = elapsedDays ? Math.round(netGrowth / elapsedDays * daysInPeriod) : 0
   const previousDate = new Date(selectedYear, selectedMonth - 2, 1)
   const previousMonthKey = `${previousDate.getFullYear()}-${String(previousDate.getMonth() + 1).padStart(2, '0')}`
   const previousInstallations = history.filter(record => record.date?.startsWith(previousMonthKey) && isComplete(record) && isAlarmRecord(record)).length
-  const comparisonValue = isCurrentPeriod ? projectedInstallations : installations.length
-  const variation = previousInstallations ? Math.round((comparisonValue - previousInstallations) / previousInstallations * 100) : null
+  const previousRetirements = history.filter(record => record.date?.startsWith(previousMonthKey) && isComplete(record) && isRetirementRecord(record)).length
+  const previousNetGrowth = previousInstallations - previousRetirements
+  const comparisonValue = isCurrentPeriod ? projectedInstallations : netGrowth
+  const variation = previousNetGrowth ? Math.round((comparisonValue - previousNetGrowth) / Math.abs(previousNetGrowth) * 100) : null
   const previousMonthLabel = previousDate.toLocaleDateString('es-AR', { month: 'long' })
   const yearToDateInstallations = history.filter(record => record.date?.startsWith(`${selectedYear}-`) && Number(record.date.slice(5, 7)) <= selectedMonth && isComplete(record) && isAlarmRecord(record)).length
-  const averageInstallations = yearToDateInstallations / selectedMonth
+  const yearToDateRetirements = history.filter(record => record.date?.startsWith(`${selectedYear}-`) && Number(record.date.slice(5, 7)) <= selectedMonth && isComplete(record) && isRetirementRecord(record)).length
+  const averageInstallations = (yearToDateInstallations - yearToDateRetirements) / selectedMonth
   const averageVariation = averageInstallations ? Math.round((comparisonValue - averageInstallations) / averageInstallations * 100) : null
   useEffect(() => {
     const stats = document.querySelector('.stats-grid')
     if (!stats) return
     const cards = [...stats.querySelectorAll(':scope > article')]
     const projectionCard = cards.find(card => card.querySelector('span')?.textContent.includes('Instalaciones') || card.querySelector('span')?.textContent.includes('Proyección'))
-    const alarmsCard = cards.find(card => card.querySelector('span')?.textContent.includes('Alarmas'))
+    const alarmsCard = cards.find(card => card.querySelector('span')?.textContent.includes('Altas'))
     if (!projectionCard || !alarmsCard) return
     stats.prepend(alarmsCard)
-    projectionCard.querySelector('span').textContent = 'Proyección de instalaciones de alarma'
+    projectionCard.querySelector('span').textContent = 'Proyección neta de abonados'
     projectionCard.querySelector('b').textContent = projectedInstallations
-    const comparison = variation === null ? `Sin datos de instalaciones en ${previousMonthLabel}` : `<strong class="projection-variation ${variation >= 0 ? 'positive' : 'negative'}">${variation > 0 ? '+' : ''}${variation}%</strong> vs. ${previousMonthLabel}`
+    const comparison = variation === null ? `Sin crecimiento neto comparable en ${previousMonthLabel}` : `<strong class="projection-variation ${variation >= 0 ? 'positive' : 'negative'}">${variation > 0 ? '+' : ''}${variation}%</strong> vs. ${previousMonthLabel}`
     const averageValue = Math.round(averageInstallations)
-    const averageComparison = averageVariation === null ? 'Sin promedio anual disponible' : `<strong class="projection-variation ${averageVariation >= 0 ? 'positive' : 'negative'}">${averageVariation > 0 ? '+' : ''}${averageVariation}%</strong> vs. promedio mensual ${selectedYear} (${averageValue})`
-    projectionCard.querySelector('small').innerHTML = `${isCurrentPeriod ? 'Estimación al cierre' : 'Resultado final'} · ${comparison}<br>${averageComparison}`
-  }, [month, alarms.length, projectedInstallations, isCurrentPeriod, previousMonthLabel, variation, averageInstallations, averageVariation, selectedYear])
+    const averageComparison = averageVariation === null ? 'Sin promedio neto anual disponible' : `<strong class="projection-variation ${averageVariation >= 0 ? 'positive' : 'negative'}">${averageVariation > 0 ? '+' : ''}${averageVariation}%</strong> vs. promedio neto mensual ${selectedYear} (${averageValue})`
+    projectionCard.querySelector('small').innerHTML = `${isCurrentPeriod ? 'Estimación al cierre' : 'Resultado final'} · ${comparison}<br>${averageComparison}<br>Altas (${alarms.length}) menos bajas (${retirements.length})`
+  }, [month, alarms.length, retirements.length, projectedInstallations, isCurrentPeriod, previousMonthLabel, variation, averageInstallations, averageVariation, selectedYear])
   useEffect(() => {
     // Las tarjetas se vuelven accesibles por mouse y teclado una vez ordenadas por el resumen.
     const stats = document.querySelector('.stats-grid')
@@ -1162,17 +1216,17 @@ function DashboardStatusView({ history, services }) {
   useEffect(() => {
     if (!projectionModalOpen) return undefined
     const monthName = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
-    const dailyAverage = elapsedDays ? (alarms.length / elapsedDays).toFixed(1).replace('.', ',') : '0'
-    const progress = projectedInstallations ? Math.min(100, Math.round(alarms.length / projectedInstallations * 100)) : 0
+    const dailyAverage = elapsedDays ? (netGrowth / elapsedDays).toFixed(1).replace('.', ',') : '0'
+    const progress = projectedInstallations > 0 ? Math.min(100, Math.round(Math.max(0, netGrowth) / projectedInstallations * 100)) : 0
     const layer = document.createElement('div'); layer.className = 'modal-layer dashboard-insight-layer'
     const modal = document.createElement('div'); modal.className = 'modal dashboard-insight-modal projection-insight-modal'
-    modal.innerHTML = `<button class="close-modal" aria-label="Cerrar">×</button><p class="eyebrow">PROYECCIÓN DE ALARMAS</p><h2>${isCurrentPeriod ? 'Ritmo estimado al cierre' : 'Resultado final del período'}</h2><p class="insight-period">${monthName}</p><div class="projection-highlight"><b>${projectedInstallations}</b><span>${isCurrentPeriod ? 'instalaciones proyectadas' : 'instalaciones completadas'}</span></div><div class="projection-progress"><span style="width:${progress}%"></span></div><p class="projection-progress-label">${alarms.length} realizadas de una estimación de ${projectedInstallations}</p><div class="insight-metrics"><article><b>${alarms.length}</b><span>Alarmas realizadas</span></article><article><b>${dailyAverage}</b><span>Promedio diario</span></article><article><b>${elapsedDays}/${daysInPeriod}</b><span>Días transcurridos</span></article><article><b class="${variation === null || variation >= 0 ? 'positive' : 'negative'}">${variation === null ? '—' : `${variation > 0 ? '+' : ''}${variation}%`}</b><span>Vs. ${previousMonthLabel}</span></article></div><div class="modal-actions"><button class="primary">Cerrar</button></div>`
+    modal.innerHTML = `<button class="close-modal" aria-label="Cerrar">×</button><p class="eyebrow">PROYECCIÓN NETA DE ABONADOS</p><h2>${isCurrentPeriod ? 'Crecimiento estimado al cierre' : 'Resultado neto del período'}</h2><p class="insight-period">${monthName}</p><div class="projection-highlight"><b>${projectedInstallations}</b><span>${isCurrentPeriod ? 'crecimiento neto proyectado' : 'crecimiento neto confirmado'}</span></div><div class="projection-progress"><span style="width:${progress}%"></span></div><p class="projection-progress-label">Crecimiento actual: ${alarms.length} altas menos ${retirements.length} bajas = ${netGrowth}</p><div class="insight-metrics"><article><b>${alarms.length}</b><span>Nuevas alarmas</span></article><article><b>${retirements.length}</b><span>Bajas de servicio</span></article><article><b>${dailyAverage}</b><span>Promedio neto diario</span></article><article><b class="${variation === null || variation >= 0 ? 'positive' : 'negative'}">${variation === null ? '—' : `${variation > 0 ? '+' : ''}${variation}%`}</b><span>Vs. crecimiento neto de ${previousMonthLabel}</span></article></div><div class="modal-actions"><button class="primary">Cerrar</button></div>`
     const close = () => setProjectionModalOpen(false)
     modal.querySelectorAll('button').forEach(button => { button.onclick = close })
     layer.onclick = event => { if (event.target === layer) close() }
     layer.append(modal); document.body.append(layer)
     return () => layer.remove()
-  }, [projectionModalOpen, month, alarms.length, projectedInstallations, elapsedDays, daysInPeriod, variation, previousMonthLabel, isCurrentPeriod])
+  }, [projectionModalOpen, month, alarms.length, retirements.length, netGrowth, projectedInstallations, elapsedDays, daysInPeriod, variation, previousMonthLabel, isCurrentPeriod])
   useEffect(() => {
     if (!workModalOpen) return undefined
     const palette = ['#2f69ad', '#218857', '#c4870a', '#8a57b6', '#c4534b', '#257c82', '#a76424', '#68786d']
@@ -1203,13 +1257,19 @@ function DashboardStatusView({ history, services }) {
     layer.append(modal); document.body.append(layer)
     return () => layer.remove()
   }, [workModalOpen, month, records.length, serviceBreakdown])
-  return <><div className="module-intro"><div><p className="eyebrow">RESUMEN GERENCIAL</p><h1>Indicadores operativos</h1><p>Las métricas contabilizan únicamente servicios completados.</p></div><label className="month-filter">Mes de análisis<input type="month" value={month} onChange={event => setMonth(event.target.value)} /></label></div>{pending.length > 0 && <button className="pending-reminder" type="button" onClick={openPending}><Icon name="calendar" /><div><b>{pending.length} servicio(s) pendiente(s) de definición</b><span>Revisalos en Historial para completarlos, cancelarlos o reprogramarlos.</span></div></button>}<div className="stats-grid"><article><span>Instalaciones completadas</span><b>{installations.length}</b><small>Todos los tipos de instalación</small></article><article className="clickable-stat" role="button" tabIndex={0} onClick={() => setAlarmModalOpen(true)} onKeyDown={event => event.key === 'Enter' && setAlarmModalOpen(true)}><span>Alarmas completadas</span><b>{alarms.length}</b><small>Ver detalle de instalaciones del período</small></article><article><span>Trabajos completados</span><b>{records.length}</b><small>Instalaciones y servicios técnicos</small></article></div><div className="dashboard-analytics"><article className="data-card annual-chart"><div><p className="eyebrow">EVOLUCIÓN ANUAL</p><h2>Instalaciones de alarma · {year}</h2></div><div className="bar-chart">{months.map(item => <div className="bar-item" key={item.label}><span>{item.value}</span><i style={{ height: `${Math.max(4, item.value / max * 100)}%` }}></i><small>{item.label}</small></div>)}</div></article><article className="data-card zone-summary"><p className="eyebrow">ALARMAS COMPLETADAS</p><h2>Detalle por ubicación</h2><div><span>Todas las instalaciones</span><b>{alarms.length}</b><button className="secondary all-alarms-export" onClick={() => download('all')}><Icon name="upload" size={15} />Excel</button></div>{zones.map(([key, label]) => <div key={key}><span>{label}</span><b>{alarms.filter(record => zoneOf(record) === key).length}</b><button className="secondary" onClick={() => download(key)}><Icon name="upload" size={15} />Excel</button></div>)}</article></div>{alarmModalOpen && <AlarmDetailsModal records={alarms} month={month} close={() => setAlarmModalOpen(false)} download={download} />}</>
+  return <><div className="module-intro"><div><p className="eyebrow">RESUMEN GERENCIAL</p><h1>Indicadores operativos</h1><p>Las métricas contabilizan únicamente servicios completados.</p></div><label className="month-filter">Mes de análisis<input type="month" value={month} onChange={event => setMonth(event.target.value)} /></label></div>{pending.length > 0 && <button className="pending-reminder" type="button" onClick={openPending}><Icon name="calendar" /><div><b>{pending.length} servicio(s) pendiente(s) de definición</b><span>Revisalos en Historial para completarlos, cancelarlos o reprogramarlos.</span></div></button>}<div className="stats-grid dashboard-stats-four"><article className="clickable-stat" role="button" tabIndex={0} onClick={() => setAlarmModalOpen(true)} onKeyDown={event => event.key === 'Enter' && setAlarmModalOpen(true)}><span>Altas de servicio</span><b>{alarms.length}</b><small>Instalaciones de alarmas completadas</small></article><article className="clickable-stat retirement-stat" role="button" tabIndex={0} onClick={() => setRetirementModalOpen(true)} onKeyDown={event => event.key === 'Enter' && setRetirementModalOpen(true)}><span>Bajas de servicio</span><b>{retirements.length}</b><small>Retiros de alarmas completados</small></article><article><span>Proyección neta de abonados</span><b>{projectedInstallations}</b><small>{isCurrentPeriod ? 'Estimación al cierre' : 'Resultado final'} · altas ({alarms.length}) menos bajas ({retirements.length})</small></article><article><span>Trabajos completados</span><b>{records.length}</b><small>Instalaciones y servicios técnicos</small></article></div><div className="dashboard-analytics"><article className="data-card annual-chart"><div><p className="eyebrow">EVOLUCIÓN ANUAL</p><h2>Instalaciones de alarma · {year}</h2></div><div className="bar-chart">{months.map(item => <div className="bar-item" key={item.label}><span>{item.value}</span><i style={{ height: `${Math.max(4, item.value / max * 100)}%` }}></i><small>{item.label}</small></div>)}</div></article><article className="data-card zone-summary"><p className="eyebrow">ALTAS DE SERVICIO</p><h2>Detalle por ubicación</h2><div><span>Todas las instalaciones</span><b>{alarms.length}</b><button className="secondary all-alarms-export" onClick={() => download('all')}><Icon name="upload" size={15} />Excel</button></div>{zones.map(([key, label]) => <div key={key}><span>{label}</span><b>{alarms.filter(record => zoneOf(record) === key).length}</b><button className="secondary" onClick={() => download(key)}><Icon name="upload" size={15} />Excel</button></div>)}</article></div>{alarmModalOpen && <AlarmDetailsModal records={alarms} month={month} close={() => setAlarmModalOpen(false)} download={download} />}{retirementModalOpen && <RetirementDetailsModal records={retirements} month={month} close={() => setRetirementModalOpen(false)} />}</>
 }
 
 /** Detalle consultable de las instalaciones de alarma antes de exportar el reporte mensual. */
 function AlarmDetailsModal({ records, month, close, download }) {
   const monthName = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
-  return <div className="modal-layer" role="dialog" aria-modal="true" aria-label="Detalle de alarmas completadas"><div className="modal alarm-details-modal"><button className="close-modal" onClick={close} aria-label="Cerrar"><Icon name="close" /></button><p className="eyebrow">ALARMAS COMPLETADAS</p><h2>{records.length} instalación{records.length === 1 ? '' : 'es'} en {monthName}</h2><p>Revisá la información del período o descargá el listado completo.</p><div className="alarm-details-list">{records.length ? records.map(record => <article key={record.id}><div><b>{record.client || 'Cliente sin especificar'}</b><small>{prettyDate(record.date)}{record.time ? ` · ${record.time} Hs` : ''}</small></div><div className="alarm-detail-data"><span><b>Ubicación:</b> {record.address || 'Sin dirección'}</span><span><b>Contacto:</b> {record.phone || 'Sin contacto'}</span><span><b>Técnicos:</b> {record.technicians?.join(' / ') || 'Sin asignar'}</span>{record.detail && <span><b>Detalle:</b> {record.detail}</span>}</div></article>) : <div className="empty-state">No hay instalaciones de alarma completadas para este período.</div>}</div><div className="modal-actions"><button className="secondary" onClick={() => download('all')}><Icon name="upload" size={16} />Descargar Excel completo</button><button className="primary" onClick={close}>Cerrar</button></div></div></div>
+  return <div className="modal-layer" role="dialog" aria-modal="true" aria-label="Detalle de altas de servicio"><div className="modal alarm-details-modal"><button className="close-modal" onClick={close} aria-label="Cerrar"><Icon name="close" /></button><p className="eyebrow">ALTAS DE SERVICIO</p><h2>{records.length} instalación{records.length === 1 ? '' : 'es'} de alarma en {monthName}</h2><p>Revisá la información del período o descargá el listado completo.</p><div className="alarm-details-list">{records.length ? records.map(record => <article key={record.id}><div><b>{record.client || 'Cliente sin especificar'}</b><small>{prettyDate(record.date)}{record.time ? ` · ${record.time} Hs` : ''}</small></div><div className="alarm-detail-data"><span><b>Ubicación:</b> {record.address || 'Sin dirección'}</span><span><b>Contacto:</b> {record.phone || 'Sin contacto'}</span><span><b>Técnicos:</b> {record.technicians?.join(' / ') || 'Sin asignar'}</span>{record.detail && <span><b>Detalle:</b> {record.detail}</span>}</div></article>) : <div className="empty-state">No hay instalaciones de alarma completadas para este período.</div>}</div><div className="modal-actions"><button className="secondary" onClick={() => download('all')}><Icon name="upload" size={16} />Descargar Excel completo</button><button className="primary" onClick={close}>Cerrar</button></div></div></div>
+}
+
+/** Detalle de retiros que representan bajas y reducen el crecimiento neto. */
+function RetirementDetailsModal({ records, month, close }) {
+  const monthName = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+  return <div className="modal-layer" role="dialog" aria-modal="true" aria-label="Detalle de bajas de servicio"><div className="modal alarm-details-modal retirement-details-modal"><button className="close-modal" onClick={close} aria-label="Cerrar"><Icon name="close" /></button><p className="eyebrow">BAJAS DE SERVICIO</p><h2>{records.length} retiro{records.length === 1 ? '' : 's'} de alarma en {monthName}</h2><p>Estos registros se descuentan de las nuevas instalaciones para calcular el crecimiento neto real.</p><div className="alarm-details-list">{records.length ? records.map(record => <article key={record.id}><div><b>{record.client || 'Cliente sin especificar'}</b><small>{prettyDate(record.date)}{record.time ? ` · ${record.time} Hs` : ''}</small></div><div className="alarm-detail-data"><span><b>Servicio:</b> {record.service}</span><span><b>Dirección:</b> {record.address || 'Sin dirección'}</span><span><b>Técnicos:</b> {record.technicians?.join(' / ') || 'Sin asignar'}</span>{record.detail && <span><b>Detalle:</b> {record.detail}</span>}</div></article>) : <div className="empty-state">No hay bajas de servicio completadas para este período.</div>}</div><div className="modal-actions"><button className="primary" onClick={close}>Cerrar</button></div></div></div>
 }
 
 function History({ history, setHistory, customers, services, employees }) {
@@ -1247,6 +1307,9 @@ function HistoryBulkView({ history, setHistory, customers, services, employees }
   const toggleAll = () => setSelected(selected.length === records.length ? [] : records.map(record => record.id))
   const applyBulk = () => {
     if (!selected.length || (bulkStatus === 'Reprogramado' && (!rescheduleDate || rescheduleDate < minimumRescheduleDate))) return
+    if (bulkStatus === 'Reprogramado') history.filter(record => selected.includes(record.id)).forEach(record => {
+      window.dispatchEvent(new CustomEvent('pignus:reschedule-service', { detail: { record, nextDate: rescheduleDate } }))
+    })
     setHistory(previous => previous.map(record => {
       if (!selected.includes(record.id)) return record
       // Una reprogramación mueve la visita al nuevo día para que Agenda técnica la recupere.
@@ -1342,6 +1405,7 @@ function HistoryManagementDetail({ record, setHistory, close, customers, service
     const changes = isReschedule
       ? { ...patch, date: patch.scheduledDate, status: 'Pendiente', scheduledDate: '', rescheduledFrom: record.date, reprogrammedAt: new Date().toISOString() }
       : patch
+    if (isReschedule) window.dispatchEvent(new CustomEvent('pignus:reschedule-service', { detail: { record, nextDate: patch.scheduledDate } }))
     setHistory(previous => previous.map(item => item.id === record.id ? { ...item, ...changes } : item)); close()
   }
   const remove = () => { setHistory(previous => previous.filter(item => item.id !== record.id)); close() }

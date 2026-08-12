@@ -93,3 +93,8 @@
 .review-stars{color:#d59600;font-size:18px;letter-spacing:1px;white-space:nowrap}
 @media(max-width:1100px){.review-form{grid-template-columns:1fr 1fr}.reviews-table{overflow-x:auto}.reviews-table .table-head,.review-row{min-width:1050px}}
 @media(max-width:700px){.review-form{grid-template-columns:1fr}.review-comment,.review-form-actions{grid-column:auto}.reviews-summary{align-items:stretch;flex-direction:column}.reviews-summary label{min-width:0}.reviews-summary>select{width:100%}}
+/* Cuatro indicadores gerenciales: altas, bajas, proyección neta y trabajos. */
+.stats-grid.dashboard-stats-four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.retirement-stat b{color:#b84b45}
+@media(max-width:1100px){.stats-grid.dashboard-stats-four{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.stats-grid.dashboard-stats-four{grid-template-columns:1fr}}
