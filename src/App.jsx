@@ -1157,8 +1157,41 @@ function DashboardStatusView({ history, services }) {
   const netGrowth = alarms.length - retirements.length
   const zoneOf = record => record.installationZone || (`${record.address || ''} ${record.client || ''}`.toLowerCase().includes('docta') ? 'docta' : `${record.address || ''} ${record.client || ''}`.toLowerCase().includes('nobu') ? 'nobu-town' : 'residencial')
   const zones = [['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residenciales']]
-  const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'].map((label, index) => ({ label, value: history.filter(record => record.date?.startsWith(`${year}-${String(index + 1).padStart(2, '0')}`) && isComplete(record) && isAlarmRecord(record)).length }))
-  const max = Math.max(1, ...months.map(item => item.value))
+  const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'].map((label, index) => {
+    const monthKey = `${year}-${String(index + 1).padStart(2, '0')}`
+    return {
+      label,
+      value: history.filter(record => record.date?.startsWith(monthKey) && isComplete(record) && isAlarmRecord(record)).length,
+      retirements: history.filter(record => record.date?.startsWith(monthKey) && isComplete(record) && isRetirementRecord(record)).length
+    }
+  })
+  const max = Math.max(1, ...months.flatMap(item => [item.value, item.retirements]))
+  useEffect(() => {
+    const chart = document.querySelector('.annual-chart .bar-chart')
+    if (!chart) return undefined
+    chart.parentElement.querySelector('.chart-legend')?.remove()
+    const legend = document.createElement('div')
+    legend.className = 'chart-legend'
+    legend.innerHTML = '<span><i class="legend-highs"></i>Altas</span><span><i class="legend-lows"></i>Bajas</span>'
+    chart.before(legend)
+    chart.querySelectorAll('.bar-item').forEach((item, index) => {
+      item.querySelector('.bar-retirements')?.remove()
+      item.querySelector('.retirement-value')?.remove()
+      item.querySelector(':scope > i')?.classList.add('bar-installations')
+      const retirements = months[index]?.retirements || 0
+      const bar = document.createElement('i')
+      bar.className = 'bar-retirements'
+      bar.style.height = `${Math.max(retirements ? 4 : 0, retirements / max * 100)}%`
+      bar.title = `${retirements} baja${retirements === 1 ? '' : 's'}`
+      item.append(bar)
+      const value = document.createElement('span')
+      value.className = 'retirement-value'
+      value.textContent = retirements
+      value.style.bottom = `calc(${Math.max(retirements ? 4 : 0, retirements / max * 100)}% + 22px)`
+      item.append(value)
+    })
+    return () => { legend.remove(); chart.querySelectorAll('.bar-retirements, .retirement-value').forEach(element => element.remove()) }
+  }, [months.map(item => `${item.value}:${item.retirements}`).join('|'), max])
   const download = category => window.location.assign(`/api/history/export?month=${encodeURIComponent(month)}&category=${category}`)
   const serviceBreakdown = Object.entries(records.reduce((summary, record) => { const name = record.service?.trim() || 'Sin especificar'; summary[name] = (summary[name] || 0) + 1; return summary }, {})).sort(([, left], [, right]) => right - left)
   const [selectedYear, selectedMonth] = month.split('-').map(Number)
@@ -1178,6 +1211,7 @@ function DashboardStatusView({ history, services }) {
   const yearToDateInstallations = history.filter(record => record.date?.startsWith(`${selectedYear}-`) && Number(record.date.slice(5, 7)) <= selectedMonth && isComplete(record) && isAlarmRecord(record)).length
   const yearToDateRetirements = history.filter(record => record.date?.startsWith(`${selectedYear}-`) && Number(record.date.slice(5, 7)) <= selectedMonth && isComplete(record) && isRetirementRecord(record)).length
   const averageInstallations = (yearToDateInstallations - yearToDateRetirements) / selectedMonth
+  const averageValue = Math.round(averageInstallations)
   const averageVariation = averageInstallations ? Math.round((comparisonValue - averageInstallations) / averageInstallations * 100) : null
   useEffect(() => {
     const stats = document.querySelector('.stats-grid')
@@ -1187,13 +1221,14 @@ function DashboardStatusView({ history, services }) {
     const alarmsCard = cards.find(card => card.querySelector('span')?.textContent.includes('Altas'))
     if (!projectionCard || !alarmsCard) return
     stats.prepend(alarmsCard)
-    projectionCard.querySelector('span').textContent = 'Proyección neta de abonados'
-    projectionCard.querySelector('b').textContent = projectedInstallations
+    projectionCard.querySelector('span').textContent = isCurrentPeriod ? 'Crecimiento neto del mes' : 'Crecimiento neto del período'
+    projectionCard.querySelector('b').textContent = `${netGrowth > 0 ? '+' : ''}${netGrowth}`
     const comparison = variation === null ? `Sin crecimiento neto comparable en ${previousMonthLabel}` : `<strong class="projection-variation ${variation >= 0 ? 'positive' : 'negative'}">${variation > 0 ? '+' : ''}${variation}%</strong> vs. ${previousMonthLabel}`
-    const averageValue = Math.round(averageInstallations)
     const averageComparison = averageVariation === null ? 'Sin promedio neto anual disponible' : `<strong class="projection-variation ${averageVariation >= 0 ? 'positive' : 'negative'}">${averageVariation > 0 ? '+' : ''}${averageVariation}%</strong> vs. promedio neto mensual ${selectedYear} (${averageValue})`
-    projectionCard.querySelector('small').innerHTML = `${isCurrentPeriod ? 'Estimación al cierre' : 'Resultado final'} · ${comparison}<br>${averageComparison}<br>Altas (${alarms.length}) menos bajas (${retirements.length})`
-  }, [month, alarms.length, retirements.length, projectedInstallations, isCurrentPeriod, previousMonthLabel, variation, averageInstallations, averageVariation, selectedYear])
+    projectionCard.querySelector('small').innerHTML = isCurrentPeriod
+      ? `<span>${variation === null ? `Sin comparación disponible vs. ${previousMonthLabel}` : `<strong class="projection-variation ${variation >= 0 ? 'positive' : 'negative'}">${variation > 0 ? '+' : ''}${variation}%</strong> vs. ${previousMonthLabel}`}</span><br><span>${averageVariation === null ? 'Sin promedio anual disponible' : `<strong class="projection-variation ${averageVariation >= 0 ? 'positive' : 'negative'}">${averageVariation > 0 ? '+' : ''}${averageVariation}%</strong> vs. promedio neto mensual ${selectedYear} (${averageValue})`}</span>`
+      : 'Resultado final del período'
+  }, [month, netGrowth, isCurrentPeriod, variation, averageVariation, previousMonthLabel, selectedYear, averageValue])
   useEffect(() => {
     // Las tarjetas se vuelven accesibles por mouse y teclado una vez ordenadas por el resumen.
     const stats = document.querySelector('.stats-grid')
