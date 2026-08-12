@@ -1217,7 +1217,10 @@ function DashboardStatusView({ history, services }) {
     const stats = document.querySelector('.stats-grid')
     if (!stats) return
     const cards = [...stats.querySelectorAll(':scope > article')]
-    const projectionCard = cards.find(card => card.querySelector('span')?.textContent.includes('Instalaciones') || card.querySelector('span')?.textContent.includes('Proyección'))
+    const projectionCard = cards.find(card => {
+      const title = card.querySelector('span')?.textContent || ''
+      return title.includes('Instalaciones') || title.includes('Proyección') || title.includes('Crecimiento neto')
+    })
     const alarmsCard = cards.find(card => card.querySelector('span')?.textContent.includes('Altas'))
     if (!projectionCard || !alarmsCard) return
     stats.prepend(alarmsCard)
@@ -1234,7 +1237,10 @@ function DashboardStatusView({ history, services }) {
     const stats = document.querySelector('.stats-grid')
     if (!stats) return undefined
     const cards = [...stats.querySelectorAll(':scope > article')]
-    const projectionCard = cards.find(card => card.querySelector('span')?.textContent.includes('Proyección'))
+    const projectionCard = cards.find(card => {
+      const title = card.querySelector('span')?.textContent || ''
+      return title.includes('Proyección') || title.includes('Crecimiento neto')
+    })
     const workCard = cards.find(card => card.querySelector('span')?.textContent.includes('Trabajos'))
     const bind = (card, open, label) => {
       if (!card) return () => {}
