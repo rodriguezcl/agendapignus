@@ -408,6 +408,9 @@ function mergeCliCustomersIntoUniqueSubscribers() {
     .replace(/\([^)]*\)/g, '')
     .replace(/[^a-z0-9ñ]+/g, ' ')
     .trim().replace(/\s+/g, ' ')
+  const comparableAddress = value => normalizedCustomerValue(value)
+    .replace(/\b(?:cordoba|capital|argentina)\b/g, '')
+    .replace(/[^a-z0-9]+/g, '')
   const subscribersByName = new Map()
   customers.filter(customer => customer.kind === 'subscriber').forEach(customer => {
     const key = baseName(customer.name)
@@ -415,7 +418,11 @@ function mergeCliCustomersIntoUniqueSubscribers() {
   })
   const redirects = new Map()
   customers.filter(customer => customer.kind === 'client').forEach(customer => {
-    const matches = subscribersByName.get(baseName(customer.name)) || []
+    let matches = subscribersByName.get(baseName(customer.name)) || []
+    if (!matches.length && comparableAddress(customer.address)) {
+      const clientName = baseName(customer.name)
+      matches = customers.filter(subscriber => subscriber.kind === 'subscriber' && comparableAddress(subscriber.address) === comparableAddress(customer.address) && (baseName(subscriber.name).includes(clientName) || clientName.includes(baseName(subscriber.name))))
+    }
     if (matches.length === 1) redirects.set(String(customer.customerId), { target: matches[0], sourceAccount: customer.account })
   })
   if (!redirects.size) return
@@ -444,6 +451,8 @@ function mergeConfirmedCliAliases() {
   const customers = rows('customers')
   const byAccount = new Map(customers.map(customer => [String(customer.account), customer]))
   const confirmedAliases = [
+    ['CLI-0004', 'PIG-6302'], // Edificio Canvas / Totem Edificio Canvas, mismo domicilio
+    ['CLI-0025', 'PIG-6699'], // Enrique Lascano / Enrique Lascano Allende, mismo domicilio
     ['CLI-0018', 'CLI-0052'], // Totem/Edificio Monviso, misma ubicación
     ['CLI-0056', 'CLI-0032'], // Hugo Wast / La Cuadra, mismo sitio y trabajo
     ['CLI-0035', 'CLI-0058'], // Totem Okra incluido en el registro operativo conjunto
@@ -485,6 +494,31 @@ function mergeConfirmedCliAliases() {
 
 mergeConfirmedCliAliases()
 migrateCustomerReferences()
+
+function convertCompletedRetirementSubscriber(record) {
+  if (record.status !== 'Completado' || !normalizedServiceName(record.service).includes('retiro de equipo')) return null
+  const customers = rows('customers')
+  const customer = customers.find(item => String(item.customerId || '') === String(record.customerId || '')) || customers.find(item => String(item.account || '').toUpperCase() === String(record.clientAccount || '').toUpperCase())
+  if (!customer || customerKind(customer) !== 'subscriber') return null
+  const nextNumber = Math.max(0, ...customers.map(item => Number(String(item.account || '').match(/^CLI-(\d+)$/i)?.[1]) || 0)) + 1
+  const nextAccount = `CLI-${String(nextNumber).padStart(4, '0')}`
+  const converted = { ...customer, kind: 'client', account: nextAccount, type: 'Cliente de servicio', convertedFromAccount: customer.account, subscriptionEndedAt: new Date().toISOString() }
+  const redirect = item => String(item.customerId || '') === String(customer.customerId) ? { ...item, customerId: customer.customerId, clientAccount: nextAccount, clientNameAtService: converted.name, client: `${nextAccount} ${converted.name}` } : item
+  const redirectTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(redirect) }))
+  const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+  if (agendaRow) {
+    const agenda = JSON.parse(agendaRow.data)
+    const weekly = Object.fromEntries(Object.entries(agenda.weekly || {}).map(([key, value]) => [key, key.startsWith('_') ? value : { ...value, teams: redirectTeams(value?.teams) }]))
+    db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify({ ...agenda, teams: redirectTeams(agenda.teams), weekly }), 'current')
+  }
+  const updateHistory = db.prepare('UPDATE work_history SET data = ? WHERE id = ?')
+  rows('work_history').forEach(item => { const next = redirect(item); if (next !== item) updateHistory.run(JSON.stringify(next), String(item.id)) })
+  const updateReview = db.prepare('UPDATE reviews SET data = ? WHERE id = ?')
+  rows('reviews').forEach(item => { const next = redirect(item); if (next !== item) updateReview.run(JSON.stringify(next), String(item.id)) })
+  db.prepare('DELETE FROM customers WHERE account = ?').run(String(customer.account))
+  db.prepare('INSERT INTO customers (account, data) VALUES (?, ?)').run(nextAccount, JSON.stringify(converted))
+  return converted
+}
 
 function stableTeamId(month, index) {
   return `team-${crypto.createHash('sha256').update(`${month}:${index}`).digest('hex').slice(0, 20)}`
@@ -784,7 +818,16 @@ function saveState(state, user) {
     const matched = serviceById.get(String(item.serviceId ?? '')) || serviceByName.get(normalizedServiceName(item.service))
     return matched ? { ...item, serviceId: matched.id, service: matched.name } : item
   }
-  const normalizedCustomers = (state.customers || []).map(customer => ({ ...customer, customerId: customer.customerId || legacyCustomerId(customer), kind: customerKind(customer) }))
+  const completedRetirementCustomerIds = new Set((state.history || [])
+    .filter(record => record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo'))
+    .map(record => String(record.customerId || ''))
+    .filter(Boolean))
+  let nextClientNumber = Math.max(0, ...(state.customers || []).map(customer => Number(String(customer.account || '').match(/^CLI-(\d+)$/i)?.[1]) || 0)) + 1
+  const normalizedCustomers = (state.customers || []).map(customer => {
+    const normalized = { ...customer, customerId: customer.customerId || legacyCustomerId(customer), kind: customerKind(customer), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }
+    if (normalized.kind !== 'subscriber' || !completedRetirementCustomerIds.has(String(normalized.customerId))) return normalized
+    return { ...normalized, kind: 'client', account: `CLI-${String(nextClientNumber++).padStart(4, '0')}`, type: 'Cliente de servicio', convertedFromAccount: normalized.account, subscriptionEndedAt: new Date().toISOString() }
+  })
   const customerById = new Map(normalizedCustomers.map(customer => [String(customer.customerId), customer]))
   const customerByAccount = new Map(normalizedCustomers.map(customer => [String(customer.account).trim().toUpperCase(), customer]))
   const customerByName = new Map()
@@ -793,7 +836,7 @@ function saveState(state, user) {
     const clientText = normalizedCustomerValue(item.client)
     const matched = customerById.get(String(item.customerId || '')) || customerByAccount.get(String(item.clientAccount || item.account || customerCodeFromText(item.client)).trim().toUpperCase()) ||
       normalizedCustomers.find(customer => normalizedCustomerValue(`${customer.account} ${customer.name}`) === clientText) || customerByName.get(clientText)
-    return matched ? { ...item, customerId: matched.customerId, clientAccount: matched.account } : item
+    return matched ? { ...item, customerId: matched.customerId, clientAccount: matched.account, clientNameAtService: matched.name, client: `${matched.account} ${matched.name}` } : item
   }
   const normalizeReference = item => normalizeCustomerReference(normalizeServiceReference(item))
   const normalizeTeam = (team, index, month) => {
@@ -1099,7 +1142,9 @@ const server = http.createServer((req, res) => {
       db.exec('BEGIN')
       try {
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(updated), String(record.id))
+        const convertedCustomer = convertCompletedRetirementSubscriber(updated)
         writeAudit(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, updated)
+        if (convertedCustomer) writeAudit(user, 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(convertedCustomer.customerId), { account: convertedCustomer.convertedFromAccount, kind: 'subscriber' }, convertedCustomer)
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(currentStateRevision() + 1))
         db.exec('COMMIT')
       } catch (error) {
