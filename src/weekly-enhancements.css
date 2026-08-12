@@ -523,6 +523,40 @@ body.dark .weekly-add-task {
   font-weight: 800;
 }
 
+.week-task-title-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.weekly-task-delete {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 30px;
+  border: 1px solid #edc4c1;
+  border-radius: 9px;
+  background: #fffafa;
+  color: #c74740;
+  cursor: pointer;
+}
+
+.weekly-task-delete:hover,
+.weekly-task-delete:focus-visible {
+  border-color: #d85b54;
+  background: #fff0ef;
+  outline: none;
+}
+
+body.dark .weekly-task-delete {
+  border-color: #74423f;
+  background: #2c1b1a;
+  color: #ff918a;
+}
+
 .week-task-client {
   display: block;
   overflow: hidden;
@@ -536,7 +570,31 @@ body.dark .weekly-add-task {
 .weekly-task-modal {
   width: min(660px, calc(100vw - 32px));
   max-height: min(84vh, 760px);
+  box-sizing: border-box;
   overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid #d7e2d8;
+  border-radius: 16px;
+  background-clip: padding-box;
+  clip-path: inset(0 round 16px);
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.weekly-task-modal::-webkit-scrollbar {
+  width: 10px;
+}
+
+.weekly-task-modal::-webkit-scrollbar-track {
+  margin-block: 14px;
+  background: transparent;
+}
+
+.weekly-task-modal::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: #8c948f;
+  background-clip: padding-box;
 }
 
 .weekly-modal-team {
@@ -582,6 +640,54 @@ body.dark .weekly-add-task {
   resize: vertical;
 }
 
+.weekly-task-form input[readonly] {
+  background: #f1f5f1;
+  color: #66776a;
+  cursor: not-allowed;
+}
+
+.weekly-customer-data-note {
+  margin: -5px 0 0;
+  color: #718174;
+  font-size: .74rem;
+  line-height: 1.35;
+}
+
+.weekly-task-form .weekly-installation-zone {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #cfddcf;
+  border-radius: 8px;
+  background: #f4f8f3;
+}
+
+.weekly-task-form .weekly-installation-zone legend {
+  padding: 0 5px;
+  color: #4d6353;
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+.weekly-task-form .weekly-installation-zone label {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  color: #385843;
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.weekly-task-form .weekly-installation-zone input {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  accent-color: #2d7a4d;
+}
+
 .weekly-task-form input:focus,
 .weekly-task-form select:focus,
 .weekly-task-form textarea:focus {
@@ -614,6 +720,25 @@ body.dark .weekly-task-form textarea {
   color: #edf7ef;
 }
 
+body.dark .weekly-task-form input[readonly] {
+  background: #1c3023;
+  color: #aebfb2;
+}
+
+body.dark .weekly-customer-data-note {
+  color: #9fb2a4;
+}
+
+body.dark .weekly-task-form .weekly-installation-zone {
+  border-color: #405c4a;
+  background: #1c3023;
+}
+
+body.dark .weekly-task-form .weekly-installation-zone legend,
+body.dark .weekly-task-form .weekly-installation-zone label {
+  color: #c6dccd;
+}
+
 /* Los modales semanales se posicionan sobre la ventana, no dentro del tablero. */
 .modal-backdrop {
   position: fixed;
@@ -628,6 +753,7 @@ body.dark .weekly-task-form textarea {
 
 .weekly-editor-backdrop .weekly-task-modal {
   margin: auto;
+  box-shadow: 0 18px 48px rgba(3, 20, 11, .3);
 }
 
 /* Menú compacto: conserva los íconos y gana superficie para tableros y tablas. */
@@ -1081,4 +1207,58 @@ body.dark .week-task-summary.available-slot:focus-visible {
   .agenda-toolbar > label {
     width: 100%;
   }
+}
+.weekly-customer-search {
+  position: relative;
+}
+
+.weekly-customer-results {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  left: 0;
+  display: flex;
+  max-height: 14rem;
+  flex-direction: column;
+  gap: 0.2rem;
+  overflow-y: auto;
+  padding: 0.4rem;
+  border: 1px solid #c8d8c9;
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 0.75rem 1.75rem rgb(20 55 39 / 18%);
+}
+
+.weekly-customer-results button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 0;
+  border-radius: 0.55rem;
+  background: transparent;
+  color: #123f2c;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.weekly-customer-results button:hover,
+.weekly-customer-results button:focus-visible {
+  background: #eef6ef;
+  outline: none;
+}
+
+.weekly-customer-results button strong,
+.weekly-customer-results button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weekly-customer-results button span {
+  color: #607466;
 }

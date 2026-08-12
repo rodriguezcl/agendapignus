@@ -12,29 +12,94 @@ const INITIAL_SERVICES = [
   { id: 4, code: 'service-4', category: 'service', name: 'Service técnico', description: 'Mantenimiento y reparación', status: 'Activo' },
   { id: 5, code: 'service-5', category: 'service', name: 'Visita de relevamiento', description: 'Diagnóstico y presupuesto', status: 'Activo' }
 ]
+const INSTALLATION_ZONES = [
+  ['docta', 'Docta Urbanización'],
+  ['nobu-town', 'Nobu Town'],
+  ['residencial', 'Residencial']
+]
 // Identificador interno e inmutable del servicio. No depende del cliente, hora ni
 // equipo, que pueden cambiar durante la planificación sin crear otro historial.
 const createTaskId = () => globalThis.crypto?.randomUUID?.() || `task-${Date.now()}-${Math.random().toString(36).slice(2)}`
 const createTeamId = () => globalThis.crypto?.randomUUID?.() || `team-${Date.now()}-${Math.random().toString(36).slice(2)}`
 const blankTask = () => ({ taskId: createTaskId(), time: '', serviceId: '', service: '', customerId: '', client: '', clientAccount: '', clientNameAtService: '', address: '', phone: '', detail: '', paymentMethod: '', monthlyFee: '', form: '' })
+const sortTasksByTime = tasks => [...(tasks || [])].sort((left, right) => {
+  const leftTime = String(left.time || left.scheduledTime || '')
+  const rightTime = String(right.time || right.scheduledTime || '')
+  if (!leftTime && !rightTime) return 0
+  if (!leftTime) return 1
+  if (!rightTime) return -1
+  return leftTime.localeCompare(rightTime)
+})
+const sortHistoryByDateAndTime = (left, right) => String(right.date || '').localeCompare(String(left.date || '')) || String(left.time || left.scheduledTime || '').localeCompare(String(right.time || right.scheduledTime || ''))
+// La proyección gerencial considera la capacidad operativa habitual de lunes a
+// viernes. Los sábados y domingos no consumen ni agregan días a la estimación.
+const countBusinessDays = (year, month, throughDay) => {
+  const daysInMonth = new Date(year, month, 0).getDate()
+  const lastDay = Math.max(0, Math.min(Number(throughDay ?? daysInMonth), daysInMonth))
+  let total = 0
+  for (let day = 1; day <= lastDay; day += 1) {
+    const weekday = new Date(year, month - 1, day, 12).getDay()
+    if (weekday >= 1 && weekday <= 5) total += 1
+  }
+  return total
+}
 
 const moveRecordInWeeklyAgenda = (weekly, record, nextDate) => {
   if (!record?.id || !record?.date || !nextDate) return weekly
   const matchesRecord = task => String(task.historyId || '') === String(record.id) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
   const removeRecord = day => day?.teams?.length ? { ...day, teams: day.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !matchesRecord(task)) })) } : day
+  const createDefaultTeams = date => (weekly?._monthlyTeams?.[date.slice(0, 7)]?.teams || [null, null, null]).map((team, index) => ({
+    teamId: team?.teamId || createTeamId(),
+    label: team?.label || `Equipo ${index + 1}`,
+    memberIds: team?.memberIds || [],
+    members: team?.members || [],
+    tasks: [{ ...blankTask(), time: '08:30' }, { ...blankTask(), time: '13:00' }]
+  }))
+  // Una fecha que todavía no fue editada no existe en `weekly`: su contenido se
+  // dibuja a partir de los equipos mensuales. Al reprogramar hay que materializar
+  // esa plantilla completa; crear `{ teams: [] }` hacía desaparecer los demás
+  // equipos del día destino.
+  const destinationWithDefaults = day => {
+    const storedTeams = day?.teams || []
+    const defaults = createDefaultTeams(nextDate)
+    const merged = defaults.map((defaultTeam, index) => {
+      const stored = storedTeams.find(team => team.teamId && String(team.teamId) === String(defaultTeam.teamId)) || storedTeams[index]
+      return stored ? { ...defaultTeam, ...stored, tasks: stored.tasks || defaultTeam.tasks } : defaultTeam
+    })
+    const usedIds = new Set(merged.map(team => String(team.teamId || '')))
+    const extras = storedTeams.filter((team, index) => index >= defaults.length && !usedIds.has(String(team.teamId || '')))
+    return { ...(day || {}), teams: [...merged, ...extras] }
+  }
   const next = { ...(weekly || {}) }
   next[record.date] = removeRecord(next[record.date])
-  const destination = removeRecord(next[nextDate]) || { teams: [] }
+  const destination = removeRecord(destinationWithDefaults(next[nextDate]))
   const teams = [...(destination.teams || [])]
   const teamNumber = Number(String(record.team || '').match(/\d+/)?.[0]) || 1
   let teamIndex = teams.findIndex(team => record.teamId && String(team.teamId || '') === String(record.teamId))
-  if (teamIndex < 0 && !record.teamId && teams[teamNumber - 1]) teamIndex = teamNumber - 1
+  if (teamIndex < 0 && teams[teamNumber - 1]) teamIndex = teamNumber - 1
   if (teamIndex < 0) {
     teamIndex = teams.length
     teams.push({ teamId: record.teamId || createTeamId(), label: record.team || `Equipo ${teamNumber}`, memberIds: record.technicianIds || [], members: record.technicians || [], tasks: [] })
   }
   const task = { taskId: record.sourceTaskId || record.id, historyId: record.id, time: record.time || record.scheduledTime || '', serviceId: record.serviceId || '', service: record.service || '', customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', installationZone: record.installationZone || '' }
-  teams[teamIndex] = { ...teams[teamIndex], teamId: record.teamId || teams[teamIndex].teamId || createTeamId(), memberIds: record.technicianIds?.length ? record.technicianIds : teams[teamIndex].memberIds || [], members: record.technicians?.length ? record.technicians : teams[teamIndex].members || [], tasks: [...(teams[teamIndex].tasks || []), task].sort((a, b) => String(a.time || '').localeCompare(String(b.time || ''))) }
+  const currentTasks = teams[teamIndex].tasks || []
+  const emptyAtSameTime = currentTasks.findIndex(item => item.time === task.time && !item.customerId && !String(item.client || '').trim() && !item.serviceId && !String(item.service || '').trim())
+  const sameCustomer = item => {
+    if (task.customerId && item.customerId) return String(item.customerId) === String(task.customerId)
+    const taskAccount = normalizeAccountKey(task.clientAccount || String(task.client || '').split(/\s+/)[0])
+    const itemAccount = normalizeAccountKey(item.clientAccount || String(item.client || '').split(/\s+/)[0])
+    if (taskAccount && itemAccount && /^(PIG|CLI)-?\d+$/i.test(taskAccount) && /^(PIG|CLI)-?\d+$/i.test(itemAccount)) return taskAccount === itemAccount
+    return normalizeSearchText(task.clientNameAtService || task.client) === normalizeSearchText(item.clientNameAtService || item.client)
+  }
+  // Si alguien cargó manualmente la misma visita y luego otro usuario la
+  // reprograma desde Historial, prevalece el registro reprogramado. Solamente se
+  // reemplaza cuando coinciden equipo, hora y cliente; otro cliente nunca se pisa.
+  const duplicateAtSameTime = currentTasks.findIndex(item => item.time === task.time && sameCustomer(item))
+  const replaceIndex = duplicateAtSameTime >= 0 ? duplicateAtSameTime : emptyAtSameTime
+  const mergedTasks = replaceIndex >= 0
+    ? currentTasks.map((item, index) => index === replaceIndex ? task : item)
+    : [...currentTasks, task]
+  teams[teamIndex] = { ...teams[teamIndex], teamId: teams[teamIndex].teamId || record.teamId || createTeamId(), memberIds: record.technicianIds?.length ? record.technicianIds : teams[teamIndex].memberIds || [], members: record.technicians?.length ? record.technicians : teams[teamIndex].members || [], tasks: sortTasksByTime(mergedTasks) }
   next[nextDate] = { ...destination, teams }
   return next
 }
@@ -122,6 +187,7 @@ const normalizeSearchText = value => String(value ?? '')
   .replace(/[\u0300-\u036f]/g, '')
   .toLocaleLowerCase('es')
   .replace(/[^a-z0-9]/g, '')
+const normalizeCustomerName = value => String(value ?? '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR')
 const serviceCode = service => service?.code || (normalizeServiceName(service?.name) === 'instalacion de alarma' ? 'alarm-installation' : `service-${service?.id}`)
 const prettyDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, x => x.toUpperCase()) : ''
 // Cada familia de trabajo tiene un color consistente en el historial para facilitar su lectura.
@@ -272,7 +338,7 @@ export default function App() {
   }, [services])
   useEffect(() => {
     if (!customers.length) return
-    const normalizedCustomers = customers.map(customer => ({ ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer) }))
+    const normalizedCustomers = customers.map(customer => ({ ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer), name: normalizeCustomerName(customer.name) }))
     if (normalizedCustomers.some((customer, index) => JSON.stringify(customer) !== JSON.stringify(customers[index]))) {
       setCustomers(normalizedCustomers)
       return
@@ -290,6 +356,24 @@ export default function App() {
     setWeekly(previous => { const next = Object.fromEntries(Object.entries(previous || {}).map(([key, value]) => [key, key.startsWith('_') ? value : { ...value, teams: normalizeTeams(value?.teams) }])); return JSON.stringify(next) === JSON.stringify(previous) ? previous : next })
     setHistory(previous => { const next = previous.map(normalizeReference); return JSON.stringify(next) === JSON.stringify(previous) ? previous : next })
   }, [customers])
+  useEffect(() => {
+    const completedRetirementCustomerIds = new Set(history
+      .filter(record => record.status === 'Completado' && normalizeServiceName(record.service).includes('retiro de equipo'))
+      .map(record => String(record.customerId || ''))
+      .filter(Boolean))
+    if (!completedRetirementCustomerIds.size) return
+    setCustomers(previous => {
+      let next = previous
+      let changed = false
+      previous.forEach(customer => {
+        if (customerKind(customer) !== 'subscriber' || !completedRetirementCustomerIds.has(String(customer.customerId))) return
+        const account = nextCustomerCode(next, 'client')
+        next = next.map(item => item.customerId === customer.customerId ? { ...item, kind: 'client', account, type: 'Cliente de servicio', convertedFromAccount: item.account, subscriptionEndedAt: new Date().toISOString() } : item)
+        changed = true
+      })
+      return changed ? next : previous
+    })
+  }, [history])
   useEffect(() => {
     if (!employees.length) return
     const byId = new Map(employees.map(employee => [String(employee.id), employee]))
@@ -346,6 +430,13 @@ export default function App() {
     return () => window.removeEventListener('pignus:open-history', goToHistory)
   }, [])
   useEffect(() => {
+    const replaceCustomers = event => {
+      if (Array.isArray(event.detail?.customers)) setCustomers(event.detail.customers.map(customer => ({ ...customer, name: normalizeCustomerName(customer.name) })))
+    }
+    window.addEventListener('pignus:replace-customers', replaceCustomers)
+    return () => window.removeEventListener('pignus:replace-customers', replaceCustomers)
+  }, [])
+  useEffect(() => {
     // Los mensajes que confirman operaciones de agenda no deben ocupar otros módulos.
     const noticeElement = document.querySelector('.content > .notice')
     const isAgendaMessage = notice.startsWith('La agenda ')
@@ -380,6 +471,120 @@ export default function App() {
     return () => window.removeEventListener('pignus:reschedule-service', moveWeeklyService)
   }, [])
   useEffect(() => {
+    const removeWeeklyService = event => {
+      const { day, taskId, historyId } = event.detail || {}
+      if (!day || (!taskId && !historyId)) return
+      const matches = task => (taskId && String(task.taskId || '') === String(taskId)) || (historyId && String(task.historyId || '') === String(historyId))
+      if (day === date) setTeams(previous => previous.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !matches(task)) })))
+      if (historyId) setHistory(previous => previous.filter(record => String(record.id) !== String(historyId)))
+    }
+    window.addEventListener('pignus:remove-weekly-task', removeWeeklyService)
+    return () => window.removeEventListener('pignus:remove-weekly-task', removeWeeklyService)
+  }, [date])
+  useEffect(() => {
+    // Una agenda diaria ya abierta/guardada comparte los mismos taskId que la
+    // planificación semanal. Toda corrección semanal debe reflejarse también
+    // en esa copia y en su registro pendiente del Historial.
+    const syncWeeklyTask = event => {
+      const { day, teamId, teamIndex, taskIndex, taskId, draft, teamSnapshot } = event.detail || {}
+      if (!day || !draft) return
+      if (day === date) setTeams(previous => {
+        const next = [...previous]
+        let destinationIndex = next.findIndex(team => taskId && (team.tasks || []).some(task => String(task.taskId || '') === String(taskId)))
+        if (destinationIndex < 0 && teamId) destinationIndex = next.findIndex(team => String(team.teamId || '') === String(teamId))
+        if (destinationIndex < 0 && next[teamIndex]) destinationIndex = teamIndex
+        if (destinationIndex < 0) {
+          next.push({
+            teamId: teamId || teamSnapshot?.teamId || createTeamId(),
+            label: teamSnapshot?.label || `Equipo ${teamIndex + 1}`,
+            memberIds: teamSnapshot?.memberIds || [],
+            members: teamSnapshot?.members || [],
+            tasks: [draft]
+          })
+          return next
+        }
+        const destination = next[destinationIndex]
+        const existingTaskIndex = (destination.tasks || []).findIndex((task, index) => (taskId && String(task.taskId || '') === String(taskId)) || (!taskId && index === taskIndex))
+        const tasks = existingTaskIndex >= 0
+          ? destination.tasks.map((task, index) => index === existingTaskIndex ? { ...task, ...draft } : task)
+          : [...(destination.tasks || []), draft]
+        next[destinationIndex] = {
+          ...destination,
+          label: teamSnapshot?.label || destination.label,
+          memberIds: teamSnapshot?.memberIds || destination.memberIds || [],
+          members: teamSnapshot?.members || destination.members || [],
+          tasks: sortTasksByTime(tasks)
+        }
+        return next
+      })
+      setHistory(previous => {
+        const sameRecord = record => record.date === day && (
+          (draft.historyId && String(record.id) === String(draft.historyId)) ||
+          (taskId && String(record.sourceTaskId || '') === String(taskId))
+        )
+        if (previous.some(sameRecord)) return previous.map(record => sameRecord(record) ? {
+          ...record,
+          time: draft.time,
+          scheduledTime: draft.time,
+          serviceId: draft.serviceId,
+          service: draft.service,
+          customerId: draft.customerId,
+          client: draft.client,
+          clientAccount: draft.clientAccount,
+          clientNameAtService: draft.clientNameAtService,
+          address: draft.address,
+          phone: draft.phone,
+          detail: draft.detail,
+          installationZone: draft.installationZone || ''
+        } : record)
+
+        // Si el día ya fue registrado, un servicio agregado luego desde la
+        // agenda semanal también debe quedar documentado como pendiente. Para
+        // días futuros se mantiene como planificación hasta abrir/guardar el día.
+        if (!previous.some(record => record.date === day)) return previous
+        const sourceTaskId = draft.taskId || taskId || createTaskId()
+        return [{
+          id: draft.historyId || `work-${sourceTaskId}`,
+          sourceTaskId,
+          date: day,
+          time: draft.time,
+          scheduledTime: draft.time,
+          team: teamSnapshot?.label || `Equipo ${teamIndex + 1}`,
+          teamId: teamId || teamSnapshot?.teamId || '',
+          technicianIds: teamSnapshot?.memberIds || [],
+          technicians: teamSnapshot?.members || [],
+          serviceId: draft.serviceId || '',
+          service: draft.service || '',
+          customerId: draft.customerId || '',
+          client: draft.client || '',
+          clientAccount: draft.clientAccount || '',
+          clientNameAtService: draft.clientNameAtService || String(draft.client || '').replace(/^[^\s]+\s+/, ''),
+          address: draft.address || '',
+          phone: draft.phone || '',
+          detail: draft.detail || '',
+          installationZone: draft.installationZone || '',
+          status: 'Pendiente'
+        }, ...previous]
+      })
+    }
+    window.addEventListener('pignus:sync-weekly-task', syncWeeklyTask)
+    return () => window.removeEventListener('pignus:sync-weekly-task', syncWeeklyTask)
+  }, [date])
+  useEffect(() => {
+    // Compatibilidad con equipos históricos cuyos teamId semanal y diario no
+    // coinciden: el taskId es la identidad canónica del servicio.
+    const weeklyTasks = weekly?.[date]?.teams?.flatMap(team => team.tasks || []) || []
+    if (!weeklyTasks.length) return
+    const byTaskId = new Map(weeklyTasks.filter(task => task.taskId).map(task => [String(task.taskId), task]))
+    setTeams(previous => {
+      const next = previous.map(team => ({ ...team, tasks: sortTasksByTime(team.tasks.map(task => {
+        const weeklyTask = task.taskId ? byTaskId.get(String(task.taskId)) : null
+        return weeklyTask ? { ...task, ...weeklyTask } : task
+      })) }))
+      return JSON.stringify(next) === JSON.stringify(previous) ? previous : next
+    })
+  }, [weekly, date])
+  useEffect(() => {
     if (!authUser) return
     fetch('/api/state').then(response => response.ok ? response.json() : Promise.reject()).then(data => {
       setStateRevision(Number(data.revision || 0))
@@ -387,7 +592,7 @@ export default function App() {
       if (data.employees?.length) setEmployees(data.employees.map(employee => { const assignedRole = data.roles?.find(role => String(role.id) === String(employee.roleId)) || data.roles?.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role)); return assignedRole ? { ...employee, roleId: assignedRole.id, role: assignedRole.name } : employee }))
       if (data.services?.length) setServices(data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') })))
       if (Array.isArray(data.history)) setHistory(data.history)
-      if (data.customers?.length) setCustomers(data.customers.map(customer => ({ ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer) })))
+      if (data.customers?.length) setCustomers(data.customers.map(customer => ({ ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer), name: normalizeCustomerName(customer.name) })))
       if (Array.isArray(data.reviews)) setReviews(data.reviews)
       if (data.agenda?.teams?.length) { setTeams(data.agenda.teams); setDate(data.agenda.date || date) }
       if (data.agenda?.weekly && typeof data.agenda.weekly === 'object') setWeekly(data.agenda.weekly)
@@ -396,8 +601,12 @@ export default function App() {
   }, [authUser])
   useEffect(() => {
     if (!databaseReady || stateRevision === null || !authUser || authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return
+    // Desde que existe un cambio local pendiente (incluido el debounce) se
+    // bloquea la recarga periódica para que no restaure la versión anterior.
+    pendingStateSaves.current += 1
+    let saveStarted = false
     const timer = setTimeout(() => {
-      pendingStateSaves.current += 1
+      saveStarted = true
       fetch('/api/state', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ revision: stateRevision, roles, employees, services, history, customers, reviews, agenda: { date, teams, weekly }, preferences: { theme } })
@@ -408,7 +617,10 @@ export default function App() {
       }).catch(error => setNotice(error.message || 'No se pudieron guardar los últimos cambios.'))
         .finally(() => { pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1) })
     }, 750)
-    return () => clearTimeout(timer)
+    return () => {
+      clearTimeout(timer)
+      if (!saveStarted) pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1)
+    }
   }, [databaseReady, authUser, roles, employees, services, history, customers, reviews, date, teams, weekly, theme])
   useEffect(() => {
     // Sincronización ligera del tablero semanal. Evita recargar la página y no pisa
@@ -430,7 +642,11 @@ export default function App() {
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refreshWeekly) }
   }, [databaseReady, authUser, stateRevision])
   const ask = (title, detail, action, destructive = false) => setConfirmation({ title, detail, action, destructive })
-  const updateTask = (team, task, patch) => setTeams(prev => prev.map((t, ti) => ti !== team ? t : { ...t, tasks: t.tasks.map((x, i) => i !== task ? x : { ...x, ...patch }) }))
+  const updateTask = (team, task, patch) => setTeams(previous => previous.map((currentTeam, teamIndex) => {
+    if (teamIndex !== team) return currentTeam
+    const tasks = currentTeam.tasks.map((currentTask, taskIndex) => taskIndex !== task ? currentTask : { ...currentTask, ...patch })
+    return { ...currentTeam, tasks: Object.prototype.hasOwnProperty.call(patch, 'time') ? sortTasksByTime(tasks) : tasks }
+  }))
   const employeeRole = employee => roles.find(role => String(role.id) === String(employee.roleId)) || roles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role))
   // La capacidad técnica depende del código estable, no del nombre editable.
   const activeTechs = employees.filter(employee => employee.status === 'Activo' && roleCode(employeeRole(employee)) === 'technician')
@@ -527,6 +743,7 @@ function AgendaWorkspace({ date, setDate, teams, setTeams, activeTechs, customer
   const [techOpen, setTechOpen] = useState(null)
   const [filter, setFilter] = useState('')
   const [confirmation, setConfirmation] = useState(null)
+  const [customerProposal, setCustomerProposal] = useState(null)
   useEffect(() => {
     const group = document.querySelector('.module-intro .action-group')
     if (!group || group.querySelector('.save-agenda-button')) return
@@ -590,6 +807,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   const [techOpen, setTechOpen] = useState(null)
   const [filter, setFilter] = useState('')
   const [confirmation, setConfirmation] = useState(null)
+  const [customerProposal, setCustomerProposal] = useState(null)
   useEffect(() => {
     // Ambos módulos escriben sobre el mismo día: los cambios de la agenda del día
     // se reflejan inmediatamente en la agenda semanal, conservando campos extra.
@@ -597,13 +815,31 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     if (!hasContent) return
     setWeekly(previous => {
       const savedDay = previous[date] || {}
+      const consumedSavedTeams = new Set()
       const nextTeams = teams.map((team, teamIndex) => {
-        const savedTeam = savedDay.teams?.[teamIndex] || {}
+        const savedTeams = savedDay.teams || []
+        let savedTeamIndex = savedTeams.findIndex((candidate, candidateIndex) => (
+          !consumedSavedTeams.has(candidateIndex) &&
+          team.teamId && candidate.teamId && String(candidate.teamId) === String(team.teamId)
+        ))
+        if (savedTeamIndex < 0 && savedTeams[teamIndex] && !consumedSavedTeams.has(teamIndex)) savedTeamIndex = teamIndex
+        if (savedTeamIndex >= 0) consumedSavedTeams.add(savedTeamIndex)
+        const savedTeam = savedTeamIndex >= 0 ? savedTeams[savedTeamIndex] : {}
+        const savedTasks = savedTeam.tasks || []
         return {
           ...savedTeam,
-          label: savedTeam.label || `Equipo ${teamIndex + 1}`,
+          ...team,
+          label: team.label || savedTeam.label || `Equipo ${teamIndex + 1}`,
           members: team.members || [],
-          tasks: team.tasks.map((task, taskIndex) => ({ ...(savedTeam.tasks?.[taskIndex] || {}), ...task }))
+          memberIds: team.memberIds || savedTeam.memberIds || [],
+          tasks: sortTasksByTime(team.tasks.map((task, taskIndex) => {
+            const savedTask = savedTasks.find(candidate => (
+              task.taskId && candidate.taskId && String(candidate.taskId) === String(task.taskId)
+            )) || savedTasks.find(candidate => (
+              task.historyId && candidate.historyId && String(candidate.historyId) === String(task.historyId)
+            )) || ((!task.taskId && !task.historyId) ? savedTasks[taskIndex] : null)
+            return savedTask ? { ...savedTask, ...task } : { ...task }
+          }))
         }
       })
       const nextDay = { ...savedDay, teams: nextTeams }
@@ -672,7 +908,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       else current.tasks.push(recoveredTask)
       byTeam.set(teamKey, current)
     })
-    setTeams([...byTeam.values()].sort((a, b) => a.position - b.position).map(({ position, ...team }) => ({ ...team, tasks: (team.tasks.length ? team.tasks : [blankTask()]).sort((a, b) => String(a.time).localeCompare(String(b.time))) })))
+    setTeams([...byTeam.values()].sort((a, b) => a.position - b.position).map(({ position, ...team }) => ({ ...team, tasks: sortTasksByTime(team.tasks.length ? team.tasks : [blankTask()]) })))
     const reprogrammedCount = saved.filter(record => record.rescheduledFrom).length
     setNotice(reprogrammedCount
       ? `Se cargó la agenda del ${prettyDate(nextDate)} con ${reprogrammedCount} servicio(s) reprogramado(s).`
@@ -721,9 +957,9 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
         }
       : { serviceId: '', service: '', installationZone: '' })
   }
-  const validateAgenda = () => {
+  const validateAgenda = (agendaTeams = teams) => {
     const missing = []
-    teams.forEach((team, teamIndex) => team.tasks.forEach((task, taskIndex) => {
+    agendaTeams.forEach((team, teamIndex) => team.tasks.forEach((task, taskIndex) => {
       const fields = []
       if (!task.time) fields.push('hora')
       if (!task.service) fields.push('tipo de servicio')
@@ -738,10 +974,10 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   }
   const clearAgenda = () => { if (confirmation !== 'clear') { if (!registerHistory()) return; setNotice('La agenda fue copiada al portapapeles y registrada en el historial.'); return }; setTeams([{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }]); setDate(new Date().toISOString().slice(0, 10)); setNotice('La agenda quedó limpia y lista para una nueva planificación.') }
   const message = `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n${teams.map((team, index) => `👥 *Equipo ${index + 1}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${team.tasks.map(task => `🕒 ${task.time || '--:--'} Hs\n🛠️ *${task.service || 'Servicio'}*\n👤 *${task.client || 'Cliente'}*${task.detail ? `\n📝 *Detalle:* ${task.detail}` : ''}${task.address ? `\n📍 *Dirección:* ${task.address}` : ''}${task.phone ? `\n📞 *Contacto:* ${task.phone}` : ''}`).join('\n\n')}`).join('\n\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n')}`
-  const registerHistory = () => {
-    if (!validateAgenda()) return false
+  const registerHistory = (agendaTeams = teams) => {
+    if (!validateAgenda(agendaTeams)) return false
     setHistory(previous => {
-      const records = teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({
+      const records = agendaTeams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({
         // historyId se conserva al recuperar o editar una agenda ya registrada.
         // Para un servicio nuevo se usa el taskId, que permanece aunque cambien sus datos.
         id: task.historyId || `work-${task.taskId || `${date}-${teamIndex}-${taskIndex}`}`,
@@ -756,11 +992,19 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       })))
       const accountKey = record => String(record.clientAccount || record.account || String(record.client || '').trim().split(' ')[0] || '').trim().toUpperCase()
       const serviceKey = record => String(record.service || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/nueva/g, '').replace(/\s+/g, ' ').trim()
+      const timeKey = record => String(record.time || record.scheduledTime || '').trim()
+      const teamKey = record => String(record.teamId || record.team || '').trim().toLowerCase()
       const replacements = records.map(record => {
-        // Compatibilidad con la importación histórica: si ya existe el mismo trabajo,
-        // se completa ese registro en lugar de agregar una segunda fila.
+        // Los trabajos actuales se vinculan exclusivamente por su identificador. El
+        // fallback sólo migra filas históricas sin sourceTaskId y exige coincidir en
+        // cliente, servicio, hora y equipo para no fusionar dos visitas legítimas.
         const existing = previous.find(item => item.id === record.id || (
-          item.date === record.date && accountKey(item) && accountKey(item) === accountKey(record) && serviceKey(item) === serviceKey(record)
+          !item.sourceTaskId &&
+          item.date === record.date &&
+          accountKey(item) && accountKey(item) === accountKey(record) &&
+          serviceKey(item) === serviceKey(record) &&
+          timeKey(item) === timeKey(record) &&
+          teamKey(item) === teamKey(record)
         ))
         return existing ? { ...existing, ...record, id: existing.id } : { ...record, status: 'Pendiente' }
       })
@@ -769,28 +1013,76 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     })
     return true
   }
-  const finishAgendaAction = action => {
-    if (!registerHistory()) return
+  const finishAgendaAction = (action, agendaTeams = teams) => {
+    if (!registerHistory(agendaTeams)) return
     if (action === 'copy') navigator.clipboard?.writeText(message)
     setNotice(action === 'copy' ? 'La agenda fue copiada al portapapeles y registrada en el historial.' : 'La agenda fue guardada en el historial.')
   }
-  const requestAgendaAction = (action, allowWithoutTechnicians = false) => {
-    if (!validateAgenda()) return
-    const missingTeams = teams.map((team, index) => !team.members.length ? `Equipo ${index + 1}` : '').filter(Boolean)
-    if (missingTeams.length && !allowWithoutTechnicians) { showMissingTechniciansModal(missingTeams, () => requestAgendaAction(action, true)); return }
+  const requestAgendaAction = (action, allowWithoutTechnicians = false, agendaTeams = teams, skipCustomerProposal = false) => {
+    const meaningful = value => String(value || '').trim() && String(value || '').trim() !== '-'
+    const existingUpdates = new Map()
+    const newClients = new Map()
+    agendaTeams.forEach(team => team.tasks.forEach(task => {
+      const account = normalizeAccountKey(task.clientAccount || String(task.client || '').trim().split(/\s+/)[0])
+      const customer = customers.find(item => String(item.customerId || '') === String(task.customerId || '')) || customers.find(item => normalizeAccountKey(item.account) === account)
+      if (customer) {
+        const address = !meaningful(customer.address) && meaningful(task.address) ? task.address.trim() : customer.address
+        const phone = !meaningful(customer.phone) && meaningful(task.phone) ? task.phone.trim() : customer.phone
+        if (address !== customer.address || phone !== customer.phone) existingUpdates.set(String(customer.customerId), { ...customer, address, street: customer.street || address, phone })
+      } else if (String(task.client || '').trim()) {
+        const key = normalizeSearchText(task.client)
+        if (!newClients.has(key)) newClients.set(key, { name: String(task.client).trim(), address: meaningful(task.address) ? task.address.trim() : '', phone: meaningful(task.phone) ? task.phone.trim() : '' })
+      }
+    }))
+    if (!skipCustomerProposal && (existingUpdates.size || newClients.size)) {
+      setCustomerProposal({ action, allowWithoutTechnicians, existingUpdates: [...existingUpdates.values()], newClients: [...newClients.values()] })
+      return
+    }
+    if (!validateAgenda(agendaTeams)) return
+    const missingTeams = agendaTeams.map((team, index) => !team.members.length ? `Equipo ${index + 1}` : '').filter(Boolean)
+    if (missingTeams.length && !allowWithoutTechnicians) { showMissingTechniciansModal(missingTeams, () => requestAgendaAction(action, true, agendaTeams, true)); return }
     const technicianTeams = new Map()
-    teams.forEach((team, teamIndex) => team.members.forEach(name => technicianTeams.set(name, [...(technicianTeams.get(name) || []), teamIndex])))
+    agendaTeams.forEach((team, teamIndex) => team.members.forEach(name => technicianTeams.set(name, [...(technicianTeams.get(name) || []), teamIndex])))
     const duplicates = [...technicianTeams.entries()].filter(([, assignedTeams]) => assignedTeams.length > 1).map(([name, assignedTeams]) => ({ name, teams: assignedTeams }))
     if (duplicates.length) {
-      const assigned = new Set(teams.flatMap(team => team.members))
+      const assigned = new Set(agendaTeams.flatMap(team => team.members))
       const available = activeTechs.map(tech => tech.name).filter(name => !assigned.has(name))
       showDuplicateTechniciansModal(duplicates, available, changes => {
         setTeams(previous => previous.map((team, teamIndex) => ({ ...team, members: team.members.map(name => changes.find(change => change.teamIndex === teamIndex && change.name === name)?.replacement || name) })))
         setNotice('La asignación fue corregida. Revisá la agenda y volvé a guardar o copiar.')
-      }, () => finishAgendaAction(action))
+      }, () => finishAgendaAction(action, agendaTeams))
       return
     }
-    finishAgendaAction(action)
+    finishAgendaAction(action, agendaTeams)
+  }
+  const applyCustomerProposal = () => {
+    if (!customerProposal) return
+    let nextCustomers = customers.map(customer => customerProposal.existingUpdates.find(update => String(update.customerId) === String(customer.customerId)) || customer)
+    const created = new Map()
+    customerProposal.newClients.forEach(entry => {
+      const customer = { ...blankCustomer, customerId: createCustomerId(), kind: 'client', account: nextCustomerCode(nextCustomers, 'client'), name: normalizeCustomerName(entry.name), type: 'Cliente de servicio', address: entry.address, street: entry.address, phone: entry.phone }
+      nextCustomers = [...nextCustomers, customer]
+      created.set(normalizeSearchText(entry.name), customer)
+    })
+    const nextTeams = teams.map(team => ({ ...team, tasks: team.tasks.map(task => {
+      if (task.customerId) return task
+      const customer = created.get(normalizeSearchText(task.client))
+      return customer ? { ...task, customerId: customer.customerId, client: `${customer.account} ${customer.name}`, clientAccount: customer.account, clientNameAtService: customer.name, address: task.address || customer.address, phone: task.phone || customer.phone } : task
+    }) }))
+    window.dispatchEvent(new CustomEvent('pignus:replace-customers', { detail: { customers: nextCustomers } }))
+    setTeams(nextTeams)
+    const { action, allowWithoutTechnicians } = customerProposal
+    setCustomerProposal(null)
+    requestAgendaAction(action, allowWithoutTechnicians, nextTeams, true)
+  }
+  if (customerProposal) {
+    const existingNames = customerProposal.existingUpdates.map(customer => customer.name).join(', ')
+    const newNames = customerProposal.newClients.map(customer => customer.name).join(', ')
+    const detail = [
+      existingNames && `Se completarán dirección y/o contacto de: ${existingNames}.`,
+      newNames && `Se crearán como clientes con código CLI automático: ${newNames}.`
+    ].filter(Boolean).join(' ')
+    return <Confirm title="Actualizar datos de clientes" detail={detail} action={applyCustomerProposal} confirmLabel="Sí, actualizar y continuar" close={() => setCustomerProposal(null)} />
   }
   const toggleTech = (teamIndex, technician) => setTeams(previous => previous.map((team, index) => {
     if (index !== teamIndex) return team
@@ -813,6 +1105,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   const [techPicker, setTechPicker] = useState(null)
   const [techFilter, setTechFilter] = useState('')
   const [taskEditor, setTaskEditor] = useState(null)
+  const [taskRemoval, setTaskRemoval] = useState(null)
   const [teamRemoval, setTeamRemoval] = useState(null)
   const weeklyBoardRef = useRef(null)
   const weeklyTopScrollRef = useRef(null)
@@ -826,7 +1119,13 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   }
   const activeServices = services.filter(service => service.status === 'Activo')
   const serviceForWeeklyTask = task => services.find(service => String(service.id) === String(task.serviceId)) || services.find(service => normalizeServiceName(service.name) === normalizeServiceName(task.service))
-  const selectWeeklyService = (day, teamIndex, taskIndex, selectedId) => { const selected = services.find(service => String(service.id) === String(selectedId)); updateTask(day, teamIndex, taskIndex, selected ? { serviceId: selected.id, service: selected.name } : { serviceId: '', service: '' }) }
+  const selectWeeklyService = (day, teamIndex, taskIndex, selectedId) => {
+    const selected = services.find(service => String(service.id) === String(selectedId))
+    const currentTask = dayPlan(day).teams[teamIndex]?.tasks[taskIndex]
+    updateTask(day, teamIndex, taskIndex, selected
+      ? { serviceId: selected.id, service: selected.name, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
+      : { serviceId: '', service: '', installationZone: '' })
+  }
   const weeklyTechnicianName = fullName => activeTechs.find(tech => tech.name === fullName)?.firstName || String(fullName || '').split(' ')[0]
   const monthKey = anchor.slice(0, 7)
   const monthlyTeams = weekly._monthlyTeams || {}
@@ -884,6 +1183,65 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   }, [days, weekly])
   const dayPlan = day => weekly[day] || createDay(day)
   const updateDay = (day, mutate) => setWeekly(previous => ({ ...previous, [day]: mutate(previous[day] || createDay(day)) }))
+  const openTaskEditor = (day, teamIndex, taskIndex) => {
+    const teamSnapshot = dayPlan(day).teams[teamIndex]
+    const task = teamSnapshot?.tasks[taskIndex]
+    if (task) setTaskEditor({ day, teamIndex, taskIndex, teamId: teamSnapshot.teamId, teamSnapshot: { ...teamSnapshot, tasks: [...(teamSnapshot.tasks || [])] }, taskId: task.taskId, draft: { ...task } })
+  }
+  const updateTaskDraft = patch => setTaskEditor(previous => previous ? { ...previous, draft: { ...previous.draft, ...patch } } : previous)
+  const selectDraftService = selectedId => {
+    const selected = services.find(service => String(service.id) === String(selectedId))
+    updateTaskDraft(selected
+      ? {
+          serviceId: selected.id,
+          service: selected.name,
+          installationZone: serviceCode(selected) === 'alarm-installation' ? taskEditor?.draft?.installationZone || '' : ''
+        }
+      : { serviceId: '', service: '', installationZone: '' })
+  }
+  const selectDraftCustomer = value => {
+    const customer = customers.find(item => item.account === value || item.name === value || `${item.account} ${item.name}` === value)
+    updateTaskDraft(customer ? { customerId: customer.customerId, client: `${customer.account} ${customer.name}`, clientAccount: customer.account, clientNameAtService: customer.name, address: customer.address, phone: customer.phone } : { customerId: '', client: value, clientAccount: '', clientNameAtService: '' })
+  }
+  const saveTaskEditor = () => {
+    if (!taskEditor) return
+    const { day, teamIndex, taskIndex, teamId, teamSnapshot, taskId, draft } = taskEditor
+    const missing = []
+    if (!draft.time) missing.push('hora')
+    if (!draft.serviceId || !draft.service) missing.push('tipo de servicio')
+    if (!draft.customerId) missing.push('cliente o cuenta')
+    if (!String(draft.address || '').trim()) missing.push('dirección')
+    if (!String(draft.detail || '').trim()) missing.push('detalle')
+    if (serviceCode(serviceForWeeklyTask(draft)) === 'alarm-installation' && !draft.installationZone) missing.push('ubicación de la instalación')
+    if (missing.length) {
+      setNotice(`Completá ${missing.join(', ')} antes de guardar el servicio.`)
+      return
+    }
+    updateDay(day, plan => {
+      const nextTeams = [...plan.teams]
+      let destinationIndex = nextTeams.findIndex(team => teamId && String(team.teamId || '') === String(teamId))
+      // Los días aún no persistidos se construyen visualmente con IDs
+      // temporales. La posición capturada por el modal es la referencia segura
+      // si esos IDs cambiaron antes de presionar Guardar.
+      if (destinationIndex < 0 && nextTeams[teamIndex]) destinationIndex = teamIndex
+      if (destinationIndex < 0) {
+        const restoredTasks = (teamSnapshot?.tasks || []).map(task => String(task.taskId || '') === String(taskId || '') ? { ...task, ...draft } : task)
+        if (!restoredTasks.some(task => String(task.taskId || '') === String(taskId || ''))) restoredTasks.push(draft)
+        nextTeams.push({ ...teamSnapshot, teamId: teamId || teamSnapshot?.teamId || createTeamId(), label: teamSnapshot?.label || `Equipo ${teamIndex + 1}`, tasks: sortTasksByTime(restoredTasks) })
+      } else {
+        const destination = nextTeams[destinationIndex]
+        const existingTaskIndex = (destination.tasks || []).findIndex((task, index) => (taskId && String(task.taskId || '') === String(taskId)) || (!taskId && index === taskIndex))
+        const tasks = existingTaskIndex >= 0
+          ? destination.tasks.map((task, index) => index === existingTaskIndex ? { ...task, ...draft } : task)
+          : [...(destination.tasks || []), draft]
+        nextTeams[destinationIndex] = { ...destination, tasks: sortTasksByTime(tasks) }
+      }
+      return { ...plan, teams: nextTeams }
+    })
+    window.dispatchEvent(new CustomEvent('pignus:sync-weekly-task', { detail: { day, teamId, teamIndex, taskIndex, taskId, draft, teamSnapshot } }))
+    setTaskEditor(null)
+    setNotice('Servicio actualizado y ordenado por horario.')
+  }
   const updateTeam = (day, teamIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, ...patch } : team) }))
   const toggleWeeklyTech = (day, teamIndex, technician) => {
     technician = typeof technician === 'string' ? activeTechs.find(item => item.name === technician) : technician
@@ -926,6 +1284,19 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     updateTask(day, teamIndex, taskIndex, customer ? { customerId: customer.customerId, client: `${customer.account} ${customer.name}`, clientAccount: customer.account, clientNameAtService: customer.name, address: customer.address, phone: customer.phone } : { customerId: '', client: value, clientAccount: '', clientNameAtService: '' })
   }
   const addTask = (day, teamIndex) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, tasks: [...team.tasks, { ...blankTask(), time: '' }] } : team) }))
+  const removeWeeklyTask = ({ day, teamId, teamIndex, taskId, historyId }) => {
+    updateDay(day, plan => ({
+      ...plan,
+      teams: plan.teams.map((team, index) => {
+        const sameTeam = (teamId && String(team.teamId || '') === String(teamId)) || (!teamId && index === teamIndex)
+        if (!sameTeam) return team
+        return { ...team, tasks: (team.tasks || []).filter((task, index) => taskId ? String(task.taskId || '') !== String(taskId) : index !== taskRemoval.taskIndex) }
+      })
+    }))
+    window.dispatchEvent(new CustomEvent('pignus:remove-weekly-task', { detail: { day, taskId, historyId } }))
+    setTaskRemoval(null)
+    setNotice('El servicio fue eliminado de la planificación semanal.')
+  }
   const suggestedMonthlyTeams = () => (monthlyTeams[previousMonthKey]?.teams || [null, null, null]).map((team, index) => ({ teamId: team?.teamId || createTeamId(), label: team?.label || `Equipo ${index + 1}`, memberIds: team?.memberIds || [], members: team?.members || [] }))
   const openMonthlySetup = () => setMonthlySetup({ month: monthKey, teams: baseTeams ? baseTeams.map(team => ({ teamId: team.teamId || createTeamId(), label: team.label, memberIds: team.memberIds || [], members: team.members || [] })) : suggestedMonthlyTeams() })
   const updateMonthlyTeam = (index, memberIds) => { const selected = activeTechs.filter(tech => memberIds.some(id => String(id) === String(tech.id))); setMonthlySetup(previous => ({ ...previous, teams: previous.teams.map((team, teamIndex) => teamIndex === index ? { ...team, memberIds: selected.map(tech => tech.id), members: selected.map(tech => tech.name) } : team) })) }
@@ -945,10 +1316,11 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     const invalidTime = dayPlan(day).teams.flatMap(team => team.tasks).find(task => task.time && (task.time < hours.min || task.time > hours.max))
     if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
     const scheduledTasks = dayPlan(day).teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, teamIndex, taskIndex }))).filter(({ task }) => [task.service, task.client, task.address, task.detail, task.phone, task.paymentMethod, task.monthlyFee, task.form].some(value => String(value || '').trim()))
-    const incompleteTask = scheduledTasks.find(({ task }) => !task.time || !task.service || !task.customerId || !task.address || !task.detail)
+    const incompleteTask = scheduledTasks.find(({ task }) => !task.time || !task.service || !task.customerId || !task.address || !task.detail || (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone))
     if (incompleteTask) {
       const { task, teamIndex, taskIndex } = incompleteTask
       const missing = [['hora', task.time], ['tipo de servicio', task.service], ['cliente', task.client], ['dirección', task.address], ['detalle', task.detail]].filter(([, value]) => !String(value || '').trim()).map(([label]) => label)
+      if (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) missing.push('ubicación de la instalación')
       setNotice(`Completá los campos obligatorios de Equipo ${teamIndex + 1}, tarjeta ${taskIndex + 1}: ${missing.join(', ')}.`)
       return
     }
@@ -962,15 +1334,20 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   return <>
     {techPicker && <button className="picker-backdrop" aria-label="Cerrar selector de técnicos" onClick={() => setTechPicker(null)} />}
     {teamRemoval && <Confirm title="Quitar equipo" detail={`¿Querés quitar ${teamRemoval.label} de la planificación del ${prettyDate(teamRemoval.day)}? Se eliminarán también sus servicios.`} destructive action={() => removeWeeklyTeam(teamRemoval.day, teamRemoval.teamIndex)} close={() => setTeamRemoval(null)} />}
+    {taskRemoval && <Confirm title="Eliminar servicio" detail={`¿Querés eliminar el Servicio ${taskRemoval.taskIndex + 1} de ${taskRemoval.label} para el ${prettyDate(taskRemoval.day)}?${taskRemoval.historyId ? ' También se quitará el registro pendiente vinculado.' : ''}`} destructive action={() => removeWeeklyTask(taskRemoval)} close={() => setTaskRemoval(null)} />}
     {monthlySetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setMonthlySetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de {new Date(`${monthlySetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Estos técnicos se asignarán por defecto a cada nuevo día del mes. Las agendas ya cargadas no se modifican.</p><div className="monthly-team-list">{monthlySetup.teams.map((team, index) => <label key={team.teamId || index}><b>{team.label || `Equipo ${index + 1}`}</b><select multiple value={team.memberIds || []} onChange={event => updateMonthlyTeam(index, [...event.target.selectedOptions].map(option => option.value))}>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName || tech.name.split(' ')[0]}</option>)}</select><small>Mantené presionada la tecla Ctrl para seleccionar más de un técnico.</small></label>)}</div><button className="secondary monthly-add-team" onClick={addMonthlyTeam}><Icon name="plus" size={15} />Agregar equipo</button><div className="modal-actions"><button className="secondary" onClick={() => setMonthlySetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlySetup}>Guardar equipos del mes</button></div></section></div>}
     <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Prepará las visitas de cada equipo y luego abrí el día para terminar de validar y guardar la agenda del día.</p></div><div className="weekly-actions"><button className="secondary" onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button><label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
     {taskEditor && (() => {
       const { day, teamIndex, taskIndex } = taskEditor
-      const task = dayPlan(day).teams[teamIndex]?.tasks[taskIndex]
+      const task = taskEditor.draft
       const hours = hoursForDay(day)
       if (!task || !hours) return null
-      const customerListId = `weekly-customers-editor-${day}-${teamIndex}-${taskIndex}`
-      return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskEditor(null)}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button className="modal-close" onClick={() => setTaskEditor(null)}><Icon name="close" /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>Servicio {taskIndex + 1}</h2><p className="weekly-modal-team">{dayPlan(day).teams[teamIndex]?.label || `Equipo ${teamIndex + 1}`} · {dayPlan(day).teams[teamIndex]?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label>Hora <b>*</b><input type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTask(day, teamIndex, taskIndex, { time: event.target.value })} /></label><label>Tipo de servicio <b>*</b><select value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectWeeklyService(day, teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div><label>Cliente o cuenta <b>*</b><input list={customerListId} placeholder="Buscá por nombre o cuenta" value={task.client} onChange={event => selectCustomer(day, teamIndex, taskIndex, event.target.value)} /></label><datalist id={customerListId}>{customers.map(customer => <option key={customer.account} value={`${customer.account} ${customer.name}`} />)}</datalist><label>Dirección <b>*</b><input value={task.address} onChange={event => updateTask(day, teamIndex, taskIndex, { address: event.target.value })} /></label><label>Contacto<input value={task.phone} onChange={event => updateTask(day, teamIndex, taskIndex, { phone: event.target.value })} /></label><label>Detalle <b>*</b><textarea value={task.detail} onChange={event => updateTask(day, teamIndex, taskIndex, { detail: event.target.value })} /></label><div className="weekly-extra-fields"><label>Forma de pago<input value={task.paymentMethod} onChange={event => updateTask(day, teamIndex, taskIndex, { paymentMethod: event.target.value })} /></label><label>Abono mensual<input value={task.monthlyFee} onChange={event => updateTask(day, teamIndex, taskIndex, { monthlyFee: event.target.value })} /></label><label>Formulario<input value={task.form} onChange={event => updateTask(day, teamIndex, taskIndex, { form: event.target.value })} /></label></div></div><div className="modal-actions"><button className="secondary" onClick={() => setTaskEditor(null)}>Cancelar</button><button className="primary" onClick={() => { setTaskEditor(null); setNotice(`Servicio ${taskIndex + 1} actualizado.`) }}><Icon name="check" size={16} />Guardar servicio</button></div></section></div>
+      const customerQuery = normalizeSearchText(task.client)
+      const exactCustomer = customers.some(customer => String(customer.customerId) === String(task.customerId))
+      const customerSuggestions = customerQuery.length >= 2 && !exactCustomer
+        ? customers.filter(customer => normalizeSearchText(`${customer.account} ${customer.name}`).includes(customerQuery)).slice(0, 12)
+        : []
+      return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskEditor(null)}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button className="modal-close" onClick={() => setTaskEditor(null)}><Icon name="close" /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>Servicio {taskIndex + 1}</h2><p className="weekly-modal-team">{taskEditor.teamSnapshot?.label || `Equipo ${teamIndex + 1}`} · {taskEditor.teamSnapshot?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label>Hora <b>*</b><input type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTaskDraft({ time: event.target.value })} /></label><label>Tipo de servicio <b>*</b><select value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectDraftService(event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div><label className="weekly-customer-search">Cliente o cuenta <b>*</b><input autoComplete="off" placeholder="Buscá por nombre o cuenta" value={task.client} onChange={event => selectDraftCustomer(event.target.value)} />{customerSuggestions.length > 0 && <span className="weekly-customer-results">{customerSuggestions.map(customer => <button type="button" key={customer.customerId || customer.account} onClick={() => selectDraftCustomer(`${customer.account} ${customer.name}`)}><b>{customer.account}</b><span>{customer.name}</span></button>)}</span>}</label><label>Dirección <b>*</b><input readOnly title="Este dato se modifica desde Abonados y clientes" value={task.address} /></label><label>Contacto<input readOnly title="Este dato se modifica desde Abonados y clientes" value={task.phone} /></label><p className="weekly-customer-data-note">Dirección y contacto se administran desde el módulo Abonados y clientes.</p>{serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend>Ubicación de la instalación</legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input type="radio" name={`weekly-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => updateTaskDraft({ installationZone: value })} />{label}</label>)}</fieldset>}<label>Detalle <b>*</b><textarea value={task.detail} onChange={event => updateTaskDraft({ detail: event.target.value })} /></label><div className="weekly-extra-fields"><label>Forma de pago<input value={task.paymentMethod} onChange={event => updateTaskDraft({ paymentMethod: event.target.value })} /></label><label>Abono mensual<input value={task.monthlyFee} onChange={event => updateTaskDraft({ monthlyFee: event.target.value })} /></label><label>Formulario<input value={task.form} onChange={event => updateTaskDraft({ form: event.target.value })} /></label></div></div><div className="modal-actions"><button className="secondary" onClick={() => setTaskEditor(null)}>Cancelar</button><button className="primary" onClick={saveTaskEditor}><Icon name="check" size={16} />Guardar servicio</button></div></section></div>
     })()}
     <div className="weekly-scroll-top" ref={weeklyTopScrollRef} tabIndex={0} aria-label="Desplazamiento horizontal superior" onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyBoardRef.current)}><div style={{ width: `${weeklyScrollWidth}px` }} /></div>
     <div className="weekly-board" ref={weeklyBoardRef} onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyTopScrollRef.current)}>
@@ -987,12 +1364,13 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
               const pickerKey = `${day}-${teamIndex}`
               return <article className="week-team" key={team.teamId || teamIndex}>
                 <div className="week-team-header"><div className="week-team-identity"><strong>{team.label || `Equipo ${teamIndex + 1}`}</strong><span title={team.members?.join(' · ') || 'Sin técnicos'}>{team.members?.length ? team.members.map(weeklyTechnicianName).join(' · ') : 'Sin técnicos'}</span></div><div className="weekly-team-actions">{plan.teams.length > 1 && <button className="weekly-remove-team" title="Quitar equipo" aria-label={`Quitar ${team.label || `Equipo ${teamIndex + 1}`}`} onClick={() => setTeamRemoval({ day, teamIndex, label: team.label || `Equipo ${teamIndex + 1}` })}><Icon name="trash" size={15} /></button>}<div className="weekly-technicians-picker"><button className="secondary small weekly-add-tech-button" title="Agregar técnicos" aria-label="Agregar técnicos" onClick={() => { setTechPicker(techPicker === pickerKey ? null : pickerKey); setTechFilter('') }}><Icon name="users" size={16} /><span aria-hidden="true">+</span></button>{techPicker === pickerKey && <div className="tech-popover weekly-tech-popover"><div className="weekly-tech-popover-title"><div><strong>Asignar técnicos</strong><small>{team.label || `Equipo ${teamIndex + 1}`}</small></div><span>{team.members?.length || 0} seleccionados</span></div><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={event => setTechFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(techFilter.toLowerCase())).map(tech => <label key={tech.id} title={tech.name}><input type="checkbox" checked={(team.members || []).includes(tech.name)} onChange={() => toggleWeeklyTech(day, teamIndex, tech.name)} />{tech.firstName || tech.name.split(' ')[0]}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div></div>}</div></div></div>
-                {team.tasks.map((task, taskIndex) => <div className={`week-task week-task-summary ${!task.client ? 'available-slot' : ''}`} key={taskIndex} role="button" tabIndex={0} onClick={() => setTaskEditor({ day, teamIndex, taskIndex })} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setTaskEditor({ day, teamIndex, taskIndex }) } }}>
-                  <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><small>{task.time || '--:--'} Hs</small></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>
+                {team.tasks.map((task, taskIndex) => <div className={`week-task week-task-summary ${!task.client ? 'available-slot' : ''}`} key={task.taskId || taskIndex} role="button" tabIndex={0} onClick={() => openTaskEditor(day, teamIndex, taskIndex)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openTaskEditor(day, teamIndex, taskIndex) } }}>
+                  <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><div className="week-task-title-actions"><small>{task.time || '--:--'} Hs</small><button type="button" className="weekly-task-delete" title="Eliminar servicio" aria-label={`Eliminar Servicio ${taskIndex + 1}`} onClick={event => { event.stopPropagation(); setTaskRemoval({ day, teamId: team.teamId, teamIndex, taskIndex, taskId: task.taskId, historyId: task.historyId, label: team.label || `Equipo ${teamIndex + 1}` }) }}><Icon name="trash" size={14} /></button></div></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>
                   <div className="week-task-top"><label>Hora <b>*</b><input type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTask(day, teamIndex, taskIndex, { time: event.target.value })} /></label><label>Tipo de servicio <b>*</b><select value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectWeeklyService(day, teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div>
                   <label>Cliente o cuenta <b>*</b><input list={`weekly-customers-${day}`} placeholder="Buscá por nombre o cuenta" value={task.client} onChange={event => selectCustomer(day, teamIndex, taskIndex, event.target.value)} /></label><datalist id={`weekly-customers-${day}`}>{customers.map(customer => <option key={customer.account} value={`${customer.account} ${customer.name}`} />)}</datalist>
                   <label>Dirección <b>*</b><input value={task.address} onChange={event => updateTask(day, teamIndex, taskIndex, { address: event.target.value })} /></label>
                   <label>Contacto<input value={task.phone} onChange={event => updateTask(day, teamIndex, taskIndex, { phone: event.target.value })} /></label>
+                  {serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend>Ubicación de la instalación</legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input type="radio" name={`weekly-card-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => updateTask(day, teamIndex, taskIndex, { installationZone: value })} />{label}</label>)}</fieldset>}
                   <label>Detalle <b>*</b><textarea value={task.detail} onChange={event => updateTask(day, teamIndex, taskIndex, { detail: event.target.value })} /></label>
                   <div className="weekly-extra-fields"><label>Forma de pago<input value={task.paymentMethod} onChange={event => updateTask(day, teamIndex, taskIndex, { paymentMethod: event.target.value })} /></label><label>Abono mensual<input value={task.monthlyFee} onChange={event => updateTask(day, teamIndex, taskIndex, { monthlyFee: event.target.value })} /></label><label>Formulario<input value={task.form} onChange={event => updateTask(day, teamIndex, taskIndex, { form: event.target.value })} /></label></div>
                 </div>)}
@@ -1159,9 +1537,11 @@ function DashboardStatusView({ history, services }) {
   const zones = [['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residenciales']]
   const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'].map((label, index) => {
     const monthKey = `${year}-${String(index + 1).padStart(2, '0')}`
+    const monthlyAlarms = history.filter(record => record.date?.startsWith(monthKey) && isComplete(record) && isAlarmRecord(record))
     return {
       label,
-      value: history.filter(record => record.date?.startsWith(monthKey) && isComplete(record) && isAlarmRecord(record)).length,
+      value: monthlyAlarms.length,
+      locations: Object.fromEntries(zones.map(([key]) => [key, monthlyAlarms.filter(record => zoneOf(record) === key).length])),
       retirements: history.filter(record => record.date?.startsWith(monthKey) && isComplete(record) && isRetirementRecord(record)).length
     }
   })
@@ -1172,12 +1552,32 @@ function DashboardStatusView({ history, services }) {
     chart.parentElement.querySelector('.chart-legend')?.remove()
     const legend = document.createElement('div')
     legend.className = 'chart-legend'
-    legend.innerHTML = '<span><i class="legend-highs"></i>Altas</span><span><i class="legend-lows"></i>Bajas</span>'
+    legend.innerHTML = '<span><i class="legend-docta"></i>Docta</span><span><i class="legend-nobu"></i>Nobu Town</span><span><i class="legend-residential"></i>Residenciales</span><span><i class="legend-lows"></i>Bajas</span>'
     chart.before(legend)
     chart.querySelectorAll('.bar-item').forEach((item, index) => {
       item.querySelector('.bar-retirements')?.remove()
       item.querySelector('.retirement-value')?.remove()
+      item.querySelector('.bar-installation-stack')?.remove()
       item.querySelector(':scope > i')?.classList.add('bar-installations')
+      const monthData = months[index]
+      const stack = document.createElement('div')
+      stack.className = 'bar-installation-stack'
+      stack.style.height = `${monthData?.value ? Math.max(4, monthData.value / max * 100) : 0}%`
+      ;[
+        ['docta', 'Docta Urbanización'],
+        ['nobu-town', 'Nobu Town'],
+        ['residencial', 'Residenciales']
+      ].forEach(([key, label]) => {
+        const count = monthData?.locations?.[key] || 0
+        if (!count || !monthData.value) return
+        const segment = document.createElement('i')
+        segment.className = `bar-zone-segment bar-zone-${key}`
+        segment.style.height = `${count / monthData.value * 100}%`
+        segment.title = `${label}: ${count}`
+        segment.setAttribute('aria-label', `${label}: ${count}`)
+        stack.append(segment)
+      })
+      item.insertBefore(stack, item.querySelector('small'))
       const retirements = months[index]?.retirements || 0
       const bar = document.createElement('i')
       bar.className = 'bar-retirements'
@@ -1190,16 +1590,16 @@ function DashboardStatusView({ history, services }) {
       value.style.bottom = `calc(${Math.max(retirements ? 4 : 0, retirements / max * 100)}% + 22px)`
       item.append(value)
     })
-    return () => { legend.remove(); chart.querySelectorAll('.bar-retirements, .retirement-value').forEach(element => element.remove()) }
-  }, [months.map(item => `${item.value}:${item.retirements}`).join('|'), max])
+    return () => { legend.remove(); chart.querySelectorAll('.bar-retirements, .retirement-value, .bar-installation-stack').forEach(element => element.remove()) }
+  }, [months.map(item => `${item.value}:${item.retirements}:${item.locations.docta}:${item.locations['nobu-town']}:${item.locations.residencial}`).join('|'), max])
   const download = category => window.location.assign(`/api/history/export?month=${encodeURIComponent(month)}&category=${category}`)
   const serviceBreakdown = Object.entries(records.reduce((summary, record) => { const name = record.service?.trim() || 'Sin especificar'; summary[name] = (summary[name] || 0) + 1; return summary }, {})).sort(([, left], [, right]) => right - left)
   const [selectedYear, selectedMonth] = month.split('-').map(Number)
-  const daysInPeriod = new Date(selectedYear, selectedMonth, 0).getDate()
   const today = new Date()
   const isCurrentPeriod = today.getFullYear() === selectedYear && today.getMonth() + 1 === selectedMonth
-  const elapsedDays = isCurrentPeriod ? today.getDate() : daysInPeriod
-  const projectedInstallations = elapsedDays ? Math.round(netGrowth / elapsedDays * daysInPeriod) : 0
+  const businessDaysInPeriod = countBusinessDays(selectedYear, selectedMonth)
+  const elapsedBusinessDays = isCurrentPeriod ? countBusinessDays(selectedYear, selectedMonth, today.getDate()) : businessDaysInPeriod
+  const projectedInstallations = elapsedBusinessDays ? Math.round(netGrowth / elapsedBusinessDays * businessDaysInPeriod) : 0
   const previousDate = new Date(selectedYear, selectedMonth - 2, 1)
   const previousMonthKey = `${previousDate.getFullYear()}-${String(previousDate.getMonth() + 1).padStart(2, '0')}`
   const previousInstallations = history.filter(record => record.date?.startsWith(previousMonthKey) && isComplete(record) && isAlarmRecord(record)).length
@@ -1257,17 +1657,17 @@ function DashboardStatusView({ history, services }) {
   useEffect(() => {
     if (!projectionModalOpen) return undefined
     const monthName = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
-    const dailyAverage = elapsedDays ? (netGrowth / elapsedDays).toFixed(1).replace('.', ',') : '0'
+    const dailyAverage = elapsedBusinessDays ? (netGrowth / elapsedBusinessDays).toFixed(1).replace('.', ',') : '0'
     const progress = projectedInstallations > 0 ? Math.min(100, Math.round(Math.max(0, netGrowth) / projectedInstallations * 100)) : 0
     const layer = document.createElement('div'); layer.className = 'modal-layer dashboard-insight-layer'
     const modal = document.createElement('div'); modal.className = 'modal dashboard-insight-modal projection-insight-modal'
-    modal.innerHTML = `<button class="close-modal" aria-label="Cerrar">×</button><p class="eyebrow">PROYECCIÓN NETA DE ABONADOS</p><h2>${isCurrentPeriod ? 'Crecimiento estimado al cierre' : 'Resultado neto del período'}</h2><p class="insight-period">${monthName}</p><div class="projection-highlight"><b>${projectedInstallations}</b><span>${isCurrentPeriod ? 'crecimiento neto proyectado' : 'crecimiento neto confirmado'}</span></div><div class="projection-progress"><span style="width:${progress}%"></span></div><p class="projection-progress-label">Crecimiento actual: ${alarms.length} altas menos ${retirements.length} bajas = ${netGrowth}</p><div class="insight-metrics"><article><b>${alarms.length}</b><span>Nuevas alarmas</span></article><article><b>${retirements.length}</b><span>Bajas de servicio</span></article><article><b>${dailyAverage}</b><span>Promedio neto diario</span></article><article><b class="${variation === null || variation >= 0 ? 'positive' : 'negative'}">${variation === null ? '—' : `${variation > 0 ? '+' : ''}${variation}%`}</b><span>Vs. crecimiento neto de ${previousMonthLabel}</span></article></div><div class="modal-actions"><button class="primary">Cerrar</button></div>`
+    modal.innerHTML = `<button class="close-modal" aria-label="Cerrar">×</button><p class="eyebrow">PROYECCIÓN NETA DE ABONADOS</p><h2>${isCurrentPeriod ? 'Crecimiento estimado al cierre' : 'Resultado neto del período'}</h2><p class="insight-period">${monthName}</p><div class="projection-highlight"><b>${projectedInstallations}</b><span>${isCurrentPeriod ? 'crecimiento neto proyectado' : 'crecimiento neto confirmado'}</span></div><div class="projection-progress"><span style="width:${progress}%"></span></div><p class="projection-progress-label">Crecimiento actual: ${alarms.length} altas menos ${retirements.length} bajas = ${netGrowth}<br><small>Proyección calculada sobre ${elapsedBusinessDays} de ${businessDaysInPeriod} días hábiles (lunes a viernes).</small></p><div class="insight-metrics"><article><b>${alarms.length}</b><span>Nuevas alarmas</span></article><article><b>${retirements.length}</b><span>Bajas de servicio</span></article><article><b>${dailyAverage}</b><span>Promedio neto por día hábil</span></article><article><b class="${variation === null || variation >= 0 ? 'positive' : 'negative'}">${variation === null ? '—' : `${variation > 0 ? '+' : ''}${variation}%`}</b><span>Vs. crecimiento neto de ${previousMonthLabel}</span></article></div><div class="modal-actions"><button class="primary">Cerrar</button></div>`
     const close = () => setProjectionModalOpen(false)
     modal.querySelectorAll('button').forEach(button => { button.onclick = close })
     layer.onclick = event => { if (event.target === layer) close() }
     layer.append(modal); document.body.append(layer)
     return () => layer.remove()
-  }, [projectionModalOpen, month, alarms.length, retirements.length, netGrowth, projectedInstallations, elapsedDays, daysInPeriod, variation, previousMonthLabel, isCurrentPeriod])
+  }, [projectionModalOpen, month, alarms.length, retirements.length, netGrowth, projectedInstallations, elapsedBusinessDays, businessDaysInPeriod, variation, previousMonthLabel, isCurrentPeriod])
   useEffect(() => {
     if (!workModalOpen) return undefined
     const palette = ['#2f69ad', '#218857', '#c4870a', '#8a57b6', '#c4534b', '#257c82', '#a76424', '#68786d']
@@ -1316,7 +1716,7 @@ function RetirementDetailsModal({ records, month, close }) {
 function History({ history, setHistory, customers, services, employees }) {
   return <HistoryView {...{ history, setHistory, customers, services, employees }} />
   const [search, setSearch] = useState('')
-  const records = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizeSearchText(search))).sort((a, b) => b.date.localeCompare(a.date))
+  const records = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizeSearchText(search))).sort(sortHistoryByDateAndTime)
   return <><div className="module-intro"><div><p className="eyebrow">TRABAJOS REALIZADOS</p><h1>Historial técnico</h1><p>Consultá los servicios registrados para cada cliente y el equipo asignado.</p></div></div><div className="accounts-bar history-toolbar"><div><b>{history.length}</b> trabajos registrados</div><label><Icon name="search" size={16} /><input placeholder="Buscar cliente, servicio o técnico..." value={search} onChange={event => setSearch(event.target.value)} /></label></div><div className="data-card history-table"><div className="table-head"><span>Fecha</span><span>Cliente</span><span>Servicio</span><span>Técnicos asignados</span><span>Detalle</span></div>{records.length ? records.map(record => <div className="history-row" key={record.id}><b>{prettyDate(record.date)}</b><div><strong>{record.client}</strong><small>{record.address || 'Sin dirección'}</small></div><div><em className="role-chip">{record.service}</em></div><div>{record.technicians?.length ? record.technicians.join(' / ') : 'Sin técnicos asignados'}</div><div>{record.detail || 'Sin observaciones'}</div></div>) : <div className="empty-state">Todavía no hay trabajos registrados. Al copiar una agenda, sus servicios se guardarán aquí.</div>}</div></>
 }
 
@@ -1324,7 +1724,7 @@ function HistoryView({ history, setHistory, customers, services, employees }) {
   return <HistoryManagement {...{ history, setHistory, customers, services, employees }} />
   const [search, setSearch] = useState('')
   const [detail, setDetail] = useState(null)
-  const records = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizeSearchText(search))).sort((a, b) => b.date.localeCompare(a.date))
+  const records = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizeSearchText(search))).sort(sortHistoryByDateAndTime)
   return <><div className="module-intro"><div><p className="eyebrow">TRABAJOS REALIZADOS</p><h1>Historial técnico</h1><p>Consultá los servicios registrados para cada cliente y el equipo asignado.</p></div></div><div className="accounts-bar history-toolbar"><div><b>{history.length}</b> trabajos registrados</div><label><Icon name="search" size={16} /><input placeholder="Buscar cliente, servicio o técnico..." value={search} onChange={event => setSearch(event.target.value)} /></label></div><div className="data-card history-table"><div className="table-head"><span>Fecha</span><span>Cliente</span><span>Servicio</span><span>Técnicos asignados</span><span>Detalle</span></div>{records.length ? records.map(record => <div className="history-row" key={record.id}><b>{prettyDate(record.date)}</b><div className="history-client"><strong>{record.client}</strong><small>{record.address || 'Sin dirección'}</small></div><div><em className="role-chip">{record.service}</em></div><div>{record.technicians?.length ? record.technicians.join(' / ') : 'Sin técnicos asignados'}</div><div><button className="secondary detail-button" onClick={() => setDetail(record)}><Icon name="eye" size={16} />Ver detalle</button></div></div>) : <div className="empty-state">No hay trabajos para mostrar.</div>}</div>{detail && <HistoryDetail record={detail} close={() => setDetail(null)} />}</>
 }
 
@@ -1341,7 +1741,7 @@ function HistoryBulkView({ history, setHistory, customers, services, employees }
   const [statusFilter, setStatusFilter] = useState('all')
   const minimumRescheduleDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const normalizedSearch = normalizeSearchText(search)
-  const records = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizedSearch) && (!fromDate || record.date >= fromDate) && (!toDate || record.date <= toDate) && (statusFilter === 'all' || (record.status || 'Pendiente') === statusFilter)).sort((a, b) => b.date.localeCompare(a.date))
+  const records = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizedSearch) && (!fromDate || record.date >= fromDate) && (!toDate || record.date <= toDate) && (statusFilter === 'all' || (record.status || 'Pendiente') === statusFilter)).sort(sortHistoryByDateAndTime)
   const technicianNames = record => record.technicians?.map(name => String(name).trim().split(/\s+/)[0]).filter(Boolean).join(' / ') || 'Sin asignar'
   const status = record => record.status || 'Pendiente'
   const toggle = id => setSelected(previous => previous.includes(id) ? previous.filter(item => item !== id) : [...previous, id])
@@ -1427,7 +1827,7 @@ function HistoryManagement({ history, setHistory, customers, services, employees
   return <HistoryBulkView {...{ history, setHistory, customers, services, employees }} />
   const [search, setSearch] = useState('')
   const [detail, setDetail] = useState(null)
-  const records = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizeSearchText(search))).sort((a, b) => b.date.localeCompare(a.date))
+  const records = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizeSearchText(search))).sort(sortHistoryByDateAndTime)
   const status = record => record.status || 'Pendiente'
   return <><div className="module-intro"><div><p className="eyebrow">TRABAJOS REALIZADOS</p><h1>Historial técnico</h1><p>Gestioná la confirmación, cancelación o reprogramación de cada servicio.</p></div></div><div className="accounts-bar history-toolbar"><div><b>{history.length}</b> trabajos registrados</div><label><Icon name="search" size={16} /><input placeholder="Buscar cliente, servicio o técnico..." value={search} onChange={event => setSearch(event.target.value)} /></label></div><div className="data-card history-table"><div className="table-head"><span>Fecha</span><span>Cliente</span><span>Servicio</span><span>Estado</span><span>Detalle</span></div>{records.length ? records.map(record => <div className="history-row" key={record.id}><b>{prettyDate(record.date)}</b><div className="history-client"><strong>{record.client}</strong><small>{record.address || 'Sin dirección'}</small></div><div><em className="role-chip">{record.service}</em></div><div><span className={`work-status ${status(record).toLowerCase().replace(/\s/g, '-')}`}>{status(record)}</span>{record.scheduledDate && <small className="scheduled-date">Para: {prettyDate(record.scheduledDate)}</small>}</div><div><button className="secondary detail-button" onClick={() => setDetail(record)}><Icon name="eye" size={16} />Gestionar</button></div></div>) : <div className="empty-state">No hay trabajos para mostrar.</div>}</div>{detail && <HistoryManagementDetail record={detail} setHistory={setHistory} close={() => setDetail(null)} />}</>
 }
@@ -1571,7 +1971,7 @@ function Accounts({ customers, setCustomers, setNotice, ask, history, teams, wee
   const save = e => {
     e.preventDefault()
     const kind = customerKind(form)
-    const customer = { ...form, customerId: form.customerId || createCustomerId(), kind, account: normalizeAccountKey(form.account || nextCustomerCode(customers, kind)), address: [form.street, form.locality, form.province].filter(Boolean).join(', ') }
+    const customer = { ...form, customerId: form.customerId || createCustomerId(), kind, account: normalizeAccountKey(form.account || nextCustomerCode(customers, kind)), name: normalizeCustomerName(form.name), address: [form.street, form.locality, form.province].filter(Boolean).join(', ') }
     ask(editing ? 'Confirmar edición' : 'Confirmar alta', `¿Querés guardar los cambios de ${customer.name}?`, () => {
       setCustomers(previous => editing ? previous.map(item => item.customerId === editing ? customer : item) : [...previous, customer])
       setShowForm(false); setEditing(null); setNotice(`${customerKindLabel(customer)} guardado correctamente.`)
@@ -1587,7 +1987,11 @@ function Accounts({ customers, setCustomers, setNotice, ask, history, teams, wee
   }
   return <><div className="module-intro"><div><p className="eyebrow">REGISTRO COMERCIAL</p><h1>Abonados y clientes</h1><p>Los códigos PIG identifican abonados; los códigos CLI, clientes sin abono.</p></div><div className="action-group"><button className="secondary" onClick={() => setImportOpen(true)}><Icon name="upload" />Importar abonados</button><button className="primary" onClick={startNew}><Icon name="plus" />Nuevo cliente</button></div></div>{showForm && <CustomerForm form={form} setForm={setForm} editing={editing} customers={customers} save={save} cancel={() => setShowForm(false)} />}<div className="accounts-bar"><div><b>{customers.length}</b> registros</div><label><Icon name="search" size={16} /><input placeholder="Buscar por nombre, código o localidad..." value={search} onChange={e => setSearch(e.target.value)} /></label></div><div className="data-card accounts-table"><div className="table-head">{['Código', 'Abonado / Cliente', 'Dirección', 'Teléfono', 'Acciones'].map(x => <span key={x}>{x}</span>)}</div>{visible.length ? paginatedCustomers.map(customer => <div className="account-row" key={customer.customerId}><b>{customer.account}</b><div><strong>{customer.name}</strong><small>{customerKindLabel(customer)} · {customer.type || 'Sin categoría'}</small></div><div>{customer.address}</div><div>{customer.phone || 'Sin teléfono'}</div><div className="row-actions"><button title="Ver información completa" onClick={() => setDetail(customer)}><Icon name="eye" size={16} /></button><button title="Editar" onClick={() => edit(customer)}><Icon name="edit" size={16} /></button><button className="delete" title="Eliminar" onClick={() => ask(`Eliminar ${customerKindLabel(customer).toLowerCase()}`, `¿Querés eliminar ${customer.account}? Esta acción no se puede deshacer.`, () => removeCustomer(customer), true)}><Icon name="trash" size={16} /></button></div></div>) : <div className="empty-state">No hay abonados o clientes para mostrar.</div>}</div>{visible.length > 0 && <nav className="accounts-pagination" aria-label="Paginación de abonados y clientes"><div className="pagination-size"><span>Mostrar</span><select value={pageSize} onChange={event => setPageSize(Number(event.target.value))}><option value={20}>20</option><option value={50}>50</option><option value={100}>100</option></select><span>registros</span></div><span className="pagination-summary">{(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, visible.length)} de {visible.length}</span><div className="pagination-controls"><button className="secondary" disabled={currentPage === 1} onClick={() => setPage(previous => Math.max(1, previous - 1))}>Anterior</button><span>Página {currentPage} de {totalPages}</span><button className="secondary" disabled={currentPage === totalPages} onClick={() => setPage(previous => Math.min(totalPages, previous + 1))}>Siguiente</button></div></nav>}{importOpen && <ImportModal {...{ customers, setCustomers, close: () => setImportOpen(false), setNotice }} />}{detail && <CustomerDetail customer={detail} close={() => setDetail(null)} />}</>
 }
-function CustomerForm({ form, setForm, editing, customers, save, cancel }) { const set = key => e => setForm({ ...form, [key]: e.target.value }); const changeKind = event => { const kind = event.target.value; setForm({ ...form, kind, account: editing ? form.account : nextCustomerCode(customers, kind) }) }; return <form className="customer-form" onSubmit={save}><label>Condición<select disabled={!!editing} value={customerKind(form)} onChange={changeKind}><option value="subscriber">Abonado</option><option value="client">Cliente</option></select></label><label>Código<input required readOnly value={form.account} /></label><label>Nombre<input required value={form.name} onChange={set('name')} /></label><label>Categoría<input value={form.type} onChange={set('type')} placeholder="Ej.: Residencial o Comercial" /></label><label>Calle<input value={form.street} onChange={set('street')} /></label><label>Localidad<input value={form.locality} onChange={set('locality')} /></label><label>Provincia / Estado<input value={form.province} onChange={set('province')} /></label><label>Teléfono<input value={form.phone} onChange={set('phone')} /></label><button className="primary"><Icon name="check" />Guardar {customerKindLabel(form).toLowerCase()}</button><button type="button" className="secondary" onClick={cancel}>Cancelar</button></form> }
+function CustomerForm({ form, setForm, editing, customers, save, cancel }) {
+  const set = key => event => setForm({ ...form, [key]: key === 'name' ? event.target.value.toLocaleUpperCase('es-AR') : event.target.value })
+  const changeKind = event => { const kind = event.target.value; setForm({ ...form, kind, account: editing ? form.account : nextCustomerCode(customers, kind) }) }
+  return <div className="modal-layer customer-editor-layer" role="dialog" aria-modal="true" aria-label={editing ? 'Editar abonado o cliente' : 'Nuevo cliente'} onMouseDown={cancel}><div className="modal customer-editor-modal" onMouseDown={event => event.stopPropagation()}><button type="button" className="close-modal" onClick={cancel} aria-label="Cerrar"><Icon name="close" /></button><p className="eyebrow">{editing ? 'EDITAR REGISTRO' : 'NUEVO REGISTRO'}</p><h2>{editing ? `${form.account} · ${form.name}` : 'Crear cliente'}</h2><p>{editing ? 'Actualizá los datos del abonado o cliente seleccionado.' : 'Completá los datos para incorporarlo al registro comercial.'}</p><form className="customer-form" onSubmit={save}><label>Condición<select disabled={!!editing} value={customerKind(form)} onChange={changeKind}><option value="subscriber">Abonado</option><option value="client">Cliente</option></select></label><label>Código<input required readOnly value={form.account} /></label><label>Nombre<input required value={form.name} onChange={set('name')} /></label><label>Categoría<input value={form.type} onChange={set('type')} placeholder="Ej.: Residencial o Comercial" /></label><label>Calle<input value={form.street} onChange={set('street')} /></label><label>Localidad<input value={form.locality} onChange={set('locality')} /></label><label>Provincia / Estado<input value={form.province} onChange={set('province')} /></label><label>Teléfono<input value={form.phone} onChange={set('phone')} /></label><button className="primary"><Icon name="check" />Guardar {customerKindLabel(form).toLowerCase()}</button><button type="button" className="secondary" onClick={cancel}>Cancelar</button></form></div></div>
+}
 
 function ServiceTypes({ services, setServices, setNotice, ask, history, teams, weekly }) {
   const [form, setForm] = useState({ name: '', description: '', status: 'Activo' })
@@ -1652,7 +2056,7 @@ function ImportModal({ customers, setCustomers, close, setNotice }) {
     const imported = rows.map(row => {
       const account = normalizeAccountKey(get(row, 'dealercuenta'))
       const street = get(row, 'calle'), locality = get(row, 'localidad'), province = get(row, 'provinciaestado')
-      return account ? { customerId: '', kind: 'subscriber', account, name: get(row, 'nombre'), type: get(row, 'tipodecuenta'), street, locality, province, phone: get(row, 'telefono'), address: [street, locality, province].filter(Boolean).join(', '), fields: Object.fromEntries(headers.map((h, i) => [h, row[i] || ''])) } : null
+      return account ? { customerId: '', kind: 'subscriber', account, name: normalizeCustomerName(get(row, 'nombre')), type: get(row, 'tipodecuenta'), street, locality, province, phone: get(row, 'telefono'), address: [street, locality, province].filter(Boolean).join(', '), fields: Object.fromEntries(headers.map((h, i) => [h, row[i] || ''])) } : null
     }).filter(Boolean)
     if (!imported.length) return setMessage('El archivo no contiene registros válidos.')
 

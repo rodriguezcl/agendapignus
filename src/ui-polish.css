@@ -217,3 +217,66 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
     width: 100%;
   }
 }
+
+.customer-editor-modal {
+  max-height: calc(100vh - 32px);
+  max-width: 880px;
+  overflow-y: auto;
+}
+
+.customer-editor-modal .customer-form {
+  margin: 20px 0 0;
+}
+
+.customer-editor-modal .customer-form > .primary,
+.customer-editor-modal .customer-form > .secondary {
+  grid-row: 4;
+  width: 100%;
+}
+
+.customer-editor-modal .customer-form > .primary {
+  grid-column: 2;
+}
+
+.customer-editor-modal .customer-form > .secondary {
+  grid-column: 3;
+}
+
+.customer-editor-modal .close-modal {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+
+@media (max-width: 900px) {
+  .customer-editor-modal .customer-form > .primary,
+  .customer-editor-modal .customer-form > .secondary {
+    grid-row: 5;
+  }
+
+  .customer-editor-modal .customer-form > .primary {
+    grid-column: 1;
+  }
+
+  .customer-editor-modal .customer-form > .secondary {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 640px) {
+  .customer-editor-layer {
+    align-items: end;
+    padding: 0;
+  }
+
+  .customer-editor-modal {
+    border-radius: 14px 14px 0 0;
+    max-height: 92vh;
+  }
+
+  .customer-editor-modal .customer-form > .primary,
+  .customer-editor-modal .customer-form > .secondary {
+    grid-column: auto;
+    grid-row: auto;
+  }
+}
