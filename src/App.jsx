@@ -727,11 +727,26 @@ export default function App() {
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refreshWeekly) }
   }, [databaseReady, authUser, stateRevision])
   const ask = (title, detail, action, destructive = false) => setConfirmation({ title, detail, action, destructive })
-  const updateTask = (team, task, patch) => setTeams(previous => previous.map((currentTeam, teamIndex) => {
-    if (teamIndex !== team) return currentTeam
-    const tasks = currentTeam.tasks.map((currentTask, taskIndex) => taskIndex !== task ? currentTask : { ...currentTask, ...patch })
-    return { ...currentTeam, tasks: Object.prototype.hasOwnProperty.call(patch, 'time') ? sortTasksByTime(tasks) : tasks }
-  }))
+  const updateTask = (team, task, patch) => {
+    const changesTime = Object.prototype.hasOwnProperty.call(patch, 'time')
+    const timeInput = changesTime && document.activeElement?.matches?.('input[type="time"]') ? document.activeElement : null
+    // El control horario emite varios cambios mientras se editan hora y minutos.
+    // Reordenar en ese instante mueve el input enfocado y provoca parpadeos o
+    // valores parciales. Se ordena una sola vez al terminar la edición.
+    if (timeInput && !timeInput.dataset.sortOnBlur) {
+      timeInput.dataset.sortOnBlur = 'true'
+      timeInput.addEventListener('blur', () => {
+        setTeams(previous => previous.map((currentTeam, teamIndex) => teamIndex === team
+          ? { ...currentTeam, tasks: sortTasksByTime(currentTeam.tasks) }
+          : currentTeam))
+      }, { once: true })
+    }
+    setTeams(previous => previous.map((currentTeam, teamIndex) => {
+      if (teamIndex !== team) return currentTeam
+      const tasks = currentTeam.tasks.map((currentTask, taskIndex) => taskIndex !== task ? currentTask : { ...currentTask, ...patch })
+      return { ...currentTeam, tasks: changesTime && !timeInput ? sortTasksByTime(tasks) : tasks }
+    }))
+  }
   const employeeRole = employee => roles.find(role => String(role.id) === String(employee.roleId)) || roles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role))
   // La capacidad técnica depende del código estable, no del nombre editable.
   const activeTechs = employees.filter(employee => employee.status === 'Activo' && roleCode(employeeRole(employee)) === 'technician')

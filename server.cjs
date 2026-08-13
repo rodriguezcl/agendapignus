@@ -3,6 +3,8 @@ const path = require('node:path')
 const fs = require('node:fs')
 const crypto = require('node:crypto')
 const { DatabaseSync } = require('node:sqlite')
+const { normalizeScheduling } = require('./scripts/normalize-scheduling.cjs')
+const { rebuildWeeklyFromHistory } = require('./scripts/rebuild-weekly-from-history.cjs')
 
 // API local: Vite reenvía las rutas /api a este proceso durante el desarrollo.
 const port = Number(process.env.PIGNUS_PORT || 3001)
@@ -557,6 +559,8 @@ function migrateTeamAndTechnicianReferences() {
 }
 
 migrateTeamAndTechnicianReferences()
+normalizeScheduling(db)
+rebuildWeeklyFromHistory(db)
 
 function auditSafe(record) {
   if (!record) return null
