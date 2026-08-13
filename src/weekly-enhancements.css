@@ -359,6 +359,15 @@ body.dark .week-task-summary.available-slot .week-task-client {
   z-index: 35;
 }
 
+/* La columna normalmente recorta sus tarjetas para que no invadan otros días.
+   Al abrir el selector permitimos que el desplegable salga de la tarjeta y
+   muestre la lista completa, manteniéndolo por encima de las demás columnas. */
+.weekly-board .week-day:has(.weekly-tech-popover) {
+  position: relative;
+  z-index: 34;
+  overflow: visible;
+}
+
 .weekly-tech-popover-title {
   display: flex;
   align-items: flex-start;
