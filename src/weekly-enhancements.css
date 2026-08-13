@@ -529,7 +529,8 @@ body.dark .weekly-add-task {
   gap: 8px;
 }
 
-.weekly-task-delete {
+.weekly-task-delete,
+.weekly-task-move {
   display: inline-flex;
   width: 30px;
   height: 30px;
@@ -544,6 +545,21 @@ body.dark .weekly-add-task {
   cursor: pointer;
 }
 
+.weekly-task-move {
+  border-color: #b8d0bc;
+  background: #fbfefb;
+  color: #245c3d;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.weekly-task-move:hover,
+.weekly-task-move:focus-visible {
+  border-color: #4e8a64;
+  background: #eff8f1;
+  outline: none;
+}
+
 .weekly-task-delete:hover,
 .weekly-task-delete:focus-visible {
   border-color: #d85b54;
@@ -555,6 +571,12 @@ body.dark .weekly-task-delete {
   border-color: #74423f;
   background: #2c1b1a;
   color: #ff918a;
+}
+
+body.dark .weekly-task-move {
+  border-color: #456b52;
+  background: #172a1d;
+  color: #9dd8ad;
 }
 
 .week-task-client {
