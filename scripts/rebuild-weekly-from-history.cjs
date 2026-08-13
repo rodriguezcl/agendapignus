@@ -27,6 +27,22 @@ const taskKey = task => String(task.historyId || task.sourceHistoryId || '') || 
 
 const hasTaskData = task => Boolean(task?.historyId || task?.customerId || task?.client || task?.serviceId || task?.service)
 
+const taskIdentity = task => task?.historyId ? `history:${task.historyId}` : task?.taskId ? `task:${task.taskId}` : ''
+
+function dedupeAgendaTeams(teams = []) {
+  const seen = new Set()
+  return (teams || []).map(team => ({
+    ...team,
+    tasks: (team.tasks || []).filter(task => {
+      const identity = taskIdentity(task)
+      if (!identity) return true
+      if (seen.has(identity)) return false
+      seen.add(identity)
+      return true
+    })
+  }))
+}
+
 function rebuildWeeklyFromHistory(db, today = new Date().toISOString().slice(0, 10)) {
   const readRows = table => db.prepare(`SELECT data FROM ${table} ORDER BY rowid`).all().map(row => JSON.parse(row.data))
   const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
@@ -89,6 +105,7 @@ function rebuildWeeklyFromHistory(db, today = new Date().toISOString().slice(0, 
       })
     }
 
+    nextTeams = dedupeAgendaTeams(nextTeams)
     const nextPlan = { ...(weekly[date] || {}), teams: nextTeams }
     if (JSON.stringify(nextPlan) !== JSON.stringify(weekly[date])) changedDates += 1
     weekly[date] = nextPlan
@@ -104,4 +121,4 @@ function rebuildWeeklyFromHistory(db, today = new Date().toISOString().slice(0, 
   return { changed, dates: changedDates, tasks: generatedTasks, totalDates: recordsByDate.size }
 }
 
-module.exports = { rebuildWeeklyFromHistory }
+module.exports = { rebuildWeeklyFromHistory, dedupeAgendaTeams }
