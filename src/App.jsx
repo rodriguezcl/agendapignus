@@ -30,6 +30,38 @@ const sortTasksByTime = tasks => [...(tasks || [])].sort((left, right) => {
   if (!rightTime) return -1
   return leftTime.localeCompare(rightTime)
 })
+const isSaturday = date => Boolean(date) && new Date(`${date}T12:00:00`).getDay() === 6
+const taskHasContent = task => Boolean(task && (
+  task.historyId || task.customerId || task.serviceId ||
+  ['client', 'service', 'address', 'phone', 'detail'].some(key => String(task[key] || '').trim())
+))
+// Los sábados opera un único técnico. Los servicios que pudieran existir en
+// equipos históricos se consolidan sin perderlos y se elimina cualquier
+// tarjeta vacía que compita con un servicio real del mismo horario.
+const normalizeSaturdayTeams = teams => {
+  const sourceTeams = Array.isArray(teams) ? teams : []
+  const base = sourceTeams[0] || {}
+  const assignedTeam = sourceTeams.find(team => team?.members?.length || team?.memberIds?.length) || base
+  const member = assignedTeam.members?.[0] || ''
+  const memberId = assignedTeam.memberIds?.[0] || ''
+  const seen = new Set()
+  const scheduledTasks = sourceTeams.flatMap(team => team?.tasks || []).filter(taskHasContent).filter(task => {
+    const key = String(task.historyId || task.taskId || `${task.time}|${task.customerId || task.client}|${task.serviceId || task.service}`)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  const existingBlank = sourceTeams.flatMap(team => team?.tasks || []).find(task => !taskHasContent(task))
+  const tasks = scheduledTasks.length ? sortTasksByTime(scheduledTasks) : [{ ...(existingBlank || blankTask()), time: existingBlank?.time || '08:30' }]
+  return [{
+    ...base,
+    teamId: base.teamId || createTeamId(),
+    label: 'Equipo 1',
+    memberIds: memberId ? [memberId] : [],
+    members: member ? [member] : [],
+    tasks
+  }]
+}
 const sortHistoryByDateAndTime = (left, right) => String(right.date || '').localeCompare(String(left.date || '')) || String(left.time || left.scheduledTime || '').localeCompare(String(right.time || right.scheduledTime || ''))
 // La proyección gerencial considera la capacidad operativa habitual de lunes a
 // viernes. Los sábados y domingos no consumen ni agregan días a la estimación.
@@ -48,12 +80,12 @@ const moveRecordInWeeklyAgenda = (weekly, record, nextDate) => {
   if (!record?.id || !record?.date || !nextDate) return weekly
   const matchesRecord = task => String(task.historyId || '') === String(record.id) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
   const removeRecord = day => day?.teams?.length ? { ...day, teams: day.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !matchesRecord(task)) })) } : day
-  const createDefaultTeams = date => (weekly?._monthlyTeams?.[date.slice(0, 7)]?.teams || [null, null, null]).map((team, index) => ({
+  const createDefaultTeams = date => (isSaturday(date) ? [null] : (weekly?._monthlyTeams?.[date.slice(0, 7)]?.teams || [null, null, null])).map((team, index) => ({
     teamId: team?.teamId || createTeamId(),
     label: team?.label || `Equipo ${index + 1}`,
     memberIds: team?.memberIds || [],
     members: team?.members || [],
-    tasks: [{ ...blankTask(), time: '08:30' }, { ...blankTask(), time: '13:00' }]
+    tasks: isSaturday(date) ? [{ ...blankTask(), time: '08:30' }] : [{ ...blankTask(), time: '08:30' }, { ...blankTask(), time: '13:00' }]
   }))
   // Una fecha que todavía no fue editada no existe en `weekly`: su contenido se
   // dibuja a partir de los equipos mensuales. Al reprogramar hay que materializar
@@ -100,7 +132,7 @@ const moveRecordInWeeklyAgenda = (weekly, record, nextDate) => {
     ? currentTasks.map((item, index) => index === replaceIndex ? task : item)
     : [...currentTasks, task]
   teams[teamIndex] = { ...teams[teamIndex], teamId: teams[teamIndex].teamId || record.teamId || createTeamId(), memberIds: record.technicianIds?.length ? record.technicianIds : teams[teamIndex].memberIds || [], members: record.technicians?.length ? record.technicians : teams[teamIndex].members || [], tasks: sortTasksByTime(mergedTasks) }
-  next[nextDate] = { ...destination, teams }
+  next[nextDate] = { ...destination, teams: isSaturday(nextDate) ? normalizeSaturdayTeams(teams) : teams }
   return next
 }
 const blankEmployee = { firstName: '', lastName: '', name: '', roleId: 3, role: 'Técnico', phone: '', email: '', password: '', status: 'Activo' }
@@ -863,6 +895,17 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   const [customerProposal, setCustomerProposal] = useState(null)
   const [taskMove, setTaskMove] = useState(null)
   useEffect(() => {
+    if (!isSaturday(date)) return
+    setTeams(previous => {
+      const normalized = normalizeSaturdayTeams(previous)
+      return JSON.stringify(previous) === JSON.stringify(normalized) ? previous : normalized
+    })
+  }, [date, setTeams])
+  useEffect(() => {
+    const addTeamButton = document.querySelector('.content .add-team')
+    if (addTeamButton) addTeamButton.hidden = isSaturday(date)
+  }, [date, teams])
+  useEffect(() => {
     // Ambos módulos escriben sobre el mismo día: los cambios de la agenda del día
     // se reflejan inmediatamente en la agenda semanal, conservando campos extra.
     const hasContent = teams.some(team => team.members?.length || team.tasks.some(task => Object.entries(task).some(([key, value]) => !['time', 'taskId', 'historyId'].includes(key) && String(value || '').trim())))
@@ -962,7 +1005,8 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       else current.tasks.push(recoveredTask)
       byTeam.set(teamKey, current)
     })
-    setTeams([...byTeam.values()].sort((a, b) => a.position - b.position).map(({ position, ...team }) => ({ ...team, tasks: sortTasksByTime(team.tasks.length ? team.tasks : [blankTask()]) })))
+    const recoveredTeams = [...byTeam.values()].sort((a, b) => a.position - b.position).map(({ position, ...team }) => ({ ...team, tasks: sortTasksByTime(team.tasks.length ? team.tasks : [blankTask()]) }))
+    setTeams(isSaturday(nextDate) ? normalizeSaturdayTeams(recoveredTeams) : recoveredTeams)
     const reprogrammedCount = saved.filter(record => record.rescheduledFrom).length
     setNotice(reprogrammedCount
       ? `Se cargó la agenda del ${prettyDate(nextDate)} con ${reprogrammedCount} servicio(s) reprogramado(s).`
@@ -1141,6 +1185,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   const toggleTech = (teamIndex, technician) => setTeams(previous => previous.map((team, index) => {
     if (index !== teamIndex) return team
     const selected = (team.memberIds || []).some(id => String(id) === String(technician.id))
+    if (isSaturday(date)) return { ...team, teamId: team.teamId || createTeamId(), memberIds: selected ? [] : [technician.id], members: selected ? [] : [technician.name] }
     return { ...team, teamId: team.teamId || createTeamId(), memberIds: selected ? (team.memberIds || []).filter(id => String(id) !== String(technician.id)) : [...(team.memberIds || []), technician.id], members: selected ? (team.members || []).filter(name => name !== technician.name) : [...(team.members || []), technician.name] }
   }))
   const customerChange = (teamIndex, taskIndex, value) => { const customer = customers.find(item => item.account === value || item.name === value || `${item.name} · ${item.account}` === value || `${item.account} ${item.name}` === value); updateTask(teamIndex, taskIndex, customer ? { customerId: customer.customerId, client: `${customer.account} ${customer.name}`, clientAccount: customer.account, clientNameAtService: customer.name, address: customer.address, phone: customer.phone } : { customerId: '', client: value, clientAccount: '', clientNameAtService: '' }) }
@@ -1303,7 +1348,16 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   const previousMonthKey = (() => { const value = new Date(`${monthKey}-01T12:00:00`); value.setMonth(value.getMonth() - 1); return value.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).slice(0, 7) })()
   const baseTeams = monthlyTeams[monthKey]?.teams
   const createTeam = (index, source) => ({ teamId: source?.teamId || createTeamId(), memberIds: source?.memberIds || [], members: source?.members || [], tasks: [{ ...blankTask(), time: '08:30' }, { ...blankTask(), time: '13:00' }], label: source?.label || `Equipo ${index + 1}` })
-  const createDay = day => ({ teams: (monthlyTeams[day.slice(0, 7)]?.teams || [null, null, null]).map((team, index) => createTeam(index, team)) })
+  const createDay = day => {
+    const sources = monthlyTeams[day.slice(0, 7)]?.teams || [null, null, null]
+    if (isSaturday(day)) {
+      // La guardia sabatina rota: cada sábado nuevo comienza sin técnico y el
+      // operador elige manualmente quién cubre esa fecha.
+      const team = createTeam(0, null)
+      return { teams: [{ ...team, memberIds: [], members: [], tasks: [{ ...blankTask(), time: '08:30' }] }] }
+    }
+    return { teams: sources.map((team, index) => createTeam(index, team)) }
+  }
   const monday = useMemo(() => {
     const value = new Date(`${anchor}T12:00:00`)
     value.setDate(value.getDate() - ((value.getDay() + 6) % 7))
@@ -1352,8 +1406,16 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     Array.from(board.children).forEach(column => observer.observe(column))
     return () => observer.disconnect()
   }, [days, weekly])
-  const dayPlan = day => weekly[day] || createDay(day)
-  const updateDay = (day, mutate) => setWeekly(previous => ({ ...previous, [day]: mutate(previous[day] || createDay(day)) }))
+  const dayPlan = day => {
+    const plan = weekly[day] || createDay(day)
+    return isSaturday(day) ? { ...plan, teams: normalizeSaturdayTeams(plan.teams) } : plan
+  }
+  const updateDay = (day, mutate) => setWeekly(previous => {
+    const stored = previous[day] || createDay(day)
+    const base = isSaturday(day) ? { ...stored, teams: normalizeSaturdayTeams(stored.teams) } : stored
+    const next = mutate(base)
+    return { ...previous, [day]: isSaturday(day) ? { ...next, teams: normalizeSaturdayTeams(next.teams) } : next }
+  })
   const openTaskEditor = (day, teamIndex, taskIndex) => {
     const teamSnapshot = dayPlan(day).teams[teamIndex]
     const task = teamSnapshot?.tasks[taskIndex]
@@ -1482,10 +1544,17 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     if (!technician) return
     const team = dayPlan(day).teams[teamIndex] || {}
     const selected = (team.memberIds || []).some(id => String(id) === String(technician.id))
+    if (isSaturday(day)) {
+      updateTeam(day, 0, { teamId: team.teamId || createTeamId(), memberIds: selected ? [] : [technician.id], members: selected ? [] : [technician.name] })
+      return
+    }
     updateTeam(day, teamIndex, { teamId: team.teamId || createTeamId(), memberIds: selected ? (team.memberIds || []).filter(id => String(id) !== String(technician.id)) : [...(team.memberIds || []), technician.id], members: selected ? (team.members || []).filter(name => name !== technician.name) : [...(team.members || []), technician.name] })
   }
   const updateTask = (day, teamIndex, taskIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index !== teamIndex ? team : { ...team, tasks: team.tasks.map((task, index) => index === taskIndex ? { ...task, ...patch } : task) }) }))
-  const addTeam = day => updateDay(day, plan => ({ ...plan, teams: [...plan.teams, createTeam(plan.teams.length)] }))
+  const addTeam = day => {
+    if (isSaturday(day)) { setNotice('Los sábados trabaja un solo técnico, por lo que la agenda admite únicamente un equipo.'); return }
+    updateDay(day, plan => ({ ...plan, teams: [...plan.teams, createTeam(plan.teams.length)] }))
+  }
   const removeWeeklyTeam = (day, teamIndex) => {
     updateDay(day, plan => ({
       ...plan,
@@ -1616,7 +1685,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
                 <button className="weekly-add-task" onClick={() => addTask(day, teamIndex)}><Icon name="plus" size={15} />Agregar servicio</button>
               </article>
             })}</div>
-            <button className="weekly-add-team" onClick={() => addTeam(day)}><Icon name="plus" size={16} />Agregar otro equipo</button>
+            {!isSaturday(day) && <button className="weekly-add-team" onClick={() => addTeam(day)}><Icon name="plus" size={16} />Agregar otro equipo</button>}
           </>}
         </section>
       })}
