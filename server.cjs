@@ -10,6 +10,8 @@ const { rebuildWeeklyFromHistory, dedupeAgendaTeams } = require('./scripts/rebui
 const port = Number(process.env.PIGNUS_PORT || 3001)
 const host = process.env.PIGNUS_HOST || '127.0.0.1'
 const dataDir = process.env.PIGNUS_DATA_DIR ? path.resolve(process.env.PIGNUS_DATA_DIR) : path.join(__dirname, 'data')
+const publicDir = process.env.PIGNUS_PUBLIC_DIR ? path.resolve(process.env.PIGNUS_PUBLIC_DIR) : path.join(__dirname, 'dist')
+const secureCookies = /^(1|true|yes)$/i.test(process.env.PIGNUS_SECURE_COOKIE || '')
 fs.mkdirSync(dataDir, { recursive: true })
 const db = new DatabaseSync(path.join(dataDir, 'agenda-tecnica.db'))
 
@@ -622,15 +624,15 @@ function readTechnicianState(user) {
 function readStateForUser(user) {
   if (user.roleCode === 'technician') return readTechnicianState(user)
   const state = readState()
-  if (user.roleCode === 'administrator') return state
+  const { reviews: retiredReviews, ...visibleState } = state
+  if (user.roleCode === 'administrator') return visibleState
   const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
   return {
-    ...state,
+    ...visibleState,
     employees: userCan(user, 'employees') ? state.employees : state.employees.map(({ id, firstName, lastName, name, roleId, role, status }) => ({ id, firstName, lastName, name, roleId, role, status })),
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? state.services : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
     history: userCan(user, 'history') ? state.history : [],
-    reviews: userCan(user, 'reviews') ? state.reviews : [],
     agenda: canPlan ? state.agenda : null
   }
 }
@@ -684,7 +686,9 @@ function authorizedIncomingState(state, user) {
     services: userCan(user, 'services') ? state.services : current.services,
     history: userCan(user, 'history') ? state.history : current.history,
     customers: userCan(user, 'accounts') ? state.customers : current.customers,
-    reviews: userCan(user, 'reviews') ? state.reviews : current.reviews,
+    // El módulo fue retirado. Sus registros históricos se conservan internamente
+    // y nunca se reemplazan con datos provenientes de la interfaz.
+    reviews: current.reviews,
     agenda
   }
 }
@@ -708,7 +712,7 @@ function replaceRows(table, records, key) {
 function validateState(state) {
   if (!state || typeof state !== 'object') throw new Error('El estado recibido no es válido.')
 
-  const collections = ['roles', 'employees', 'services', 'customers', 'history', 'reviews']
+  const collections = ['roles', 'employees', 'services', 'customers', 'history']
   collections.forEach(name => {
     if (!Array.isArray(state[name])) throw new Error(`La colección ${name} no es válida.`)
   })
@@ -736,7 +740,6 @@ function validateState(state) {
   ensureUnique(state.customers, 'customerId', 'Cliente')
   ensureUnique(state.customers, 'account', 'Cliente')
   ensureUnique(state.history, 'id', 'Registro de historial')
-  ensureUnique(state.reviews, 'id', 'Reseña')
 
   const roleIds = new Set(state.roles.map(role => String(role.id)))
   const employeeIds = new Set(state.employees.map(employee => String(employee.id)))
@@ -778,9 +781,6 @@ function validateState(state) {
     if (!serviceIds.has(String(record.serviceId))) throw new Error(`Historial ${index + 1}: el tipo de servicio vinculado no existe.`)
     if ((record.technicianIds || []).some(id => !employeeIds.has(String(id)))) throw new Error(`Historial ${index + 1}: contiene un técnico inexistente.`)
   })
-  state.reviews.forEach((review, index) => {
-    if (review.customerId && !customerIds.has(String(review.customerId))) throw new Error(`Reseña ${index + 1}: el cliente vinculado no existe.`)
-  })
   const agendaTeams = [...(state.agenda?.teams || [])]
   Object.entries(state.agenda?.weekly || {}).forEach(([key, value]) => {
     if (key === '_monthlyTeams') Object.values(value || {}).forEach(config => agendaTeams.push(...(config?.teams || [])))
@@ -796,12 +796,43 @@ function validateState(state) {
       if (task.customerId && !customerIds.has(String(task.customerId))) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} tiene un cliente inexistente.`)
     })
   })
-  state.reviews.forEach((review, index) => {
-    if (!date(review.date) || ![1, 2, 3, 4, 5].includes(Number(review.rating))) throw new Error(`Reseña ${index + 1}: fecha o calificación inválida.`)
-    if (!String(review.author ?? '').trim() || !text(review.author, 180) || !String(review.comment ?? '').trim() || !text(review.comment, 4000)) throw new Error(`Reseña ${index + 1}: autor o comentario inválido.`)
-    if (!['Pendiente', 'Publicada', 'Archivada'].includes(review.status)) throw new Error(`Reseña ${index + 1}: el estado no es válido.`)
-    if (!['Google', 'WhatsApp', 'Facebook', 'Instagram', 'Encuesta', 'Otro'].includes(review.channel)) throw new Error(`Reseña ${index + 1}: el canal no es válido.`)
-  })
+}
+
+const traceActor = user => ({ id: user.id, name: user.name || user.email || 'Usuario', role: user.role || '', at: new Date().toISOString() })
+const traceAliases = record => [record?.taskId && `task:${record.taskId}`, record?.sourceTaskId && `task:${record.sourceTaskId}`, record?.historyId && `history:${record.historyId}`, record?.id && `history:${record.id}`].filter(Boolean)
+const recordWithoutTrace = record => { const { createdBy, lastUpdatedBy, ...content } = record || {}; return content }
+const serviceRecordHasContent = record => Boolean(record && (record.historyId || record.customerId || record.serviceId || ['client', 'service', 'address', 'phone', 'detail'].some(key => String(record[key] || '').trim())))
+const serviceRecordsEqual = (left, right) => JSON.stringify(recordWithoutTrace(left)) === JSON.stringify(recordWithoutTrace(right))
+function stampStateServiceTrace(state, previousAgenda, previousHistory, user) {
+  const previous = new Map()
+  const traces = new Map()
+  const remember = record => traceAliases(record).forEach(alias => { if (!previous.has(alias)) previous.set(alias, record); if (record.createdBy || record.lastUpdatedBy) traces.set(alias, { createdBy: record.createdBy, lastUpdatedBy: record.lastUpdatedBy }) })
+  const visitAgenda = (agenda, visit) => {
+    ;(agenda?.teams || []).forEach(team => (team.tasks || []).forEach(visit))
+    Object.entries(agenda?.weekly || {}).forEach(([key, value]) => key === '_monthlyTeams'
+      ? Object.values(value || {}).forEach(config => (config?.teams || []).forEach(team => (team.tasks || []).forEach(visit)))
+      : !key.startsWith('_') && (value?.teams || []).forEach(team => (team.tasks || []).forEach(visit)))
+  }
+  visitAgenda(previousAgenda, remember); (previousHistory || []).forEach(remember)
+  const actor = traceActor(user)
+  const stamp = record => {
+    if (!serviceRecordHasContent(record)) { const { createdBy, lastUpdatedBy, ...empty } = record || {}; return empty }
+    const aliases = traceAliases(record)
+    const old = aliases.map(alias => previous.get(alias)).find(Boolean)
+    const known = aliases.map(alias => traces.get(alias)).find(Boolean) || {}
+    const createdBy = old?.createdBy || known.createdBy || (!old ? actor : undefined)
+    const changed = !old || !serviceRecordsEqual(old, record)
+    const lastUpdatedBy = changed ? actor : (old?.lastUpdatedBy || known.lastUpdatedBy)
+    const next = { ...record, ...(createdBy ? { createdBy } : {}), ...(lastUpdatedBy ? { lastUpdatedBy } : {}) }
+    aliases.forEach(alias => traces.set(alias, { createdBy, lastUpdatedBy }))
+    return next
+  }
+  const stampTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(stamp) }))
+  const agenda = state.agenda || {}
+  const weekly = Object.fromEntries(Object.entries(agenda.weekly || {}).map(([key, value]) => key === '_monthlyTeams'
+    ? [key, Object.fromEntries(Object.entries(value || {}).map(([month, config]) => [month, { ...config, teams: stampTeams(config?.teams) }]))]
+    : [key, key.startsWith('_') ? value : { ...value, teams: stampTeams(value?.teams) }]))
+  return { ...state, agenda: { ...agenda, teams: stampTeams(agenda.teams), weekly }, history: (state.history || []).map(stamp) }
 }
 
 function saveState(state, user) {
@@ -871,10 +902,11 @@ function saveState(state, user) {
     return { ...base, status: base.status || 'Pendiente', teamId: base.teamId ?? (teamIndex >= 0 ? stableTeamId(String(base.date || '').slice(0, 7), teamIndex) : null), technicianIds: technicians.map(employee => employee.id), technicians: technicians.map(employee => employee.name) }
   }
   state = { ...state, roles: normalizedRoles, employees: normalizedEmployees, services: normalizedServices, customers: normalizedCustomers, history: (state.history || []).map(normalizeHistoryRecord), agenda: { ...incomingAgenda, teams: normalizeTeams(incomingAgenda.teams, String(incomingAgenda.date || '').slice(0, 7)), weekly: normalizedWeekly } }
-  validateState(state)
-  const previousEmployees = new Map(rows('employees').map(employee => [String(employee.id), employee]))
   const storedAgenda = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
   const previousAgenda = storedAgenda ? JSON.parse(storedAgenda.data) : {}
+  state = stampStateServiceTrace(state, previousAgenda, rows('work_history'), user)
+  validateState(state)
+  const previousEmployees = new Map(rows('employees').map(employee => [String(employee.id), employee]))
   const nextAgenda = state.agenda || {}
   // Evita que un cliente con datos anteriores vuelva a guardar abreviaturas históricas.
   const normalizedHistory = normalizeHistoryTechnicians(state.history || [])
@@ -932,6 +964,54 @@ function setSecurityHeaders(res) {
   res.setHeader('Referrer-Policy', 'no-referrer')
   res.setHeader('Cache-Control', 'no-store')
   res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'")
+  if (secureCookies) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+}
+
+const STATIC_CONTENT_TYPES = {
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml; charset=utf-8',
+  '.webp': 'image/webp',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2'
+}
+
+function setBrowserSecurityHeaders(res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('Referrer-Policy', 'no-referrer')
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  res.setHeader('Content-Security-Policy', "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'")
+  if (secureCookies) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+}
+
+function serveApplication(req, res, pathname) {
+  if (!['GET', 'HEAD'].includes(req.method) || !fs.existsSync(path.join(publicDir, 'index.html'))) return false
+
+  let requestedPath
+  try { requestedPath = decodeURIComponent(pathname) } catch { requestedPath = '/' }
+  const relativePath = requestedPath === '/' ? 'index.html' : requestedPath.replace(/^\/+/, '')
+  const candidate = path.resolve(publicDir, relativePath)
+  const insidePublicDir = candidate === publicDir || candidate.startsWith(`${publicDir}${path.sep}`)
+  const hasExtension = Boolean(path.extname(relativePath))
+  const filePath = insidePublicDir && fs.existsSync(candidate) && fs.statSync(candidate).isFile()
+    ? candidate
+    : (!hasExtension ? path.join(publicDir, 'index.html') : null)
+
+  if (!filePath) return false
+  setBrowserSecurityHeaders(res)
+  const extension = path.extname(filePath).toLowerCase()
+  const isEntryPoint = path.basename(filePath) === 'index.html'
+  res.setHeader('Content-Type', STATIC_CONTENT_TYPES[extension] || 'application/octet-stream')
+  res.setHeader('Cache-Control', isEntryPoint ? 'no-cache' : 'public, max-age=31536000, immutable')
+  res.writeHead(200)
+  if (req.method === 'HEAD') { res.end(); return true }
+  res.end(fs.readFileSync(filePath))
+  return true
 }
 
 function parseCookies(header = '') {
@@ -1109,7 +1189,7 @@ const server = http.createServer((req, res) => {
       } catch (auditError) {
         console.error('No se pudo registrar la auditoría del inicio de sesión:', auditError)
       }
-      res.setHeader('Set-Cookie', `pignus_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE / 1000}`)
+      res.setHeader('Set-Cookie', `pignus_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE / 1000}${secureCookies ? '; Secure' : ''}`)
       return send(res, 200, { user })
     }).catch(error => {
       console.error('Error al procesar el acceso:', error)
@@ -1191,6 +1271,7 @@ const server = http.createServer((req, res) => {
     }).catch(error => { console.error(error); send(res, error?.statusCode || 400, { error: error?.message || 'No se pudieron guardar los datos.' }) })
     return
   }
+  if (!url.pathname.startsWith('/api/') && serveApplication(req, res, url.pathname)) return
   send(res, 404, { error: 'Ruta no encontrada.' })
 })
 

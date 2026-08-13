@@ -103,6 +103,17 @@ test('protege rutas y agrega cabeceras de seguridad', async () => {
   assert.match(response.headers.get('content-security-policy'), /default-src 'none'/)
 })
 
+test('sirve la aplicación compilada y conserva aisladas las rutas API', async () => {
+  const page = await api('/')
+  assert.equal(page.status, 200)
+  assert.match(page.headers.get('content-type'), /text\/html/)
+  assert.match(await page.text(), /<div id="root"><\/div>/)
+
+  const missingApi = await api('/api/ruta-inexistente')
+  assert.equal(missingApi.status, 404)
+  assert.match(missingApi.headers.get('content-type'), /application\/json/)
+})
+
 test('un gestor de empleados no puede elevar privilegios', async () => {
   const cookie = await login('qa-employees@pignus.test')
   let current = await state(cookie)
@@ -205,6 +216,42 @@ test('normaliza como pendiente un servicio nuevo sin estado', async () => {
   assert.equal(response.status, 200)
   const saved = await state(cookie)
   assert.equal(saved.history.find(record => record.id === id).status, 'Pendiente')
+})
+
+test('registra de forma confiable quién creó y quién actualizó un servicio', async () => {
+  const administratorCookie = await login('qa-admin@pignus.test')
+  let current = await state(administratorCookie)
+  const base = current.history[0]
+  const id = `trace-${Date.now()}`
+  current.history.push({
+    ...base,
+    id,
+    sourceTaskId: id,
+    detail: 'Servicio de prueba de trazabilidad',
+    status: 'Pendiente',
+    createdBy: { id: 'falso', name: 'Usuario falso', role: 'Administrador', at: new Date().toISOString() }
+  })
+  let response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
+  assert.equal(response.status, 200)
+  current = await state(administratorCookie)
+  let record = current.history.find(item => item.id === id)
+  assert.equal(record.createdBy.name, 'QA Admin')
+  assert.equal(record.lastUpdatedBy.name, 'QA Admin')
+
+  current.employees.find(employee => employee.id === 'qa-settings').status = 'Activo'
+  current.roles.find(role => role.id === 'qa-settings-role').permissions = { settings: true, history: true }
+  response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
+  assert.equal(response.status, 200)
+  const settingsCookie = await login('qa-settings@pignus.test')
+  current = await state(settingsCookie)
+  record = current.history.find(item => item.id === id)
+  record.detail = 'Detalle actualizado por otra sesión'
+  response = await api('/api/state', settingsCookie, { method: 'PUT', body: JSON.stringify(current) })
+  assert.equal(response.status, 200)
+  current = await state(administratorCookie)
+  record = current.history.find(item => item.id === id)
+  assert.equal(record.createdBy.name, 'QA Admin')
+  assert.equal(record.lastUpdatedBy.name, 'QA Configuración')
 })
 
 test('elimina copias de una misma tarea sin confundir servicios distintos', () => {

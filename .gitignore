@@ -1,7 +1,6 @@
-# La base principal se comparte entre instalaciones mediante Git.
-# SQLite genera archivos WAL/SHM temporales que no deben versionarse.
+# La base SQLite contiene datos operativos y debe permanecer fuera de Git.
+# Cada instalación la conserva en su directorio de datos (PIGNUS_DATA_DIR).
 data/*
-!data/agenda-tecnica.db
 dist/
 node_modules/
 *.lnk

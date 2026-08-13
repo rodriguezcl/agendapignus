@@ -335,3 +335,77 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
     grid-row: auto;
   }
 }
+.service-trace {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid #d7e3d8;
+  border-radius: 10px;
+  background: #f5f8f4;
+  color: #587064;
+  font-size: .78rem;
+  line-height: 1.35;
+}
+
+.service-trace span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-trace b { color: #244e39; }
+
+.service-trace.compact {
+  margin-top: 7px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, .62);
+  font-size: .7rem;
+}
+
+.task-row > .service-trace { grid-column: 2 / -1; }
+.week-task-summary > .service-trace { margin: 0 14px 9px; }
+.history-client .service-trace { max-width: 100%; }
+
+.history-modal-trace {
+  grid-column: 1 / -1;
+  margin-top: 3px;
+  padding: 12px 14px;
+  background: #f7faf6;
+  font-size: .78rem;
+}
+
+.history-modal-trace::before {
+  content: 'Registro del servicio';
+  margin-bottom: 2px;
+  color: #244e39;
+  font-weight: 700;
+}
+
+.history-modal-trace span {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.weekly-modal-trace {
+  margin: 12px 0 14px;
+  padding: 12px 14px;
+  background: #f7faf6;
+  font-size: .78rem;
+}
+
+.weekly-modal-trace::before {
+  content: 'Registro del servicio';
+  margin-bottom: 2px;
+  color: #244e39;
+  font-weight: 700;
+}
+
+.weekly-modal-trace span {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
