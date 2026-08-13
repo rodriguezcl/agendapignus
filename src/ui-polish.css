@@ -86,6 +86,61 @@
   background: #fffdf6;
 }
 
+/* Reasignación operativa de un servicio entre equipos de la agenda diaria. */
+.task-row .daily-move-button {
+  grid-column: 7 !important;
+  grid-row: 1 !important;
+  align-self: end;
+  color: #245c3d;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.task-move-modal label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 18px 0 22px;
+  color: #53695b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.task-move-modal select {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #cbd9cd;
+  border-radius: 8px;
+  background: #fff;
+  color: #173527;
+}
+
+.task-move-modal input {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #cbd9cd;
+  border-radius: 8px;
+  background: #f5f8f5;
+  color: #173527;
+}
+
+.weekly-move-modal {
+  max-width: 520px;
+}
+
+.weekly-move-modal .modal-actions {
+  margin-top: 24px;
+}
+
+@media (max-width: 900px) {
+  .task-row .daily-move-button {
+    grid-column: 3 !important;
+    grid-row: auto !important;
+  }
+}
+
 .primary,
 .save {
   box-shadow: 0 3px 8px rgba(155, 109, 8, .16);
