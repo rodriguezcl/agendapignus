@@ -113,8 +113,8 @@ const countBusinessDays = (year, month, throughDay) => {
   }
   return total
 }
-const moveRecordInWeeklyAgenda = (weekly, record, nextDate) => {
-  if (!record?.id || !record?.date || !nextDate) return weekly
+const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?.rescheduledFrom || record?.date) => {
+  if (!record?.id || !sourceDate || !nextDate) return weekly
   const matchesRecord = task => String(task.historyId || '') === String(record.id) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
   const removeRecord = day => day?.teams?.length ? { ...day, teams: day.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !matchesRecord(task)) })) } : day
   const createDefaultTeams = date => (isSaturday(date) ? [null] : (weekly?._monthlyTeams?.[date.slice(0, 7)]?.teams || [null, null, null])).map((team, index) => ({
@@ -140,7 +140,7 @@ const moveRecordInWeeklyAgenda = (weekly, record, nextDate) => {
     return { ...(day || {}), teams: [...merged, ...extras] }
   }
   const next = { ...(weekly || {}) }
-  next[record.date] = removeRecord(next[record.date])
+  next[sourceDate] = removeRecord(next[sourceDate])
   const destination = removeRecord(destinationWithDefaults(next[nextDate]))
   const teams = [...(destination.teams || [])]
   const teamNumber = Number(String(record.team || '').match(/\d+/)?.[0]) || 1
@@ -168,7 +168,17 @@ const moveRecordInWeeklyAgenda = (weekly, record, nextDate) => {
   const mergedTasks = replaceIndex >= 0
     ? currentTasks.map((item, index) => index === replaceIndex ? task : item)
     : [...currentTasks, task]
-  teams[teamIndex] = { ...teams[teamIndex], teamId: teams[teamIndex].teamId || record.teamId || createTeamId(), memberIds: record.technicianIds?.length ? record.technicianIds : teams[teamIndex].memberIds || [], members: record.technicians?.length ? record.technicians : teams[teamIndex].members || [], tasks: sortTasksByTime(mergedTasks) }
+  // La dotacion del equipo destino es la que debe prevalecer. Una visita puede
+  // reprogramarse con menos (o distintos) tecnicos que los del dia original.
+  // Solo heredamos la asignacion anterior cuando el equipo destino esta vacio.
+  const destinationHasTechnicians = (teams[teamIndex].memberIds || []).length > 0 || (teams[teamIndex].members || []).length > 0
+  teams[teamIndex] = {
+    ...teams[teamIndex],
+    teamId: teams[teamIndex].teamId || record.teamId || createTeamId(),
+    memberIds: destinationHasTechnicians ? (teams[teamIndex].memberIds || []) : (record.technicianIds || []),
+    members: destinationHasTechnicians ? (teams[teamIndex].members || []) : (record.technicians || []),
+    tasks: sortTasksByTime(mergedTasks)
+  }
   next[nextDate] = { ...destination, teams: isSaturday(nextDate) ? normalizeSaturdayTeams(teams) : teams }
   return next
 }
@@ -337,6 +347,30 @@ function showDuplicateTechniciansModal(duplicates, availableTechnicians, onCorre
   actions.append(correct, proceed); modal.append(icon, title, detail, helper, actions); layer.append(modal)
   layer.addEventListener('click', event => { if (event.target === layer) layer.remove() })
   document.body.append(layer)
+}
+
+// Un técnico puede integrar distintos equipos durante el día. Sólo existe un
+// conflicto cuando tiene servicios reales a la misma hora en equipos distintos.
+function technicianTimeConflicts(teams, employees = []) {
+  const bookings = new Map()
+  teams.forEach((team, teamIndex) => {
+    const employeeIds = team.memberIds || []
+    const employeeNames = team.members || []
+    ;(team.tasks || []).filter(task => task.time && [task.service, task.customerId, task.client].some(value => String(value || '').trim())).forEach(task => {
+      const technicians = employeeIds.length
+        ? employeeIds.map(id => ({ key: String(id), name: employees.find(employee => String(employee.id) === String(id))?.name || employeeNames[employeeIds.findIndex(value => String(value) === String(id))] || 'Técnico' }))
+        : employeeNames.map(name => ({ key: `name:${normalizeSearchText(name)}`, name }))
+      technicians.forEach(technician => {
+        const key = `${technician.key}|${task.time}`
+        const current = bookings.get(key) || { name: technician.name, time: task.time, teams: [] }
+        current.teams.push(teamIndex + 1)
+        bookings.set(key, current)
+      })
+    })
+  })
+  return [...bookings.values()]
+    .map(item => ({ ...item, teams: [...new Set(item.teams)] }))
+    .filter(item => item.teams.length > 1)
 }
 
 /** Pantalla aislada de autenticación; la contraseña sólo viaja al endpoint de acceso. */
@@ -530,13 +564,64 @@ export default function App() {
   }, [])
   useEffect(() => {
     const moveWeeklyService = event => {
-      const { record, nextDate } = event.detail || {}
+      const { record, nextDate, sourceDate } = event.detail || {}
       if (!record || !nextDate) return
-      setWeekly(previous => moveRecordInWeeklyAgenda(previous, record, nextDate))
+      setWeekly(previous => moveRecordInWeeklyAgenda(previous, record, nextDate, sourceDate))
     }
     window.addEventListener('pignus:reschedule-service', moveWeeklyService)
     return () => window.removeEventListener('pignus:reschedule-service', moveWeeklyService)
   }, [])
+  useEffect(() => {
+    // Repara reprogramaciones anteriores que pudieron quedar copiadas en ambos
+    // dias. La identidad del servicio (historyId/taskId) permite quitar solamente
+    // el origen sin alterar los restantes equipos ni sus visitas.
+    const rescheduled = history.filter(record => record.rescheduledFrom && record.date && record.rescheduledFrom !== record.date)
+    if (!rescheduled.length) return
+    setWeekly(previous => {
+      const next = rescheduled.reduce(
+        (current, record) => moveRecordInWeeklyAgenda(current, record, record.date, record.rescheduledFrom),
+        previous
+      )
+      return JSON.stringify(next) === JSON.stringify(previous) ? previous : next
+    })
+    const movedAway = rescheduled.filter(record => record.rescheduledFrom === date)
+    if (movedAway.length) {
+      const matchesMoved = task => movedAway.some(record =>
+        String(task.historyId || '') === String(record.id) ||
+        (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
+      )
+      setTeams(previous => {
+        const next = previous.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !matchesMoved(task)) }))
+        return JSON.stringify(next) === JSON.stringify(previous) ? previous : next
+      })
+    }
+  }, [history, date])
+  useEffect(() => {
+    // Historial debe reflejar la dotacion real del equipo del dia destino, no la
+    // dotacion que tenia el servicio antes de ser reprogramado.
+    setHistory(previous => {
+      let changed = false
+      const next = previous.map(record => {
+        const day = weekly?.[record.date]
+        const assignedTeam = day?.teams?.find(team => (team.tasks || []).some(task =>
+          String(task.historyId || '') === String(record.id) ||
+          (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
+        ))
+        if (!assignedTeam) return record
+        const technicianIds = assignedTeam.memberIds || []
+        const technicians = assignedTeam.members || []
+        const sameAssignment =
+          String(record.teamId || '') === String(assignedTeam.teamId || '') &&
+          record.team === assignedTeam.label &&
+          JSON.stringify(record.technicianIds || []) === JSON.stringify(technicianIds) &&
+          JSON.stringify(record.technicians || []) === JSON.stringify(technicians)
+        if (sameAssignment) return record
+        changed = true
+        return { ...record, teamId: assignedTeam.teamId || '', team: assignedTeam.label || record.team, technicianIds, technicians }
+      })
+      return changed ? next : previous
+    })
+  }, [weekly])
   useEffect(() => {
     const removeWeeklyService = event => {
       const { day, taskId, historyId } = event.detail || {}
@@ -949,6 +1034,7 @@ function AgendaWorkspace({ date, setDate, teams, setTeams, activeTechs, customer
 }
 
 function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }) {
+  const authUser = globalThis.__pignusCurrentUser || null
   const saveAgenda = () => requestAgendaAction('save')
   const [preview, setPreview] = useState(false)
   const [techOpen, setTechOpen] = useState(null)
@@ -1212,16 +1298,9 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     if (!validateAgenda(agendaTeams)) return
     const missingTeams = agendaTeams.map((team, index) => !team.members.length ? `Equipo ${index + 1}` : '').filter(Boolean)
     if (missingTeams.length && !allowWithoutTechnicians) { showMissingTechniciansModal(missingTeams, () => requestAgendaAction(action, true, agendaTeams, true)); return }
-    const technicianTeams = new Map()
-    agendaTeams.forEach((team, teamIndex) => team.members.forEach(name => technicianTeams.set(name, [...(technicianTeams.get(name) || []), teamIndex])))
-    const duplicates = [...technicianTeams.entries()].filter(([, assignedTeams]) => assignedTeams.length > 1).map(([name, assignedTeams]) => ({ name, teams: assignedTeams }))
-    if (duplicates.length) {
-      const assigned = new Set(agendaTeams.flatMap(team => team.members))
-      const available = activeTechs.map(tech => tech.name).filter(name => !assigned.has(name))
-      showDuplicateTechniciansModal(duplicates, available, changes => {
-        setTeams(previous => previous.map((team, teamIndex) => ({ ...team, members: team.members.map(name => changes.find(change => change.teamIndex === teamIndex && change.name === name)?.replacement || name) })))
-        setNotice('La asignación fue corregida. Revisá la agenda y volvé a guardar o copiar.')
-      }, () => finishAgendaAction(action, agendaTeams))
+    const conflicts = technicianTimeConflicts(agendaTeams, activeTechs)
+    if (conflicts.length) {
+      setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`)
       return
     }
     finishAgendaAction(action, agendaTeams)
@@ -1255,14 +1334,30 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     ].filter(Boolean).join(' ')
     return <Confirm title="Actualizar datos de clientes" detail={detail} action={applyCustomerProposal} confirmLabel="Sí, actualizar y continuar" close={() => setCustomerProposal(null)} />
   }
-  const toggleTech = (teamIndex, technician) => setTeams(previous => previous.map((team, index) => {
-    if (index !== teamIndex) return team
-    const selected = (team.memberIds || []).some(id => String(id) === String(technician.id))
-    const tasks = (team.tasks || []).map(task => stampServiceRecord(task, authUser))
-    if (isSaturday(date)) return { ...team, teamId: team.teamId || createTeamId(), memberIds: selected ? [] : [technician.id], members: selected ? [] : [technician.name], tasks }
-    return { ...team, teamId: team.teamId || createTeamId(), memberIds: selected ? (team.memberIds || []).filter(id => String(id) !== String(technician.id)) : [...(team.memberIds || []), technician.id], members: selected ? (team.members || []).filter(name => name !== technician.name) : [...(team.members || []), technician.name], tasks }
-  }))
-  const customerChange = (teamIndex, taskIndex, value) => { const customer = customers.find(item => item.account === value || item.name === value || `${item.name} · ${item.account}` === value || `${item.account} ${item.name}` === value); updateTask(teamIndex, taskIndex, customer ? { customerId: customer.customerId, client: `${customer.account} ${customer.name}`, clientAccount: customer.account, clientNameAtService: customer.name, address: customer.address, phone: customer.phone } : { customerId: '', client: value, clientAccount: '', clientNameAtService: '' }) }
+  const toggleTech = (teamIndex, technician) => setTeams(previous => {
+    const target = previous[teamIndex] || {}
+    const selected = (target.memberIds || []).some(id => String(id) === String(technician.id))
+    return previous.map((team, index) => {
+      if (index !== teamIndex) return team
+      const memberIds = (team.memberIds || []).filter(id => String(id) !== String(technician.id))
+      const members = (team.members || []).filter(name => name !== technician.name)
+      if (!selected) {
+        memberIds.push(technician.id)
+        members.push(technician.name)
+      }
+      return { ...team, teamId: team.teamId || createTeamId(), memberIds, members, tasks: (team.tasks || []).map(task => stampServiceRecord(task, authUser)) }
+    })
+  })
+  const findCustomer = value => customers.find(item => item.account === value || item.name === value || `${item.name} · ${item.account}` === value || `${item.account} ${item.name}` === value)
+  const commitCustomerChange = (teamIndex, taskIndex, value) => {
+    const customer = findCustomer(value)
+    const canonicalValue = customer ? `${customer.account} ${customer.name}` : value
+    updateTask(teamIndex, taskIndex, customer
+      ? { customerId: customer.customerId, client: canonicalValue, clientAccount: customer.account, clientNameAtService: customer.name, address: customer.address, phone: customer.phone }
+      : { customerId: '', client: canonicalValue, clientAccount: '', clientNameAtService: '' })
+    return canonicalValue
+  }
+  const customerChange = (teamIndex, taskIndex, value) => commitCustomerChange(teamIndex, taskIndex, value)
   const openTaskMove = (teamIndex, taskIndex) => {
     const sourceTeam = teams[teamIndex]
     const task = sourceTeam?.tasks?.[taskIndex]
@@ -1631,13 +1726,22 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   const toggleWeeklyTech = (day, teamIndex, technician) => {
     technician = typeof technician === 'string' ? activeTechs.find(item => item.name === technician) : technician
     if (!technician) return
-    const team = dayPlan(day).teams[teamIndex] || {}
-    const selected = (team.memberIds || []).some(id => String(id) === String(technician.id))
-    if (isSaturday(day)) {
-      updateTeam(day, 0, { teamId: team.teamId || createTeamId(), memberIds: selected ? [] : [technician.id], members: selected ? [] : [technician.name], tasks: (team.tasks || []).map(task => stampServiceRecord(task, authUser)) })
-      return
-    }
-    updateTeam(day, teamIndex, { teamId: team.teamId || createTeamId(), memberIds: selected ? (team.memberIds || []).filter(id => String(id) !== String(technician.id)) : [...(team.memberIds || []), technician.id], members: selected ? (team.members || []).filter(name => name !== technician.name) : [...(team.members || []), technician.name], tasks: (team.tasks || []).map(task => stampServiceRecord(task, authUser)) })
+    updateDay(day, plan => {
+      const actualIndex = isSaturday(day) ? 0 : teamIndex
+      const target = plan.teams[actualIndex] || {}
+      const selected = (target.memberIds || []).some(id => String(id) === String(technician.id))
+      const teams = plan.teams.map((team, index) => {
+        if (index !== actualIndex) return team
+        const memberIds = (team.memberIds || []).filter(id => String(id) !== String(technician.id))
+        const members = (team.members || []).filter(name => name !== technician.name)
+        if (!selected) {
+          memberIds.push(technician.id)
+          members.push(technician.name)
+        }
+        return { ...team, teamId: team.teamId || createTeamId(), memberIds, members, tasks: (team.tasks || []).map(task => stampServiceRecord(task, authUser)) }
+      })
+      return { ...plan, teams }
+    })
   }
   const updateTask = (day, teamIndex, taskIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index !== teamIndex ? team : { ...team, tasks: team.tasks.map((task, index) => index === taskIndex ? stampServiceRecord({ ...task, ...patch }, authUser) : task) }) }))
   const addTeam = day => {
@@ -1661,15 +1765,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     return { min: '08:00', max: weekDay === 5 ? '20:00' : weekDay === 6 ? '12:00' : '17:00', label: weekDay === 5 ? '08:00 a 20:00' : weekDay === 6 ? '08:00 a 12:00' : '08:00 a 17:00' }
   }
   const conflictsForDay = day => {
-    const bookings = new Map()
-    dayPlan(day).teams.forEach((team, teamIndex) => team.tasks.filter(task => task.time).forEach(task => (team.memberIds || []).forEach(employeeId => {
-      const key = `${employeeId}|${task.time}`
-      bookings.set(key, [...(bookings.get(key) || []), teamIndex + 1])
-    })))
-    return [...bookings.entries()].filter(([, assignedTeams]) => new Set(assignedTeams).size > 1).map(([key, assignedTeams]) => {
-      const [employeeId, time] = key.split('|')
-      return { name: activeTechs.find(employee => String(employee.id) === employeeId)?.name || 'Técnico', time, teams: [...new Set(assignedTeams)] }
-    })
+    return technicianTimeConflicts(dayPlan(day).teams, activeTechs)
   }
   const selectCustomer = (day, teamIndex, taskIndex, value) => {
     const customer = customers.find(item => item.account === value || item.name === value || `${item.account} ${item.name}` === value)
@@ -2146,7 +2242,7 @@ function HistoryBulkView({ history, setHistory, customers, services, employees, 
   const applyBulk = () => {
     if (!selected.length || (bulkStatus === 'Reprogramado' && (!rescheduleDate || rescheduleDate < minimumRescheduleDate))) return
     if (bulkStatus === 'Reprogramado') history.filter(record => selected.includes(record.id)).forEach(record => {
-      window.dispatchEvent(new CustomEvent('pignus:reschedule-service', { detail: { record, nextDate: rescheduleDate } }))
+      window.dispatchEvent(new CustomEvent('pignus:reschedule-service', { detail: { record, nextDate: rescheduleDate, sourceDate: record.date } }))
     })
     setHistory(previous => previous.map(record => {
       if (!selected.includes(record.id)) return record
@@ -2252,7 +2348,7 @@ function HistoryManagementDetail({ record, setHistory, close, customers, service
       ? { ...patch, date: patch.scheduledDate, status: 'Pendiente', scheduledDate: '', rescheduledFrom: record.date, reprogrammedAt: new Date().toISOString() }
       : patch
     const tracedRecord = stampServiceRecord({ ...record, ...changes }, authUser)
-    if (isReschedule) window.dispatchEvent(new CustomEvent('pignus:reschedule-service', { detail: { record: tracedRecord, nextDate: patch.scheduledDate } }))
+    if (isReschedule) window.dispatchEvent(new CustomEvent('pignus:reschedule-service', { detail: { record: tracedRecord, nextDate: patch.scheduledDate, sourceDate: record.date } }))
     setHistory(previous => previous.map(item => item.id === record.id ? tracedRecord : item)); close()
   }
   const remove = () => { setHistory(previous => previous.filter(item => item.id !== record.id)); close() }
