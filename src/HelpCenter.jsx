@@ -58,7 +58,7 @@ const MODULES = [
       { title: 'Crear un registro', body: 'Usá Nuevo cliente para cargar una persona sin abono. El sistema asignará un código CLI. Los abonados importados conservan su código PIG.' },
       { title: 'Editar datos', body: 'Presioná el lápiz. Se abrirá un formulario donde podés actualizar nombre, dirección, localidad, provincia y teléfono. El nombre se guarda en mayúsculas para mantener una presentación uniforme.' },
       { title: 'Evitar duplicados', body: 'Antes de crear un cliente, buscalo por nombre, código o dirección. Si encontrás registros parecidos, revisá sus datos antes de continuar. No crees un CLI si la persona ya tiene un código PIG.' },
-      { title: 'Eliminar un registro', body: 'Un abonado o cliente no puede eliminarse mientras tenga servicios o reseñas vinculadas. Esto protege su historial. Corregí o fusioná el registro correspondiente en lugar de eliminar información relacionada.' },
+      { title: 'Eliminar un registro', body: 'Un abonado o cliente no puede eliminarse mientras tenga servicios vinculados. Esto protege su historial. Corregí o fusioná el registro correspondiente en lugar de eliminar información relacionada.' },
       { title: 'Importar abonados', body: 'Usá Importar abonados para actualizar la base de clientes PIG. Revisá el archivo antes de confirmar y evitá modificar manualmente los códigos.' }
     ]
   },
@@ -93,14 +93,6 @@ const MODULES = [
       { title: 'Consultar movimientos', body: 'Filtrá por acción o buscá un usuario, entidad o registro. Presioná Ver detalle para comparar la información anterior con la posterior.' },
       { title: 'Cuándo usarla', body: 'Consultá Auditoría cuando necesites saber quién creó, modificó o eliminó un dato, o cuando una agenda ya no coincida con lo esperado.' },
       { title: 'Qué no hace', body: 'Auditoría sirve para revisar movimientos; no modifica ni recupera datos por sí misma. Luego de identificar el cambio, realizá la corrección desde el módulo correspondiente.' }
-    ]
-  },
-  {
-    id: 'reviews', module: 'reviews', icon: 'reviews', adminOnly: true, title: 'Reseñas', summary: 'Registrá opiniones y mantené organizado su seguimiento.',
-    articles: [
-      { title: 'Registrar una reseña', body: 'Seleccioná el abonado o cliente cuando exista, completá nombre, fecha, calificación, canal, estado y comentario. También se admite una opinión sin vincular.' },
-      { title: 'Estados de una reseña', body: 'Pendiente indica que todavía requiere revisión; Publicada identifica las opiniones ya utilizadas; Archivada conserva el registro sin mostrarlo como activo.' },
-      { title: 'Buscar y editar', body: 'Usá el buscador o el filtro de estado. El lápiz permite corregir datos y el botón rojo elimina la reseña después de confirmar.' }
     ]
   }
 ]
