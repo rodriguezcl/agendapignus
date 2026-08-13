@@ -101,4 +101,4 @@
 .retirement-stat b{color:#b84b45}
 @media(max-width:1100px){.stats-grid.dashboard-stats-four{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.stats-grid.dashboard-stats-four{grid-template-columns:1fr}}
-.pending-button{border:1px solid #d4a21b;background:#fff7df;color:#805f08}.pending-button:hover{background:#f7e8b8}.app-shell[data-theme="dark"] .pending-button{background:#3d351d;border-color:#806c25;color:#f0d889}
+.history-actions>.pending-button{display:inline-flex;align-items:center;justify-content:center;gap:5px;border:1px solid #d39a0a!important;border-radius:8px;background:#d99a00!important;color:#fff!important;box-shadow:0 3px 8px #a9781426;transition:transform .16s ease,box-shadow .16s ease,background .16s ease}.history-actions>.pending-button:hover{background:#bd8500!important;transform:translateY(-1px)}.history-actions>.pending-button:focus-visible{outline:3px solid #d99d1d33;outline-offset:2px}.app-shell[data-theme="dark"] .history-actions>.pending-button{background:#c78d08!important;border-color:#d5a326!important;color:#fff!important}
