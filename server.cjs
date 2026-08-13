@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const crypto = require('node:crypto')
 const { DatabaseSync } = require('node:sqlite')
 const { normalizeScheduling } = require('./scripts/normalize-scheduling.cjs')
-const { rebuildWeeklyFromHistory } = require('./scripts/rebuild-weekly-from-history.cjs')
+const { rebuildWeeklyFromHistory, dedupeAgendaTeams } = require('./scripts/rebuild-weekly-from-history.cjs')
 
 // API local: Vite reenvía las rutas /api a este proceso durante el desarrollo.
 const port = Number(process.env.PIGNUS_PORT || 3001)
@@ -562,6 +562,13 @@ migrateTeamAndTechnicianReferences()
 normalizeScheduling(db)
 rebuildWeeklyFromHistory(db)
 
+const agendaAfterRebuild = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+if (agendaAfterRebuild) {
+  const agenda = JSON.parse(agendaAfterRebuild.data)
+  const teams = dedupeAgendaTeams(agenda.teams)
+  if (JSON.stringify(teams) !== JSON.stringify(agenda.teams)) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify({ ...agenda, teams }), 'current')
+}
+
 function auditSafe(record) {
   if (!record) return null
   const { password, passwordHash, ...safe } = record
@@ -849,7 +856,7 @@ function saveState(state, user) {
     const members = [...new Map([...byId, ...byName].map(employee => [String(employee.id), employee])).values()]
     return { ...team, teamId: team.teamId || stableTeamId(month || 'current', index), memberIds: members.map(employee => employee.id), members: members.map(employee => employee.name), tasks: (team.tasks || []).map(normalizeReference) }
   }
-  const normalizeTeams = (teams, month) => (teams || []).map((team, index) => normalizeTeam(team, index, month))
+  const normalizeTeams = (teams, month) => dedupeAgendaTeams((teams || []).map((team, index) => normalizeTeam(team, index, month)))
   const incomingAgenda = state.agenda || {}
   const normalizedWeekly = Object.fromEntries(Object.entries(incomingAgenda.weekly || {}).map(([key, value]) => {
     if (key === '_monthlyTeams') return [key, Object.fromEntries(Object.entries(value || {}).map(([month, config]) => [month, { ...config, teams: normalizeTeams(config?.teams, month) }]))]
@@ -1095,11 +1102,20 @@ const server = http.createServer((req, res) => {
       const user = { id: employee.id, name: employee.name, email: employee.email, roleId: assignedRole?.id, roleCode: assignedRole?.code || legacyRoleCode(assignedRole || { id: employee.roleId, name: employee.role }), role: assignedRole?.name || employee.role }
       const token = crypto.randomBytes(32).toString('hex')
       sessions.set(token, { user, expiresAt: Date.now() + SESSION_MAX_AGE })
-      // La auditoría de acceso permite conocer exactamente cuándo cada usuario ingresó.
-      writeAudit(user, 'Inició sesión', 'Sesión', String(user.id), null, { sessionExpiresAt: new Date(Date.now() + SESSION_MAX_AGE).toISOString() })
+      // Un bloqueo momentáneo del registro de auditoría no debe impedir que una
+      // credencial válida abra sesión. El acceso sigue quedando aislado en memoria.
+      try {
+        writeAudit(user, 'Inició sesión', 'Sesión', String(user.id), null, { sessionExpiresAt: new Date(Date.now() + SESSION_MAX_AGE).toISOString() })
+      } catch (auditError) {
+        console.error('No se pudo registrar la auditoría del inicio de sesión:', auditError)
+      }
       res.setHeader('Set-Cookie', `pignus_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE / 1000}`)
       return send(res, 200, { user })
-    }).catch(() => send(res, 400, { error: 'No se pudo procesar el acceso.' }))
+    }).catch(error => {
+      console.error('Error al procesar el acceso:', error)
+      const clientError = ['Datos inválidos.', 'Solicitud demasiado grande.'].includes(error?.message)
+      send(res, clientError ? 400 : 500, { error: clientError ? error.message : 'No se pudo completar el ingreso. Reiniciá Agenda técnica e intentá nuevamente.' })
+    })
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
     const token = parseCookies(req.headers.cookie).pignus_session

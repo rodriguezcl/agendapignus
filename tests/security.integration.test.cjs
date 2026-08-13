@@ -6,6 +6,7 @@ const os = require('node:os')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
 const { DatabaseSync } = require('node:sqlite')
+const { dedupeAgendaTeams } = require('../scripts/rebuild-weekly-from-history.cjs')
 
 const root = path.resolve(__dirname, '..')
 const port = 32109
@@ -204,4 +205,13 @@ test('normaliza como pendiente un servicio nuevo sin estado', async () => {
   assert.equal(response.status, 200)
   const saved = await state(cookie)
   assert.equal(saved.history.find(record => record.id === id).status, 'Pendiente')
+})
+
+test('elimina copias de una misma tarea sin confundir servicios distintos', () => {
+  const teams = dedupeAgendaTeams([
+    { teamId: 'uno', tasks: [{ historyId: 'work-1', taskId: 'task-1', client: 'CLIENTE A' }, { historyId: 'work-1', taskId: 'task-1', client: 'CLIENTE A' }] },
+    { teamId: 'dos', tasks: [{ historyId: 'work-2', taskId: 'task-2', client: 'CLIENTE A' }] }
+  ])
+  assert.equal(teams[0].tasks.length, 1)
+  assert.equal(teams[1].tasks.length, 1)
 })

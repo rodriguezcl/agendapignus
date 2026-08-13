@@ -317,7 +317,7 @@ function Login({ onLogin }) {
     setSubmitting(true)
     try {
       const response = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
-      const data = await response.json()
+      const data = await response.json().catch(() => ({ error: 'La base de datos todavía está iniciando. Esperá un momento e intentá nuevamente.' }))
       if (!response.ok) throw new Error(data.error || 'No se pudo iniciar sesión.')
       setPassword('')
       onLogin(data.user)
