@@ -100,6 +100,23 @@ function rows(table) {
   return db.prepare(`SELECT data FROM ${table} ORDER BY rowid`).all().map(row => JSON.parse(row.data))
 }
 
+function recentAuditRows(limit) {
+  const records = []
+  const auditRows = db.prepare('SELECT id, data FROM audit_log ORDER BY rowid DESC LIMIT ?').all(limit)
+
+  for (const row of auditRows) {
+    try {
+      const value = JSON.parse(row.data)
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+      records.push({ ...value, id: value.id || String(row.id) })
+    } catch (error) {
+      console.warn(`Registro de auditoría inválido (${row.id}): ${error.message}`)
+    }
+  }
+
+  return records.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))
+}
+
 // Migra registros históricos que guardaban nombre y apellido en un único campo.
 // `name` se conserva como valor derivado para compatibilidad con agendas e historial.
 function migrateEmployeeNameParts() {
@@ -1223,7 +1240,7 @@ const server = http.createServer((req, res) => {
     if (user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
     const requestedLimit = Number(url.searchParams.get('limit')) || 500
     const limit = Math.min(Math.max(requestedLimit, 1), 1000)
-    return send(res, 200, { records: rows('audit_log').sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit) })
+    return send(res, 200, { records: recentAuditRows(limit) })
   }
   if (req.method === 'POST' && url.pathname === '/api/technician/status') {
     const user = requireSession(req, res)

@@ -263,6 +263,28 @@ test('elimina copias de una misma tarea sin confundir servicios distintos', () =
   assert.equal(teams[1].tasks.length, 1)
 })
 
+test('unifica una visita aunque una copia haya perdido el historyId', () => {
+  const teams = dedupeAgendaTeams([
+    { teamId: 'equipo-3', tasks: [
+      { historyId: 'work-pig-6844', taskId: 'task-pig-6844', time: '14:00', customerId: 'customer-pig-6844', serviceId: 'service-5', client: 'PIG-6844 AGUSTIN ROSETTI' },
+      { taskId: 'task-pig-6844', time: '14:00', customerId: 'customer-pig-6844', serviceId: 'service-5', client: 'PIG-6844 AGUSTIN ROSETTI' }
+    ] }
+  ])
+  assert.equal(teams[0].tasks.length, 1)
+  assert.equal(teams[0].tasks[0].historyId, 'work-pig-6844')
+})
+
+test('unifica copias regeneradas de una misma visita pero conserva otro horario', () => {
+  const teams = dedupeAgendaTeams([
+    { teamId: 'equipo-3', tasks: [
+      { taskId: 'task-original', time: '14:00', customerId: 'customer-pig-6844', serviceId: 'service-5' },
+      { taskId: 'task-regenerated', time: '14:00', customerId: 'customer-pig-6844', serviceId: 'service-5' },
+      { taskId: 'task-other-time', time: '16:00', customerId: 'customer-pig-6844', serviceId: 'service-5' }
+    ] }
+  ])
+  assert.deepEqual(teams[0].tasks.map(task => task.time), ['14:00', '16:00'])
+})
+
 test('fusiona tarjetas duplicadas del mismo equipo sin perder sus servicios', () => {
   const teams = dedupeAgendaTeams([
     { teamId: 'equipo-3', label: 'Equipo 3', memberIds: [3], members: ['Santos Diaz'], tasks: [{ historyId: 'work-1', client: 'CLIENTE A' }] },

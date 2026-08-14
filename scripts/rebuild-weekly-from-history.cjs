@@ -19,21 +19,32 @@ const taskFromHistory = record => ({
   status: record.status || 'Pendiente'
 })
 
-const taskKey = task => String(task.historyId || task.sourceHistoryId || '') || [
-  String(task.customerId || task.clientAccount || task.client || '').trim().toLowerCase(),
-  String(task.serviceId || task.service || '').trim().toLowerCase(),
-  task.time || task.scheduledTime || ''
-].join('|')
-
 const hasTaskData = task => Boolean(task?.historyId || task?.customerId || task?.client || task?.serviceId || task?.service)
 
-const taskIdentity = task => !hasTaskData(task)
-  ? `blank:${task?.time || ''}`
-  : task?.historyId
-    ? `history:${task.historyId}`
-    : task?.taskId
-      ? `task:${task.taskId}`
-      : ''
+const normalizedTaskValue = value => String(value || '').trim().toLocaleLowerCase('es')
+
+const taskOccurrenceKey = task => {
+  if (!hasTaskData(task)) return ''
+  const customer = normalizedTaskValue(task.customerId || task.clientAccount || task.account || task.client)
+  const service = normalizedTaskValue(task.serviceId || task.service)
+  const time = normalizedTaskValue(task.time || task.scheduledTime)
+  return customer && service && time ? `occurrence:${customer}|${service}|${time}` : ''
+}
+
+const taskAliases = task => {
+  const time = normalizedTaskValue(task?.time || task?.scheduledTime)
+  if (!hasTaskData(task)) return [`blank:${time}`]
+  return [
+    task?.historyId && `history:${task.historyId}`,
+    task?.sourceHistoryId && `history:${task.sourceHistoryId}`,
+    task?.taskId && `task:${task.taskId}`,
+    task?.sourceTaskId && `task:${task.sourceTaskId}`,
+    taskOccurrenceKey(task)
+  ].filter(Boolean)
+}
+
+const taskKey = task => taskOccurrenceKey(task) ||
+  String(task.taskId || task.sourceTaskId || task.historyId || task.sourceHistoryId || '')
 
 function dedupeAgendaTeams(teams = []) {
   const mergedTeams = []
@@ -60,10 +71,9 @@ function dedupeAgendaTeams(teams = []) {
   return mergedTeams.map(team => ({
     ...team,
     tasks: (team.tasks || []).filter(task => {
-      const identity = taskIdentity(task)
-      if (!identity) return true
-      if (seen.has(identity)) return false
-      seen.add(identity)
+      const aliases = taskAliases(task)
+      if (aliases.some(alias => seen.has(alias))) return false
+      aliases.forEach(alias => seen.add(alias))
       return true
     })
   }))

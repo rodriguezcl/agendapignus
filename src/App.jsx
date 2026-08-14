@@ -25,19 +25,51 @@ const INSTALLATION_ZONES = [
 const createTaskId = () => globalThis.crypto?.randomUUID?.() || `task-${Date.now()}-${Math.random().toString(36).slice(2)}`
 const createTeamId = () => globalThis.crypto?.randomUUID?.() || `team-${Date.now()}-${Math.random().toString(36).slice(2)}`
 const blankTask = () => ({ taskId: createTaskId(), time: '', serviceId: '', service: '', customerId: '', client: '', clientAccount: '', clientNameAtService: '', address: '', phone: '', detail: '', paymentMethod: '', monthlyFee: '', form: '' })
+const taskTimeInMinutes = task => {
+  const value = String(task?.time || task?.scheduledTime || '').trim()
+  const match = value.match(/^(\d{1,2}):(\d{2})$/)
+  if (!match) return null
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null
+  return hours * 60 + minutes
+}
 const sortTasksByTime = tasks => [...(tasks || [])].sort((left, right) => {
-  const leftTime = String(left.time || left.scheduledTime || '')
-  const rightTime = String(right.time || right.scheduledTime || '')
-  if (!leftTime && !rightTime) return 0
-  if (!leftTime) return 1
-  if (!rightTime) return -1
-  return leftTime.localeCompare(rightTime)
+  const leftMinutes = taskTimeInMinutes(left)
+  const rightMinutes = taskTimeInMinutes(right)
+  if (leftMinutes === null && rightMinutes === null) return 0
+  if (leftMinutes === null) return 1
+  if (rightMinutes === null) return -1
+  return leftMinutes - rightMinutes
+})
+const sortPlanTasksByTime = plan => ({
+  ...plan,
+  teams: (plan?.teams || []).map(team => ({ ...team, tasks: sortTasksByTime(team.tasks) }))
 })
 const isSaturday = date => Boolean(date) && new Date(`${date}T12:00:00`).getDay() === 6
 const taskHasContent = task => Boolean(task && (
   task.historyId || task.customerId || task.serviceId ||
   ['client', 'service', 'address', 'phone', 'detail'].some(key => String(task[key] || '').trim())
 ))
+const normalizedTaskValue = value => String(value || '').trim().toLocaleLowerCase('es')
+const taskOccurrenceIdentity = task => {
+  if (!taskHasContent(task)) return ''
+  const customer = normalizedTaskValue(task?.customerId || task?.clientAccount || task?.account || task?.client)
+  const service = normalizedTaskValue(task?.serviceId || task?.service)
+  const time = normalizedTaskValue(task?.time || task?.scheduledTime)
+  return customer && service && time ? `occurrence:${customer}|${service}|${time}` : ''
+}
+const taskIdentityAliases = task => {
+  const time = normalizedTaskValue(task?.time || task?.scheduledTime)
+  if (!taskHasContent(task)) return [`blank:${time}`]
+  return [
+    task?.historyId && `history:${task.historyId}`,
+    task?.sourceHistoryId && `history:${task.sourceHistoryId}`,
+    task?.taskId && `task:${task.taskId}`,
+    task?.sourceTaskId && `task:${task.sourceTaskId}`,
+    taskOccurrenceIdentity(task)
+  ].filter(Boolean)
+}
 const serviceActor = user => {
   const current = user || globalThis.__pignusCurrentUser
   return current ? { id: current.id, name: current.name || current.email || 'Usuario', role: current.role || '', at: new Date().toISOString() } : null
@@ -115,19 +147,23 @@ const countBusinessDays = (year, month, throughDay) => {
 }
 const teamLabelNumber = team => Number(String(team?.label || '').match(/\d+/)?.[0]) || 0
 const mergeTeamTasks = (current = [], incoming = []) => {
+  const combined = [...current, ...incoming]
+  // La plantilla mensual aporta turnos vacios para mostrar disponibilidad. Si
+  // la agenda guardada ya tiene un servicio real en ese horario, ese servicio
+  // ocupa el turno y el placeholder no debe volver a aparecer al recargar.
+  const occupiedTimes = new Set(combined
+    .filter(taskHasContent)
+    .map(task => String(task?.time || task?.scheduledTime || '').trim())
+    .filter(Boolean))
   const seen = new Set()
-  return [...current, ...incoming].filter(task => {
-    const identity = !taskHasContent(task)
-      ? `blank:${task?.time || ''}`
-      : task?.historyId
-      ? `history:${task.historyId}`
-      : task?.taskId
-        ? `task:${task.taskId}`
-        : `slot:${task?.time || ''}:${task?.customerId || task?.client || ''}:${task?.serviceId || task?.service || ''}`
-    if (seen.has(identity)) return false
-    seen.add(identity)
+  return sortTasksByTime(combined.filter(task => {
+    const time = String(task?.time || task?.scheduledTime || '').trim()
+    if (!taskHasContent(task) && time && occupiedTimes.has(time)) return false
+    const aliases = taskIdentityAliases(task)
+    if (aliases.some(alias => seen.has(alias))) return false
+    aliases.forEach(alias => seen.add(alias))
     return true
-  })
+  }))
 }
 const mergeStoredTeamsWithDefaults = (defaults, storedTeams) => {
   const merged = defaults.map(team => ({ ...team, tasks: [...(team.tasks || [])] }))
@@ -153,7 +189,39 @@ const mergeStoredTeamsWithDefaults = (defaults, storedTeams) => {
       tasks: mergeTeamTasks(base.tasks, stored.tasks)
     }
   })
-  return merged
+  return merged.map(team => ({ ...team, tasks: sortTasksByTime(team.tasks) }))
+}
+
+const removedWeeklySlotMatches = (slot, team, teamIndex, time) => {
+  const slotTime = String(slot?.time || '').trim()
+  if (!slotTime || slotTime !== String(time || '').trim()) return false
+  const slotTeamId = String(slot?.teamId || '')
+  const teamId = String(team?.teamId || '')
+  if (slotTeamId && teamId && slotTeamId === teamId) return true
+  return Number(slot?.teamNumber || 0) === (teamLabelNumber(team) || teamIndex + 1)
+}
+
+const applyRemovedWeeklySlots = (teams = [], removedSlots = []) => {
+  if (!removedSlots.length) return teams
+  return teams.map((team, teamIndex) => ({
+    ...team,
+    tasks: (team.tasks || []).filter(task => {
+      if (taskHasContent(task) || task?.manualSlot) return true
+      const time = task?.time || task?.scheduledTime || ''
+      return !removedSlots.some(slot => removedWeeklySlotMatches(slot, team, teamIndex, time))
+    })
+  }))
+}
+
+const appendRemovedWeeklySlot = (removedSlots = [], team, teamIndex, time) => {
+  const marker = {
+    teamId: team?.teamId || '',
+    teamNumber: teamLabelNumber(team) || teamIndex + 1,
+    time: String(time || '').trim()
+  }
+  if (!marker.time) return removedSlots
+  if (removedSlots.some(slot => removedWeeklySlotMatches(slot, team, teamIndex, marker.time))) return removedSlots
+  return [...removedSlots, marker]
 }
 const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?.rescheduledFrom || record?.date) => {
   if (!record?.id || !sourceDate || !nextDate) return weekly
@@ -956,7 +1024,7 @@ export default function App() {
       // que React alcance a actualizar stateRevision. No debe tratarse como un
       // cambio externo durante esa pequeña ventana.
       if (pendingStateSaves.current > 0) return
-      if (document.activeElement?.closest('.weekly-board input, .weekly-board select, .weekly-board textarea')) return
+      if (document.activeElement?.closest('.weekly-board input, .weekly-board select, .weekly-board textarea, .team-card input, .team-card select, .team-card textarea')) return
       fetch('/api/state', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(data => {
         if (data && Number(data.revision) !== Number(stateRevision)) { setNotice('Hay cambios guardados desde otra sesión. Recargá la página para continuar sin sobrescribirlos.'); return }
         if (data?.agenda?.weekly && typeof data.agenda.weekly === 'object') setWeekly(previous => JSON.stringify(previous) === JSON.stringify(data.agenda.weekly) ? previous : data.agenda.weekly)
@@ -1045,7 +1113,7 @@ export default function App() {
   if (!authUser) return <Login onLogin={setAuthUser} />
   if (authUser.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'tecnico') return <TechnicianPortal user={authUser} history={history} setHistory={setHistory} logout={logout} />
   if (module === 'help') return <HelpShell user={authUser} onNavigate={setModule} logout={logout} theme={theme} setTheme={setTheme} isAdministrator={isAdministrator} navigation={nav} />
-  if (module === 'audit' && isAdministrator) return <AuditShell user={authUser} onNavigate={setModule} logout={logout} />
+  if (module === 'audit' && isAdministrator) return <AuditShell user={authUser} onNavigate={setModule} logout={logout} theme={theme} setTheme={setTheme} navigation={nav} />
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><div className="profile-menu"><button className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span></button>{profileOpen && <div className="profile-popover"><b>{authUser.name}</b><span>{authUser.email}</span><small>{authUser.role}</small></div>}</div><button className="logout-button" onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrar sesión"><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} services={services} />}{module === 'weekly' && <WeeklyPlanner weekly={weekly} setWeekly={setWeekly} customers={customers} services={services} activeTechs={activeTechs} setNotice={setNotice} openDaily={(nextDate, nextTeams) => { setDate(nextDate); setTeams(nextTeams); setModule('agenda') }} />}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }} />}{module === 'history' && <History history={history} setHistory={setHistory} customers={customers} services={services} employees={employees} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask, history, teams, weekly }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask, history, teams, weekly }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask, history, teams, weekly }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask, employees }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} services={services} />}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }} />}{module === 'history' && <History history={history} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }} />}{module === 'history' && <History history={history} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
@@ -1163,6 +1231,86 @@ function DailyCustomerField({ task, customers, teamIndex, taskIndex, onTextCommi
     customers={customers}
     onTextCommit={value => onTextCommit(teamIndex, taskIndex, value)}
     onCustomerSelect={customer => onCustomerSelect(teamIndex, taskIndex, customer)}
+  />
+}
+
+function BufferedTextarea({ value, onCommit, delay = 500, ...textareaProps }) {
+  const normalizedValue = String(value || '')
+  const [draft, setDraft] = useState(normalizedValue)
+  const focused = useRef(false)
+  const timer = useRef(null)
+  const externalValue = useRef(normalizedValue)
+  const commitHandler = useRef(onCommit)
+
+  useEffect(() => { commitHandler.current = onCommit }, [onCommit])
+  useEffect(() => {
+    externalValue.current = normalizedValue
+    if (!focused.current) setDraft(normalizedValue)
+  }, [normalizedValue])
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+
+  const commit = nextValue => {
+    window.clearTimeout(timer.current)
+    timer.current = null
+    if (nextValue === externalValue.current) return
+    externalValue.current = nextValue
+    commitHandler.current(nextValue)
+  }
+
+  return <textarea
+    {...textareaProps}
+    value={draft}
+    onFocus={() => { focused.current = true }}
+    onChange={event => {
+      const nextValue = event.target.value
+      setDraft(nextValue)
+      window.clearTimeout(timer.current)
+      timer.current = window.setTimeout(() => commit(nextValue), delay)
+    }}
+    onBlur={() => {
+      focused.current = false
+      commit(draft)
+    }}
+  />
+}
+
+function BufferedInput({ value, onCommit, delay = 500, ...inputProps }) {
+  const normalizedValue = String(value || '')
+  const [draft, setDraft] = useState(normalizedValue)
+  const focused = useRef(false)
+  const timer = useRef(null)
+  const externalValue = useRef(normalizedValue)
+  const commitHandler = useRef(onCommit)
+
+  useEffect(() => { commitHandler.current = onCommit }, [onCommit])
+  useEffect(() => {
+    externalValue.current = normalizedValue
+    if (!focused.current) setDraft(normalizedValue)
+  }, [normalizedValue])
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+
+  const commit = nextValue => {
+    window.clearTimeout(timer.current)
+    timer.current = null
+    if (nextValue === externalValue.current) return
+    externalValue.current = nextValue
+    commitHandler.current(nextValue)
+  }
+
+  return <input
+    {...inputProps}
+    value={draft}
+    onFocus={() => { focused.current = true }}
+    onChange={event => {
+      const nextValue = event.target.value
+      setDraft(nextValue)
+      window.clearTimeout(timer.current)
+      timer.current = window.setTimeout(() => commit(nextValue), delay)
+    }}
+    onBlur={() => {
+      focused.current = false
+      commit(draft)
+    }}
   />
 }
 
@@ -1617,9 +1765,9 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     return () => layer.remove()
   }, [taskMove, teams])
   const dailyCustomerField = (task, teamIndex, taskIndex) => <DailyCustomerField task={task} customers={customers} teamIndex={teamIndex} taskIndex={taskIndex} onTextCommit={commitCustomerText} onCustomerSelect={selectCustomerResult} />
-  return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setConfirmation('clear')}><Icon name="trash" />Limpiar agenda</button><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button><button className="primary" onClick={() => { navigator.clipboard?.writeText(message); clearAgenda() }}><Icon name="copy" />Copiar agenda</button></div></div><div className="agenda-toolbar"><label>Fecha de trabajo<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, teamIndex) => <article className="team-card" key={team.teamId || teamIndex}><div className="team-header"><div><span className="team-number">{teamIndex + 1}</span><strong>Equipo {teamIndex + 1}</strong>{teams.length > 1 && <button className="team-delete" onClick={() => setConfirmation({ type: 'team', index: teamIndex })}><Icon name="trash" size={16} />Eliminar equipo</button>}</div><div className="technicians-picker"><span>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</span><button className="secondary small" onClick={() => { setTechOpen(techOpen === teamIndex ? null : teamIndex); setFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === teamIndex && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={filter} onChange={event => setFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(filter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={(team.memberIds || []).some(id => String(id) === String(tech.id))} onChange={() => toggleTech(teamIndex, tech)} />{tech.name}</label>)}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, taskIndex) => <div className="task-row" key={taskIndex}><div className="task-title"><span>{taskIndex + 1}</span><b>Servicio</b></div><label>Hora<input type="time" value={task.time} onChange={event => updateTask(teamIndex, taskIndex, { time: event.target.value })} /></label><label>Tipo de servicio<select value={serviceForTask(task)?.id || ''} onChange={event => selectTaskService(teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
+  return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setConfirmation('clear')}><Icon name="trash" />Limpiar agenda</button><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button><button className="primary" onClick={() => { navigator.clipboard?.writeText(message); clearAgenda() }}><Icon name="copy" />Copiar agenda</button></div></div><div className="agenda-toolbar"><label>Fecha de trabajo<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, teamIndex) => <article className="team-card" key={team.teamId || teamIndex}><div className="team-header"><div><span className="team-number">{teamIndex + 1}</span><strong>Equipo {teamIndex + 1}</strong>{teams.length > 1 && <button className="team-delete" onClick={() => setConfirmation({ type: 'team', index: teamIndex })}><Icon name="trash" size={16} />Eliminar equipo</button>}</div><div className="technicians-picker"><span>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</span><button className="secondary small" onClick={() => { setTechOpen(techOpen === teamIndex ? null : teamIndex); setFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === teamIndex && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={filter} onChange={event => setFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(filter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={(team.memberIds || []).some(id => String(id) === String(tech.id))} onChange={() => toggleTech(teamIndex, tech)} />{tech.name}</label>)}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, taskIndex) => <div className="task-row" key={task.taskId || task.historyId || `${team.teamId || teamIndex}-${taskIndex}`}><div className="task-title"><span>{taskIndex + 1}</span><b>Servicio</b></div><label>Hora<input type="time" value={task.time} onChange={event => updateTask(teamIndex, taskIndex, { time: event.target.value })} /></label><label>Tipo de servicio<select value={serviceForTask(task)?.id || ''} onChange={event => selectTaskService(teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
 {dailyCustomerField(task, teamIndex, taskIndex)}
-<label>Dirección<input value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label>Contacto<input value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations">Observaciones<textarea value={task.detail} onChange={event => updateTask(teamIndex, taskIndex, { detail: event.target.value })} /></label>{serviceCode(serviceForTask(task)) === 'alarm-installation' && <fieldset className="installation-zone"><legend>Ubicación de la instalación</legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => updateTask(teamIndex, taskIndex, { installationZone: value })} />{label}</label>)}</fieldset>}<div className="daily-extra-fields"><label>Forma de pago<input value={task.paymentMethod || ''} onChange={event => updateTask(teamIndex, taskIndex, { paymentMethod: event.target.value })} /></label><label>Abono mensual<input value={task.monthlyFee || ''} onChange={event => updateTask(teamIndex, taskIndex, { monthlyFee: event.target.value })} /></label><label>Formulario<input value={task.form || ''} onChange={event => updateTask(teamIndex, taskIndex, { form: event.target.value })} /></label></div>{team.tasks.length > 1 && <button className="icon-btn delete" onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.filter((_, index) => index !== taskIndex) }))}><Icon name="trash" size={16} /></button>}</div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
+<label>Dirección<input value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label>Contacto<input value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations">Observaciones<BufferedTextarea value={task.detail} onCommit={value => updateTask(teamIndex, taskIndex, { detail: value })} /></label>{serviceCode(serviceForTask(task)) === 'alarm-installation' && <fieldset className="installation-zone"><legend>Ubicación de la instalación</legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => updateTask(teamIndex, taskIndex, { installationZone: value })} />{label}</label>)}</fieldset>}<div className="daily-extra-fields"><label>Forma de pago<BufferedInput value={task.paymentMethod} onCommit={value => updateTask(teamIndex, taskIndex, { paymentMethod: value })} /></label><label>Abono mensual<BufferedInput value={task.monthlyFee} onCommit={value => updateTask(teamIndex, taskIndex, { monthlyFee: value })} /></label><label>Formulario<BufferedInput value={task.form} onCommit={value => updateTask(teamIndex, taskIndex, { form: value })} /></label></div>{team.tasks.length > 1 && <button className="icon-btn delete" onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.filter((_, index) => index !== taskIndex) }))}><Icon name="trash" size={16} /></button>}</div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
 }
 
 /**
@@ -1740,7 +1888,9 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     const plan = stored
       ? { ...stored, teams: mergeStoredTeamsWithDefaults(defaults.teams, stored.teams || []) }
       : defaults
-    return isSaturday(day) ? { ...plan, teams: normalizeSaturdayTeams(plan.teams) } : plan
+    const visiblePlan = { ...plan, teams: applyRemovedWeeklySlots(plan.teams, plan.removedSlots || []) }
+    const normalized = isSaturday(day) ? { ...visiblePlan, teams: normalizeSaturdayTeams(visiblePlan.teams) } : visiblePlan
+    return sortPlanTasksByTime(normalized)
   }
   const updateDay = (day, mutate) => setWeekly(previous => {
     const defaults = createDay(day)
@@ -1748,9 +1898,11 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     const stored = saved
       ? { ...saved, teams: mergeStoredTeamsWithDefaults(defaults.teams, saved.teams || []) }
       : defaults
-    const base = isSaturday(day) ? { ...stored, teams: normalizeSaturdayTeams(stored.teams) } : stored
+    const visibleStored = { ...stored, teams: applyRemovedWeeklySlots(stored.teams, stored.removedSlots || []) }
+    const base = isSaturday(day) ? { ...visibleStored, teams: normalizeSaturdayTeams(visibleStored.teams) } : visibleStored
     const next = mutate(base)
-    return { ...previous, [day]: isSaturday(day) ? { ...next, teams: normalizeSaturdayTeams(next.teams) } : next }
+    const normalized = isSaturday(day) ? { ...next, teams: normalizeSaturdayTeams(next.teams) } : next
+    return { ...previous, [day]: sortPlanTasksByTime(normalized) }
   })
   const openTaskEditor = (day, teamIndex, taskIndex) => {
     const teamSnapshot = dayPlan(day).teams[teamIndex]
@@ -1920,16 +2072,34 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   }
   const commitWeeklyCustomerText = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, { customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
   const selectWeeklyCustomerResult = (day, teamIndex, taskIndex, customer) => updateTask(day, teamIndex, taskIndex, { customerId: customer.customerId, client: `${customer.account} ${customer.name}`, clientAccount: customer.account, clientNameAtService: customer.name, address: customer.address, phone: customer.phone })
-  const addTask = (day, teamIndex) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, tasks: [...team.tasks, { ...blankTask(), time: '' }] } : team) }))
-  const removeWeeklyTask = ({ day, teamId, teamIndex, taskId, historyId }) => {
-    updateDay(day, plan => ({
-      ...plan,
-      teams: plan.teams.map((team, index) => {
-        const sameTeam = (teamId && String(team.teamId || '') === String(teamId)) || (!teamId && index === teamIndex)
+  const addTask = (day, teamIndex) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, tasks: [...team.tasks, { ...blankTask(), time: '', manualSlot: true }] } : team) }))
+  const removeWeeklyTask = ({ day, teamId, teamIndex, taskId, historyId, taskIndex, time, wasPlaceholder }) => {
+    updateDay(day, plan => {
+      let removedSlots = plan.removedSlots || []
+      const teams = plan.teams.map((team, index) => {
+        const sameTeam = (teamId && String(team.teamId || '') === String(teamId)) || index === teamIndex
         if (!sameTeam) return team
-        return { ...team, tasks: (team.tasks || []).filter((task, index) => taskId ? String(task.taskId || '') !== String(taskId) : index !== taskRemoval.taskIndex) }
+        if (wasPlaceholder) removedSlots = appendRemovedWeeklySlot(removedSlots, team, index, time)
+        let removed = false
+        return {
+          ...team,
+          tasks: (team.tasks || []).filter((task, index) => {
+            if (removed) return true
+            const taskTime = String(task.time || task.scheduledTime || '').trim()
+            const sameId = taskId && String(task.taskId || '') === String(taskId)
+            const sameHistory = historyId && String(task.historyId || '') === String(historyId)
+            const samePlaceholder = wasPlaceholder && !taskHasContent(task) && taskTime === String(time || '').trim()
+            const sameIndex = index === taskIndex && (!time || taskTime === String(time).trim())
+            if (sameId || sameHistory || samePlaceholder || sameIndex) {
+              removed = true
+              return false
+            }
+            return true
+          })
+        }
       })
-    }))
+      return { ...plan, removedSlots, teams }
+    })
     window.dispatchEvent(new CustomEvent('pignus:remove-weekly-task', { detail: { day, taskId, historyId } }))
     setTaskRemoval(null)
     setNotice('El servicio fue eliminado de la planificación semanal.')
@@ -2004,14 +2174,14 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
               return <article className="week-team" key={team.teamId || teamIndex}>
                 <div className="week-team-header"><div className="week-team-identity"><strong>{team.label || `Equipo ${teamIndex + 1}`}</strong><span title={team.members?.join(' · ') || 'Sin técnicos'}>{team.members?.length ? team.members.map(weeklyTechnicianName).join(' · ') : 'Sin técnicos'}</span></div><div className="weekly-team-actions">{plan.teams.length > 1 && <button className="weekly-remove-team" title="Quitar equipo" aria-label={`Quitar ${team.label || `Equipo ${teamIndex + 1}`}`} onClick={() => setTeamRemoval({ day, teamIndex, label: team.label || `Equipo ${teamIndex + 1}` })}><Icon name="trash" size={15} /></button>}<div className="weekly-technicians-picker"><button className="secondary small weekly-add-tech-button" title="Agregar técnicos" aria-label="Agregar técnicos" onClick={() => { setTechPicker(techPicker === pickerKey ? null : pickerKey); setTechFilter('') }}><Icon name="users" size={16} /><span aria-hidden="true">+</span></button>{techPicker === pickerKey && <div className="tech-popover weekly-tech-popover"><div className="weekly-tech-popover-title"><div><strong>Asignar técnicos</strong><small>{team.label || `Equipo ${teamIndex + 1}`}</small></div><span>{team.members?.length || 0} seleccionados</span></div><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={event => setTechFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(techFilter.toLowerCase())).map(tech => <label key={tech.id} title={tech.name}><input type="checkbox" checked={(team.members || []).includes(tech.name)} onChange={() => toggleWeeklyTech(day, teamIndex, tech.name)} />{tech.firstName || tech.name.split(' ')[0]}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div></div>}</div></div></div>
                 {team.tasks.map((task, taskIndex) => <div className={`week-task week-task-summary ${!task.client ? 'available-slot' : ''}`} key={task.taskId || taskIndex} role="button" tabIndex={0} onClick={() => openTaskEditor(day, teamIndex, taskIndex)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openTaskEditor(day, teamIndex, taskIndex) } }}>
-                  <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><div className="week-task-title-actions"><small>{task.time || '--:--'} Hs</small>{plan.teams.length > 1 && (task.customerId || task.client || task.service) && <button type="button" className="weekly-task-move" title="Reasignar a otro equipo" aria-label={`Reasignar Servicio ${taskIndex + 1} a otro equipo`} onClick={event => openWeeklyTaskMove(event, day, teamIndex, taskIndex)}><span aria-hidden="true">⇄</span></button>}<button type="button" className="weekly-task-delete" title="Eliminar servicio" aria-label={`Eliminar Servicio ${taskIndex + 1}`} onClick={event => { event.stopPropagation(); setTaskRemoval({ day, teamId: team.teamId, teamIndex, taskIndex, taskId: task.taskId, historyId: task.historyId, label: team.label || `Equipo ${teamIndex + 1}` }) }}><Icon name="trash" size={14} /></button></div></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>
+                  <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><div className="week-task-title-actions"><small>{task.time || '--:--'} Hs</small>{plan.teams.length > 1 && (task.customerId || task.client || task.service) && <button type="button" className="weekly-task-move" title="Reasignar a otro equipo" aria-label={`Reasignar Servicio ${taskIndex + 1} a otro equipo`} onClick={event => openWeeklyTaskMove(event, day, teamIndex, taskIndex)}><span aria-hidden="true">⇄</span></button>}<button type="button" className="weekly-task-delete" title="Eliminar servicio" aria-label={`Eliminar Servicio ${taskIndex + 1}`} onClick={event => { event.stopPropagation(); setTaskRemoval({ day, teamId: team.teamId, teamIndex, taskIndex, taskId: task.taskId, historyId: task.historyId, time: task.time || task.scheduledTime || '', wasPlaceholder: !taskHasContent(task), label: team.label || `Equipo ${teamIndex + 1}` }) }}><Icon name="trash" size={14} /></button></div></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>
                   <div className="week-task-top"><label>Hora <b>*</b><input type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTask(day, teamIndex, taskIndex, { time: event.target.value })} /></label><label>Tipo de servicio <b>*</b><select value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectWeeklyService(day, teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div>
                   <CustomerAutocomplete value={task.client} customerId={task.customerId} customers={customers} onTextCommit={value => commitWeeklyCustomerText(day, teamIndex, taskIndex, value)} onCustomerSelect={customer => selectWeeklyCustomerResult(day, teamIndex, taskIndex, customer)} />
                   <label>Dirección <b>*</b><input value={task.address} onChange={event => updateTask(day, teamIndex, taskIndex, { address: event.target.value })} /></label>
                   <label>Contacto<input value={task.phone} onChange={event => updateTask(day, teamIndex, taskIndex, { phone: event.target.value })} /></label>
                   {serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend>Ubicación de la instalación</legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input type="radio" name={`weekly-card-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => updateTask(day, teamIndex, taskIndex, { installationZone: value })} />{label}</label>)}</fieldset>}
                   <label>Detalle <b>*</b><textarea value={task.detail} onChange={event => updateTask(day, teamIndex, taskIndex, { detail: event.target.value })} /></label>
-                  <div className="weekly-extra-fields"><label>Forma de pago<input value={task.paymentMethod} onChange={event => updateTask(day, teamIndex, taskIndex, { paymentMethod: event.target.value })} /></label><label>Abono mensual<input value={task.monthlyFee} onChange={event => updateTask(day, teamIndex, taskIndex, { monthlyFee: event.target.value })} /></label><label>Formulario<input value={task.form} onChange={event => updateTask(day, teamIndex, taskIndex, { form: event.target.value })} /></label></div>
+                  <div className="weekly-extra-fields"><label>Forma de pago<BufferedInput value={task.paymentMethod} onCommit={value => updateTask(day, teamIndex, taskIndex, { paymentMethod: value })} /></label><label>Abono mensual<BufferedInput value={task.monthlyFee} onCommit={value => updateTask(day, teamIndex, taskIndex, { monthlyFee: value })} /></label><label>Formulario<BufferedInput value={task.form} onCommit={value => updateTask(day, teamIndex, taskIndex, { form: value })} /></label></div>
                 </div>)}
                 <button className="weekly-add-task" onClick={() => addTask(day, teamIndex)}><Icon name="plus" size={15} />Agregar servicio</button>
               </article>
@@ -2053,7 +2223,36 @@ function DashboardView({ history, services }) {
 
 /** Vista restringida: un técnico sólo informa el resultado de sus servicios asignados. */
 /** Registro de trazabilidad exclusivo para las acciones revisadas por Administración. */
-function AuditShell({ user, onNavigate, logout }) {
+function AuditShell({ user, onNavigate, logout, theme, setTheme, navigation }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [confirmLogout, setConfirmLogout] = useState(false)
+
+  return <div className="app-shell" data-theme={theme}>
+    <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
+      <div className="brand"><span className="brand-mark">◇</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div>
+      <p className="nav-label">MÓDULOS</p>
+      <nav>{navigation.map(([id, icon, label]) => <button key={id} className={id === 'audit' ? 'active' : ''} onClick={() => { onNavigate(id); setMenuOpen(false) }}><Icon name={icon} />{label}</button>)}</nav>
+      <div className="sidebar-bottom">v1.1 · Agenda técnica</div>
+    </aside>
+    {menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}
+    <main>
+      <header className="topbar">
+        <button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button>
+        <div className="page-heading"><span>PIGNUS</span><i></i><b>Auditoría</b></div>
+        <div className="profile">
+          <button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button>
+          <div className="profile-menu"><button className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(user.name)}</span><span>{user.name}</span></button>{profileOpen && <div className="profile-popover"><b>{user.name}</b><span>{user.email}</span><small>{user.role}</small></div>}</div>
+          <button className="logout-button" onClick={() => setConfirmLogout(true)} title="Cerrar sesión"><Icon name="logout" size={17} /><span>Cerrar sesión</span></button>
+        </div>
+      </header>
+      <section className="content"><AuditPage user={user} onBack={() => onNavigate('dashboard')} onOpenMenu={() => setMenuOpen(true)} logout={logout} /></section>
+    </main>
+    {confirmLogout && <Confirm title="Cerrar sesión" detail="¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema." action={logout} confirmLabel="Sí, cerrar sesión" close={() => setConfirmLogout(false)} />}
+  </div>
+}
+
+function LegacyAuditShell({ user, onNavigate, logout }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const navigation = [['dashboard', 'dashboard', 'Menú principal'], ['agenda', 'agenda', 'Agenda técnica'], ['history', 'history', 'Historial'], ['accounts', 'accounts', 'Abonados y clientes'], ['employees', 'users', 'Empleados'], ['services', 'tools', 'Tipo de servicio'], ['settings', 'settings', 'Configuración'], ['audit', 'audit', 'Auditoría'], ['help', 'help', 'Centro de ayuda']]
   return <div className="audit-shell"><aside className={`sidebar audit-sidebar ${menuOpen ? 'open' : ''}`}><button className="audit-sidebar-brand" onClick={() => onNavigate('dashboard')} title="Ir al menú principal"><img src="/logo-pignus.png" alt="Pignus" /></button><p className="nav-label">MÓDULOS</p><nav>{navigation.map(([id, icon, label]) => <button key={id} className={id === 'audit' ? 'active' : ''} onClick={() => { onNavigate(id); setMenuOpen(false) }}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<AuditPage user={user} onBack={() => onNavigate('dashboard')} onOpenMenu={() => setMenuOpen(true)} logout={logout} /></div>
@@ -2067,7 +2266,21 @@ function AuditPage({ user, onBack, onOpenMenu, logout }) {
   const [action, setAction] = useState('')
   const [selected, setSelected] = useState(null)
   const [confirmLogout, setConfirmLogout] = useState(false)
-  const loadAudit = () => { setLoading(true); fetch('/api/audit?limit=800', { cache: 'no-store' }).then(response => response.ok ? response.json() : Promise.reject()).then(data => { setRecords(Array.isArray(data.records) ? data.records : []); setError('') }).catch(() => setError('No se pudo cargar el registro de auditoría.')).finally(() => setLoading(false)) }
+  const loadAudit = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch('/api/audit?limit=800', { cache: 'no-store', credentials: 'same-origin' })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'No se pudo cargar el registro de auditoría.')
+      setRecords(Array.isArray(data.records) ? data.records : [])
+      setError('')
+    } catch (loadError) {
+      setRecords([])
+      setError(loadError?.message || 'No se pudo cargar el registro de auditoría.')
+    } finally {
+      setLoading(false)
+    }
+  }
   useEffect(loadAudit, [])
   const normalized = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   const escapeAuditHtml = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
