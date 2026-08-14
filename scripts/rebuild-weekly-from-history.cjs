@@ -27,11 +27,37 @@ const taskKey = task => String(task.historyId || task.sourceHistoryId || '') || 
 
 const hasTaskData = task => Boolean(task?.historyId || task?.customerId || task?.client || task?.serviceId || task?.service)
 
-const taskIdentity = task => task?.historyId ? `history:${task.historyId}` : task?.taskId ? `task:${task.taskId}` : ''
+const taskIdentity = task => !hasTaskData(task)
+  ? `blank:${task?.time || ''}`
+  : task?.historyId
+    ? `history:${task.historyId}`
+    : task?.taskId
+      ? `task:${task.taskId}`
+      : ''
 
 function dedupeAgendaTeams(teams = []) {
+  const mergedTeams = []
+  ;(teams || []).forEach(team => {
+    const teamId = String(team.teamId || '')
+    const label = String(team.label || '').trim().toLowerCase()
+    const index = mergedTeams.findIndex(current =>
+      (teamId && String(current.teamId || '') === teamId) ||
+      (label && String(current.label || '').trim().toLowerCase() === label)
+    )
+    if (index < 0) {
+      mergedTeams.push({ ...team, memberIds: [...(team.memberIds || [])], members: [...(team.members || [])], tasks: [...(team.tasks || [])] })
+      return
+    }
+    const current = mergedTeams[index]
+    mergedTeams[index] = {
+      ...current,
+      memberIds: [...(current.memberIds || []), ...(team.memberIds || [])].filter((id, memberIndex, all) => all.findIndex(value => String(value) === String(id)) === memberIndex),
+      members: [...new Set([...(current.members || []), ...(team.members || [])])],
+      tasks: [...(current.tasks || []), ...(team.tasks || [])]
+    }
+  })
   const seen = new Set()
-  return (teams || []).map(team => ({
+  return mergedTeams.map(team => ({
     ...team,
     tasks: (team.tasks || []).filter(task => {
       const identity = taskIdentity(task)

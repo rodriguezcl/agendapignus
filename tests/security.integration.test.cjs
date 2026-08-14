@@ -262,3 +262,25 @@ test('elimina copias de una misma tarea sin confundir servicios distintos', () =
   assert.equal(teams[0].tasks.length, 1)
   assert.equal(teams[1].tasks.length, 1)
 })
+
+test('fusiona tarjetas duplicadas del mismo equipo sin perder sus servicios', () => {
+  const teams = dedupeAgendaTeams([
+    { teamId: 'equipo-3', label: 'Equipo 3', memberIds: [3], members: ['Santos Diaz'], tasks: [{ historyId: 'work-1', client: 'CLIENTE A' }] },
+    { teamId: 'equipo-2', label: 'Equipo 2', memberIds: [2], members: ['Leonardo Rivadero'], tasks: [] },
+    { teamId: 'equipo-3', label: 'Equipo 3', memberIds: [3], members: ['Santos Diaz'], tasks: [{ historyId: 'work-2', client: 'CLIENTE B' }] }
+  ])
+  assert.equal(teams.length, 2)
+  assert.deepEqual(teams[0].tasks.map(task => task.historyId), ['work-1', 'work-2'])
+  assert.deepEqual(teams[0].members, ['Santos Diaz'])
+})
+
+test('conserva un solo horario disponible por equipo al normalizar', () => {
+  const teams = dedupeAgendaTeams([
+    { teamId: 'equipo-1', label: 'Equipo 1', tasks: [
+      { taskId: 'slot-a', time: '08:30', client: '', service: '' },
+      { taskId: 'slot-b', time: '08:30', client: '', service: '' },
+      { taskId: 'slot-c', time: '13:00', client: '', service: '' }
+    ] }
+  ])
+  assert.deepEqual(teams[0].tasks.map(task => task.time), ['08:30', '13:00'])
+})
