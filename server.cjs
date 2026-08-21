@@ -22,6 +22,7 @@ const loginAttempts = new Map()
 const SESSION_MAX_AGE = 8 * 60 * 60 * 1000
 const LOGIN_WINDOW = 15 * 60 * 1000
 const LOGIN_MAX_ATTEMPTS = 5
+const AUDIT_LOG_LIMIT = 100
 
 // Esquema idempotente: permite iniciar el sistema en una instalación nueva.
 db.exec(`
@@ -114,8 +115,28 @@ function recentAuditRows(limit) {
     }
   }
 
-  return records.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))
+  return records
+    .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))
+    .map(({ before, after, ...summary }) => summary)
 }
+
+function auditRow(id) {
+  const row = db.prepare('SELECT id, data FROM audit_log WHERE id = ?').get(String(id))
+  if (!row) return null
+  try {
+    const value = JSON.parse(row.data)
+    return value && typeof value === 'object' && !Array.isArray(value) ? { ...value, id: value.id || String(row.id) } : null
+  } catch (error) {
+    console.warn(`Registro de auditoría inválido (${row.id}): ${error.message}`)
+    return null
+  }
+}
+
+function trimAuditLog() {
+  db.prepare('DELETE FROM audit_log WHERE rowid NOT IN (SELECT rowid FROM audit_log ORDER BY rowid DESC LIMIT ?)').run(AUDIT_LOG_LIMIT)
+}
+
+trimAuditLog()
 
 // Migra registros históricos que guardaban nombre y apellido en un único campo.
 // `name` se conserva como valor derivado para compatibilidad con agendas e historial.
@@ -234,6 +255,23 @@ function customerKind(customer) {
   return String(customer.account || '').toUpperCase().startsWith('PIG-') ? 'subscriber' : 'client'
 }
 
+// Los registros anteriores a la validación obligatoria pueden carecer de una
+// dirección utilizable. Se reparan una sola vez al iniciar para que no bloqueen
+// el resto del estado; las nuevas altas de clientes sí se rechazan incompletas.
+function migrateRequiredCustomerFields() {
+  const update = db.prepare('UPDATE customers SET data = ? WHERE account = ?')
+  for (const customer of rows('customers')) {
+    const name = String(customer.name || '').trim() || '-'
+    const street = String(customer.street || customer.address || '').trim() || '-'
+    const address = String(customer.address || '').trim() || [street, customer.locality, customer.province].filter(Boolean).join(', ')
+    const phone = String(customer.phone || '').trim() || '-'
+    const next = { ...customer, name, street, address, phone }
+    if (JSON.stringify(next) !== JSON.stringify(customer)) update.run(JSON.stringify(next), String(customer.account))
+  }
+}
+
+migrateRequiredCustomerFields()
+
 function customerCodeFromText(value) {
   const match = String(value || '').toUpperCase().match(/\b(PIG|CLI)[ -]?(\d+)\b/)
   return match ? `${match[1]}-${match[2]}` : ''
@@ -258,7 +296,13 @@ function migrateCustomerReferences() {
 
   const rebuildIndexes = () => {
     const byId = new Map(normalizedCustomers.map(customer => [String(customer.customerId), customer]))
-    const byAccount = new Map(normalizedCustomers.map(customer => [String(customer.account).trim().toUpperCase(), customer]))
+    const byAccount = new Map()
+    normalizedCustomers.forEach(customer => {
+      byAccount.set(String(customer.account).trim().toUpperCase(), customer)
+      // Una baja cambia PIG por CLI, pero agendas e históricos anteriores pueden
+      // seguir usando el código original. Ese código permanece como alias estable.
+      if (customer.convertedFromAccount) byAccount.set(String(customer.convertedFromAccount).trim().toUpperCase(), customer)
+    })
     const byName = new Map()
     normalizedCustomers.forEach(customer => {
       const key = normalizedCustomerValue(customer.name)
@@ -311,7 +355,9 @@ function migrateCustomerReferences() {
     const previous = indexes.byId.get(String(item.customerId || ''))
     const reassigned = previous && String(previous.customerId) !== String(matched?.customerId)
     const legacySpacedCode = /\bPIG \d+\b/i.test(String(item.client || '')) && corroboratesEmbeddedAccount(item, matched || {})
-    return matched ? { ...item, customerId: matched.customerId, clientAccount: matched.account, ...(reassigned || legacySpacedCode ? { client: `${matched.account} - ${matched.name}`, clientNameAtService: matched.name } : {}) } : item
+    const referencedAccount = String(item.clientAccount || item.account || customerCodeFromText(item.client)).trim().toUpperCase()
+    const resolvedAlias = referencedAccount && referencedAccount !== String(matched?.account || '').trim().toUpperCase()
+    return matched ? { ...item, customerId: matched.customerId, clientAccount: matched.account, ...(reassigned || legacySpacedCode || resolvedAlias ? { client: `${matched.account} - ${matched.name}`, clientNameAtService: matched.name } : {}) } : item
   }
   const normalizeTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(normalizeReference) }))
 
@@ -597,6 +643,7 @@ function auditSafe(record) {
 function writeAudit(user, action, entity, entityId, before, after) {
   const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name, email: user.email, role: user.role }, action, entity, entityId, before: auditSafe(before), after: auditSafe(after) }
   db.prepare('INSERT INTO audit_log (id, data) VALUES (?, ?)').run(entry.id, JSON.stringify(entry))
+  trimAuditLog()
 }
 
 function auditChanges(table, records, key, entity, user) {
@@ -782,6 +829,8 @@ function validateState(state) {
   })
   state.customers.forEach((customer, index) => {
     if (!String(customer.name ?? '').trim() || !text(customer.name, 180)) throw new Error(`Cliente ${index + 1}: el titular es obligatorio.`)
+    if (!String(customer.address ?? '').trim() || !String(customer.street ?? '').trim()) throw new Error(`Cliente ${index + 1}: la dirección es obligatoria.`)
+    if (!String(customer.phone ?? '').trim()) throw new Error(`Cliente ${index + 1}: el contacto es obligatorio.`)
     if (!['subscriber', 'client'].includes(customer.kind)) throw new Error(`Cliente ${index + 1}: la condición no es válida.`)
     const expectedPrefix = customer.kind === 'subscriber' ? 'PIG-' : 'CLI-'
     if (!String(customer.account || '').toUpperCase().startsWith(expectedPrefix)) throw new Error(`Cliente ${index + 1}: el código debe comenzar con ${expectedPrefix}`)
@@ -817,13 +866,11 @@ function validateState(state) {
 
 const traceActor = user => ({ id: user.id, name: user.name || user.email || 'Usuario', role: user.role || '', at: new Date().toISOString() })
 const traceAliases = record => [record?.taskId && `task:${record.taskId}`, record?.sourceTaskId && `task:${record.sourceTaskId}`, record?.historyId && `history:${record.historyId}`, record?.id && `history:${record.id}`].filter(Boolean)
-const recordWithoutTrace = record => { const { createdBy, lastUpdatedBy, ...content } = record || {}; return content }
 const serviceRecordHasContent = record => Boolean(record && (record.historyId || record.customerId || record.serviceId || ['client', 'service', 'address', 'phone', 'detail'].some(key => String(record[key] || '').trim())))
-const serviceRecordsEqual = (left, right) => JSON.stringify(recordWithoutTrace(left)) === JSON.stringify(recordWithoutTrace(right))
 function stampStateServiceTrace(state, previousAgenda, previousHistory, user) {
   const previous = new Map()
   const traces = new Map()
-  const remember = record => traceAliases(record).forEach(alias => { if (!previous.has(alias)) previous.set(alias, record); if (record.createdBy || record.lastUpdatedBy) traces.set(alias, { createdBy: record.createdBy, lastUpdatedBy: record.lastUpdatedBy }) })
+  const remember = record => traceAliases(record).forEach(alias => { if (!previous.has(alias)) previous.set(alias, record); if (record.createdBy) traces.set(alias, { createdBy: record.createdBy }) })
   const visitAgenda = (agenda, visit) => {
     ;(agenda?.teams || []).forEach(team => (team.tasks || []).forEach(visit))
     Object.entries(agenda?.weekly || {}).forEach(([key, value]) => key === '_monthlyTeams'
@@ -838,10 +885,11 @@ function stampStateServiceTrace(state, previousAgenda, previousHistory, user) {
     const old = aliases.map(alias => previous.get(alias)).find(Boolean)
     const known = aliases.map(alias => traces.get(alias)).find(Boolean) || {}
     const createdBy = old?.createdBy || known.createdBy || (!old ? actor : undefined)
-    const changed = !old || !serviceRecordsEqual(old, record)
-    const lastUpdatedBy = changed ? actor : (old?.lastUpdatedBy || known.lastUpdatedBy)
-    const next = { ...record, ...(createdBy ? { createdBy } : {}), ...(lastUpdatedBy ? { lastUpdatedBy } : {}) }
-    aliases.forEach(alias => traces.set(alias, { createdBy, lastUpdatedBy }))
+    // Se conserva una marca histórica anterior para no reescribir masivamente
+    // la base, pero nunca se crea ni actualiza: la única traza vigente es createdBy.
+    const { lastUpdatedBy: _discardedUpdate, ...content } = record
+    const next = { ...content, ...(createdBy ? { createdBy } : {}), ...(old?.lastUpdatedBy ? { lastUpdatedBy: old.lastUpdatedBy } : {}) }
+    aliases.forEach(alias => traces.set(alias, { createdBy }))
     return next
   }
   const stampTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(stamp) }))
@@ -883,12 +931,24 @@ function saveState(state, user) {
     .filter(Boolean))
   let nextClientNumber = Math.max(0, ...(state.customers || []).map(customer => Number(String(customer.account || '').match(/^CLI-(\d+)$/i)?.[1]) || 0)) + 1
   const normalizedCustomers = (state.customers || []).map(customer => {
-    const normalized = { ...customer, customerId: customer.customerId || legacyCustomerId(customer), kind: customerKind(customer), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }
+    const kind = customerKind(customer)
+    const rawName = String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR')
+    const rawStreet = String(customer.street || '').trim()
+    const rawPhone = String(customer.phone || '').trim()
+    const name = rawName || (kind === 'subscriber' ? '-' : '')
+    const street = rawStreet || (kind === 'subscriber' ? String(customer.address || '').trim() || '-' : '')
+    const address = String(customer.address || '').trim() || (street ? [street, customer.locality, customer.province].filter(Boolean).join(', ') : '')
+    const phone = rawPhone || (kind === 'subscriber' ? '-' : '')
+    const normalized = { ...customer, customerId: customer.customerId || legacyCustomerId(customer), kind, name, street, address, phone }
     if (normalized.kind !== 'subscriber' || !completedRetirementCustomerIds.has(String(normalized.customerId))) return normalized
     return { ...normalized, kind: 'client', account: `CLI-${String(nextClientNumber++).padStart(4, '0')}`, type: 'Cliente de servicio', convertedFromAccount: normalized.account, subscriptionEndedAt: new Date().toISOString() }
   })
   const customerById = new Map(normalizedCustomers.map(customer => [String(customer.customerId), customer]))
-  const customerByAccount = new Map(normalizedCustomers.map(customer => [String(customer.account).trim().toUpperCase(), customer]))
+  const customerByAccount = new Map()
+  normalizedCustomers.forEach(customer => {
+    customerByAccount.set(String(customer.account).trim().toUpperCase(), customer)
+    if (customer.convertedFromAccount) customerByAccount.set(String(customer.convertedFromAccount).trim().toUpperCase(), customer)
+  })
   const customerByName = new Map()
   normalizedCustomers.forEach(customer => { const key = normalizedCustomerValue(customer.name); customerByName.set(key, customerByName.has(key) ? null : customer) })
   const normalizeCustomerReference = item => {
@@ -1238,9 +1298,16 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     if (user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
-    const requestedLimit = Number(url.searchParams.get('limit')) || 500
-    const limit = Math.min(Math.max(requestedLimit, 1), 1000)
+    const requestedLimit = Number(url.searchParams.get('limit')) || AUDIT_LOG_LIMIT
+    const limit = Math.min(Math.max(requestedLimit, 1), AUDIT_LOG_LIMIT)
     return send(res, 200, { records: recentAuditRows(limit) })
+  }
+  if (req.method === 'GET' && url.pathname.startsWith('/api/audit/')) {
+    const user = requireSession(req, res)
+    if (!user) return
+    if (user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
+    const record = auditRow(decodeURIComponent(url.pathname.slice('/api/audit/'.length)))
+    return record ? send(res, 200, { record }) : send(res, 404, { error: 'El registro de auditoría no existe.' })
   }
   if (req.method === 'POST' && url.pathname === '/api/technician/status') {
     const user = requireSession(req, res)

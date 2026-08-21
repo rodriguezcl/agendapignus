@@ -74,28 +74,23 @@ const serviceActor = user => {
   const current = user || globalThis.__pignusCurrentUser
   return current ? { id: current.id, name: current.name || current.email || 'Usuario', role: current.role || '', at: new Date().toISOString() } : null
 }
-const serviceTrace = record => ({ createdBy: record?.createdBy, lastUpdatedBy: record?.lastUpdatedBy })
+const serviceTrace = record => ({ createdBy: record?.createdBy })
 const stampServiceRecord = (record, user) => {
   if (!taskHasContent(record) || !(user || globalThis.__pignusCurrentUser)) return record
   const actor = serviceActor(user)
-  return { ...record, createdBy: record.createdBy || actor, lastUpdatedBy: actor }
+  return { ...record, createdBy: record.createdBy || actor }
 }
 const traceDate = value => value ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(value)) : ''
 function ServiceTrace({ record, compact = false }) {
   const created = record?.createdBy
-  const updated = record?.lastUpdatedBy
-  if (!created && !updated) return <div className={`service-trace ${compact ? 'compact' : ''}`}><span>Registro anterior</span><small>No se dispone del autor original.</small></div>
-  return <div className={`service-trace ${compact ? 'compact' : ''}`}><span><b>Cargado por:</b> {created?.name || 'Registro anterior'}{created?.role ? ` · ${created.role}` : ''}{created?.at ? ` · ${traceDate(created.at)}` : ''}</span>{updated && <span><b>Última actualización:</b> {updated.name}{updated.role ? ` · ${updated.role}` : ''}{updated.at ? ` · ${traceDate(updated.at)}` : ''}</span>}</div>
+  if (!created) return <div className={`service-trace ${compact ? 'compact' : ''}`}><span>Registro anterior</span><small>No se dispone del autor original.</small></div>
+  return <div className={`service-trace ${compact ? 'compact' : ''}`}><span><b>Cargado por:</b> {created.name || 'Registro anterior'}{created.role ? ` · ${created.role}` : ''}{created.at ? ` · ${traceDate(created.at)}` : ''}</span></div>
 }
 const serviceTraceMarkup = record => taskHasContent(record) ? <ServiceTrace record={record} compact /> : null
 const traceLines = record => {
   const created = record?.createdBy
-  const updated = record?.lastUpdatedBy
-  if (!created && !updated) return ['Registro anterior · autor original no disponible']
-  return [
-    `Cargado por: ${created?.name || 'Registro anterior'}${created?.role ? ` · ${created.role}` : ''}${created?.at ? ` · ${traceDate(created.at)}` : ''}`,
-    updated && `Última actualización: ${updated.name}${updated.role ? ` · ${updated.role}` : ''}${updated.at ? ` · ${traceDate(updated.at)}` : ''}`
-  ].filter(Boolean)
+  if (!created) return ['Registro anterior · autor original no disponible']
+  return [`Cargado por: ${created.name || 'Registro anterior'}${created.role ? ` · ${created.role}` : ''}${created.at ? ` · ${traceDate(created.at)}` : ''}`]
 }
 const appendTraceElement = (container, record) => {
   if (!container || !taskHasContent(record)) return
@@ -446,6 +441,33 @@ function CustomerAutocomplete({ value = '', customerId = '', customers = [], onT
 }
 
 const serviceCode = service => service?.code || (normalizeServiceName(service?.name) === 'instalacion de alarma' ? 'alarm-installation' : `service-${service?.id}`)
+const PAYMENT_SERVICE_NAMES = new Set([
+  'instalacion de camara',
+  'instalacion de camaras',
+  'instalacion de cerco electrico',
+  'service de alarma',
+  'service de camara',
+  'service de camaras',
+  'service de cerco electrico',
+  'otro service'
+])
+const serviceExtraAvailability = (service, installationZone = '') => {
+  const alarmInstallation = serviceCode(service) === 'alarm-installation'
+  const residentialAlarm = alarmInstallation && installationZone === 'residencial'
+  return {
+    paymentMethod: residentialAlarm || PAYMENT_SERVICE_NAMES.has(normalizeServiceName(service?.name)),
+    monthlyFee: residentialAlarm,
+    form: alarmInstallation
+  }
+}
+const applicableServiceExtras = (task, service) => {
+  const available = serviceExtraAvailability(service, task?.installationZone)
+  return {
+    paymentMethod: available.paymentMethod ? task?.paymentMethod || '' : '',
+    monthlyFee: available.monthlyFee ? task?.monthlyFee || '' : '',
+    form: available.form ? task?.form || '' : ''
+  }
+}
 const prettyDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, x => x.toUpperCase()) : ''
 // Cada familia de trabajo tiene un color consistente en el historial para facilitar su lectura.
 const serviceColorClass = service => {
@@ -592,7 +614,9 @@ export default function App() {
   const [confirmation, setConfirmation] = useState(null)
   const [databaseReady, setDatabaseReady] = useState(false)
   const [stateRevision, setStateRevision] = useState(null)
+  const stateRevisionRef = useRef(null)
   const pendingStateSaves = useRef(0)
+  const stateSaveQueue = useRef(Promise.resolve())
   const [authUser, setAuthUser] = useState(null)
   globalThis.__pignusCurrentUser = authUser
   const [authLoading, setAuthLoading] = useState(true)
@@ -978,7 +1002,8 @@ export default function App() {
   useEffect(() => {
     if (!authUser) return
     fetch('/api/state').then(response => response.ok ? response.json() : Promise.reject()).then(data => {
-      setStateRevision(Number(data.revision || 0))
+      stateRevisionRef.current = Number(data.revision || 0)
+      setStateRevision(stateRevisionRef.current)
       if (data.roles?.length) setRoles(data.roles.map(role => { const code = roleCode(role); return { ...role, code, permissions: { ...DEFAULT_MODULE_PERMISSIONS, dashboard: true, weekly: role.permissions?.weekly ?? ['administrator', 'user', 'coordinator'].includes(code), ...role.permissions, ...(code === 'administrator' ? Object.fromEntries(MODULE_PERMISSIONS.map(([key]) => [key, true])) : {}) } } }))
       if (data.employees?.length) setEmployees(data.employees.map(employee => { const assignedRole = data.roles?.find(role => String(role.id) === String(employee.roleId)) || data.roles?.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role)); return assignedRole ? { ...employee, roleId: assignedRole.id, role: assignedRole.name } : employee }))
       if (data.services?.length) setServices(data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') })))
@@ -1000,13 +1025,19 @@ export default function App() {
     let saveStarted = false
     const timer = setTimeout(() => {
       saveStarted = true
-      fetch('/api/state', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ revision: stateRevision, roles, employees, services, history, customers, agenda: { date, teams, weekly }, preferences: { theme } })
-      }).then(async response => {
-        if (response.ok) { const payload = await response.json(); setStateRevision(Number(payload.revision)); return }
-        const payload = await response.json().catch(() => ({}))
-        throw new Error(payload.error || 'No se pudieron guardar los últimos cambios.')
+      const snapshot = { roles, employees, services, history, customers, agenda: { date, teams, weekly }, preferences: { theme } }
+      stateSaveQueue.current = stateSaveQueue.current.catch(() => {}).then(async () => {
+        const response = await fetch('/api/state', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ revision: stateRevisionRef.current, ...snapshot })
+        })
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          throw new Error(payload.error || 'No se pudieron guardar los últimos cambios.')
+        }
+        const payload = await response.json()
+        stateRevisionRef.current = Number(payload.revision)
+        setStateRevision(stateRevisionRef.current)
       }).catch(error => setNotice(error.message || 'No se pudieron guardar los últimos cambios.'))
         .finally(() => { pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1) })
     }, 750)
@@ -1026,7 +1057,7 @@ export default function App() {
       if (pendingStateSaves.current > 0) return
       if (document.activeElement?.closest('.weekly-board input, .weekly-board select, .weekly-board textarea, .team-card input, .team-card select, .team-card textarea')) return
       fetch('/api/state', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(data => {
-        if (data && Number(data.revision) !== Number(stateRevision)) { setNotice('Hay cambios guardados desde otra sesión. Recargá la página para continuar sin sobrescribirlos.'); return }
+        if (data && Number(data.revision) !== Number(stateRevisionRef.current)) { setNotice('Hay cambios guardados desde otra sesión. Recargá la página para continuar sin sobrescribirlos.'); return }
         if (data?.agenda?.weekly && typeof data.agenda.weekly === 'object') setWeekly(previous => JSON.stringify(previous) === JSON.stringify(data.agenda.weekly) ? previous : data.agenda.weekly)
       }).catch(() => setNotice('No se pudo comprobar si existen cambios de otra sesión.'))
     }
@@ -1274,6 +1305,27 @@ function BufferedTextarea({ value, onCommit, delay = 500, ...textareaProps }) {
   />
 }
 
+function ServiceExtraFields({ className, task, service, onChange, buffered = false }) {
+  const available = serviceExtraAvailability(service, task?.installationZone)
+  const fields = [
+    ['paymentMethod', 'Forma de pago'],
+    ['monthlyFee', 'Abono mensual'],
+    ['form', 'Formulario']
+  ]
+  return <div className={className}>{fields.map(([key, label]) => {
+    const enabled = available[key]
+    const props = {
+      value: enabled ? task?.[key] || '' : '',
+      disabled: !enabled,
+      placeholder: enabled ? '' : 'No aplica',
+      title: enabled ? '' : 'Este campo no aplica para el tipo de servicio o la ubicación seleccionados.'
+    }
+    return <label key={key}>{label}{buffered
+      ? <BufferedInput {...props} onCommit={value => onChange({ [key]: value })} />
+      : <input {...props} onChange={event => onChange({ [key]: event.target.value })} />}</label>
+  })}</div>
+}
+
 function BufferedInput({ value, onCommit, delay = 500, ...inputProps }) {
   const normalizedValue = String(value || '')
   const [draft, setDraft] = useState(normalizedValue)
@@ -1487,13 +1539,10 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   const selectTaskService = (teamIndex, taskIndex, selectedId) => {
     const selected = services.find(service => String(service.id) === String(selectedId))
     const currentTask = teams[teamIndex]?.tasks[taskIndex]
-    updateTask(teamIndex, taskIndex, selected
-      ? {
-          serviceId: selected.id,
-          service: selected.name,
-          installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : ''
-        }
-      : { serviceId: '', service: '', installationZone: '' })
+    const nextTask = selected
+      ? { ...currentTask, serviceId: selected.id, service: selected.name, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
+      : { ...currentTask, serviceId: '', service: '', installationZone: '' }
+    updateTask(teamIndex, taskIndex, { ...nextTask, ...applicableServiceExtras(nextTask, selected) })
   }
   const validateAgenda = (agendaTeams = teams) => {
     const missing = []
@@ -1503,6 +1552,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       if (!task.service) fields.push('tipo de servicio')
       if (!task.customerId) fields.push('abonado o cliente registrado')
       if (!task.address) fields.push('dirección')
+      if (!task.phone) fields.push('contacto')
       if (serviceCode(serviceForTask(task)) === 'alarm-installation' && !task.installationZone) fields.push('ubicación de la instalación')
       if (fields.length) missing.push(`Equipo ${teamIndex + 1}, servicio ${taskIndex + 1}: ${fields.join(', ')}`)
     }))
@@ -1512,7 +1562,18 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   }
   const clearAgenda = () => { if (confirmation !== 'clear') { if (!registerHistory()) return; setNotice('La agenda fue copiada al portapapeles y registrada en el historial.'); return }; setTeams([{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }]); setDate(new Date().toISOString().slice(0, 10)); setNotice('La agenda quedó limpia y lista para una nueva planificación.') }
   const previewValue = value => String(value || '').trim() || 'Sin información'
-  const previewDetails = task => `\n📝 *Detalle:*\nObservación: ${previewValue(task.detail)}\nForma de pago: ${previewValue(task.paymentMethod)}\nAbono mensual: ${previewValue(task.monthlyFee)}\nFormulario: ${previewValue(task.form)}`
+  const previewDetails = task => {
+    const service = serviceForTask(task)
+    const available = serviceExtraAvailability(service, task.installationZone)
+    const extras = applicableServiceExtras(task, service)
+    const lines = [
+      `Observación: ${previewValue(task.detail)}`,
+      available.paymentMethod && `Forma de pago: ${previewValue(extras.paymentMethod)}`,
+      available.monthlyFee && `Abono mensual: ${previewValue(extras.monthlyFee)}`,
+      available.form && `Formulario: ${previewValue(extras.form)}`
+    ].filter(Boolean)
+    return `\n📝 *Detalle:*\n${lines.join('\n')}`
+  }
   const message = `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n${teams.map((team, index) => `👥 *Equipo ${index + 1}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${team.tasks.map(task => `🕒 ${task.time || '--:--'} Hs\n🛠️ *${task.service || 'Servicio'}*\n👤 *${task.client || 'Cliente'}*${previewDetails(task)}${task.address ? `\n📍 *Dirección:* ${task.address}` : ''}${task.phone ? `\n📞 *Contacto:* ${task.phone}` : ''}`).join('\n\n')}`).join('\n\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n')}`
   const registerHistory = (agendaTeams = teams) => {
     if (!validateAgenda(agendaTeams)) return false
@@ -1528,7 +1589,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
         customerId: task.customerId || '',
         clientAccount: task.clientAccount || '',
         clientNameAtService: task.clientNameAtService || task.client.replace(/^[^\s]+\s+/, ''), detail: task.detail,
-        paymentMethod: task.paymentMethod || '', monthlyFee: task.monthlyFee || '', form: task.form || '',
+        ...applicableServiceExtras(task, serviceForTask(task)),
         address: task.address, phone: task.phone, installationZone: task.installationZone || '', ...serviceTrace(task)
       })))
       const accountKey = record => String(record.clientAccount || record.account || String(record.client || '').trim().split(' ')[0] || '').trim().toUpperCase()
@@ -1767,7 +1828,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   const dailyCustomerField = (task, teamIndex, taskIndex) => <DailyCustomerField task={task} customers={customers} teamIndex={teamIndex} taskIndex={taskIndex} onTextCommit={commitCustomerText} onCustomerSelect={selectCustomerResult} />
   return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setConfirmation('clear')}><Icon name="trash" />Limpiar agenda</button><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button><button className="primary" onClick={() => { navigator.clipboard?.writeText(message); clearAgenda() }}><Icon name="copy" />Copiar agenda</button></div></div><div className="agenda-toolbar"><label>Fecha de trabajo<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, teamIndex) => <article className="team-card" key={team.teamId || teamIndex}><div className="team-header"><div><span className="team-number">{teamIndex + 1}</span><strong>Equipo {teamIndex + 1}</strong>{teams.length > 1 && <button className="team-delete" onClick={() => setConfirmation({ type: 'team', index: teamIndex })}><Icon name="trash" size={16} />Eliminar equipo</button>}</div><div className="technicians-picker"><span>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</span><button className="secondary small" onClick={() => { setTechOpen(techOpen === teamIndex ? null : teamIndex); setFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === teamIndex && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={filter} onChange={event => setFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(filter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={(team.memberIds || []).some(id => String(id) === String(tech.id))} onChange={() => toggleTech(teamIndex, tech)} />{tech.name}</label>)}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, taskIndex) => <div className="task-row" key={task.taskId || task.historyId || `${team.teamId || teamIndex}-${taskIndex}`}><div className="task-title"><span>{taskIndex + 1}</span><b>Servicio</b></div><label>Hora<input type="time" value={task.time} onChange={event => updateTask(teamIndex, taskIndex, { time: event.target.value })} /></label><label>Tipo de servicio<select value={serviceForTask(task)?.id || ''} onChange={event => selectTaskService(teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
 {dailyCustomerField(task, teamIndex, taskIndex)}
-<label>Dirección<input value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label>Contacto<input value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations">Observaciones<BufferedTextarea value={task.detail} onCommit={value => updateTask(teamIndex, taskIndex, { detail: value })} /></label>{serviceCode(serviceForTask(task)) === 'alarm-installation' && <fieldset className="installation-zone"><legend>Ubicación de la instalación</legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => updateTask(teamIndex, taskIndex, { installationZone: value })} />{label}</label>)}</fieldset>}<div className="daily-extra-fields"><label>Forma de pago<BufferedInput value={task.paymentMethod} onCommit={value => updateTask(teamIndex, taskIndex, { paymentMethod: value })} /></label><label>Abono mensual<BufferedInput value={task.monthlyFee} onCommit={value => updateTask(teamIndex, taskIndex, { monthlyFee: value })} /></label><label>Formulario<BufferedInput value={task.form} onCommit={value => updateTask(teamIndex, taskIndex, { form: value })} /></label></div>{team.tasks.length > 1 && <button className="icon-btn delete" onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.filter((_, index) => index !== taskIndex) }))}><Icon name="trash" size={16} /></button>}</div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
+<label>Dirección<input value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label>Contacto<input value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations">Observaciones<BufferedTextarea value={task.detail} onCommit={value => updateTask(teamIndex, taskIndex, { detail: value })} /></label>{serviceCode(serviceForTask(task)) === 'alarm-installation' && <fieldset className="installation-zone"><legend>Ubicación de la instalación</legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForTask(task)) }) }} />{label}</label>)}</fieldset>}<ServiceExtraFields className="daily-extra-fields" task={task} service={serviceForTask(task)} buffered onChange={patch => updateTask(teamIndex, taskIndex, patch)} />{team.tasks.length > 1 && <button className="icon-btn delete" onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.filter((_, index) => index !== taskIndex) }))}><Icon name="trash" size={16} /></button>}</div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
 }
 
 /**
@@ -1800,9 +1861,10 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   const selectWeeklyService = (day, teamIndex, taskIndex, selectedId) => {
     const selected = services.find(service => String(service.id) === String(selectedId))
     const currentTask = dayPlan(day).teams[teamIndex]?.tasks[taskIndex]
-    updateTask(day, teamIndex, taskIndex, selected
-      ? { serviceId: selected.id, service: selected.name, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
-      : { serviceId: '', service: '', installationZone: '' })
+    const nextTask = selected
+      ? { ...currentTask, serviceId: selected.id, service: selected.name, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
+      : { ...currentTask, serviceId: '', service: '', installationZone: '' }
+    updateTask(day, teamIndex, taskIndex, { ...nextTask, ...applicableServiceExtras(nextTask, selected) })
   }
   const weeklyTechnicianName = fullName => activeTechs.find(tech => tech.name === fullName)?.firstName || String(fullName || '').split(' ')[0]
   const monthKey = anchor.slice(0, 7)
@@ -1912,13 +1974,11 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   const updateTaskDraft = patch => setTaskEditor(previous => previous ? { ...previous, draft: { ...previous.draft, ...patch } } : previous)
   const selectDraftService = selectedId => {
     const selected = services.find(service => String(service.id) === String(selectedId))
-    updateTaskDraft(selected
-      ? {
-          serviceId: selected.id,
-          service: selected.name,
-          installationZone: serviceCode(selected) === 'alarm-installation' ? taskEditor?.draft?.installationZone || '' : ''
-        }
-      : { serviceId: '', service: '', installationZone: '' })
+    const currentTask = taskEditor?.draft || blankTask()
+    const nextTask = selected
+      ? { ...currentTask, serviceId: selected.id, service: selected.name, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask.installationZone || '' : '' }
+      : { ...currentTask, serviceId: '', service: '', installationZone: '' }
+    updateTaskDraft({ ...nextTask, ...applicableServiceExtras(nextTask, selected) })
   }
   const commitDraftCustomerText = value => updateTaskDraft({ customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
   const selectDraftCustomer = customer => updateTaskDraft({ customerId: customer.customerId, client: `${customer.account} ${customer.name}`, clientAccount: customer.account, clientNameAtService: customer.name, address: customer.address, phone: customer.phone })
@@ -1936,7 +1996,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
       setNotice(`Completá ${missing.join(', ')} antes de guardar el servicio.`)
       return
     }
-    const tracedDraft = stampServiceRecord(draft, authUser)
+    const tracedDraft = stampServiceRecord({ ...draft, ...applicableServiceExtras(draft, serviceForWeeklyTask(draft)) }, authUser)
     updateDay(day, plan => {
       const nextTeams = [...plan.teams]
       let destinationIndex = nextTeams.findIndex(team => teamId && String(team.teamId || '') === String(teamId))
@@ -2123,10 +2183,10 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     const invalidTime = dayPlan(day).teams.flatMap(team => team.tasks).find(task => task.time && (task.time < hours.min || task.time > hours.max))
     if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
     const scheduledTasks = dayPlan(day).teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, teamIndex, taskIndex }))).filter(({ task }) => [task.service, task.client, task.address, task.detail, task.phone, task.paymentMethod, task.monthlyFee, task.form].some(value => String(value || '').trim()))
-    const incompleteTask = scheduledTasks.find(({ task }) => !task.time || !task.service || !task.customerId || !task.address || !task.detail || (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone))
+    const incompleteTask = scheduledTasks.find(({ task }) => !task.time || !task.service || !task.customerId || !task.address || !task.phone || !task.detail || (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone))
     if (incompleteTask) {
       const { task, teamIndex, taskIndex } = incompleteTask
-      const missing = [['hora', task.time], ['tipo de servicio', task.service], ['cliente', task.client], ['dirección', task.address], ['detalle', task.detail]].filter(([, value]) => !String(value || '').trim()).map(([label]) => label)
+      const missing = [['hora', task.time], ['tipo de servicio', task.service], ['cliente', task.client], ['dirección', task.address], ['contacto', task.phone], ['detalle', task.detail]].filter(([, value]) => !String(value || '').trim()).map(([label]) => label)
       if (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) missing.push('ubicación de la instalación')
       setNotice(`Completá los campos obligatorios de Equipo ${teamIndex + 1}, tarjeta ${taskIndex + 1}: ${missing.join(', ')}.`)
       return
@@ -2156,7 +2216,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
       if (!task || !hours) return null
       return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskEditor(null)}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button className="modal-close" onClick={() => setTaskEditor(null)}><Icon name="close" /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>Servicio {taskIndex + 1}</h2><p className="weekly-modal-team">{taskEditor.teamSnapshot?.label || `Equipo ${teamIndex + 1}`} · {taskEditor.teamSnapshot?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label>Hora <b>*</b><input type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTaskDraft({ time: event.target.value })} /></label><label>Tipo de servicio <b>*</b><select value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectDraftService(event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div>
 <CustomerAutocomplete className="weekly-customer-search" value={task.client} customerId={task.customerId} customers={customers} onTextCommit={commitDraftCustomerText} onCustomerSelect={selectDraftCustomer} />
-<label>Dirección <b>*</b><input readOnly title="Este dato se modifica desde Abonados y clientes" value={task.address} /></label><label>Contacto<input readOnly title="Este dato se modifica desde Abonados y clientes" value={task.phone} /></label><p className="weekly-customer-data-note">Dirección y contacto se administran desde el módulo Abonados y clientes.</p>{serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend>Ubicación de la instalación</legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input type="radio" name={`weekly-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => updateTaskDraft({ installationZone: value })} />{label}</label>)}</fieldset>}<label>Detalle <b>*</b><textarea value={task.detail} onChange={event => updateTaskDraft({ detail: event.target.value })} /></label><div className="weekly-extra-fields"><label>Forma de pago<input value={task.paymentMethod} onChange={event => updateTaskDraft({ paymentMethod: event.target.value })} /></label><label>Abono mensual<input value={task.monthlyFee} onChange={event => updateTaskDraft({ monthlyFee: event.target.value })} /></label><label>Formulario<input value={task.form} onChange={event => updateTaskDraft({ form: event.target.value })} /></label></div></div><div className="modal-actions"><button className="secondary" onClick={() => setTaskEditor(null)}>Cancelar</button><button className="primary" onClick={saveTaskEditor}><Icon name="check" size={16} />Guardar servicio</button></div></section></div>
+<label>Dirección <b>*</b><input readOnly title="Este dato se modifica desde Abonados y clientes" value={task.address} /></label><label>Contacto<input readOnly title="Este dato se modifica desde Abonados y clientes" value={task.phone} /></label><p className="weekly-customer-data-note">Dirección y contacto se administran desde el módulo Abonados y clientes.</p>{serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend>Ubicación de la instalación</legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input type="radio" name={`weekly-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTaskDraft({ installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}<label>Detalle <b>*</b><textarea value={task.detail} onChange={event => updateTaskDraft({ detail: event.target.value })} /></label><ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} onChange={updateTaskDraft} /></div><div className="modal-actions"><button className="secondary" onClick={() => setTaskEditor(null)}>Cancelar</button><button className="primary" onClick={saveTaskEditor}><Icon name="check" size={16} />Guardar servicio</button></div></section></div>
     })()}
     <div className="weekly-scroll-top" ref={weeklyTopScrollRef} tabIndex={0} aria-label="Desplazamiento horizontal superior" onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyBoardRef.current)}><div style={{ width: `${weeklyScrollWidth}px` }} /></div>
     <div className="weekly-board" ref={weeklyBoardRef} onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyTopScrollRef.current)}>
@@ -2179,9 +2239,9 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
                   <CustomerAutocomplete value={task.client} customerId={task.customerId} customers={customers} onTextCommit={value => commitWeeklyCustomerText(day, teamIndex, taskIndex, value)} onCustomerSelect={customer => selectWeeklyCustomerResult(day, teamIndex, taskIndex, customer)} />
                   <label>Dirección <b>*</b><input value={task.address} onChange={event => updateTask(day, teamIndex, taskIndex, { address: event.target.value })} /></label>
                   <label>Contacto<input value={task.phone} onChange={event => updateTask(day, teamIndex, taskIndex, { phone: event.target.value })} /></label>
-                  {serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend>Ubicación de la instalación</legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input type="radio" name={`weekly-card-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => updateTask(day, teamIndex, taskIndex, { installationZone: value })} />{label}</label>)}</fieldset>}
+                  {serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend>Ubicación de la instalación</legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input type="radio" name={`weekly-card-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(day, teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
                   <label>Detalle <b>*</b><textarea value={task.detail} onChange={event => updateTask(day, teamIndex, taskIndex, { detail: event.target.value })} /></label>
-                  <div className="weekly-extra-fields"><label>Forma de pago<BufferedInput value={task.paymentMethod} onCommit={value => updateTask(day, teamIndex, taskIndex, { paymentMethod: value })} /></label><label>Abono mensual<BufferedInput value={task.monthlyFee} onCommit={value => updateTask(day, teamIndex, taskIndex, { monthlyFee: value })} /></label><label>Formulario<BufferedInput value={task.form} onCommit={value => updateTask(day, teamIndex, taskIndex, { form: value })} /></label></div>
+                  <ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} buffered onChange={patch => updateTask(day, teamIndex, taskIndex, patch)} />
                 </div>)}
                 <button className="weekly-add-task" onClick={() => addTask(day, teamIndex)}><Icon name="plus" size={15} />Agregar servicio</button>
               </article>
@@ -2269,7 +2329,7 @@ function AuditPage({ user, onBack, onOpenMenu, logout }) {
   const loadAudit = async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/audit?limit=800', { cache: 'no-store', credentials: 'same-origin' })
+      const response = await fetch('/api/audit?limit=100', { cache: 'no-store', credentials: 'same-origin' })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data.error || 'No se pudo cargar el registro de auditoría.')
       setRecords(Array.isArray(data.records) ? data.records : [])
@@ -2281,7 +2341,7 @@ function AuditPage({ user, onBack, onOpenMenu, logout }) {
       setLoading(false)
     }
   }
-  useEffect(loadAudit, [])
+  useEffect(() => { void loadAudit() }, [])
   const normalized = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   const escapeAuditHtml = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   // Resalta las propiedades cuyo valor no coincide entre la versión anterior y la nueva.
@@ -2304,9 +2364,20 @@ function AuditPage({ user, onBack, onOpenMenu, logout }) {
     panes[1].innerHTML = auditJsonMarkup(selected.after, selected.before, 'after')
     return undefined
   }, [selected])
+  const openDetail = async record => {
+    try {
+      const response = await fetch(`/api/audit/${encodeURIComponent(record.id)}`, { cache: 'no-store', credentials: 'same-origin' })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data.record) throw new Error(data.error || 'No se pudo cargar el detalle de auditoría.')
+      setSelected(data.record)
+      setError('')
+    } catch (detailError) {
+      setError(detailError?.message || 'No se pudo cargar el detalle de auditoría.')
+    }
+  }
   const visible = useMemo(() => records.filter(record => (!action || record.action === action) && normalized([record.user?.name, record.user?.email, record.entity, record.entityId, record.action].join(' ')).includes(normalized(query))), [records, action, query])
   const actionClass = value => normalized(value).includes('elimino') ? 'audit-delete' : normalized(value).includes('creo') ? 'audit-create' : normalized(value).includes('modifico') ? 'audit-edit' : 'audit-status'
-  return <main className="audit-page"><header className="audit-topbar"><button className="mobile-menu audit-mobile-menu" onClick={onOpenMenu}><Icon name="menu" /></button><button className="audit-brand" onClick={onBack} title="Volver al menú principal"><img src="/logo-pignus.png" alt="Pignus" /></button><div><b>Auditoría</b><span>Registro de actividad del sistema</span></div><div className="audit-user"><span>{user.name}</span><small>{user.email}</small></div><button className="secondary small" onClick={onBack}>Volver al menú</button><button className="logout-button" onClick={() => setConfirmLogout(true)}><Icon name="logout" size={17} />Cerrar sesión</button></header><section className="audit-content"><div className="module-intro"><div><p className="eyebrow">CONTROL Y TRAZABILIDAD</p><h1>Auditoría del sistema</h1><p>Consultá quién creó, modificó, eliminó o informó cambios, con fecha y detalle de cada acción.</p></div><button className="secondary" onClick={loadAudit}><Icon name="history" />Actualizar</button></div><div className="audit-filters"><label>Acción<select value={action} onChange={event => setAction(event.target.value)}><option value="">Todas las acciones</option>{[...new Set(records.map(record => record.action))].map(item => <option key={item} value={item}>{item}</option>)}</select></label><label className="audit-search">Buscar usuario, entidad o registro<input value={query} onChange={event => setQuery(event.target.value)} placeholder="Ej.: Leonardo, cliente o PIG-6375" /></label><span><b>{visible.length}</b> acciones registradas</span></div>{error && <div className="notice audit-error">{error}</div>}<div className="audit-table"><div className="audit-table-head"><span>Fecha y hora</span><span>Usuario</span><span>Acción</span><span>Información afectada</span><span>Detalle</span></div>{loading ? <div className="empty-state">Cargando registro de auditoría…</div> : visible.map(record => <div className="audit-row" key={record.id}><span>{prettyReportDateTime(record.at)}</span><span><b>{record.user?.name || 'Usuario desconocido'}</b><small>{record.user?.email}</small></span><span><i className={actionClass(record.action)}>{record.action}</i></span><span><b>{record.entity}</b><small>{record.entityId}</small></span><button className="secondary small" onClick={() => setSelected(record)}><Icon name="eye" size={16} />Ver detalle</button></div>)}{!loading && !visible.length && <div className="empty-state">No hay acciones que coincidan con los filtros seleccionados.</div>}</div></section>{selected && <div className="modal-layer"><div className="modal audit-modal"><button className="modal-close" onClick={() => setSelected(null)}><Icon name="close" /></button><p className="eyebrow">DETALLE DE AUDITORÍA</p><h2>{selected.action} · {selected.entity}</h2><div className="audit-detail-meta"><span><b>Usuario</b>{selected.user?.name} · {selected.user?.email}</span><span><b>Fecha y hora</b>{prettyReportDateTime(selected.at)}</span><span><b>Registro</b>{selected.entityId}</span></div><div className="audit-diff"><section><h3>Antes</h3><pre>{selected.before ? JSON.stringify(selected.before, null, 2) : 'No aplica: es un registro nuevo.'}</pre></section><section><h3>Después</h3><pre>{selected.after ? JSON.stringify(selected.after, null, 2) : 'No aplica: el registro fue eliminado.'}</pre></section></div></div></div>}{confirmLogout && <Confirm title="Cerrar sesión" detail="¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema." action={logout} confirmLabel="Sí, cerrar sesión" close={() => setConfirmLogout(false)} />}</main>
+  return <main className="audit-page"><header className="audit-topbar"><button className="mobile-menu audit-mobile-menu" onClick={onOpenMenu}><Icon name="menu" /></button><button className="audit-brand" onClick={onBack} title="Volver al menú principal"><img src="/logo-pignus.png" alt="Pignus" /></button><div><b>Auditoría</b><span>Registro de actividad del sistema</span></div><div className="audit-user"><span>{user.name}</span><small>{user.email}</small></div><button className="secondary small" onClick={onBack}>Volver al menú</button><button className="logout-button" onClick={() => setConfirmLogout(true)}><Icon name="logout" size={17} />Cerrar sesión</button></header><section className="audit-content"><div className="module-intro"><div><p className="eyebrow">CONTROL Y TRAZABILIDAD</p><h1>Auditoría del sistema</h1><p>Consultá quién creó, modificó, eliminó o informó cambios, con fecha y detalle de cada acción.</p></div><button className="secondary" onClick={loadAudit}><Icon name="history" />Actualizar</button></div><div className="audit-filters"><label>Acción<select value={action} onChange={event => setAction(event.target.value)}><option value="">Todas las acciones</option>{[...new Set(records.map(record => record.action))].map(item => <option key={item} value={item}>{item}</option>)}</select></label><label className="audit-search">Buscar usuario, entidad o registro<input value={query} onChange={event => setQuery(event.target.value)} placeholder="Ej.: Leonardo, cliente o PIG-6375" /></label><span><b>{visible.length}</b> acciones registradas</span></div>{error && <div className="notice audit-error">{error}</div>}<div className="audit-table"><div className="audit-table-head"><span>Fecha y hora</span><span>Usuario</span><span>Acción</span><span>Información afectada</span><span>Detalle</span></div>{loading ? <div className="empty-state">Cargando registro de auditoría…</div> : visible.map(record => <div className="audit-row" key={record.id}><span>{prettyReportDateTime(record.at)}</span><span><b>{record.user?.name || 'Usuario desconocido'}</b><small>{record.user?.email}</small></span><span><i className={actionClass(record.action)}>{record.action}</i></span><span><b>{record.entity}</b><small>{record.entityId}</small></span><button className="secondary small" onClick={() => openDetail(record)}><Icon name="eye" size={16} />Ver detalle</button></div>)}{!loading && !visible.length && <div className="empty-state">No hay acciones que coincidan con los filtros seleccionados.</div>}</div></section>{selected && <div className="modal-layer"><div className="modal audit-modal"><button className="modal-close" onClick={() => setSelected(null)}><Icon name="close" /></button><p className="eyebrow">DETALLE DE AUDITORÍA</p><h2>{selected.action} · {selected.entity}</h2><div className="audit-detail-meta"><span><b>Usuario</b>{selected.user?.name} · {selected.user?.email}</span><span><b>Fecha y hora</b>{prettyReportDateTime(selected.at)}</span><span><b>Registro</b>{selected.entityId}</span></div><div className="audit-diff"><section><h3>Antes</h3><pre>{selected.before ? JSON.stringify(selected.before, null, 2) : 'No aplica: es un registro nuevo.'}</pre></section><section><h3>Después</h3><pre>{selected.after ? JSON.stringify(selected.after, null, 2) : 'No aplica: el registro fue eliminado.'}</pre></section></div></div></div>}{confirmLogout && <Confirm title="Cerrar sesión" detail="¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema." action={logout} confirmLabel="Sí, cerrar sesión" close={() => setConfirmLogout(false)} />}</main>
 }
 
 function TechnicianPortal({ user, history, setHistory, logout }) {
@@ -2825,7 +2896,8 @@ function Accounts({ customers, setCustomers, setNotice, ask, history, teams, wee
 function CustomerForm({ form, setForm, editing, customers, save, cancel }) {
   const set = key => event => setForm({ ...form, [key]: key === 'name' ? event.target.value.toLocaleUpperCase('es-AR') : event.target.value })
   const changeKind = event => { const kind = event.target.value; setForm({ ...form, kind, account: editing ? form.account : nextCustomerCode(customers, kind) }) }
-  return <div className="modal-layer customer-editor-layer" role="dialog" aria-modal="true" aria-label={editing ? 'Editar abonado o cliente' : 'Nuevo cliente'} onMouseDown={cancel}><div className="modal customer-editor-modal" onMouseDown={event => event.stopPropagation()}><button type="button" className="close-modal" onClick={cancel} aria-label="Cerrar"><Icon name="close" /></button><p className="eyebrow">{editing ? 'EDITAR REGISTRO' : 'NUEVO REGISTRO'}</p><h2>{editing ? `${form.account} · ${form.name}` : 'Crear cliente'}</h2><p>{editing ? 'Actualizá los datos del abonado o cliente seleccionado.' : 'Completá los datos para incorporarlo al registro comercial.'}</p><form className="customer-form" onSubmit={save}><label>Condición<select disabled={!!editing} value={customerKind(form)} onChange={changeKind}><option value="subscriber">Abonado</option><option value="client">Cliente</option></select></label><label>Código<input required readOnly value={form.account} /></label><label>Nombre<input required value={form.name} onChange={set('name')} /></label><label>Categoría<input value={form.type} onChange={set('type')} placeholder="Ej.: Residencial o Comercial" /></label><label>Calle<input value={form.street} onChange={set('street')} /></label><label>Localidad<input value={form.locality} onChange={set('locality')} /></label><label>Provincia / Estado<input value={form.province} onChange={set('province')} /></label><label>Teléfono<input value={form.phone} onChange={set('phone')} /></label><button className="primary"><Icon name="check" />Guardar {customerKindLabel(form).toLowerCase()}</button><button type="button" className="secondary" onClick={cancel}>Cancelar</button></form></div></div>
+  const requiredLabel = text => <span>{text} <b className="required-mark">*</b></span>
+  return <div className="modal-layer customer-editor-layer" role="dialog" aria-modal="true" aria-label={editing ? 'Editar abonado o cliente' : 'Nuevo cliente'} onMouseDown={cancel}><div className="modal customer-editor-modal" onMouseDown={event => event.stopPropagation()}><button type="button" className="close-modal" onClick={cancel} aria-label="Cerrar"><Icon name="close" /></button><p className="eyebrow">{editing ? 'EDITAR REGISTRO' : 'NUEVO REGISTRO'}</p><h2>{editing ? `${form.account} · ${form.name}` : 'Crear cliente'}</h2><p>{editing ? 'Actualizá los datos del abonado o cliente seleccionado.' : 'Completá los datos obligatorios para poder usarlo en las agendas.'}</p><form className="customer-form" onSubmit={save}><label>Condición<select disabled={!!editing} value={customerKind(form)} onChange={changeKind}><option value="subscriber">Abonado</option><option value="client">Cliente</option></select></label><label>{requiredLabel('Código')}<input required readOnly value={form.account} /></label><label>{requiredLabel('Nombre')}<input required value={form.name} onChange={set('name')} /></label><label>Categoría<input value={form.type} onChange={set('type')} placeholder="Ej.: Residencial o Comercial" /></label><label>{requiredLabel('Calle / dirección')}<input required value={form.street} onChange={set('street')} /></label><label>Localidad<input value={form.locality} onChange={set('locality')} /></label><label>Provincia / Estado<input value={form.province} onChange={set('province')} /></label><label>{requiredLabel('Teléfono / contacto')}<input required value={form.phone} onChange={set('phone')} /></label><button className="primary"><Icon name="check" />Guardar {customerKindLabel(form).toLowerCase()}</button><button type="button" className="secondary" onClick={cancel}>Cancelar</button></form></div></div>
 }
 
 function ServiceTypes({ services, setServices, setNotice, ask, history, teams, weekly }) {
@@ -2891,7 +2963,10 @@ function ImportModal({ customers, setCustomers, close, setNotice }) {
     const imported = rows.map(row => {
       const account = normalizeAccountKey(get(row, 'dealercuenta'))
       const street = get(row, 'calle'), locality = get(row, 'localidad'), province = get(row, 'provinciaestado')
-      return account ? { customerId: '', kind: 'subscriber', account, name: normalizeCustomerName(get(row, 'nombre')), type: get(row, 'tipodecuenta'), street, locality, province, phone: get(row, 'telefono'), address: [street, locality, province].filter(Boolean).join(', '), fields: Object.fromEntries(headers.map((h, i) => [h, row[i] || ''])) } : null
+      const name = normalizeCustomerName(get(row, 'nombre')) || '-'
+      const requiredStreet = street || '-'
+      const phone = get(row, 'telefono') || '-'
+      return account ? { customerId: '', kind: 'subscriber', account, name, type: get(row, 'tipodecuenta'), street: requiredStreet, locality, province, phone, address: [requiredStreet, locality, province].filter(Boolean).join(', '), fields: Object.fromEntries(headers.map((h, i) => [h, row[i] || ''])) } : null
     }).filter(Boolean)
     if (!imported.length) return setMessage('El archivo no contiene registros válidos.')
 
@@ -2905,9 +2980,10 @@ function ImportModal({ customers, setCustomers, close, setNotice }) {
       const previous = existingByAccount.get(customer.account)
       if (!previous) return { ...customer, customerId: createCustomerId() }
       const next = { ...previous, ...customer }
-      ;['name', 'type', 'street', 'locality', 'province', 'phone', 'address'].forEach(field => {
-        if (!customer[field]) next[field] = previous[field] || ''
+      ;['name', 'type', 'street', 'locality', 'province', 'phone'].forEach(field => {
+        if (!customer[field] || customer[field] === '-') next[field] = previous[field] || customer[field] || ''
       })
+      next.address = [next.street, next.locality, next.province].filter(Boolean).join(', ') || '-'
       next.fields = { ...(previous.fields || {}), ...(customer.fields || {}) }
       return next
     })
