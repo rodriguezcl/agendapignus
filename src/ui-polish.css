@@ -11,6 +11,25 @@
   --ui-focus: rgba(204, 147, 16, .18);
 }
 
+.help-updated {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 10px;
+  padding: 5px 9px;
+  border: 1px solid #d7dfbd;
+  border-radius: 999px;
+  background: #f2f5e5;
+  color: #687321;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.app-shell[data-theme='dark'] .help-updated {
+  border-color: #596237;
+  background: #30391e;
+  color: #e1d58f;
+}
+
 /* Controles de ingreso: altura, borde y foco uniformes sin afectar checks ni radios. */
 .content :is(input, select, textarea):not([type='checkbox']):not([type='radio']),
 .modal :is(input, select, textarea):not([type='checkbox']):not([type='radio']),
@@ -195,7 +214,74 @@ input[type='radio'] {
 :is(.modal, .confirm-modal, .detail-modal, .bulk-modal, .alarm-details-modal, .dashboard-insight-modal, .audit-modal) {
   border: 1px solid rgba(215, 228, 215, .95);
   border-radius: 16px;
+  background: #fbfcfa;
   box-shadow: 0 20px 55px rgba(7, 28, 17, .28);
+}
+
+/* Los campos se agrupan sobre una superficie contrastante para que el modal
+   conserve jerarquía aun cuando todos sus controles son blancos. */
+.weekly-task-form,
+.modal > .history-edit-grid,
+.modal > .monthly-team-list,
+.modal > .role-editor {
+  padding: 14px;
+  border: 1px solid #d8e5d9;
+  border-radius: 12px;
+  background: #eef4ee;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .75);
+}
+
+.modal > label:not(.file-drop),
+.weekly-task-form > label,
+.weekly-task-form .week-task-top > label,
+.weekly-task-form .weekly-extra-fields > label,
+.weekly-task-form > .customer-autocomplete {
+  padding: 9px 10px;
+  border: 1px solid #d9e5da;
+  border-radius: 9px;
+  background: #f9fbf8;
+}
+
+.modal > label:not(.file-drop) {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.weekly-task-form :is(input, select, textarea):not([type='checkbox']):not([type='radio']),
+.modal > label:not(.file-drop) :is(input, select, textarea) {
+  border-color: #bfcfc1;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(20, 53, 34, .06);
+}
+
+.weekly-task-form input[readonly] {
+  border-style: dashed;
+  background: #edf2ed;
+}
+
+.app-shell[data-theme='dark'] :is(.modal, .confirm-modal, .detail-modal, .bulk-modal, .alarm-details-modal, .dashboard-insight-modal, .audit-modal) {
+  background: #1c2b22;
+  border-color: #3a5342;
+}
+
+.app-shell[data-theme='dark'] .modal h2 {
+  color: #edf5ef;
+}
+
+.app-shell[data-theme='dark'] .modal > p:not(.eyebrow) {
+  color: #b9cabd;
+}
+
+.app-shell[data-theme='dark'] :is(.weekly-task-form, .modal > .history-edit-grid, .modal > .monthly-team-list, .modal > .role-editor) {
+  border-color: #3d5946;
+  background: #17271e;
+  box-shadow: none;
+}
+
+.app-shell[data-theme='dark'] :is(.modal > label:not(.file-drop), .weekly-task-form > label, .weekly-task-form .week-task-top > label, .weekly-task-form .weekly-extra-fields > label, .weekly-task-form > .customer-autocomplete) {
+  border-color: #405c49;
+  background: #203128;
 }
 
 :is(.modal, .confirm-modal, .detail-modal, .bulk-modal, .alarm-details-modal, .dashboard-insight-modal, .audit-modal) :is(.modal-close, .close-modal) {

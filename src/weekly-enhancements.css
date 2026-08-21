@@ -670,7 +670,12 @@ body.dark .weekly-task-move {
 
 .weekly-task-form {
   display: grid;
-  gap: 12px;
+  gap: 10px;
+}
+
+.weekly-task-form .week-task-top,
+.weekly-task-form .weekly-extra-fields {
+  gap: 10px;
 }
 
 .weekly-task-form > label,
@@ -706,7 +711,7 @@ body.dark .weekly-task-move {
 }
 
 .weekly-task-form input[readonly] {
-  background: #f1f5f1;
+  background: #edf2ed;
   color: #66776a;
   cursor: not-allowed;
 }

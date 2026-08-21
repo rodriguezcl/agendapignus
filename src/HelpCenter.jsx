@@ -8,7 +8,7 @@ const MODULES = [
     articles: [
       { title: 'Recorrido recomendado', intro: 'Para mantener la información ordenada, conviene trabajar en este orden:', steps: ['Revisá que el abonado o cliente exista y que sus datos estén actualizados.', 'Planificá equipos y servicios desde Agenda semanal.', 'Abrí la fecha en Agenda del día para completar o ajustar la planificación.', 'Guardá la agenda. Los servicios quedarán disponibles en Historial para su seguimiento.', 'Al finalizar, marcá cada servicio como completado, cancelado, pendiente o reprogramado.'] },
       { title: 'Diferencia entre PIG y CLI', body: 'Los códigos PIG identifican abonados con alarma y abono mensual. Los códigos CLI identifican clientes que recibieron un servicio pero no poseen ese abono. El código permite reconocer correctamente a la persona aunque su nombre cambie.' },
-      { title: 'Antes de guardar', body: 'Confirmá fecha, equipo, técnicos, horario, tipo de servicio y cliente. En una instalación de alarma también es obligatorio indicar la ubicación de la instalación.' }
+      { title: 'Antes de guardar', body: 'Confirmá fecha, equipo, técnicos, horario, tipo de servicio y cliente. Dirección y contacto deben estar completos en la ficha del cliente. En una instalación de alarma también es obligatorio indicar la ubicación de la instalación.' }
     ]
   },
   {
@@ -17,6 +17,7 @@ const MODULES = [
       { title: 'Qué muestran los indicadores', body: 'Las estadísticas consideran servicios completados del mes elegido. Altas de servicio cuenta instalaciones de alarmas; Bajas de servicio cuenta retiros de equipos; Crecimiento neto es la diferencia entre ambas; Trabajos completados incluye todos los servicios finalizados.' },
       { title: 'Abrir el detalle', body: 'Presioná una tarjeta para ver cómo se compone su resultado. Los porcentajes comparan el crecimiento con el mes anterior y con el promedio del año.' },
       { title: 'Evolución anual', body: 'El gráfico separa las instalaciones por ubicación: Docta Urbanización, Nobu Town y Residenciales. Las bajas aparecen en rojo. Al pasar el cursor por cada barra podés consultar sus valores.' },
+      { title: 'Descargar reportes para Gerencia', body: 'En Altas y Bajas de servicio podés descargar el período seleccionado en Excel o PDF. Los archivos tienen formato institucional e incluyen fecha, cliente, dirección, contacto y técnicos asignados; no incorporan las columnas Equipo ni Detalle.' },
       { title: 'Servicios pendientes', body: 'El aviso amarillo indica trabajos que todavía necesitan una definición. Ingresá a Historial para completarlos, cancelarlos o reprogramarlos.' }
     ]
   },
@@ -25,7 +26,8 @@ const MODULES = [
     articles: [
       { title: 'Elegir la semana', body: 'Seleccioná una fecha en Semana de trabajo. La vista se posiciona en el día actual cuando corresponde, pero las barras superior e inferior permiten consultar días anteriores y posteriores.' },
       { title: 'Asignar técnicos', steps: ['Buscá el día y el equipo.', 'Presioná el botón con la silueta de una persona y el signo +.', 'Marcá los técnicos que formarán el equipo.', 'Cerrá el selector. Los nombres aparecerán debajo del título del equipo.'] },
-      { title: 'Agregar o editar un servicio', steps: ['Presioná Agregar servicio o seleccioná un horario disponible.', 'Elegí hora y tipo de servicio.', 'Buscá el cliente por nombre o código.', 'Completá la información solicitada y guardá.'], note: 'Los servicios se ordenan automáticamente por horario. Si agregás uno más temprano, pasará a ocupar el primer lugar.' },
+      { title: 'Agregar o editar un servicio', steps: ['Presioná Agregar servicio o seleccioná un horario disponible.', 'Elegí hora y tipo de servicio.', 'Si elegís Instalación de alarma, indicá primero la ubicación de la instalación.', 'Buscá el cliente por nombre o código.', 'Revisá dirección y contacto, completá el detalle y guardá.'], note: 'Los servicios se ordenan automáticamente por horario. Si agregás uno más temprano, pasará a ocupar el primer lugar.' },
+      { title: 'Campos adicionales según el servicio', body: 'Forma de pago, Abono mensual y Formulario se habilitan solamente cuando corresponden al tipo de servicio. En Instalación de alarma, el abono mensual se habilita únicamente para una instalación Residencial. Formulario ofrece Completo o Incompleto (Abonado completa a mano) y comienza sin selección.' },
       { title: 'Eliminar o mover un servicio', body: 'Usá el botón rojo del servicio para eliminarlo. Para cambiarlo de equipo sin volver a cargar sus datos, utilizá el botón de traslado y elegí el equipo de destino.' },
       { title: 'Sábados', body: 'Los sábados se prepara un solo equipo y no se asigna ningún técnico automáticamente, ya que el turno es rotativo. Elegí manualmente a la persona que trabajará ese día.' },
       { title: 'Servicios reprogramados', body: 'Una reprogramación confirmada desde Historial se incorpora al nuevo día y conserva cliente, servicio, horario, equipo y técnicos. No reemplaza otros trabajos, salvo que encuentre el mismo cliente en el mismo equipo y horario.' }
@@ -35,8 +37,8 @@ const MODULES = [
     id: 'daily', module: 'agenda', icon: 'agenda', title: 'Agenda del día', summary: 'Terminá de organizar la jornada y guardá el registro de cada servicio.',
     articles: [
       { title: 'Cargar la agenda de una fecha', body: 'Elegí la fecha de trabajo. La agenda carga la planificación semanal y los servicios reprogramados de ese día. Podés agregar trabajos de último momento sin perder los ya registrados.' },
-      { title: 'Completar un servicio', steps: ['Ingresá la hora.', 'Seleccioná el tipo de servicio.', 'Buscá y elegí el abonado o cliente.', 'Revisá dirección, contacto y observaciones.', 'Si es una instalación de alarma, elegí la ubicación y completá los datos adicionales necesarios.'] },
-      { title: 'Cliente nuevo o con datos incompletos', body: 'Si el cliente existe pero no posee dirección o contacto, el sistema puede ofrecer guardar esos datos en su ficha. Si no existe, podés escribirlo manualmente y confirmar la creación de un código CLI al guardar.' },
+      { title: 'Completar un servicio', steps: ['Ingresá la hora.', 'Seleccioná el tipo de servicio.', 'Buscá y elegí el abonado o cliente.', 'Revisá dirección, contacto y observaciones.', 'Si es una instalación de alarma, elegí la ubicación y completá los datos adicionales habilitados.'], note: 'En la vista previa no se muestran Forma de pago, Abono mensual o Formulario cuando no aplican al servicio.' },
+      { title: 'Cliente con datos incompletos', body: 'Dirección y contacto son obligatorios para usar un cliente en las agendas. Corregilos desde Abonados y clientes antes de programar el servicio; de esa forma el dato actualizado se reutiliza en futuras agendas.' },
       { title: 'Guardar, copiar y limpiar', body: 'Guardar agenda registra los servicios para su seguimiento. Copiar agenda prepara el texto para compartirlo. Limpiar agenda elimina la carga temporal del día; usalo solamente cuando quieras comenzar nuevamente.' },
       { title: 'Mover un servicio', body: 'Presioná el botón de traslado ubicado en la fila del servicio y elegí otro equipo. Se conservan todos los datos y la lista vuelve a ordenarse por horario.' }
     ]
@@ -55,11 +57,11 @@ const MODULES = [
   {
     id: 'accounts', module: 'accounts', icon: 'accounts', title: 'Abonados y clientes', summary: 'Administrá datos comerciales y evitá registros duplicados.',
     articles: [
-      { title: 'Crear un registro', body: 'Usá Nuevo cliente para cargar una persona sin abono. El sistema asignará un código CLI. Los abonados importados conservan su código PIG.' },
+      { title: 'Crear un registro', body: 'Usá Nuevo cliente para cargar una persona sin abono. Código, nombre, calle o dirección y teléfono o contacto son obligatorios y están identificados con un asterisco rojo. El sistema asignará un código CLI.' },
       { title: 'Editar datos', body: 'Presioná el lápiz. Se abrirá un formulario donde podés actualizar nombre, dirección, localidad, provincia y teléfono. El nombre se guarda en mayúsculas para mantener una presentación uniforme.' },
       { title: 'Evitar duplicados', body: 'Antes de crear un cliente, buscalo por nombre, código o dirección. Si encontrás registros parecidos, revisá sus datos antes de continuar. No crees un CLI si la persona ya tiene un código PIG.' },
       { title: 'Eliminar un registro', body: 'Un abonado o cliente no puede eliminarse mientras tenga servicios vinculados. Esto protege su historial. Corregí o fusioná el registro correspondiente en lugar de eliminar información relacionada.' },
-      { title: 'Importar abonados', body: 'Usá Importar abonados para actualizar la base de clientes PIG. Revisá el archivo antes de confirmar y evitá modificar manualmente los códigos.' }
+      { title: 'Importar abonados', body: 'Usá Importar abonados para actualizar la base de clientes PIG. Si el archivo no contiene un campo obligatorio, el sistema lo completa con “-” para mantener el registro utilizable. Revisá el archivo antes de confirmar y evitá modificar manualmente los códigos.' }
     ]
   },
   {
@@ -90,7 +92,7 @@ const MODULES = [
   {
     id: 'audit', module: 'audit', icon: 'audit', adminOnly: true, title: 'Auditoría', summary: 'Revisá quién realizó cambios importantes y qué información fue afectada.',
     articles: [
-      { title: 'Consultar movimientos', body: 'Filtrá por acción o buscá un usuario, entidad o registro. Presioná Ver detalle para comparar la información anterior con la posterior.' },
+      { title: 'Consultar movimientos', body: 'Filtrá por acción o buscá un usuario, entidad o registro. Presioná Ver detalle para comparar la información anterior con la posterior. El módulo conserva y muestra únicamente los 100 movimientos más recientes para mantener un funcionamiento ágil.' },
       { title: 'Cuándo usarla', body: 'Consultá Auditoría cuando necesites saber quién creó, modificó o eliminó un dato, o cuando una agenda ya no coincida con lo esperado.' },
       { title: 'Qué no hace', body: 'Auditoría sirve para revisar movimientos; no modifica ni recupera datos por sí misma. Luego de identificar el cambio, realizá la corrección desde el módulo correspondiente.' }
     ]
@@ -104,6 +106,7 @@ const FAQ = [
   ['¿Cómo cambio un servicio de equipo?', 'Usá el botón de traslado del servicio y elegí el equipo de destino. No es necesario eliminarlo ni cargarlo nuevamente.'],
   ['¿Por qué no puedo eliminar una persona, cliente o servicio?', 'El registro puede estar vinculado a trabajos anteriores. La restricción evita perder información importante; en esos casos conviene desactivarlo o corregirlo.'],
   ['¿Qué significa “cambios guardados desde otra sesión”?', 'Otra pestaña o usuario guardó información después de que abriste la pantalla. Recargá la página antes de seguir para trabajar con la versión más reciente.'],
+  ['¿Cuánto tiempo permanecen los avisos verdes?', 'Los mensajes de confirmación desaparecen automáticamente después de algunos segundos. También podés cerrarlos de inmediato con la cruz.'],
   ['¿Por qué un sábado aparece sin técnico?', 'Es intencional: trabaja una sola persona y el turno rota. El técnico debe seleccionarse manualmente cada sábado.'],
   ['¿Dónde corrijo la dirección o el teléfono de un cliente?', 'En Abonados y clientes. Así el cambio queda disponible para las próximas agendas.']
 ]
@@ -137,7 +140,7 @@ function HelpCenter({ onNavigate, isAdministrator }) {
   const visibleArticles = selected?.articles || []
   return <div className="help-center">
     <header className="help-hero">
-      <div><p className="eyebrow">GUÍAS Y PREGUNTAS FRECUENTES</p><h1>Centro de ayuda</h1><p>Encontrá instrucciones simples para completar cada tarea con seguridad.</p></div>
+      <div><p className="eyebrow">GUÍAS Y PREGUNTAS FRECUENTES</p><h1>Centro de ayuda</h1><span className="help-updated">Actualizado · agosto de 2026</span><p>Encontrá instrucciones simples para completar cada tarea con seguridad.</p></div>
       <label className="help-search"><Icon name="search" size={19} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="¿Qué necesitás hacer?" autoComplete="off" />{query && <button onClick={() => setQuery('')} aria-label="Limpiar búsqueda"><Icon name="close" size={15} /></button>}</label>
     </header>
     {query ? <section className="help-results data-card"><div className="help-section-title"><div><span>{searchResults.length}</span><h2>Resultados para “{query}”</h2></div></div>{searchResults.length ? searchResults.map(result => <button className="help-result" key={`${result.section.id}-${result.index}`} onClick={() => choose(result.section.id, result.index)}><Icon name={result.section.icon} /><span><b>{result.title}</b><small>{result.section.title}</small></span><i>Ver guía →</i></button>) : <div className="help-empty"><Icon name="search" size={30} /><h3>No encontramos una guía con esas palabras</h3><p>Probá con términos como “reprogramar”, “cliente”, “equipo” o “pendiente”.</p></div>}</section> : <div className="help-layout">
