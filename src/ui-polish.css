@@ -381,8 +381,22 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
 
 .daily-extra-fields label { min-width: 0; }
 
-.daily-extra-fields input:disabled,
-.weekly-extra-fields input:disabled {
+.dashboard-summary-column {
+  display: grid;
+  gap: 17px;
+  min-width: 0;
+}
+
+.dashboard-summary-column > .data-card {
+  margin-bottom: 0;
+}
+
+.retirement-summary > div b {
+  color: #c34f49 !important;
+}
+
+.daily-extra-fields :is(input, select):disabled,
+.weekly-extra-fields :is(input, select):disabled {
   background: #edf1ed;
   border-color: #d7dfd8;
   color: #718076;
@@ -390,8 +404,8 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
   opacity: 1;
 }
 
-.app-shell[data-theme="dark"] .daily-extra-fields input:disabled,
-.app-shell[data-theme="dark"] .weekly-extra-fields input:disabled {
+.app-shell[data-theme="dark"] .daily-extra-fields :is(input, select):disabled,
+.app-shell[data-theme="dark"] .weekly-extra-fields :is(input, select):disabled {
   background: #243329;
   border-color: #3b4e41;
   color: #91a095;
