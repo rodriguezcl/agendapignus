@@ -454,7 +454,8 @@ body.dark .week-task-summary.available-slot .week-task-client {
 .week-task > label textarea,
 .week-task-top label input,
 .week-task-top label select,
-.weekly-extra-fields label input {
+.weekly-extra-fields label input,
+.weekly-extra-fields label select {
   width: 100%;
   box-sizing: border-box;
 }
@@ -610,6 +611,39 @@ body.dark .weekly-task-move {
   clip-path: inset(0 round 16px);
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
+}
+
+.weekly-task-modal > .modal-close {
+  position: absolute;
+  z-index: 4;
+  top: 16px;
+  right: 18px;
+  margin: 0;
+  border: 1px solid #d3dfd5;
+  background: #fff;
+  color: #355442;
+  box-shadow: 0 3px 10px rgba(13, 45, 27, .12);
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, color .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+
+.weekly-task-modal > .modal-close:hover {
+  border-color: #b89027;
+  background: #fff8e7;
+  color: #8a6500;
+  box-shadow: 0 5px 14px rgba(13, 45, 27, .18);
+  transform: translateY(-1px);
+}
+
+.weekly-task-modal > .modal-close:focus-visible {
+  outline: 3px solid rgba(190, 139, 12, .25);
+  outline-offset: 2px;
+}
+
+.app-shell[data-theme="dark"] .weekly-task-modal > .modal-close {
+  border-color: #486150;
+  background: #203126;
+  color: #e2ece5;
 }
 
 .weekly-task-modal::-webkit-scrollbar {

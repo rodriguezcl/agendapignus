@@ -5,6 +5,7 @@ const crypto = require('node:crypto')
 const { DatabaseSync } = require('node:sqlite')
 const { normalizeScheduling } = require('./scripts/normalize-scheduling.cjs')
 const { rebuildWeeklyFromHistory, dedupeAgendaTeams } = require('./scripts/rebuild-weekly-from-history.cjs')
+const { writeProfessionalPdf } = require('./scripts/professional-pdf.cjs')
 
 // API local: Vite reenvía las rutas /api a este proceso durante el desarrollo.
 const port = Number(process.env.PIGNUS_PORT || 3001)
@@ -1184,6 +1185,25 @@ function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]))
 }
 
+function reportDate(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : String(value || '')
+}
+
+function professionalExcelHtml({ title, description, month, headers, rows, widths }) {
+  const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+  const generatedAt = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+  const body = rows.map((row, rowIndex) => `<tr class="${rowIndex % 2 ? 'alternate' : ''}">${row.map((value, columnIndex) => {
+    const header = headers[columnIndex]
+    const rendered = header === 'Fecha' ? reportDate(value) : value
+    const className = header === 'Contacto' ? 'text-value contact' : header === 'Fecha' ? 'date-value' : 'text-value'
+    return `<td class="${className}">${escapeHtml(rendered) || '&nbsp;'}</td>`
+  }).join('')}</tr>`).join('')
+  return `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>
+    @page{size:landscape;margin:0.45in}body{font-family:Aptos,Calibri,Arial,sans-serif;color:#173626;background:#fff;margin:0}.report{border-collapse:collapse;width:100%;table-layout:fixed}.brand td{height:26px;padding:8px 12px;background:#123122;color:#d8a016;font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase}.title td{padding:16px 12px 4px;background:#123122;color:#fff;font-size:24px;font-weight:700}.description td{padding:2px 12px 16px;background:#123122;color:#d5e2d9;font-size:11px}.meta td{padding:11px 12px;background:#f4ecd3;color:#405748;font-size:11px;border-bottom:2px solid #c99311}.meta b{color:#173626}.spacer td{height:10px}.headers th{padding:10px 9px;background:#c99311;color:#fff;font-size:11px;font-weight:700;text-align:left;border-bottom:2px solid #8d6505}.report tbody td{padding:9px;border-bottom:1px solid #d9e4da;vertical-align:top;font-size:10px;white-space:normal}.report tbody tr.alternate td{background:#f5f8f5}.date-value{white-space:nowrap!important;text-align:center;mso-number-format:"dd/mm/yyyy"}.contact{white-space:nowrap!important;mso-number-format:"\\@"}.footer td{padding:13px 12px;color:#6b7d70;font-size:9px;border-top:2px solid #c99311}.count{font-size:15px;font-weight:700;color:#173626}.confidential{float:right;font-weight:700;color:#6b5220}
+  </style></head><body><table class="report"><colgroup>${widths.map(width => `<col style="width:${width}">`).join('')}</colgroup><thead><tr class="brand"><td colspan="${headers.length}">PIGNUS · Gestión operativa</td></tr><tr class="title"><td colspan="${headers.length}">${escapeHtml(title)}</td></tr><tr class="description"><td colspan="${headers.length}">${escapeHtml(description)}</td></tr><tr class="meta"><td colspan="${headers.length}"><b>Período:</b> ${escapeHtml(monthLabel)} &nbsp;&nbsp;·&nbsp;&nbsp; <b>Total de registros:</b> <span class="count">${rows.length}</span> &nbsp;&nbsp;·&nbsp;&nbsp; <b>Generado:</b> ${escapeHtml(generatedAt)}</td></tr><tr class="spacer"><td colspan="${headers.length}"></td></tr><tr class="headers">${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${body || `<tr><td colspan="${headers.length}">No existen registros para el período seleccionado.</td></tr>`}</tbody><tfoot><tr class="footer"><td colspan="${headers.length}">Agenda técnica PIGNUS <span class="confidential">Documento de uso interno</span></td></tr></tfoot></table></body></html>`
+}
+
 function alarmCategory(record) {
   if (record.installationZone) return record.installationZone
   const address = `${record.address || ''} ${record.client || ''}`.toLowerCase()
@@ -1216,18 +1236,45 @@ function clearDailyAgenda(user) {
 }
 
 /** Genera el reporte Excel compatible solicitado por gerencia, filtrado por ubicación. */
-function exportHistory(res, month, category, technicianId = null) {
+function exportHistory(res, month, category, technicianId = null, format = 'excel') {
+  const isRetirementExport = category === 'retirements'
   // "all" permite obtener un único reporte mensual sin perder los reportes por ubicación.
   const isAllCategories = category === 'all'
   const alarmService = rows('services').find(service => service.code === 'alarm-installation')
-  const records = rows('work_history').filter(record => record.date?.startsWith(month) && (String(record.serviceId) === String(alarmService?.id) || (!record.serviceId && normalizedServiceName(record.service) === 'instalacion de alarma')) && (isAllCategories || alarmCategory(record) === category) && (!technicianId || record.technicianIds?.some(id => String(id) === String(technicianId))))
+  const records = rows('work_history').filter(record => {
+    if (!record.date?.startsWith(month) || (technicianId && !record.technicianIds?.some(id => String(id) === String(technicianId)))) return false
+    if (isRetirementExport) return record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo')
+    return (String(record.serviceId) === String(alarmService?.id) || (!record.serviceId && normalizedServiceName(record.service) === 'instalacion de alarma')) && (isAllCategories || alarmCategory(record) === category)
+  })
+  if (isRetirementExport) {
+    const headers = ['Fecha', 'Cliente', 'Servicio', 'Dirección', 'Contacto', 'Técnicos asignados']
+    const reportRows = records.map(record => [record.date, record.client, record.service, record.address, record.phone, record.technicians?.join(' / ')])
+    if (format === 'pdf') {
+      const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+      const generatedAt = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+      setSecurityHeaders(res)
+      res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="bajas-servicio-${month}.pdf"` })
+      return writeProfessionalPdf(res, { title: 'Bajas de servicio', description: 'Retiros de equipos de alarma completados durante el período seleccionado.', monthLabel, generatedAt, headers, rows: reportRows.map(row => [reportDate(row[0]), ...row.slice(1)]), widths: [58, 170, 95, 190, 100, 156], fileName: `bajas-servicio-${month}.pdf` })
+    }
+    const html = professionalExcelHtml({ title: 'Bajas de servicio', description: 'Retiros de equipos de alarma completados durante el período seleccionado.', month, headers, rows: reportRows, widths: ['9%', '22%', '13%', '24%', '13%', '19%'] })
+    setSecurityHeaders(res)
+    res.writeHead(200, { 'Content-Type': 'application/vnd.ms-excel; charset=utf-8', 'Content-Disposition': `attachment; filename="bajas-servicio-${month}.xls"` })
+    return res.end(`\ufeff${html}`)
+  }
   const label = { docta: 'Docta Urbanización', 'nobu-town': 'Nobu Town', residencial: 'Residenciales', all: 'Todas las instalaciones de alarma' }[category] || 'Instalaciones de alarma'
-  const headers = ['Fecha', 'Cliente', 'Dirección', 'Contacto', 'Técnicos asignados', 'Detalle', 'Equipo']
-  const body = records.map(record => `<tr>${[record.date, record.client, record.address, record.phone, record.technicians?.join(' / '), record.detail, record.team].map(value => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('')
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:Arial}th{background:#173b28;color:#fff}th,td{border:1px solid #c8d5ca;padding:8px;text-align:left}h1{font-family:Arial;color:#173b28}</style></head><body><h1>Instalaciones de alarma – ${escapeHtml(label)}</h1><p>Período: ${escapeHtml(month)}</p><table><tr>${headers.map(header => `<th>${header}</th>`).join('')}</tr>${body}</table></body></html>`
+  const headers = ['Fecha', 'Cliente', 'Dirección', 'Contacto', 'Técnicos asignados']
+  const reportRows = records.map(record => [record.date, record.client, record.address, record.phone, record.technicians?.join(' / ')])
+  if (format === 'pdf') {
+    const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+    const generatedAt = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+    setSecurityHeaders(res)
+    res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="instalaciones-alarma-${category}-${month}.pdf"` })
+    return writeProfessionalPdf(res, { title: `Altas de servicio · ${label}`, description: 'Instalaciones de alarma registradas durante el período seleccionado.', monthLabel, generatedAt, headers, rows: reportRows.map(row => [reportDate(row[0]), ...row.slice(1)]), widths: [60, 175, 235, 110, 189], fileName: `instalaciones-alarma-${category}-${month}.pdf` })
+  }
+  const html = professionalExcelHtml({ title: `Altas de servicio · ${label}`, description: 'Instalaciones de alarma registradas durante el período seleccionado.', month, headers, rows: reportRows, widths: ['9%', '23%', '31%', '14%', '23%'] })
   setSecurityHeaders(res)
   res.writeHead(200, { 'Content-Type': 'application/vnd.ms-excel; charset=utf-8', 'Content-Disposition': `attachment; filename="instalaciones-alarma-${category}-${month}.xls"` })
-  res.end(html)
+  res.end(`\ufeff${html}`)
 }
 
 const server = http.createServer((req, res) => {
@@ -1285,9 +1332,9 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/history/export') {
     const user = requireSession(req, res)
     if (!user) return
-    if (user.roleCode === 'technician') return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial', user.id)
+    if (user.roleCode === 'technician') return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial', user.id, url.searchParams.get('format') || 'excel')
     if (!userCan(user, 'history')) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
-    return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial')
+    return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial', null, url.searchParams.get('format') || 'excel')
   }
   if (req.method === 'GET' && req.url === '/api/state') {
     const user = requireSession(req, res)
