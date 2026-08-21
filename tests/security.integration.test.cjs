@@ -218,7 +218,7 @@ test('normaliza como pendiente un servicio nuevo sin estado', async () => {
   assert.equal(saved.history.find(record => record.id === id).status, 'Pendiente')
 })
 
-test('registra de forma confiable quién creó y quién actualizó un servicio', async () => {
+test('conserva únicamente el autor original de carga de un servicio', async () => {
   const administratorCookie = await login('qa-admin@pignus.test')
   let current = await state(administratorCookie)
   const base = current.history[0]
@@ -236,7 +236,7 @@ test('registra de forma confiable quién creó y quién actualizó un servicio',
   current = await state(administratorCookie)
   let record = current.history.find(item => item.id === id)
   assert.equal(record.createdBy.name, 'QA Admin')
-  assert.equal(record.lastUpdatedBy.name, 'QA Admin')
+  assert.equal(record.lastUpdatedBy, undefined)
 
   current.employees.find(employee => employee.id === 'qa-settings').status = 'Activo'
   current.roles.find(role => role.id === 'qa-settings-role').permissions = { settings: true, history: true }
@@ -251,7 +251,79 @@ test('registra de forma confiable quién creó y quién actualizó un servicio',
   current = await state(administratorCookie)
   record = current.history.find(item => item.id === id)
   assert.equal(record.createdBy.name, 'QA Admin')
-  assert.equal(record.lastUpdatedBy.name, 'QA Configuración')
+  assert.equal(record.lastUpdatedBy, undefined)
+})
+
+test('limita la auditoría almacenada y visible a los últimos 100 registros', async () => {
+  const administratorCookie = await login('qa-admin@pignus.test')
+  const current = await state(administratorCookie)
+  current.services.push(...Array.from({ length: 105 }, (_, index) => ({ id: `qa-audit-service-${index}`, code: `qa-audit-service-${index}`, name: `Servicio de auditoría ${index}`, description: 'Prueba del límite', category: 'service', status: 'Activo' })))
+  let response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
+  assert.equal(response.status, 200)
+  response = await api('/api/audit?limit=500', administratorCookie)
+  assert.equal(response.status, 200)
+  const records = (await response.json()).records
+  assert.equal(records.length, 100)
+  assert.equal(Object.hasOwn(records[0], 'before'), false)
+  assert.equal(Object.hasOwn(records[0], 'after'), false)
+  const detailResponse = await api(`/api/audit/${encodeURIComponent(records[0].id)}`, administratorCookie)
+  assert.equal(detailResponse.status, 200)
+  assert.equal((await detailResponse.json()).record.id, records[0].id)
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  assert.equal(db.prepare('SELECT COUNT(*) AS total FROM audit_log').get().total, 100)
+  db.close()
+})
+
+test('rechaza clientes nuevos sin dirección y completa abonados importados', async () => {
+  const administratorCookie = await login('qa-admin@pignus.test')
+  let current = await state(administratorCookie)
+  current.customers.push({ customerId: 'qa-client-incomplete', kind: 'client', account: 'CLI-9998', name: 'CLIENTE INCOMPLETO', street: '', address: '', locality: '', province: '', phone: '', type: '', fields: {} })
+  let response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
+  assert.equal(response.status, 400)
+
+  current = await state(administratorCookie)
+  current.customers.push({ customerId: 'qa-client-without-contact', kind: 'client', account: 'CLI-9997', name: 'CLIENTE SIN CONTACTO', street: 'Calle QA 100', address: 'Calle QA 100', locality: '', province: '', phone: '', type: '', fields: {} })
+  response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
+  assert.equal(response.status, 400)
+
+  current = await state(administratorCookie)
+  current.customers.push({ customerId: 'qa-subscriber-incomplete', kind: 'subscriber', account: 'PIG-999998', name: '', street: '', address: '', locality: '', province: '', phone: '', type: '', fields: {} })
+  response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
+  assert.equal(response.status, 200)
+  current = await state(administratorCookie)
+  const imported = current.customers.find(customer => customer.customerId === 'qa-subscriber-incomplete')
+  assert.equal(imported.name, '-')
+  assert.equal(imported.street, '-')
+  assert.equal(imported.address, '-')
+  assert.equal(imported.phone, '-')
+})
+
+test('mantiene vinculados los históricos cuando una baja convierte PIG en CLI', async () => {
+  const administratorCookie = await login('qa-admin@pignus.test')
+  let current = await state(administratorCookie)
+  const customerId = 'qa-converted-customer'
+  const originalAccount = 'PIG-999997'
+  const base = current.history[0]
+  const retirement = current.services.find(service => String(service.name).toLocaleLowerCase('es-AR').includes('retiro de equipo'))
+  assert.ok(retirement)
+  current.customers.push({ customerId, kind: 'subscriber', account: originalAccount, name: 'CLIENTE CONVERTIDO QA', street: 'Calle QA 123', address: 'Calle QA 123', locality: '', province: '', phone: '3515550101', type: 'Residencial', fields: {} })
+  current.history.push(
+    { ...base, id: 'qa-before-conversion', customerId, clientAccount: originalAccount, client: `${originalAccount} CLIENTE CONVERTIDO QA`, status: 'Completado' },
+    { ...base, id: 'qa-retirement-conversion', customerId, clientAccount: originalAccount, client: `${originalAccount} CLIENTE CONVERTIDO QA`, serviceId: retirement.id, service: retirement.name, status: 'Completado' }
+  )
+  let response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
+  assert.equal(response.status, 200)
+  current = await state(administratorCookie)
+  const converted = current.customers.find(customer => customer.customerId === customerId)
+  assert.equal(converted.kind, 'client')
+  assert.equal(converted.convertedFromAccount, originalAccount)
+  for (const id of ['qa-before-conversion', 'qa-retirement-conversion']) {
+    const record = current.history.find(item => item.id === id)
+    assert.equal(record.customerId, customerId)
+    assert.equal(record.clientAccount, converted.account)
+    assert.match(record.client, new RegExp(`^${converted.account}`))
+  }
+  assert.equal(current.customers.filter(customer => customer.name === 'CLIENTE CONVERTIDO QA').length, 1)
 })
 
 test('elimina copias de una misma tarea sin confundir servicios distintos', () => {

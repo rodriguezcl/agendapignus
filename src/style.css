@@ -85,6 +85,10 @@
 .app-shell .content > .audit-page {
   min-height: auto;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: 0;
+  box-sizing: border-box;
   background: transparent;
 }
 
@@ -97,4 +101,8 @@
   max-width: none;
   margin: 0;
   padding: 0;
+}
+
+.customer-editor-modal .required-mark {
+  color: #c7443f;
 }
