@@ -1,0 +1,311 @@
+const crypto = require('node:crypto')
+const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
+const { appendAudit, database, readState, replaceCollections } = require('./_lib/database.cjs')
+const {
+  auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
+  legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
+  reportDate, secureEmployees, userCan, userForEmployee, validateState, verifyPassword,
+  visibleStateForUser
+} = require('./_lib/core.cjs')
+
+const SESSION_MAX_AGE = 8 * 60 * 60 * 1000
+const LOGIN_WINDOW = 15 * 60 * 1000
+const LOGIN_MAX_ATTEMPTS = 5
+const AUDIT_LOG_LIMIT = 100
+
+function securityHeaders(res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('Referrer-Policy', 'no-referrer')
+  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'")
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+}
+
+function send(res, status, data) {
+  securityHeaders(res)
+  return res.status(status).json(data)
+}
+
+function cookies(header = '') {
+  return Object.fromEntries(header.split(';').map(part => part.trim().split('=').map(decodeURIComponent)).filter(([key]) => key))
+}
+
+function tokenHash(token) {
+  return crypto.createHmac('sha256', process.env.PIGNUS_SESSION_SECRET || 'development-only').update(String(token)).digest('hex')
+}
+
+function requestFingerprint(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+  const address = forwarded || req.socket?.remoteAddress || 'unknown'
+  return crypto.createHmac('sha256', process.env.PIGNUS_RATE_LIMIT_SECRET || process.env.PIGNUS_SESSION_SECRET || 'development-only').update(address).digest('hex')
+}
+
+function routePath(req) {
+  const rewritten = req.query?.path
+  if (Array.isArray(rewritten)) return `/${rewritten.join('/')}`
+  if (rewritten != null && String(rewritten)) return `/${String(rewritten).replace(/^\/+/, '')}`
+  return new URL(req.url, 'https://pignus.local').pathname.replace(/^\/api(?:\/index)?\/?/, '/')
+}
+
+function requestBody(req) {
+  if (req.body && typeof req.body === 'object') return req.body
+  if (typeof req.body === 'string') {
+    try { return JSON.parse(req.body || '{}') } catch { throw new Error('Datos inválidos.') }
+  }
+  return {}
+}
+
+function auditEntry(user, action, entity, entityId, before, after) {
+  return { id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name, email: user.email, role: user.role }, action, entity, entityId, before: auditSafe(before), after: auditSafe(after) }
+}
+
+async function sessionContext(req, sql = database()) {
+  const token = cookies(req.headers.cookie).pignus_session
+  if (!token) return null
+  const hash = tokenHash(token)
+  const sessions = await sql`select employee_id, expires_at from pignus_sessions where token_hash = ${hash}`
+  const session = sessions[0]
+  if (!session || new Date(session.expires_at).getTime() <= Date.now()) {
+    if (session) await sql`delete from pignus_sessions where token_hash = ${hash}`
+    return null
+  }
+  const employees = await sql`select data from pignus_employees where id = ${String(session.employee_id)}`
+  const employee = employees[0]?.data
+  if (!employee || employee.status !== 'Activo') {
+    await sql`delete from pignus_sessions where token_hash = ${hash}`
+    return null
+  }
+  const roles = (await sql`select data from pignus_roles`).map(row => row.data)
+  const user = userForEmployee(employee, roles)
+  if (!user) {
+    await sql`delete from pignus_sessions where token_hash = ${hash}`
+    return null
+  }
+  return { token, hash, user, expiresAt: new Date(session.expires_at) }
+}
+
+async function requireSession(req, res, sql = database()) {
+  const session = await sessionContext(req, sql)
+  if (!session) send(res, 401, { error: 'Sesión requerida.' })
+  return session
+}
+
+async function handleLogin(req, res, sql) {
+  const fingerprint = requestFingerprint(req)
+  const attempts = await sql`select attempts, blocked_until from pignus_login_attempts where fingerprint = ${fingerprint}`
+  if (attempts[0]?.attempts >= LOGIN_MAX_ATTEMPTS && new Date(attempts[0].blocked_until).getTime() > Date.now()) return send(res, 429, { error: 'Demasiados intentos. Esperá 15 minutos antes de volver a intentar.' })
+  const { email, password } = requestBody(req)
+  const employees = await sql`select data from pignus_employees where email = ${String(email || '').trim().toLowerCase()}`
+  const employee = employees[0]?.data
+  const legacy = Buffer.from(String(employee?.password || ''))
+  const supplied = Buffer.from(String(password || ''))
+  const legacyValid = legacy.length === supplied.length && legacy.length > 0 && crypto.timingSafeEqual(legacy, supplied)
+  const valid = employee?.status === 'Activo' && (employee.passwordHash ? verifyPassword(password, employee.passwordHash) : legacyValid)
+  if (!valid) {
+    await sql`insert into pignus_login_attempts (fingerprint, attempts, blocked_until, updated_at) values (${fingerprint}, 1, ${new Date(Date.now() + LOGIN_WINDOW)}, now()) on conflict (fingerprint) do update set attempts = case when pignus_login_attempts.blocked_until > now() then pignus_login_attempts.attempts + 1 else 1 end, blocked_until = ${new Date(Date.now() + LOGIN_WINDOW)}, updated_at = now()`
+    return send(res, 401, { error: 'Usuario o contraseña incorrectos.' })
+  }
+  if (!employee.passwordHash) {
+    employee.passwordHash = hashPassword(employee.password)
+    delete employee.password
+    await sql`update pignus_employees set data = ${sql.json(employee)} where id = ${String(employee.id)}`
+  }
+  const roles = (await sql`select data from pignus_roles`).map(row => row.data)
+  const user = userForEmployee(employee, roles)
+  if (!user) return send(res, 401, { error: 'El usuario no tiene un rol válido.' })
+  const token = crypto.randomBytes(32).toString('hex')
+  const expiresAt = new Date(Date.now() + SESSION_MAX_AGE)
+  await sql.begin(async transaction => {
+    await transaction`delete from pignus_login_attempts where fingerprint = ${fingerprint}`
+    await transaction`delete from pignus_sessions where expires_at <= now()`
+    await transaction`insert into pignus_sessions (token_hash, employee_id, expires_at) values (${tokenHash(token)}, ${String(user.id)}, ${expiresAt})`
+    await appendAudit(transaction, [auditEntry(user, 'Inició sesión', 'Sesión', String(user.id), null, { sessionExpiresAt: expiresAt.toISOString() })])
+  })
+  res.setHeader('Set-Cookie', `pignus_session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE / 1000}`)
+  return send(res, 200, { user })
+}
+
+async function handleLogout(req, res, sql) {
+  const session = await sessionContext(req, sql)
+  if (session) await sql.begin(async transaction => {
+    await appendAudit(transaction, [auditEntry(session.user, 'Cerró sesión', 'Sesión', String(session.user.id), { sessionExpiresAt: session.expiresAt.toISOString() }, null)])
+    await transaction`delete from pignus_sessions where token_hash = ${session.hash}`
+  })
+  res.setHeader('Set-Cookie', 'pignus_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0')
+  return send(res, 200, { ok: true })
+}
+
+async function handleSaveState(req, res, sql, user) {
+  const incoming = requestBody(req)
+  try {
+    const revision = await sql.begin(async transaction => {
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const currentRevision = Number(revisionRows[0]?.value || 0)
+      if (!Number.isInteger(Number(incoming.revision)) || Number(incoming.revision) !== currentRevision) {
+        const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de volver a guardar.')
+        error.statusCode = 409
+        throw error
+      }
+      const current = await readState(transaction)
+      let next = authorizeIncomingState(incoming, current, user)
+      next = normalizeStateForSave(next, current)
+      next.employees = secureEmployees(next.employees, current.employees)
+      validateState(next)
+      const entries = [
+        ...auditChanges(current.roles, next.roles, 'id', 'Rol', user),
+        ...auditChanges(current.employees, next.employees, 'id', 'Empleado', user),
+        ...auditChanges(current.services, next.services, 'id', 'Tipo de servicio', user),
+        ...auditChanges(current.history, next.history, 'id', 'Servicio / historial', user),
+        ...auditChanges(current.customers, next.customers, 'customerId', 'Abonado / Cliente', user),
+        ...auditChanges(current.reviews, next.reviews, 'id', 'Reseña', user)
+      ]
+      if (JSON.stringify(current.agenda) !== JSON.stringify(next.agenda)) entries.push(auditEntry(user, 'Modificó', 'Agenda técnica', 'agenda-actual', current.agenda, next.agenda))
+      await replaceCollections(transaction, next)
+      await appendAudit(transaction, entries)
+      const nextRevision = currentRevision + 1
+      await transaction`update pignus_preferences set value = ${String(nextRevision)}, updated_at = now() where key = 'state_revision'`
+      return nextRevision
+    })
+    return send(res, 200, { ok: true, revision })
+  } catch (error) {
+    console.error('No se pudo guardar el estado:', error.message)
+    return send(res, error.statusCode || 400, { error: error.message || 'No se pudieron guardar los datos.' })
+  }
+}
+
+function alarmCategory(record) {
+  if (record.installationZone) return record.installationZone
+  const address = `${record.address || ''} ${record.client || ''}`.toLowerCase()
+  if (address.includes('docta')) return 'docta'
+  if (address.includes('nobu')) return 'nobu-town'
+  return 'residencial'
+}
+
+async function handleExport(req, res, sql, user) {
+  const month = String(req.query.month || new Date().toISOString().slice(0, 7))
+  const category = String(req.query.category || 'residencial')
+  const format = String(req.query.format || 'excel')
+  const isRetirement = category === 'retirements'
+  const state = await readState(sql)
+  const alarmService = state.services.find(service => service.code === 'alarm-installation')
+  const records = state.history.filter(record => {
+    if (!record.date?.startsWith(month) || (user.roleCode === 'technician' && !record.technicianIds?.some(id => String(id) === String(user.id)))) return false
+    if (isRetirement) return record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo')
+    return (String(record.serviceId) === String(alarmService?.id) || (!record.serviceId && normalizedServiceName(record.service) === 'instalacion de alarma')) && (category === 'all' || alarmCategory(record) === category)
+  }).sort(compareReportRecords)
+  const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+  const generatedAt = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+  const label = { docta: 'Docta Urbanización', 'nobu-town': 'Nobu Town', residencial: 'Residenciales', all: 'Todas las instalaciones de alarma' }[category] || 'Instalaciones de alarma'
+  const headers = isRetirement ? ['Fecha', 'Cliente', 'Servicio', 'Dirección', 'Contacto', 'Técnicos asignados'] : ['Fecha', 'Cliente', 'Dirección', 'Contacto', 'Técnicos asignados']
+  const rows = records.map(record => isRetirement ? [record.date, record.client, record.service, record.address, record.phone, record.technicians?.join(' / ')] : [record.date, record.client, record.address, record.phone, record.technicians?.join(' / ')])
+  const title = isRetirement ? 'Bajas de servicio' : `Altas de servicio · ${label}`
+  const description = isRetirement ? 'Retiros de equipos de alarma completados durante el período seleccionado.' : 'Instalaciones de alarma registradas durante el período seleccionado.'
+  const fileBase = isRetirement ? `bajas-servicio-${month}` : `instalaciones-alarma-${category}-${month}`
+  securityHeaders(res)
+  if (format === 'pdf') {
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.pdf"`)
+    return writeProfessionalPdf(res, { title, description, monthLabel, generatedAt, headers, rows: rows.map(row => [reportDate(row[0]), ...row.slice(1)]), widths: isRetirement ? [58, 170, 95, 190, 100, 156] : [60, 175, 235, 110, 189], fileName: `${fileBase}.pdf` })
+  }
+  const html = professionalExcelHtml({ title, description, month, headers, rows, widths: isRetirement ? ['9%', '22%', '13%', '24%', '13%', '19%'] : ['9%', '23%', '31%', '14%', '23%'] })
+  res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8')
+  res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.xls"`)
+  return res.status(200).send(`\ufeff${html}`)
+}
+
+async function handleTechnicianStatus(req, res, sql, user) {
+  if (user.roleCode !== 'technician') return send(res, 403, { error: 'Esta acción es exclusiva del rol técnico.' })
+  const { recordId, type, observation } = requestBody(req)
+  const allowed = ['Completado', 'Cancelado', 'Reprogramación solicitada']
+  try {
+    const updated = await sql.begin(async transaction => {
+      const rows = await transaction`select data from pignus_work_history where id = ${String(recordId)} for update`
+      const record = rows[0]?.data
+      if (!record) { const error = new Error('El servicio no existe.'); error.statusCode = 404; throw error }
+      if (!record.technicianIds?.some(id => String(id) === String(user.id))) { const error = new Error('El servicio no está asignado al técnico autenticado.'); error.statusCode = 403; throw error }
+      if (!allowed.includes(type) || record.technicalStatus) throw new Error('No se puede actualizar este servicio.')
+      if (type !== 'Completado' && !String(observation || '').trim()) throw new Error('La observación es obligatoria.')
+      const now = new Date().toISOString()
+      const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim(), technicalReportedAt: now, completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type }
+      await transaction`update pignus_work_history set status = ${next.status}, data = ${transaction.json(next)} where id = ${String(record.id)}`
+      const entries = [auditEntry(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, next)]
+      if (next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo')) {
+        const state = await readState(transaction)
+        state.history = state.history.map(item => String(item.id) === String(next.id) ? next : item)
+        const normalized = normalizeRetirementCustomers(state)
+        if (normalized.conversions.length) {
+          await replaceCollections(transaction, normalized.state)
+          normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
+        }
+      }
+      await appendAudit(transaction, entries)
+      await transaction`update pignus_preferences set value = (value::integer + 1)::text, updated_at = now() where key = 'state_revision'`
+      return next
+    })
+    return send(res, 200, { record: updated })
+  } catch (error) {
+    return send(res, error.statusCode || 400, { error: error.message || 'No se pudo informar el estado.' })
+  }
+}
+
+async function handleClearAgenda(req, res, sql, user) {
+  if (!userCan(user, 'agenda')) return send(res, 403, { error: 'No tenés permiso para limpiar la agenda del día.' })
+  const revision = await sql.begin(async transaction => {
+    await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+    const rows = await transaction`select data from pignus_agendas where id = 'current' for update`
+    const previous = rows[0]?.data || {}
+    const date = new Date().toISOString().slice(0, 10)
+    const teamId = `team-${crypto.createHash('sha256').update(`${date.slice(0, 7)}:0`).digest('hex').slice(0, 20)}`
+    const next = { ...previous, date, teams: [{ teamId, memberIds: [], members: [], tasks: [] }] }
+    await transaction`insert into pignus_agendas (id, data, updated_at) values ('current', ${transaction.json(next)}, now()) on conflict (id) do update set data = excluded.data, updated_at = now()`
+    await appendAudit(transaction, [auditEntry(user, 'Limpió', 'Agenda del día', 'agenda-diaria', previous, next)])
+    const result = await transaction`update pignus_preferences set value = (value::integer + 1)::text, updated_at = now() where key = 'state_revision' returning value`
+    return Number(result[0].value)
+  })
+  return send(res, 200, { ok: true, revision })
+}
+
+module.exports = async function handler(req, res) {
+  try {
+    if (process.env.VERCEL && (!process.env.PIGNUS_SESSION_SECRET || !process.env.PIGNUS_RATE_LIMIT_SECRET)) return send(res, 500, { error: 'La API no tiene configurados sus secretos de seguridad.' })
+    const sql = database()
+    const route = routePath(req)
+    if (req.method === 'POST' && route === '/auth/login') return await handleLogin(req, res, sql)
+    if (req.method === 'POST' && route === '/auth/logout') return await handleLogout(req, res, sql)
+    if (req.method === 'GET' && route === '/auth/session') {
+      const session = await sessionContext(req, sql)
+      return session ? send(res, 200, { user: session.user }) : send(res, 401, { error: 'Sin sesión activa.' })
+    }
+    const session = await requireSession(req, res, sql)
+    if (!session) return
+    if (req.method === 'GET' && route === '/state') return send(res, 200, visibleStateForUser(await readState(sql), session.user))
+    if (req.method === 'PUT' && route === '/state') {
+      if (session.user.roleCode === 'technician') return send(res, 403, { error: 'El rol técnico no puede modificar la agenda.' })
+      return await handleSaveState(req, res, sql, session.user)
+    }
+    if (req.method === 'GET' && route === '/history/export') {
+      if (session.user.roleCode !== 'technician' && !userCan(session.user, 'history')) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
+      return await handleExport(req, res, sql, session.user)
+    }
+    if (req.method === 'GET' && route === '/audit') {
+      if (session.user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
+      const limit = Math.min(Math.max(Number(req.query.limit) || AUDIT_LOG_LIMIT, 1), AUDIT_LOG_LIMIT)
+      const rows = await sql`select data from pignus_audit_log order by occurred_at desc limit ${limit}`
+      return send(res, 200, { records: rows.map(row => { const { before, after, ...summary } = row.data; return summary }) })
+    }
+    if (req.method === 'GET' && route.startsWith('/audit/')) {
+      if (session.user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
+      const id = decodeURIComponent(route.slice('/audit/'.length))
+      const rows = await sql`select data from pignus_audit_log where id = ${id}`
+      return rows[0] ? send(res, 200, { record: rows[0].data }) : send(res, 404, { error: 'El registro de auditoría no existe.' })
+    }
+    if (req.method === 'POST' && route === '/technician/status') return await handleTechnicianStatus(req, res, sql, session.user)
+    if (req.method === 'POST' && route === '/agenda/daily/clear') return await handleClearAgenda(req, res, sql, session.user)
+    return send(res, 404, { error: 'Ruta no encontrada.' })
+  } catch (error) {
+    console.error('Error de API:', error)
+    return send(res, 500, { error: 'No se pudo completar la operación.' })
+  }
+}

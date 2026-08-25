@@ -1,9 +1,9 @@
 AGENDA TÉCNICA PIGNUS
 =====================
 
-Aplicación local para planificar agendas, administrar clientes, empleados,
-servicios e historial técnico. La interfaz usa React/Vite y la persistencia
-local se realiza en SQLite mediante una API Node.js.
+Aplicación para planificar agendas, administrar clientes, empleados, servicios
+e historial técnico. La interfaz usa React/Vite. En desarrollo local persiste
+en SQLite; la versión desplegada en Vercel utiliza PostgreSQL de Supabase.
 
 INICIO
 ------
@@ -20,6 +20,8 @@ ESTRUCTURA
 - `src/features/`: módulos de negocio; cada funcionalidad nueva debe vivir aquí.
 - `src/services/`: cliente de API y servicios compartidos.
 - `server.cjs`: API local, reglas de persistencia y SQLite.
+- `api/`: API serverless de Vercel y acceso a PostgreSQL/Supabase.
+- `supabase/`: migraciones reproducibles del esquema PostgreSQL.
 - `data/`: base de datos e importaciones; no se versiona.
 - `public/`: imágenes y recursos estáticos.
 - `docs/ARQUITECTURA.md`: decisiones técnicas y convenciones de desarrollo.
@@ -37,6 +39,9 @@ PERSISTENCIA
 Los datos operativos se guardan en `data/agenda-tecnica.db`. No eliminar esta
 carpeta si se desea conservar clientes, agendas e historial. Las copias de
 seguridad deben hacerse con la aplicación detenida.
+
+Para publicar la aplicación y migrar los datos actuales, seguir
+`docs/DESPLIEGUE-VERCEL-SUPABASE.md`.
 
 MANTENIMIENTO
 -------------

@@ -1190,6 +1190,13 @@ function reportDate(value) {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : String(value || '')
 }
 
+function compareReportRecords(left, right) {
+  return String(right.date || '').localeCompare(String(left.date || ''))
+    || String(left.time || left.scheduledTime || '').localeCompare(String(right.time || right.scheduledTime || ''))
+    || String(left.client || '').localeCompare(String(right.client || ''), 'es', { sensitivity: 'base' })
+    || String(left.id || '').localeCompare(String(right.id || ''))
+}
+
 function professionalExcelHtml({ title, description, month, headers, rows, widths }) {
   const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
   const generatedAt = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
@@ -1245,7 +1252,7 @@ function exportHistory(res, month, category, technicianId = null, format = 'exce
     if (!record.date?.startsWith(month) || (technicianId && !record.technicianIds?.some(id => String(id) === String(technicianId)))) return false
     if (isRetirementExport) return record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo')
     return (String(record.serviceId) === String(alarmService?.id) || (!record.serviceId && normalizedServiceName(record.service) === 'instalacion de alarma')) && (isAllCategories || alarmCategory(record) === category)
-  })
+  }).sort(compareReportRecords)
   if (isRetirementExport) {
     const headers = ['Fecha', 'Cliente', 'Servicio', 'Dirección', 'Contacto', 'Técnicos asignados']
     const reportRows = records.map(record => [record.date, record.client, record.service, record.address, record.phone, record.technicians?.join(' / ')])
