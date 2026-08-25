@@ -1049,20 +1049,29 @@ export default function App() {
     // Sincronización ligera del tablero semanal. Evita recargar la página y no pisa
     // un campo que el usuario está editando en ese momento.
     if (!databaseReady || !authUser) return undefined
-    const refreshWeekly = () => {
+    let refreshing = false
+    let stopped = false
+    const refreshWeekly = async () => {
       // Un PUT de esta misma pestaña aumenta la revisión del servidor antes de
       // que React alcance a actualizar stateRevision. No debe tratarse como un
       // cambio externo durante esa pequeña ventana.
-      if (pendingStateSaves.current > 0) return
+      if (refreshing || pendingStateSaves.current > 0) return
       if (document.activeElement?.closest('.weekly-board input, .weekly-board select, .weekly-board textarea, .team-card input, .team-card select, .team-card textarea')) return
-      fetch('/api/state', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(data => {
-        if (data && Number(data.revision) !== Number(stateRevisionRef.current)) { setNotice('Hay cambios guardados desde otra sesión. Recargá la página para continuar sin sobrescribirlos.'); return }
-        if (data?.agenda?.weekly && typeof data.agenda.weekly === 'object') setWeekly(previous => JSON.stringify(previous) === JSON.stringify(data.agenda.weekly) ? previous : data.agenda.weekly)
-      }).catch(() => setNotice('No se pudo comprobar si existen cambios de otra sesión.'))
+      refreshing = true
+      try {
+        const response = await fetch('/api/state/revision', { cache: 'no-store' })
+        if (!response.ok) throw new Error('No se pudo consultar la revisión.')
+        const data = await response.json()
+        if (!stopped && Number(data.revision) !== Number(stateRevisionRef.current)) setNotice('Hay cambios guardados desde otra sesión. Recargá la página para continuar sin sobrescribirlos.')
+      } catch {
+        if (!stopped) setNotice('No se pudo comprobar si existen cambios de otra sesión.')
+      } finally {
+        refreshing = false
+      }
     }
-    const timer = window.setInterval(refreshWeekly, 4000)
+    const timer = window.setInterval(refreshWeekly, 15000)
     window.addEventListener('focus', refreshWeekly)
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', refreshWeekly) }
+    return () => { stopped = true; window.clearInterval(timer); window.removeEventListener('focus', refreshWeekly) }
   }, [databaseReady, authUser, stateRevision])
   const ask = (title, detail, action, destructive = false) => setConfirmation({ title, detail, action, destructive })
   const updateTask = (team, task, patch) => {

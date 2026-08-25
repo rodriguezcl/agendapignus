@@ -9,29 +9,35 @@ function database() {
 }
 
 async function readState(sql) {
-  // Transaction Pooler multiplexa una conexión serverless. Encolar todas estas
-  // lecturas con Promise.all puede dejar consultas esperando otra conexión del
-  // mismo proceso hasta agotar el tiempo de ejecución de Vercel.
-  const roles = await sql`select data from pignus_roles order by created_at, id`
-  const employees = await sql`select data from pignus_employees order by created_at, id`
-  const services = await sql`select data from pignus_services order by created_at, id`
-  const customers = await sql`select data from pignus_customers order by created_at, account`
-  const history = await sql`select data from pignus_work_history order by created_at, id`
-  const agendas = await sql`select id, data from pignus_agendas where id = 'current'`
-  const reviews = await sql`select data from pignus_reviews order by created_at, id`
-  const preferences = await sql`select key, value from pignus_preferences where key in ('state_revision', 'theme')`
-  const preferenceMap = Object.fromEntries(preferences.map(item => [item.key, item.value]))
+  // Un único viaje al Transaction Pooler evita multiplicar conexiones y
+  // latencia al reconstruir el estado completo dentro de una función serverless.
+  const [state] = await sql`
+    select
+      coalesce((select jsonb_agg(data order by created_at, id) from pignus_roles), '[]'::jsonb) as roles,
+      coalesce((select jsonb_agg(data order by created_at, id) from pignus_employees), '[]'::jsonb) as employees,
+      coalesce((select jsonb_agg(data order by created_at, id) from pignus_services), '[]'::jsonb) as services,
+      coalesce((select jsonb_agg(data order by created_at, account) from pignus_customers), '[]'::jsonb) as customers,
+      coalesce((select jsonb_agg(data order by created_at, id) from pignus_work_history), '[]'::jsonb) as history,
+      (select data from pignus_agendas where id = 'current') as agenda,
+      coalesce((select jsonb_agg(data order by created_at, id) from pignus_reviews), '[]'::jsonb) as reviews,
+      coalesce((select jsonb_object_agg(key, value) from pignus_preferences where key in ('state_revision', 'theme')), '{}'::jsonb) as preferences
+  `
   return {
-    revision: Number(preferenceMap.state_revision || 0),
-    roles: roles.map(row => row.data),
-    employees: employees.map(row => row.data),
-    services: services.map(row => row.data),
-    customers: customers.map(row => row.data),
-    history: history.map(row => row.data),
-    agenda: agendas[0]?.data || null,
-    reviews: reviews.map(row => row.data),
-    preferences: { theme: preferenceMap.theme || 'light' }
+    revision: Number(state.preferences?.state_revision || 0),
+    roles: state.roles || [],
+    employees: state.employees || [],
+    services: state.services || [],
+    customers: state.customers || [],
+    history: state.history || [],
+    agenda: state.agenda || null,
+    reviews: state.reviews || [],
+    preferences: { theme: state.preferences?.theme || 'light' }
   }
+}
+
+async function readRevision(sql) {
+  const rows = await sql`select value from pignus_preferences where key = 'state_revision'`
+  return Number(rows[0]?.value || 0)
 }
 
 async function replaceCollections(sql, state) {
@@ -63,4 +69,4 @@ async function appendAudit(sql, entries) {
   await sql`delete from pignus_audit_log where id in (select id from pignus_audit_log order by occurred_at desc offset 100)`
 }
 
-module.exports = { appendAudit, database, readState, replaceCollections }
+module.exports = { appendAudit, database, readRevision, readState, replaceCollections }
