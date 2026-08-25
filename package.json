@@ -9,7 +9,10 @@
     "server": "node server.cjs",
     "start": "node server.cjs",
     "start:production": "npm run build && node server.cjs",
-    "migrate:supabase": "node scripts/migrate-sqlite-to-supabase.cjs",
+    "config:local": "node scripts/configure-local-env.cjs",
+    "check:supabase": "node --env-file-if-exists=.env.local scripts/check-supabase-connection.cjs",
+    "schema:supabase": "node --env-file-if-exists=.env.local scripts/apply-supabase-schema.cjs",
+    "migrate:supabase": "node --env-file-if-exists=.env.local scripts/migrate-sqlite-to-supabase.cjs",
     "test": "node --test tests/*.test.cjs",
     "build": "vite build",
     "preview": "vite preview"

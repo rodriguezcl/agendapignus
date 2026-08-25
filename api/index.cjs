@@ -13,6 +13,10 @@ const LOGIN_WINDOW = 15 * 60 * 1000
 const LOGIN_MAX_ATTEMPTS = 5
 const AUDIT_LOG_LIMIT = 100
 
+function productionSecretsAreValid() {
+  return ['PIGNUS_SESSION_SECRET', 'PIGNUS_RATE_LIMIT_SECRET'].every(name => String(process.env[name] || '').length >= 32)
+}
+
 function securityHeaders(res) {
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('X-Frame-Options', 'DENY')
@@ -269,7 +273,7 @@ async function handleClearAgenda(req, res, sql, user) {
 
 module.exports = async function handler(req, res) {
   try {
-    if (process.env.VERCEL && (!process.env.PIGNUS_SESSION_SECRET || !process.env.PIGNUS_RATE_LIMIT_SECRET)) return send(res, 500, { error: 'La API no tiene configurados sus secretos de seguridad.' })
+    if (process.env.VERCEL && !productionSecretsAreValid()) return send(res, 500, { error: 'La API no tiene configurados secretos de seguridad válidos.' })
     const sql = database()
     const route = routePath(req)
     if (req.method === 'POST' && route === '/auth/login') return await handleLogin(req, res, sql)

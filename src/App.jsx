@@ -8,13 +8,6 @@ const currentLocalDate = () => new Date().toLocaleDateString('sv-SE', { timeZone
 import './ui-polish.css'
 import './login.css'
 
-const INITIAL_SERVICES = [
-  { id: 1, code: 'alarm-installation', category: 'installation', name: 'Instalación de alarma', description: 'Alta e instalación de sistemas de alarma', status: 'Activo' },
-  { id: 2, code: 'service-2', category: 'installation', name: 'Instalación de cámaras', description: 'Instalación de videovigilancia', status: 'Activo' },
-  { id: 3, code: 'service-3', category: 'installation', name: 'Instalación de cerco eléctrico', description: 'Instalación de cerco perimetral', status: 'Activo' },
-  { id: 4, code: 'service-4', category: 'service', name: 'Service técnico', description: 'Mantenimiento y reparación', status: 'Activo' },
-  { id: 5, code: 'service-5', category: 'service', name: 'Visita de relevamiento', description: 'Diagnóstico y presupuesto', status: 'Activo' }
-]
 const INSTALLATION_ZONES = [
   ['docta', 'Docta Urbanización'],
   ['nobu-town', 'Nobu Town'],
@@ -284,28 +277,21 @@ const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?
 const blankEmployee = { firstName: '', lastName: '', name: '', roleId: 3, role: 'Técnico', phone: '', email: '', password: '', status: 'Activo' }
 const blankCustomer = { customerId: '', kind: 'client', account: '', name: '', type: '', street: '', locality: '', province: '', phone: '', address: '', fields: {} }
 
-// El almacenamiento del navegador es solamente una caché. Un valor antiguo,
-// incompleto o malformado nunca debe impedir que la aplicación arranque.
+// El navegador conserva únicamente preferencias visuales. Los datos operativos
+// siempre se cargan desde la API después de autenticar la sesión y nunca deben
+// sobrevivir al cierre de sesión ni mezclarse entre usuarios del mismo equipo.
 const readLocalValue = (key, fallback = '') => {
   try { return localStorage.getItem(key) ?? fallback }
   catch { return fallback }
 }
-const readLocalJson = (key, fallback) => {
-  try {
-    const stored = localStorage.getItem(key)
-    return stored == null ? fallback : JSON.parse(stored)
-  } catch {
-    try { localStorage.removeItem(key) } catch { /* almacenamiento no disponible */ }
-    return fallback
-  }
-}
-const writeLocalJson = (key, value) => {
-  try { localStorage.setItem(key, JSON.stringify(value)) }
-  catch { /* la base de datos sigue siendo la fuente de verdad */ }
-}
 const writeLocalValue = (key, value) => {
   try { localStorage.setItem(key, String(value)) }
   catch { /* la interfaz puede continuar sin preferencias locales */ }
+}
+const OPERATIONAL_STORAGE_KEYS = ['pignus-roles', 'pignus-employees', 'pignus-services', 'pignus-history', 'pignus-customers', 'pignus-agenda']
+const clearOperationalStorage = () => {
+  try { OPERATIONAL_STORAGE_KEYS.forEach(key => localStorage.removeItem(key)) }
+  catch { /* la sesión del servidor sigue siendo la fuente de autorización */ }
 }
 
 // Dealer/Cuenta is the external system's unique customer identifier. Keeping a
@@ -323,11 +309,6 @@ const nextCustomerCode = (customers, kind) => {
   }, 0)
   return `${prefix}-${String(highest + 1).padStart(4, '0')}`
 }
-const initialRoles = [
-  { id: 1, code: 'administrator', name: 'Administrador', description: 'Acceso completo a la plataforma', permissions: { agenda: true, accounts: true, employees: true, settings: true } },
-  { id: 2, code: 'coordinator', name: 'Coordinador', description: 'Gestiona agenda, cuentas y técnicos', permissions: { agenda: true, accounts: true, employees: true, settings: false } },
-  { id: 3, code: 'technician', name: 'Técnico', description: 'Consulta su agenda asignada', permissions: { agenda: true, accounts: false, employees: false, settings: false } }
-]
 // Catálogo único: evita que un módulo quede fuera de la matriz de permisos.
 const MODULE_PERMISSIONS = [
   ['dashboard', 'Menú principal', 'Ver indicadores y resumen operativo'],
@@ -341,12 +322,6 @@ const MODULE_PERMISSIONS = [
   ['audit', 'Auditoría', 'Consultar acciones y accesos del sistema']
 ]
 const DEFAULT_MODULE_PERMISSIONS = Object.fromEntries(MODULE_PERMISSIONS.map(([key]) => [key, false]))
-
-const initialEmployees = [
-  { id: 1, firstName: 'Rodrigo', lastName: 'Gonzalez', name: 'Rodrigo Gonzalez', roleId: 3, role: 'Técnico', phone: '11 4567-8901', email: 'rodrigo@pignus.com', password: '••••••••', status: 'Activo' },
-  { id: 2, firstName: 'Mariano', lastName: 'Diaz Tillard', name: 'Mariano Diaz Tillard', roleId: 3, role: 'Técnico', phone: '11 3456-2210', email: 'mariano@pignus.com', password: '••••••••', status: 'Activo' },
-  { id: 3, firstName: 'Santos', lastName: 'Diaz', name: 'Santos Diaz', roleId: 3, role: 'Técnico', phone: '11 6789-1254', email: 'santos@pignus.com', password: '••••••••', status: 'Activo' }
-]
 
 // Versión histórica preservada temporalmente durante la migración a components/ui/Icon.jsx.
 function LegacyIcon({ name, size = 18 }) {
@@ -609,14 +584,14 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readLocalValue('pignus-sidebar-collapsed') === 'true')
   const [theme, setTheme] = useState(() => readLocalValue('pignus-theme', 'light'))
-  const [roles, setRoles] = useState(() => readLocalJson('pignus-roles', null) || initialRoles)
-  const [employees, setEmployees] = useState(() => readLocalJson('pignus-employees', null) || initialEmployees)
-  const [services, setServices] = useState(() => readLocalJson('pignus-services', null) || INITIAL_SERVICES)
-  const [history, setHistory] = useState(() => readLocalJson('pignus-history', []))
-  const [customers, setCustomers] = useState(() => readLocalJson('pignus-customers', []))
-  const [teams, setTeams] = useState(() => readLocalJson('pignus-agenda', null)?.teams || [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])
+  const [roles, setRoles] = useState([])
+  const [employees, setEmployees] = useState([])
+  const [services, setServices] = useState([])
+  const [history, setHistory] = useState([])
+  const [customers, setCustomers] = useState([])
+  const [teams, setTeams] = useState(() => [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])
   const [date, setDate] = useState(currentLocalDate)
-  const [weekly, setWeekly] = useState(() => readLocalJson('pignus-agenda', null)?.weekly || {})
+  const [weekly, setWeekly] = useState({})
   const [notice, setNotice] = useState('')
   const [confirmation, setConfirmation] = useState(null)
   const [databaseReady, setDatabaseReady] = useState(false)
@@ -627,6 +602,7 @@ export default function App() {
   const [authUser, setAuthUser] = useState(null)
   globalThis.__pignusCurrentUser = authUser
   const [authLoading, setAuthLoading] = useState(true)
+  const [databaseError, setDatabaseError] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
   useEffect(() => writeLocalValue('pignus-theme', theme), [theme])
   useEffect(() => {
@@ -635,12 +611,7 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [notice])
   useEffect(() => writeLocalValue('pignus-sidebar-collapsed', sidebarCollapsed), [sidebarCollapsed])
-  useEffect(() => writeLocalJson('pignus-roles', roles), [roles])
-  useEffect(() => writeLocalJson('pignus-employees', employees), [employees])
-  useEffect(() => writeLocalJson('pignus-services', services), [services])
-  useEffect(() => writeLocalJson('pignus-history', history), [history])
-  useEffect(() => writeLocalJson('pignus-customers', customers), [customers])
-  useEffect(() => writeLocalJson('pignus-agenda', { date, teams, weekly }), [date, teams, weekly])
+  useEffect(clearOperationalStorage, [])
   useEffect(() => {
     if (!services.length) return
     const normalizeReference = item => {
@@ -1013,21 +984,37 @@ export default function App() {
   }, [weekly, date])
   useEffect(() => {
     if (!authUser) return
-    fetch('/api/state').then(response => response.ok ? response.json() : Promise.reject()).then(data => {
+    setDatabaseReady(false)
+    setDatabaseError('')
+    stateRevisionRef.current = null
+    setStateRevision(null)
+    setRoles([]); setEmployees([]); setServices([]); setHistory([]); setCustomers([]); setWeekly({})
+    setTeams([{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])
+    setDate(currentLocalDate())
+    clearOperationalStorage()
+    fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' }).then(async response => {
+      if (response.ok) return response.json()
+      const payload = await response.json().catch(() => ({}))
+      throw new Error(payload.error || 'No se pudo cargar la información autorizada para esta sesión.')
+    }).then(data => {
       stateRevisionRef.current = Number(data.revision || 0)
       setStateRevision(stateRevisionRef.current)
-      if (data.roles?.length) setRoles(data.roles.map(role => { const code = roleCode(role); return { ...role, code, permissions: { ...DEFAULT_MODULE_PERMISSIONS, dashboard: true, weekly: role.permissions?.weekly ?? ['administrator', 'user', 'coordinator'].includes(code), ...role.permissions, ...(code === 'administrator' ? Object.fromEntries(MODULE_PERMISSIONS.map(([key]) => [key, true])) : {}) } } }))
-      if (data.employees?.length) setEmployees(data.employees.map(employee => { const assignedRole = data.roles?.find(role => String(role.id) === String(employee.roleId)) || data.roles?.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role)); return assignedRole ? { ...employee, roleId: assignedRole.id, role: assignedRole.name } : employee }))
-      if (data.services?.length) setServices(data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') })))
-      if (Array.isArray(data.history)) setHistory(data.history)
-      if (data.customers?.length) setCustomers(data.customers.map(customer => ({ ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer), name: normalizeCustomerName(customer.name) })))
-      if (data.agenda?.teams?.length) setTeams(data.agenda.teams)
+      const loadedRoles = Array.isArray(data.roles) ? data.roles.map(role => { const code = roleCode(role); return { ...role, code, permissions: { ...DEFAULT_MODULE_PERMISSIONS, dashboard: true, weekly: role.permissions?.weekly ?? ['administrator', 'user', 'coordinator'].includes(code), ...role.permissions, ...(code === 'administrator' ? Object.fromEntries(MODULE_PERMISSIONS.map(([key]) => [key, true])) : {}) } } }) : []
+      setRoles(loadedRoles)
+      setEmployees(Array.isArray(data.employees) ? data.employees.map(employee => { const assignedRole = loadedRoles.find(role => String(role.id) === String(employee.roleId)) || loadedRoles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role)); return assignedRole ? { ...employee, roleId: assignedRole.id, role: assignedRole.name } : employee }) : [])
+      setServices(Array.isArray(data.services) ? data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') })) : [])
+      setHistory(Array.isArray(data.history) ? data.history : [])
+      setCustomers(Array.isArray(data.customers) ? data.customers.map(customer => ({ ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer), name: normalizeCustomerName(customer.name) })) : [])
+      setTeams(data.agenda?.teams?.length ? data.agenda.teams : [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])
       // Cada sesión administrativa comienza en la fecha vigente. El contenido
       // de ese día se recupera abajo desde la agenda semanal y el historial.
       setDate(currentLocalDate())
-      if (data.agenda?.weekly && typeof data.agenda.weekly === 'object') setWeekly(data.agenda.weekly)
+      setWeekly(data.agenda?.weekly && typeof data.agenda.weekly === 'object' ? data.agenda.weekly : {})
       if (data.preferences?.theme) setTheme(data.preferences.theme)
-    }).catch(() => setNotice('No se pudo conectar con la base de datos local.')).finally(() => setDatabaseReady(true))
+      setDatabaseReady(true)
+    }).catch(error => {
+      setDatabaseError(error.message || 'No se pudo conectar con la base de datos.')
+    })
   }, [authUser])
   useEffect(() => {
     if (!databaseReady || stateRevision === null || !authUser || authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return
@@ -1137,9 +1124,12 @@ export default function App() {
         } catch (error) { setNotice(error.message); return }
       }
       const clean = emptyAgenda()
-      setTeams(clean.teams); setDate(clean.date); localStorage.removeItem('pignus-agenda')
+      setTeams(clean.teams); setDate(clean.date)
     }
-    await fetch('/api/auth/logout', { method: 'POST' }); setAuthUser(null); setDatabaseReady(false); setStateRevision(null); setModule('dashboard')
+    await fetch('/api/auth/logout', { method: 'POST' })
+    clearOperationalStorage()
+    setRoles([]); setEmployees([]); setServices([]); setHistory([]); setCustomers([]); setWeekly({})
+    setAuthUser(null); setDatabaseReady(false); setDatabaseError(''); setStateRevision(null); setModule('dashboard')
   }
   const requestLogout = () => setConfirmation(hasUnsavedAgenda
     ? { title: 'Agenda sin guardar', detail: 'Hay servicios cargados que aún no fueron guardados en el historial. Si cerrás sesión, la agenda se limpiará y esos datos se perderán.', action: logout, destructive: true, confirmLabel: 'Cerrar sesión y descartar agenda' }
@@ -1154,6 +1144,7 @@ export default function App() {
   })
   if (authLoading) return <main className="login-page"><div className="login-loading">Verificando sesión segura…</div></main>
   if (!authUser) return <Login onLogin={setAuthUser} />
+  if (!databaseReady) return <main className="login-page"><div className="login-card"><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">DATOS PROTEGIDOS</p><h1>{databaseError ? 'No se pudo cargar la agenda' : 'Cargando información autorizada…'}</h1>{databaseError && <><p className="login-error" role="alert">{databaseError}</p><button className="primary" type="button" onClick={() => { setDatabaseError(''); setAuthUser(current => current ? { ...current } : current) }}>Reintentar</button><button className="secondary" type="button" onClick={logout}>Cerrar sesión</button></>}</div></main>
   if (authUser.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'tecnico') return <TechnicianPortal user={authUser} history={history} setHistory={setHistory} logout={logout} />
   if (module === 'help') return <HelpShell user={authUser} onNavigate={setModule} logout={logout} theme={theme} setTheme={setTheme} isAdministrator={isAdministrator} navigation={nav} />
   if (module === 'audit' && isAdministrator) return <AuditShell user={authUser} onNavigate={setModule} logout={logout} theme={theme} setTheme={setTheme} navigation={nav} />
