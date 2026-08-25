@@ -4,7 +4,7 @@ const { appendAudit, database, readExportState, readRevision, readState, replace
 const {
   auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
-  reportDate, secureEmployees, userCan, userForEmployee, validateState, verifyPassword,
+  reportDate, secureEmployees, statePersistenceChanged, userCan, userForEmployee, validateState, verifyPassword,
   visibleStateForUser
 } = require('./_lib/core.cjs')
 
@@ -170,16 +170,19 @@ async function handleSaveState(req, res, sql, user) {
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
       const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const currentRevision = Number(revisionRows[0]?.value || 0)
-      if (!Number.isInteger(Number(incoming.revision)) || Number(incoming.revision) !== currentRevision) {
-        const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de volver a guardar.')
-        error.statusCode = 409
-        throw error
-      }
       const current = await readState(transaction)
       let next = authorizeIncomingState(incoming, current, user)
       next = normalizeStateForSave(next, current)
       next.employees = secureEmployees(next.employees, current.employees)
       validateState(next)
+      // Un estado idéntico no es una nueva versión. Esto permite que dos
+      // sesiones se hidraten simultáneamente sin generarse conflictos entre sí.
+      if (!statePersistenceChanged(current, next)) return currentRevision
+      if (!Number.isInteger(Number(incoming.revision)) || Number(incoming.revision) !== currentRevision) {
+        const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de volver a guardar.')
+        error.statusCode = 409
+        throw error
+      }
       const entries = [
         ...auditChanges(current.roles, next.roles, 'id', 'Rol', user),
         ...auditChanges(current.employees, next.employees, 'id', 'Empleado', user),

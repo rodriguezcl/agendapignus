@@ -601,12 +601,20 @@ export default function App() {
   const stateSaveQueue = useRef(Promise.resolve())
   const stateSaveTimerRef = useRef(null)
   const loggingOutRef = useRef(false)
+  const hydratingStateRef = useRef(false)
+  const hydrationTimerRef = useRef(null)
+  const lastPersistedSnapshotRef = useRef(null)
+  const currentSnapshotRef = useRef(null)
+  const remoteConflictRevisionRef = useRef(null)
   const [authUser, setAuthUser] = useState(null)
   globalThis.__pignusCurrentUser = authUser
   const [authLoading, setAuthLoading] = useState(true)
   const [databaseError, setDatabaseError] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+  const stateSnapshot = { roles, employees, services, history, customers, agenda: { date, teams, weekly }, preferences: { theme } }
+  const serializedStateSnapshot = JSON.stringify(stateSnapshot)
+  currentSnapshotRef.current = serializedStateSnapshot
   useEffect(() => writeLocalValue('pignus-theme', theme), [theme])
   useEffect(() => {
     if (!notice) return undefined
@@ -985,8 +993,28 @@ export default function App() {
       return JSON.stringify(next) === JSON.stringify(previous) ? previous : next
     })
   }, [weekly, date])
+  const applyRemoteState = data => {
+    hydratingStateRef.current = true
+    remoteConflictRevisionRef.current = null
+    stateRevisionRef.current = Number(data.revision || 0)
+    setStateRevision(stateRevisionRef.current)
+    const loadedRoles = Array.isArray(data.roles) ? data.roles.map(role => { const code = roleCode(role); return { ...role, code, permissions: { ...DEFAULT_MODULE_PERMISSIONS, dashboard: true, weekly: role.permissions?.weekly ?? ['administrator', 'user', 'coordinator'].includes(code), ...role.permissions, ...(code === 'administrator' ? Object.fromEntries(MODULE_PERMISSIONS.map(([key]) => [key, true])) : {}) } } }) : []
+    setRoles(loadedRoles)
+    setEmployees(Array.isArray(data.employees) ? data.employees.map(employee => { const assignedRole = loadedRoles.find(role => String(role.id) === String(employee.roleId)) || loadedRoles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role)); return assignedRole ? { ...employee, roleId: assignedRole.id, role: assignedRole.name } : employee }) : [])
+    setServices(Array.isArray(data.services) ? data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') })) : [])
+    setHistory(Array.isArray(data.history) ? data.history : [])
+    setCustomers(Array.isArray(data.customers) ? data.customers.map(customer => ({ ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer), name: normalizeCustomerName(customer.name) })) : [])
+    setTeams(data.agenda?.teams?.length ? data.agenda.teams : [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])
+    setDate(currentLocalDate())
+    setWeekly(data.agenda?.weekly && typeof data.agenda.weekly === 'object' ? data.agenda.weekly : {})
+    if (data.preferences?.theme) setTheme(data.preferences.theme)
+    setDatabaseReady(true)
+  }
   useEffect(() => {
     if (!authUser) return
+    hydratingStateRef.current = true
+    lastPersistedSnapshotRef.current = null
+    remoteConflictRevisionRef.current = null
     setDatabaseReady(false)
     setDatabaseError('')
     stateRevisionRef.current = null
@@ -999,28 +1027,23 @@ export default function App() {
       if (response.ok) return response.json()
       const payload = await response.json().catch(() => ({}))
       throw new Error(payload.error || 'No se pudo cargar la información autorizada para esta sesión.')
-    }).then(data => {
-      stateRevisionRef.current = Number(data.revision || 0)
-      setStateRevision(stateRevisionRef.current)
-      const loadedRoles = Array.isArray(data.roles) ? data.roles.map(role => { const code = roleCode(role); return { ...role, code, permissions: { ...DEFAULT_MODULE_PERMISSIONS, dashboard: true, weekly: role.permissions?.weekly ?? ['administrator', 'user', 'coordinator'].includes(code), ...role.permissions, ...(code === 'administrator' ? Object.fromEntries(MODULE_PERMISSIONS.map(([key]) => [key, true])) : {}) } } }) : []
-      setRoles(loadedRoles)
-      setEmployees(Array.isArray(data.employees) ? data.employees.map(employee => { const assignedRole = loadedRoles.find(role => String(role.id) === String(employee.roleId)) || loadedRoles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role)); return assignedRole ? { ...employee, roleId: assignedRole.id, role: assignedRole.name } : employee }) : [])
-      setServices(Array.isArray(data.services) ? data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') })) : [])
-      setHistory(Array.isArray(data.history) ? data.history : [])
-      setCustomers(Array.isArray(data.customers) ? data.customers.map(customer => ({ ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer), name: normalizeCustomerName(customer.name) })) : [])
-      setTeams(data.agenda?.teams?.length ? data.agenda.teams : [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])
-      // Cada sesión administrativa comienza en la fecha vigente. El contenido
-      // de ese día se recupera abajo desde la agenda semanal y el historial.
-      setDate(currentLocalDate())
-      setWeekly(data.agenda?.weekly && typeof data.agenda.weekly === 'object' ? data.agenda.weekly : {})
-      if (data.preferences?.theme) setTheme(data.preferences.theme)
-      setDatabaseReady(true)
-    }).catch(error => {
+    }).then(applyRemoteState).catch(error => {
       setDatabaseError(error.message || 'No se pudo conectar con la base de datos.')
     })
   }, [authUser])
   useEffect(() => {
-    if (loggingOutRef.current || !databaseReady || stateRevision === null || !authUser || authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return
+    if (!databaseReady || !hydratingStateRef.current) return undefined
+    window.clearTimeout(hydrationTimerRef.current)
+    const timer = window.setTimeout(() => {
+      lastPersistedSnapshotRef.current = currentSnapshotRef.current
+      hydratingStateRef.current = false
+      hydrationTimerRef.current = null
+    }, 150)
+    hydrationTimerRef.current = timer
+    return () => window.clearTimeout(timer)
+  }, [databaseReady, serializedStateSnapshot])
+  useEffect(() => {
+    if (loggingOutRef.current || hydratingStateRef.current || serializedStateSnapshot === lastPersistedSnapshotRef.current || !databaseReady || stateRevision === null || !authUser || authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return
     // Desde que existe un cambio local pendiente (incluido el debounce) se
     // bloquea la recarga periódica para que no restaure la versión anterior.
     pendingStateSaves.current += 1
@@ -1032,7 +1055,7 @@ export default function App() {
         return
       }
       saveStarted = true
-      const snapshot = { roles, employees, services, history, customers, agenda: { date, teams, weekly }, preferences: { theme } }
+      const snapshot = stateSnapshot
       stateSaveQueue.current = stateSaveQueue.current.catch(() => {}).then(async () => {
         const response = await fetch('/api/state', {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -1044,6 +1067,8 @@ export default function App() {
         }
         const payload = await response.json()
         stateRevisionRef.current = Number(payload.revision)
+        lastPersistedSnapshotRef.current = serializedStateSnapshot
+        remoteConflictRevisionRef.current = null
         setStateRevision(stateRevisionRef.current)
       }).catch(error => setNotice(error.message || 'No se pudieron guardar los últimos cambios.'))
         .finally(() => { pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1) })
@@ -1054,7 +1079,7 @@ export default function App() {
       if (stateSaveTimerRef.current === timer) stateSaveTimerRef.current = null
       if (!saveStarted) pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1)
     }
-  }, [databaseReady, authUser, roles, employees, services, history, customers, date, teams, weekly, theme])
+  }, [databaseReady, authUser, serializedStateSnapshot])
   useEffect(() => {
     // Sincronización ligera del tablero semanal. Evita recargar la página y no pisa
     // un campo que el usuario está editando en ese momento.
@@ -1072,7 +1097,22 @@ export default function App() {
         const response = await fetch('/api/state/revision', { cache: 'no-store' })
         if (!response.ok) throw new Error('No se pudo consultar la revisión.')
         const data = await response.json()
-        if (!stopped && Number(data.revision) !== Number(stateRevisionRef.current)) setNotice('Hay cambios guardados desde otra sesión. Recargá la página para continuar sin sobrescribirlos.')
+        const remoteRevision = Number(data.revision)
+        if (!stopped && remoteRevision !== Number(stateRevisionRef.current)) {
+          const hasLocalChanges = pendingStateSaves.current > 0 || currentSnapshotRef.current !== lastPersistedSnapshotRef.current
+          if (hasLocalChanges) {
+            if (remoteConflictRevisionRef.current !== remoteRevision) setNotice('Hay cambios guardados desde otra sesión. Recargá la página para continuar sin sobrescribirlos.')
+            remoteConflictRevisionRef.current = remoteRevision
+          } else {
+            const stateResponse = await fetch('/api/state', { cache: 'no-store' })
+            if (!stateResponse.ok) throw new Error('No se pudo sincronizar el estado actualizado.')
+            const remoteState = await stateResponse.json()
+            if (!stopped) {
+              applyRemoteState(remoteState)
+              setNotice('La información se actualizó con los cambios de otra sesión.')
+            }
+          }
+        } else if (remoteRevision === Number(stateRevisionRef.current)) remoteConflictRevisionRef.current = null
       } catch {
         if (!stopped) setNotice('No se pudo comprobar si existen cambios de otra sesión.')
       } finally {
