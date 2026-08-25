@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const {
   authorizeIncomingState, compareReportRecords, hashPassword, normalizeRetirementCustomers, normalizeStateForSave,
-  secureEmployees, userForEmployee, verifyPassword, visibleStateForUser
+  secureEmployees, statePersistenceChanged, userForEmployee, verifyPassword, visibleStateForUser
 } = require('../api/_lib/core.cjs')
 
 const roles = [
@@ -33,6 +33,23 @@ test('ignora roles nulos al resolver una sesión', () => {
   assert.equal(user.id, employee.id)
   assert.equal(user.roleCode, 'technician')
   assert.equal(userForEmployee(employee, [null]), null)
+})
+
+test('dos sesiones simultáneas no crean revisiones al guardar el mismo estado', () => {
+  const current = { roles, employees: [employee], services: [], customers: [], history: [], reviews: [], agenda: { date: '2026-08-25', teams: [], weekly: {} }, preferences: { theme: 'light' } }
+  let revision = 12
+  const save = (sessionRevision, next) => {
+    if (!statePersistenceChanged(current, next)) return revision
+    if (sessionRevision !== revision) throw new Error('conflict')
+    revision += 1
+    return revision
+  }
+
+  assert.equal(save(12, structuredClone(current)), 12)
+  assert.equal(save(12, structuredClone(current)), 12)
+  assert.equal(save(12, { ...structuredClone(current), preferences: { theme: 'light' }, agenda: { weekly: {}, teams: [], date: '2026-08-25' } }), 12)
+  assert.equal(revision, 12)
+  assert.equal(statePersistenceChanged(current, { ...current, agenda: { ...current.agenda, date: '2026-08-26' } }), true)
 })
 
 test('impide que un rol de consulta modifique colecciones sin permiso', () => {
