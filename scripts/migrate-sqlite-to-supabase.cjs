@@ -5,11 +5,17 @@ const postgres = require('postgres')
 const argumentsList = new Set(process.argv.slice(2))
 const replace = argumentsList.has('--replace')
 const dryRun = argumentsList.has('--dry-run')
+const confirmed = argumentsList.has('--confirm')
 const databasePathArgument = process.argv.find(argument => argument.startsWith('--database='))
 const databasePath = path.resolve(databasePathArgument ? databasePathArgument.slice('--database='.length) : path.join(__dirname, '..', 'data', 'agenda-tecnica.db'))
 
 if (!process.env.DATABASE_URL && !dryRun) {
   console.error('Falta DATABASE_URL. Usá la conexión Transaction pooler de Supabase.')
+  process.exit(1)
+}
+
+if (!dryRun && !confirmed) {
+  console.error('Migración cancelada. Para autorizar una escritura remota repetí el comando con --confirm.')
   process.exit(1)
 }
 
@@ -115,4 +121,3 @@ migrate()
   .then(() => console.log('Migración a Supabase completada correctamente.'))
   .catch(error => { console.error(`No se pudo migrar: ${error.message}`); process.exitCode = 1 })
   .finally(() => sql.end({ timeout: 5 }))
-

@@ -23,6 +23,47 @@ function upsertJson(db, table, key, record) {
   db.prepare(`INSERT OR REPLACE INTO ${table} (${key}, data) VALUES (?, ?)`).run(String(record[key]), JSON.stringify(record))
 }
 
+function createFixtureDatabase(databasePath) {
+  const db = new DatabaseSync(databasePath)
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    CREATE TABLE roles (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE employees (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE services (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE work_history (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE customers (account TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE agendas (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE audit_log (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE reviews (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+  `)
+  const allPermissions = { dashboard: true, weekly: true, agenda: true, history: true, accounts: true, employees: true, services: true, settings: true, audit: true }
+  ;[
+    { id: 1, code: 'administrator', name: 'Administrador', description: 'Administración de prueba', permissions: allPermissions },
+    { id: 2, code: 'coordinator', name: 'Coordinador', description: 'Coordinación de prueba', permissions: { dashboard: true, weekly: true, agenda: true, history: true, accounts: true } },
+    { id: 3, code: 'technician', name: 'Técnico', description: 'Técnico de prueba', permissions: { dashboard: true, agenda: true } }
+  ].forEach(role => upsertJson(db, 'roles', 'id', role))
+  const services = [
+    { id: 'qa-alarm', code: 'alarm-installation', category: 'installation', name: 'Instalación de alarma', description: 'Alta de prueba', status: 'Activo' },
+    { id: 'qa-retirement', code: 'equipment-retirement', category: 'service', name: 'Retiro de equipo', description: 'Baja de prueba', status: 'Activo' },
+    { id: 'qa-service', code: 'technical-service', category: 'service', name: 'Service técnico', description: 'Servicio de prueba', status: 'Activo' }
+  ]
+  services.forEach(service => upsertJson(db, 'services', 'id', service))
+  const customers = [
+    { customerId: 'qa-customer-a', kind: 'subscriber', account: 'PIG-9001', name: 'CLIENTE INCLUIDO QA', street: 'Calle QA 100', address: 'Calle QA 100', locality: 'Córdoba', province: 'Córdoba', phone: '3510000001', type: 'Residencial', fields: {} },
+    { customerId: 'qa-customer-b', kind: 'subscriber', account: 'PIG-9002', name: 'CLIENTE EXCLUIDO QA', street: 'Calle QA 200', address: 'Calle QA 200', locality: 'Córdoba', province: 'Córdoba', phone: '3510000002', type: 'Residencial', fields: {} }
+  ]
+  customers.forEach(customer => upsertJson(db, 'customers', 'account', customer))
+  const baseHistory = { date: '2096-03-10', time: '09:00', serviceId: 'qa-alarm', service: 'Instalación de alarma', installationZone: 'residencial', technicians: [], technicianIds: [], status: 'Completado', team: 'Equipo 1' }
+  ;[
+    { ...baseHistory, id: 'qa-history-included', customerId: 'qa-customer-a', clientAccount: 'PIG-9001', client: 'CLIENTE INCLUIDO QA', address: 'Calle QA 100', phone: '3510000001' },
+    { ...baseHistory, id: 'qa-history-excluded', date: '2096-03-11', team: 'Equipo 2', customerId: 'qa-customer-b', clientAccount: 'PIG-9002', client: 'CLIENTE EXCLUIDO QA', address: 'Calle QA 200', phone: '3510000002' }
+  ].forEach(record => upsertJson(db, 'work_history', 'id', record))
+  upsertJson(db, 'agendas', 'id', { id: 'current', date: '2096-03-12', teams: [{ teamId: 'qa-team', memberIds: [], members: [], tasks: [] }], weekly: { '2096-03-12': { teams: [] } } })
+  db.prepare('INSERT INTO preferences (key, value) VALUES (?, ?), (?, ?)').run('state_revision', '0', 'theme', 'light')
+  db.close()
+}
+
 async function waitForServer() {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try { if ((await fetch(`${origin}/api/auth/session`)).status === 401) return }
@@ -50,8 +91,9 @@ async function state(cookie) {
 
 test.before(async () => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'pignus-security-'))
-  fs.copyFileSync(path.join(root, 'data', 'backups', 'agenda-tecnica-before-professional-test-fixes-20260811.db'), path.join(temporaryDirectory, 'agenda-tecnica.db'))
-  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const databasePath = path.join(temporaryDirectory, 'agenda-tecnica.db')
+  createFixtureDatabase(databasePath)
+  const db = new DatabaseSync(databasePath)
   const roles = [
     { id: 'qa-employees-role', code: 'qa-employees', name: 'QA Empleados', description: 'Prueba', permissions: { employees: true } },
     { id: 'qa-settings-role', code: 'qa-settings', name: 'QA Configuración', description: 'Prueba', permissions: { settings: true } },
@@ -79,8 +121,19 @@ test.before(async () => {
   db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('qa_export_included', assigned.client)
   db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('qa_export_excluded', records[1].record.client)
   db.close()
-  serverProcess = spawn(process.execPath, ['server.cjs'], { cwd: root, env: { ...process.env, PIGNUS_PORT: String(port), PIGNUS_HOST: '127.0.0.1', PIGNUS_DATA_DIR: temporaryDirectory }, stdio: ['ignore', 'pipe', 'pipe'] })
+  const publicDirectory = path.join(temporaryDirectory, 'public')
+  fs.mkdirSync(publicDirectory)
+  fs.writeFileSync(path.join(publicDirectory, 'index.html'), '<!doctype html><html><body><div id="root"></div></body></html>')
+  serverProcess = spawn(process.execPath, ['server.cjs'], { cwd: root, env: { ...process.env, PIGNUS_PORT: String(port), PIGNUS_HOST: '127.0.0.1', PIGNUS_DATA_DIR: temporaryDirectory, PIGNUS_PUBLIC_DIR: publicDirectory }, stdio: ['ignore', 'pipe', 'pipe'] })
   await waitForServer()
+  // La reconstrucción inicial agrupa técnicos por equipos mensuales. Restauramos
+  // un segundo registro sin asignación para probar el filtro de exportación sin
+  // depender de datos operativos ni del estado previo de una instalación real.
+  const normalizedDb = new DatabaseSync(databasePath)
+  const excludedRow = normalizedDb.prepare('SELECT data FROM work_history WHERE id = ?').get(records[1].id)
+  const excludedRecord = JSON.parse(excludedRow.data)
+  normalizedDb.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify({ ...excludedRecord, technicians: [], technicianIds: [] }), records[1].id)
+  normalizedDb.close()
 })
 
 test.after(async () => {
