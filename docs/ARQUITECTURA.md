@@ -7,6 +7,8 @@
 - `src/features/`: módulos de negocio aislados por dominio.
 - `src/services/`: comunicación con la API.
 - `server.cjs`: API local y acceso a SQLite.
+- `api/`: API serverless compatible con Vercel.
+- `supabase/`: esquema PostgreSQL y controles de seguridad de producción.
 - `data/`: datos de ejecución; no se versionan.
 - `public/`: recursos estáticos.
 
@@ -16,6 +18,8 @@
 - No realizar `fetch` directamente desde componentes: usar `apiClient`.
 - Documentar funciones que tengan reglas de negocio o efectos de persistencia.
 - Los cambios de esquema SQLite deben ser idempotentes y estar comentados.
+- Los cambios de producción deben agregarse como migraciones SQL en `supabase/migrations/`.
+- Ninguna credencial de PostgreSQL puede exponerse mediante variables prefijadas con `VITE_`.
 - No almacenar contraseñas reales sin hash y autenticación de servidor antes de publicar la aplicación.
 
 ## Próxima refactorización recomendada

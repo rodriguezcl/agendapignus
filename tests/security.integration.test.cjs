@@ -189,6 +189,40 @@ test('la exportación técnica contiene solamente trabajos asignados', async () 
   assert.ok(!report.includes(excluded))
 })
 
+test('ordena las instalaciones por fecha en Excel y PDF', async () => {
+  const cookie = await login('qa-admin@pignus.test')
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const alarmService = db.prepare('SELECT data FROM services').all().map(row => JSON.parse(row.data)).find(service => service.code === 'alarm-installation')
+  assert.ok(alarmService)
+  const base = { serviceId: alarmService.id, service: alarmService.name, installationZone: 'docta', address: 'Dirección QA', phone: '3510000000', technicians: ['QA Técnico'], technicianIds: ['qa-tech'], status: 'Completado' }
+  const testRecords = [
+    { ...base, id: 'qa-installation-oldest', date: '2097-04-01', time: '10:00', client: 'INSTALACIÓN ANTIGUA QA' },
+    { ...base, id: 'qa-installation-newest-late', date: '2097-04-03', time: '15:00', client: 'INSTALACIÓN RECIENTE TARDE QA' },
+    { ...base, id: 'qa-installation-middle', date: '2097-04-02', time: '09:00', client: 'INSTALACIÓN INTERMEDIA QA' },
+    { ...base, id: 'qa-installation-newest-early', date: '2097-04-03', time: '08:00', client: 'INSTALACIÓN RECIENTE TEMPRANO QA' }
+  ]
+  testRecords.forEach(record => upsertJson(db, 'work_history', 'id', record))
+  db.close()
+
+  const excelResponse = await api('/api/history/export?month=2097-04&category=docta', cookie)
+  assert.equal(excelResponse.status, 200)
+  const report = await excelResponse.text()
+  const positions = testRecords.map(record => report.indexOf(record.client))
+  assert.ok(positions.every(position => position >= 0))
+  assert.ok(positions[3] < positions[1], 'En una misma fecha, la hora más temprana debe aparecer primero.')
+  assert.ok(positions[1] < positions[2] && positions[2] < positions[0], 'Las fechas deben aparecer desde la más reciente hasta la más antigua.')
+
+  const pdfResponse = await api('/api/history/export?month=2097-04&category=docta&format=pdf', cookie)
+  assert.equal(pdfResponse.status, 200)
+  assert.equal(pdfResponse.headers.get('content-type'), 'application/pdf')
+  const pdf = Buffer.from(await pdfResponse.arrayBuffer())
+  assert.equal(pdf.subarray(0, 4).toString(), '%PDF')
+
+  const cleanupDb = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  cleanupDb.prepare(`DELETE FROM work_history WHERE id IN (${testRecords.map(() => '?').join(', ')})`).run(...testRecords.map(record => record.id))
+  cleanupDb.close()
+})
+
 test('exporta en Excel únicamente las bajas completadas del mes solicitado', async () => {
   const cookie = await login('qa-admin@pignus.test')
   const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))

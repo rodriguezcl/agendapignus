@@ -5,3 +5,6 @@ dist/
 node_modules/
 *.lnk
 *.msi
+.env
+.env.local
+.vercel/
