@@ -4,21 +4,22 @@ let client
 
 function database() {
   if (!process.env.DATABASE_URL) throw new Error('Falta configurar DATABASE_URL.')
-  if (!client) client = postgres(process.env.DATABASE_URL, { max: 2, prepare: false, idle_timeout: 20, connect_timeout: 15, ssl: 'require' })
+  if (!client) client = postgres(process.env.DATABASE_URL, { max: 1, prepare: false, idle_timeout: 20, connect_timeout: 15, ssl: 'require' })
   return client
 }
 
 async function readState(sql) {
-  const [roles, employees, services, customers, history, agendas, reviews, preferences] = await Promise.all([
-    sql`select data from pignus_roles order by created_at, id`,
-    sql`select data from pignus_employees order by created_at, id`,
-    sql`select data from pignus_services order by created_at, id`,
-    sql`select data from pignus_customers order by created_at, account`,
-    sql`select data from pignus_work_history order by created_at, id`,
-    sql`select id, data from pignus_agendas where id = 'current'`,
-    sql`select data from pignus_reviews order by created_at, id`,
-    sql`select key, value from pignus_preferences where key in ('state_revision', 'theme')`
-  ])
+  // Transaction Pooler multiplexa una conexión serverless. Encolar todas estas
+  // lecturas con Promise.all puede dejar consultas esperando otra conexión del
+  // mismo proceso hasta agotar el tiempo de ejecución de Vercel.
+  const roles = await sql`select data from pignus_roles order by created_at, id`
+  const employees = await sql`select data from pignus_employees order by created_at, id`
+  const services = await sql`select data from pignus_services order by created_at, id`
+  const customers = await sql`select data from pignus_customers order by created_at, account`
+  const history = await sql`select data from pignus_work_history order by created_at, id`
+  const agendas = await sql`select id, data from pignus_agendas where id = 'current'`
+  const reviews = await sql`select data from pignus_reviews order by created_at, id`
+  const preferences = await sql`select key, value from pignus_preferences where key in ('state_revision', 'theme')`
   const preferenceMap = Object.fromEntries(preferences.map(item => [item.key, item.value]))
   return {
     revision: Number(preferenceMap.state_revision || 0),
@@ -63,4 +64,3 @@ async function appendAudit(sql, entries) {
 }
 
 module.exports = { appendAudit, database, readState, replaceCollections }
-
