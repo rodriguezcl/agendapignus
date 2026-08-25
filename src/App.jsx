@@ -599,11 +599,14 @@ export default function App() {
   const stateRevisionRef = useRef(null)
   const pendingStateSaves = useRef(0)
   const stateSaveQueue = useRef(Promise.resolve())
+  const stateSaveTimerRef = useRef(null)
+  const loggingOutRef = useRef(false)
   const [authUser, setAuthUser] = useState(null)
   globalThis.__pignusCurrentUser = authUser
   const [authLoading, setAuthLoading] = useState(true)
   const [databaseError, setDatabaseError] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
   useEffect(() => writeLocalValue('pignus-theme', theme), [theme])
   useEffect(() => {
     if (!notice) return undefined
@@ -1017,12 +1020,17 @@ export default function App() {
     })
   }, [authUser])
   useEffect(() => {
-    if (!databaseReady || stateRevision === null || !authUser || authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return
+    if (loggingOutRef.current || !databaseReady || stateRevision === null || !authUser || authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return
     // Desde que existe un cambio local pendiente (incluido el debounce) se
     // bloquea la recarga periódica para que no restaure la versión anterior.
     pendingStateSaves.current += 1
     let saveStarted = false
     const timer = setTimeout(() => {
+      stateSaveTimerRef.current = null
+      if (loggingOutRef.current) {
+        pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1)
+        return
+      }
       saveStarted = true
       const snapshot = { roles, employees, services, history, customers, agenda: { date, teams, weekly }, preferences: { theme } }
       stateSaveQueue.current = stateSaveQueue.current.catch(() => {}).then(async () => {
@@ -1040,8 +1048,10 @@ export default function App() {
       }).catch(error => setNotice(error.message || 'No se pudieron guardar los últimos cambios.'))
         .finally(() => { pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1) })
     }, 750)
+    stateSaveTimerRef.current = timer
     return () => {
       clearTimeout(timer)
+      if (stateSaveTimerRef.current === timer) stateSaveTimerRef.current = null
       if (!saveStarted) pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1)
     }
   }, [databaseReady, authUser, roles, employees, services, history, customers, date, teams, weekly, theme])
@@ -1055,7 +1065,7 @@ export default function App() {
       // Un PUT de esta misma pestaña aumenta la revisión del servidor antes de
       // que React alcance a actualizar stateRevision. No debe tratarse como un
       // cambio externo durante esa pequeña ventana.
-      if (refreshing || pendingStateSaves.current > 0) return
+      if (loggingOutRef.current || refreshing || pendingStateSaves.current > 0) return
       if (document.activeElement?.closest('.weekly-board input, .weekly-board select, .weekly-board textarea, .team-card input, .team-card select, .team-card textarea')) return
       refreshing = true
       try {
@@ -1122,6 +1132,16 @@ export default function App() {
     return membersChanged || hasPendingTask
   })
   const logout = async () => {
+    if (loggingOutRef.current) return
+    loggingOutRef.current = true
+    setLoggingOut(true)
+    if (stateSaveTimerRef.current) {
+      clearTimeout(stateSaveTimerRef.current)
+      stateSaveTimerRef.current = null
+      pendingStateSaves.current = 0
+    }
+    await stateSaveQueue.current.catch(() => {})
+
     // La agenda temporal no debe permanecer disponible para la próxima sesión.
     if (authUser?.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() !== 'tecnico') {
       if (databaseReady) {
@@ -1129,16 +1149,26 @@ export default function App() {
           const response = await fetch('/api/agenda/daily/clear', { method: 'POST' })
           const payload = await response.json().catch(() => ({}))
           if (!response.ok) throw new Error(payload.error || 'No se pudo limpiar la agenda del día.')
-          setStateRevision(Number(payload.revision))
-        } catch (error) { setNotice(error.message); return }
+          stateRevisionRef.current = Number(payload.revision)
+        } catch (error) {
+          console.error('No se pudo limpiar la agenda antes de cerrar sesión.', error)
+        }
       }
       const clean = emptyAgenda()
       setTeams(clean.teams); setDate(clean.date)
     }
-    await fetch('/api/auth/logout', { method: 'POST' })
-    clearOperationalStorage()
-    setRoles([]); setEmployees([]); setServices([]); setHistory([]); setCustomers([]); setWeekly({})
-    setAuthUser(null); setDatabaseReady(false); setDatabaseError(''); setStateRevision(null); setModule('dashboard')
+    try {
+      const response = await fetch('/api/auth/logout', { method: 'POST' })
+      if (!response.ok) throw new Error('No se pudo invalidar la sesión en el servidor.')
+    } catch (error) {
+      console.error('Error al cerrar la sesión en el servidor.', error)
+    } finally {
+      clearOperationalStorage()
+      setRoles([]); setEmployees([]); setServices([]); setHistory([]); setCustomers([]); setWeekly({})
+      setAuthUser(null); setDatabaseReady(false); setDatabaseError(''); setStateRevision(null); setModule('dashboard')
+      loggingOutRef.current = false
+      setLoggingOut(false)
+    }
   }
   const requestLogout = () => setConfirmation(hasUnsavedAgenda
     ? { title: 'Agenda sin guardar', detail: 'Hay servicios cargados que aún no fueron guardados en el historial. Si cerrás sesión, la agenda se limpiará y esos datos se perderán.', action: logout, destructive: true, confirmLabel: 'Cerrar sesión y descartar agenda' }
@@ -1151,6 +1181,7 @@ export default function App() {
     button.addEventListener('click', intercept, true)
     return () => button.removeEventListener('click', intercept, true)
   })
+  if (loggingOut) return <main className="login-page"><div className="login-loading">Cerrando sesión segura…</div></main>
   if (authLoading) return <main className="login-page"><div className="login-loading">Verificando sesión segura…</div></main>
   if (!authUser) return <Login onLogin={setAuthUser} />
   if (!databaseReady) return <main className="login-page"><div className="login-card"><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">DATOS PROTEGIDOS</p><h1>{databaseError ? 'No se pudo cargar la agenda' : 'Cargando información autorizada…'}</h1>{databaseError && <><p className="login-error" role="alert">{databaseError}</p><button className="primary" type="button" onClick={() => { setDatabaseError(''); setAuthUser(current => current ? { ...current } : current) }}>Reintentar</button><button className="secondary" type="button" onClick={logout}>Cerrar sesión</button></>}</div></main>
