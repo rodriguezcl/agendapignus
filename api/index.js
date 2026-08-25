@@ -1,6 +1,6 @@
 const crypto = require('node:crypto')
 const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
-const { appendAudit, database, readState, replaceCollections } = require('./_lib/database.cjs')
+const { appendAudit, database, readRevision, readState, replaceCollections } = require('./_lib/database.cjs')
 const {
   auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
@@ -284,6 +284,7 @@ module.exports = async function handler(req, res) {
     }
     const session = await requireSession(req, res, sql)
     if (!session) return
+    if (req.method === 'GET' && route === '/state/revision') return send(res, 200, { revision: await readRevision(sql) })
     if (req.method === 'GET' && route === '/state') return send(res, 200, visibleStateForUser(await readState(sql), session.user))
     if (req.method === 'PUT' && route === '/state') {
       if (session.user.roleCode === 'technician') return send(res, 403, { error: 'El rol técnico no puede modificar la agenda.' })

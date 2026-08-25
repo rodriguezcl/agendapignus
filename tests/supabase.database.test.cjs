@@ -1,42 +1,40 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { readState } = require('../api/_lib/database.cjs')
+const { readRevision, readState } = require('../api/_lib/database.cjs')
 
-test('lee el estado de Supabase secuencialmente para el Transaction Pooler', async () => {
-  let activeQueries = 0
-  let maximumConcurrency = 0
+test('reconstruye el estado de Supabase en una única consulta agregada', async () => {
   const queries = []
-
   const sql = async strings => {
-    const query = strings.join(' ')
-    queries.push(query)
-    activeQueries += 1
-    maximumConcurrency = Math.max(maximumConcurrency, activeQueries)
-    await new Promise(resolve => setImmediate(resolve))
-    activeQueries -= 1
-
-    if (query.includes('pignus_roles')) return [{ data: { id: 'role-1' } }]
-    if (query.includes('pignus_employees')) return [{ data: { id: 'employee-1' } }]
-    if (query.includes('pignus_services')) return [{ data: { id: 'service-1' } }]
-    if (query.includes('pignus_customers')) return [{ data: { account: 'PIG1' } }]
-    if (query.includes('pignus_work_history')) return [{ data: { id: 'history-1' } }]
-    if (query.includes('pignus_agendas')) return [{ id: 'current', data: { teams: [] } }]
-    if (query.includes('pignus_reviews')) return []
-    if (query.includes('pignus_preferences')) return [
-      { key: 'state_revision', value: '4' },
-      { key: 'theme', value: 'dark' }
-    ]
-    throw new Error(`Consulta inesperada: ${query}`)
+    queries.push(strings.join(' '))
+    return [{
+      roles: [{ id: 'role-1' }],
+      employees: [{ id: 'employee-1' }],
+      services: [{ id: 'service-1' }],
+      customers: [{ account: 'PIG1' }],
+      history: [{ id: 'history-1' }],
+      agenda: { teams: [] },
+      reviews: [],
+      preferences: { state_revision: '4', theme: 'dark' }
+    }]
   }
 
   const state = await readState(sql)
 
-  assert.equal(queries.length, 8)
-  assert.equal(maximumConcurrency, 1)
+  assert.equal(queries.length, 1)
   assert.equal(state.revision, 4)
   assert.equal(state.customers.length, 1)
   assert.equal(state.history.length, 1)
   assert.deepEqual(state.agenda, { teams: [] })
   assert.equal(state.preferences.theme, 'dark')
+})
+
+test('consulta la revisión sin descargar el estado completo', async () => {
+  const queries = []
+  const sql = async strings => { queries.push(strings.join(' ')); return [{ value: '9' }] }
+
+  assert.equal(await readRevision(sql), 9)
+  assert.equal(queries.length, 1)
+  assert.match(queries[0], /state_revision/)
+  assert.doesNotMatch(queries[0], /pignus_customers|pignus_work_history/)
 })
