@@ -13,6 +13,20 @@ const roles = [
 
 const employee = { id: 'e1', firstName: 'Ana', lastName: 'Técnica', name: 'Ana Técnica', email: 'ana@example.com', roleId: '3', role: 'Técnico', status: 'Activo' }
 
+test('el buscador del historial técnico contempla todos los datos útiles', async () => {
+  const { filterTechnicianHistory } = await import('../src/technician-history.mjs')
+  const records = [
+    { id: 'a', client: 'PIG-6425 LORENA MAZZAGLIA', service: 'Service de alarma', detail: 'Falsos disparos por humedad', address: 'Docta', phone: '351152022189', date: '2026-08-26', status: 'Completado' },
+    { id: 'b', client: 'CLI-0093 OTRO CLIENTE', service: 'Instalación de cámaras', detail: 'Cambio de equipos', date: '2026-01-02', status: 'Cancelado' }
+  ]
+
+  for (const query of ['lorena', 'PIG-6425', 'alarma humedad', 'docta', '351152022189', '26 agosto 2026', 'completado']) {
+    assert.deepEqual(filterTechnicianHistory(records, query).map(record => record.id), ['a'])
+  }
+  assert.deepEqual(filterTechnicianHistory(records, 'camaras cancelado').map(record => record.id), ['b'])
+  assert.deepEqual(filterTechnicianHistory(records, 'registro inexistente'), [])
+})
+
 test('genera y verifica hashes compatibles con las credenciales existentes', () => {
   const hash = hashPassword('Prueba1234')
   assert.equal(verifyPassword('Prueba1234', hash), true)
