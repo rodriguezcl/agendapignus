@@ -131,12 +131,29 @@ async function handleLogin(req, res, sql) {
 }
 
 async function handleLogout(req, res, sql) {
-  const session = await sessionContext(req, sql)
-  if (session) await sql.begin(async transaction => {
-    await appendAudit(transaction, [auditEntry(session.user, 'Cerró sesión', 'Sesión', String(session.user.id), { sessionExpiresAt: session.expiresAt.toISOString() }, null)])
-    await transaction`delete from pignus_sessions where token_hash = ${session.hash}`
-  })
   res.setHeader('Set-Cookie', 'pignus_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0')
+  const token = cookies(req.headers.cookie).pignus_session
+  if (!token) return send(res, 200, { ok: true })
+
+  // El cierre no necesita reconstruir toda la sesión mediante varias consultas.
+  // Primero revoca el token y obtiene en el mismo viaje los datos mínimos para
+  // conservar la trazabilidad de auditoría.
+  const rows = await sql`
+    with deleted as (
+      delete from pignus_sessions
+      where token_hash = ${tokenHash(token)}
+      returning employee_id, expires_at
+    )
+    select
+      deleted.employee_id,
+      deleted.expires_at,
+      (select data from pignus_employees where id = deleted.employee_id) as employee,
+      coalesce((select jsonb_agg(data) from pignus_roles), '[]'::jsonb) as roles
+    from deleted
+  `
+  const session = rows[0]
+  const user = session?.employee ? userForEmployee(session.employee, session.roles || []) : null
+  if (user) await appendAudit(sql, [auditEntry(user, 'Cerró sesión', 'Sesión', String(user.id), { sessionExpiresAt: new Date(session.expires_at).toISOString() }, null)])
   return send(res, 200, { ok: true })
 }
 
