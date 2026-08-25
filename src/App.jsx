@@ -2498,12 +2498,16 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
     navigation.className = 'technician-header-nav'
     navigation.setAttribute('aria-label', 'Módulos técnicos')
     navigation.innerHTML = '<button data-view="agenda">▣ <span>Agenda técnica</span></button><button data-view="history">◷ <span>Historial</span></button>'
-    navigation.querySelectorAll('button').forEach(button => {
+    const desktopNavigation = document.createElement('aside')
+    desktopNavigation.className = 'sidebar technician-sidebar'
+    desktopNavigation.innerHTML = '<div class="brand" aria-label="Pignus"></div><p class="nav-label">MÓDULOS</p><nav aria-label="Módulos técnicos"><button data-view="agenda">▣ <span>Agenda técnica</span></button><button data-view="history">◷ <span>Historial</span></button></nav><div class="sidebar-bottom">v1.1 · Agenda técnica</div>'
+    ;[navigation, desktopNavigation].forEach(container => container.querySelectorAll('button').forEach(button => {
       button.classList.toggle('active', button.dataset.view === view)
       button.onclick = () => setView(button.dataset.view)
-    })
+    }))
     header.append(navigation)
-    return () => navigation.remove()
+    document.body.append(desktopNavigation)
+    return () => { navigation.remove(); desktopNavigation.remove() }
   }, [view])
   useEffect(() => {
     const title = document.querySelector('.technician-content h1')
