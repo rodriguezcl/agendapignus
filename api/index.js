@@ -1,6 +1,6 @@
 const crypto = require('node:crypto')
 const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
-const { appendAudit, database, readRevision, readState, replaceCollections } = require('./_lib/database.cjs')
+const { appendAudit, database, readExportState, readRevision, readState, replaceCollections } = require('./_lib/database.cjs')
 const {
   auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
@@ -68,20 +68,26 @@ async function sessionContext(req, sql = database()) {
   const token = cookies(req.headers.cookie).pignus_session
   if (!token) return null
   const hash = tokenHash(token)
-  const sessions = await sql`select employee_id, expires_at from pignus_sessions where token_hash = ${hash}`
+  const sessions = await sql`
+    select
+      active_session.employee_id,
+      active_session.expires_at,
+      (select data from pignus_employees where id = active_session.employee_id) as employee,
+      coalesce((select jsonb_agg(data) filter (where data is not null) from pignus_roles), '[]'::jsonb) as roles
+    from pignus_sessions as active_session
+    where active_session.token_hash = ${hash}
+  `
   const session = sessions[0]
   if (!session || new Date(session.expires_at).getTime() <= Date.now()) {
     if (session) await sql`delete from pignus_sessions where token_hash = ${hash}`
     return null
   }
-  const employees = await sql`select data from pignus_employees where id = ${String(session.employee_id)}`
-  const employee = employees[0]?.data
+  const employee = session.employee
   if (!employee || employee.status !== 'Activo') {
     await sql`delete from pignus_sessions where token_hash = ${hash}`
     return null
   }
-  const roles = (await sql`select data from pignus_roles`).map(row => row.data)
-  const user = userForEmployee(employee, roles)
+  const user = userForEmployee(employee, session.roles)
   if (!user) {
     await sql`delete from pignus_sessions where token_hash = ${hash}`
     return null
@@ -148,7 +154,7 @@ async function handleLogout(req, res, sql) {
       deleted.employee_id,
       deleted.expires_at,
       (select data from pignus_employees where id = deleted.employee_id) as employee,
-      coalesce((select jsonb_agg(data) from pignus_roles), '[]'::jsonb) as roles
+      coalesce((select jsonb_agg(data) filter (where data is not null) from pignus_roles), '[]'::jsonb) as roles
     from deleted
   `
   const session = rows[0]
@@ -209,7 +215,7 @@ async function handleExport(req, res, sql, user) {
   const category = String(req.query.category || 'residencial')
   const format = String(req.query.format || 'excel')
   const isRetirement = category === 'retirements'
-  const state = await readState(sql)
+  const state = await readExportState(sql)
   const alarmService = state.services.find(service => service.code === 'alarm-installation')
   const records = state.history.filter(record => {
     if (!record.date?.startsWith(month) || (user.roleCode === 'technician' && !record.technicianIds?.some(id => String(id) === String(user.id)))) return false

@@ -45,7 +45,8 @@ function verifyPassword(password, storedHash) {
 }
 
 function userForEmployee(employee, roles) {
-  const role = roles.find(item => String(item.id) === String(employee?.roleId)) || roles.find(item => normalizedRoleName(item.name) === normalizedRoleName(employee?.role))
+  const validRoles = Array.isArray(roles) ? roles.filter(item => item && typeof item === 'object') : []
+  const role = validRoles.find(item => String(item.id) === String(employee?.roleId)) || validRoles.find(item => normalizedRoleName(item.name) === normalizedRoleName(employee?.role))
   if (!employee || !role) return null
   return {
     id: employee.id,

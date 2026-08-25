@@ -28,6 +28,13 @@ test('resuelve el rol y limita el estado visible del técnico', () => {
   assert.deepEqual(visible.customers, [])
 })
 
+test('ignora roles nulos al resolver una sesión', () => {
+  const user = userForEmployee(employee, [null, undefined, ...roles])
+  assert.equal(user.id, employee.id)
+  assert.equal(user.roleCode, 'technician')
+  assert.equal(userForEmployee(employee, [null]), null)
+})
+
 test('impide que un rol de consulta modifique colecciones sin permiso', () => {
   const user = userForEmployee({ ...employee, roleId: '4', role: 'Consulta' }, roles)
   const current = { roles, employees: [employee], services: [{ id: 1 }], customers: [{ account: 'CLI-1' }], history: [{ id: 'old' }], reviews: [], agenda: { date: '2026-01-01', teams: [], weekly: {} } }

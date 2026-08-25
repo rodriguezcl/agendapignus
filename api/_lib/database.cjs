@@ -40,6 +40,17 @@ async function readRevision(sql) {
   return Number(rows[0]?.value || 0)
 }
 
+async function readExportState(sql) {
+  // Los reportes solamente necesitan estas dos colecciones. Evita descargar
+  // clientes, agenda, empleados y preferencias antes de generar cada archivo.
+  const [state] = await sql`
+    select
+      coalesce((select jsonb_agg(data order by created_at, id) from pignus_services where data is not null), '[]'::jsonb) as services,
+      coalesce((select jsonb_agg(data order by work_date desc, created_at, id) from pignus_work_history where data is not null), '[]'::jsonb) as history
+  `
+  return { services: state?.services || [], history: state?.history || [] }
+}
+
 async function replaceCollections(sql, state) {
   await sql`delete from pignus_roles`
   if (state.roles.length) await sql`insert into pignus_roles ${sql(state.roles.map(record => ({ id: String(record.id), data: sql.json(record) })))}`
@@ -69,4 +80,4 @@ async function appendAudit(sql, entries) {
   await sql`delete from pignus_audit_log where id in (select id from pignus_audit_log order by occurred_at desc offset 100)`
 }
 
-module.exports = { appendAudit, database, readRevision, readState, replaceCollections }
+module.exports = { appendAudit, database, readExportState, readRevision, readState, replaceCollections }
