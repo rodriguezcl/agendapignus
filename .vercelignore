@@ -1,0 +1,9 @@
+.git/
+.vercel/
+.env*
+data/
+dist/
+node_modules/
+tmp/
+*.lnk
+*.msi

@@ -4,7 +4,7 @@ La versión web conserva React/Vite y reemplaza la persistencia de producción p
 
 ## Arquitectura
 
-- Vercel publica `dist/` y ejecuta `api/index.cjs` como función Node.js.
+- Vercel publica `dist/` y ejecuta `api/index.js` como función Node.js.
 - Supabase almacena roles, empleados, clientes, servicios, historial, agenda, preferencias y auditoría.
 - Las sesiones y los intentos fallidos de acceso también se guardan en PostgreSQL; no dependen de la memoria de una función.
 - El navegador nunca recibe `DATABASE_URL` ni accede directamente a las tablas. RLS está activado y los roles `anon` y `authenticated` no tienen permisos sobre los datos operativos.
