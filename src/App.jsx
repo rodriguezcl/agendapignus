@@ -2487,12 +2487,18 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
     return () => { window.clearInterval(interval); window.removeEventListener('focus', refreshSharedAgenda) }
   }, [setHistory])
   useEffect(() => {
-    const sidebar = document.createElement('aside')
-    sidebar.className = 'technician-sidebar'
-    sidebar.innerHTML = `<img src="/logo-pignus.png" alt="Pignus"><p>MÓDULOS</p><button data-view="agenda">▣ <span>Agenda técnica</span></button><button data-view="history">◷ <span>Historial</span></button>`
-    sidebar.querySelectorAll('button').forEach(button => { button.classList.toggle('active', button.dataset.view === view); button.onclick = () => setView(button.dataset.view) })
-    document.body.append(sidebar)
-    return () => sidebar.remove()
+    const header = document.querySelector('.technician-header')
+    if (!header) return undefined
+    const navigation = document.createElement('nav')
+    navigation.className = 'technician-header-nav'
+    navigation.setAttribute('aria-label', 'Módulos técnicos')
+    navigation.innerHTML = '<button data-view="agenda">▣ <span>Agenda técnica</span></button><button data-view="history">◷ <span>Historial</span></button>'
+    navigation.querySelectorAll('button').forEach(button => {
+      button.classList.toggle('active', button.dataset.view === view)
+      button.onclick = () => setView(button.dataset.view)
+    })
+    header.append(navigation)
+    return () => navigation.remove()
   }, [view])
   useEffect(() => {
     const title = document.querySelector('.technician-content h1')
