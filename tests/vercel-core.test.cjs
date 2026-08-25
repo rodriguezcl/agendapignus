@@ -1,5 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
 const {
   authorizeIncomingState, compareReportRecords, hashPassword, normalizeRetirementCustomers, normalizeStateForSave,
   secureEmployees, statePersistenceChanged, userForEmployee, verifyPassword, visibleStateForUser
@@ -25,6 +27,15 @@ test('el buscador del historial técnico contempla todos los datos útiles', asy
   }
   assert.deepEqual(filterTechnicianHistory(records, 'camaras cancelado').map(record => record.id), ['b'])
   assert.deepEqual(filterTechnicianHistory(records, 'registro inexistente'), [])
+})
+
+test('la navegación técnica usa barra lateral en PC y encabezado en smartphone', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
+  assert.match(source, /sidebar technician-sidebar/)
+  assert.match(styles, /\.technician-header-nav\{display:none\}/)
+  assert.match(styles, /@media\(max-width:640px\)\{\.technician-sidebar\{display:none\}/)
+  assert.match(styles, /\.technician-header-nav\{display:grid\}/)
 })
 
 test('genera y verifica hashes compatibles con las credenciales existentes', () => {
