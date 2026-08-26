@@ -14,6 +14,7 @@ const taskFromHistory = record => ({
   detail: record.detail || '',
   installationZone: record.installationZone || '',
   paymentMethod: record.paymentMethod || '',
+  amount: record.amount || '',
   monthlyFee: record.monthlyFee || '',
   form: record.form || '',
   status: record.status || 'Pendiente'
