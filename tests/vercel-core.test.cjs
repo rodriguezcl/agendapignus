@@ -29,13 +29,25 @@ test('el buscador del historial técnico contempla todos los datos útiles', asy
   assert.deepEqual(filterTechnicianHistory(records, 'registro inexistente'), [])
 })
 
-test('la navegación técnica usa barra lateral en PC y encabezado en smartphone', () => {
+test('el técnico usa el mismo menú móvil desplegable que los demás roles', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
   assert.match(source, /sidebar technician-sidebar/)
-  assert.match(styles, /\.technician-header-nav\{display:none\}/)
-  assert.match(styles, /@media\(max-width:640px\)\{\.technician-sidebar\{display:none\}/)
-  assert.match(styles, /\.technician-header-nav\{display:grid\}/)
+  assert.match(source, /technician-mobile-menu/)
+  assert.match(source, /setMenuOpen\(true\)/)
+  assert.match(source, /backdrop/)
+  assert.match(styles, /@media\(max-width:640px\)\{\.technician-sidebar\{display:flex;z-index:8\}/)
+})
+
+test('configura formulario, forma de pago y monto según el servicio', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  assert.match(source, /PAYMENT_OPTIONS = \['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'A confirmar'\]/)
+  assert.match(source, /form: alarmInstallation \|\| ownershipChange/)
+  assert.match(source, /paymentMethod !== 'A confirmar'/)
+  assert.match(source, /if \(key === 'amount' && !enabled\) return null/)
+  assert.match(source, /amount: paymentMethod \? task\?\.amount \|\| '' : ''/)
+  assert.match(source, /requiresPaymentAmount\(task, serviceForTask\(task\)\)/)
+  assert.match(source, /requiresPaymentAmount\(draft, serviceForWeeklyTask\(draft\)\)/)
 })
 
 test('genera y verifica hashes compatibles con las credenciales existentes', () => {

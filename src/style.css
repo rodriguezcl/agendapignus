@@ -108,3 +108,6 @@
 .customer-editor-modal .required-mark {
   color: #c7443f;
 }
+
+/* Todos los perfiles usan el mismo cajón lateral en pantallas pequeñas. */
+@media(max-width:640px){.technician-sidebar{display:flex;z-index:8}.technician-menu-backdrop{z-index:7}.technician-mobile-menu{flex:0 0 auto;margin-right:2px}.technician-header>div{margin-right:auto}}

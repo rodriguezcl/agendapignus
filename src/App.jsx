@@ -18,7 +18,7 @@ const INSTALLATION_ZONES = [
 // equipo, que pueden cambiar durante la planificación sin crear otro historial.
 const createTaskId = () => globalThis.crypto?.randomUUID?.() || `task-${Date.now()}-${Math.random().toString(36).slice(2)}`
 const createTeamId = () => globalThis.crypto?.randomUUID?.() || `team-${Date.now()}-${Math.random().toString(36).slice(2)}`
-const blankTask = () => ({ taskId: createTaskId(), time: '', serviceId: '', service: '', customerId: '', client: '', clientAccount: '', clientNameAtService: '', address: '', phone: '', detail: '', paymentMethod: '', monthlyFee: '', form: '' })
+const blankTask = () => ({ taskId: createTaskId(), time: '', serviceId: '', service: '', customerId: '', client: '', clientAccount: '', clientNameAtService: '', address: '', phone: '', detail: '', paymentMethod: '', amount: '', monthlyFee: '', form: '' })
 const taskTimeInMinutes = task => {
   const value = String(task?.time || task?.scheduledTime || '').trim()
   const match = value.match(/^(\d{1,2}):(\d{2})$/)
@@ -243,7 +243,7 @@ const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?
     teamIndex = teams.length
     teams.push({ teamId: record.teamId || createTeamId(), label: record.team || `Equipo ${teamNumber}`, memberIds: record.technicianIds || [], members: record.technicians || [], tasks: [] })
   }
-  const task = { taskId: record.sourceTaskId || record.id, historyId: record.id, time: record.time || record.scheduledTime || '', serviceId: record.serviceId || '', service: record.service || '', customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', paymentMethod: record.paymentMethod || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', ...serviceTrace(record) }
+  const task = { taskId: record.sourceTaskId || record.id, historyId: record.id, time: record.time || record.scheduledTime || '', serviceId: record.serviceId || '', service: record.service || '', customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', ...serviceTrace(record) }
   const currentTasks = teams[teamIndex].tasks || []
   const emptyAtSameTime = currentTasks.findIndex(item => item.time === task.time && !item.customerId && !String(item.client || '').trim() && !item.serviceId && !String(item.service || '').trim())
   const sameCustomer = item => {
@@ -428,6 +428,7 @@ const PAYMENT_SERVICE_NAMES = new Set([
   'otro service'
 ])
 const FORM_OPTIONS = ['Completo', 'Incompleto (Abonado completa a mano)']
+const PAYMENT_OPTIONS = ['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'A confirmar']
 const normalizeFormValue = value => {
   const normalized = normalizeServiceName(value)
   if (normalized === 'completo') return FORM_OPTIONS[0]
@@ -437,19 +438,26 @@ const normalizeFormValue = value => {
 const serviceExtraAvailability = (service, installationZone = '') => {
   const alarmInstallation = serviceCode(service) === 'alarm-installation'
   const residentialAlarm = alarmInstallation && installationZone === 'residencial'
+  const ownershipChange = normalizeServiceName(service?.name).includes('titularidad')
   return {
     paymentMethod: residentialAlarm || PAYMENT_SERVICE_NAMES.has(normalizeServiceName(service?.name)),
     monthlyFee: residentialAlarm,
-    form: alarmInstallation
+    form: alarmInstallation || ownershipChange
   }
 }
 const applicableServiceExtras = (task, service) => {
   const available = serviceExtraAvailability(service, task?.installationZone)
+  const paymentMethod = available.paymentMethod ? task?.paymentMethod || '' : ''
   return {
-    paymentMethod: available.paymentMethod ? task?.paymentMethod || '' : '',
+    paymentMethod,
+    amount: paymentMethod ? task?.amount || '' : '',
     monthlyFee: available.monthlyFee ? task?.monthlyFee || '' : '',
     form: available.form ? normalizeFormValue(task?.form) : ''
   }
+}
+const requiresPaymentAmount = (task, service) => {
+  const paymentMethod = serviceExtraAvailability(service, task?.installationZone).paymentMethod ? String(task?.paymentMethod || '').trim() : ''
+  return Boolean(paymentMethod && paymentMethod !== 'A confirmar' && !String(task?.amount || '').trim())
 }
 const prettyDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, x => x.toUpperCase()) : ''
 // Cada familia de trabajo tiene un color consistente en el historial para facilitar su lectura.
@@ -886,6 +894,7 @@ export default function App() {
            phone: draft.phone,
            detail: draft.detail,
            paymentMethod: draft.paymentMethod || '',
+           amount: draft.amount || '',
            monthlyFee: draft.monthlyFee || '',
            form: draft.form || '',
            installationZone: draft.installationZone || '',
@@ -917,6 +926,7 @@ export default function App() {
            phone: draft.phone || '',
            detail: draft.detail || '',
            paymentMethod: draft.paymentMethod || '',
+           amount: draft.amount || '',
            monthlyFee: draft.monthlyFee || '',
            form: draft.form || '',
            installationZone: draft.installationZone || '',
@@ -1393,11 +1403,13 @@ function ServiceExtraFields({ className, task, service, onChange, buffered = fal
   const available = serviceExtraAvailability(service, task?.installationZone)
   const fields = [
     ['paymentMethod', 'Forma de pago'],
+    ['amount', 'Monto'],
     ['monthlyFee', 'Abono mensual'],
     ['form', 'Formulario']
   ]
   return <div className={className}>{fields.map(([key, label]) => {
-    const enabled = available[key]
+    const enabled = key === 'amount' ? available.paymentMethod && Boolean(task?.paymentMethod) : available[key]
+    if (key === 'amount' && !enabled) return null
     const props = {
       value: enabled ? task?.[key] || '' : '',
       disabled: !enabled,
@@ -1406,6 +1418,18 @@ function ServiceExtraFields({ className, task, service, onChange, buffered = fal
     }
     if (key === 'form') {
       return <label key={key}>{label}<select value={enabled ? normalizeFormValue(task?.form) : ''} disabled={!enabled} title={props.title} onChange={event => onChange({ form: event.target.value })}><option value="">{enabled ? 'Seleccionar' : 'No aplica'}</option>{enabled && FORM_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
+    }
+    if (key === 'paymentMethod') {
+      const paymentValue = enabled ? task?.paymentMethod || '' : ''
+      const legacyValue = paymentValue && !PAYMENT_OPTIONS.includes(paymentValue) ? paymentValue : ''
+      return <label key={key}>{label}<select value={paymentValue} disabled={!enabled} title={props.title} onChange={event => onChange({ paymentMethod: event.target.value, ...(event.target.value ? {} : { amount: '' }) })}><option value="">{enabled ? 'Seleccionar' : 'No aplica'}</option>{legacyValue && <option value={legacyValue}>{legacyValue}</option>}{enabled && PAYMENT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
+    }
+    if (key === 'amount') {
+      const required = task?.paymentMethod !== 'A confirmar'
+      const amountProps = { ...props, type: 'number', min: '0', step: '0.01', inputMode: 'decimal', required, placeholder: required ? 'Ingresar monto' : 'Opcional' }
+      return <label key={key}>{label}{required && <b className="required-mark"> *</b>}{buffered
+        ? <BufferedInput {...amountProps} onCommit={value => onChange({ amount: value })} />
+        : <input {...amountProps} onChange={event => onChange({ amount: event.target.value })} />}</label>
     }
     return <label key={key}>{label}{buffered
       ? <BufferedInput {...props} onCommit={value => onChange({ [key]: value })} />
@@ -1569,7 +1593,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       current.memberIds = record.technicianIds?.length ? record.technicianIds : current.memberIds
       current.members = record.technicians?.length ? record.technicians : current.members
       // Se aceptan los nombres anteriores del campo para recuperar también agendas ya existentes.
-      const recoveredTask = { taskId: record.sourceTaskId || record.id || createTaskId(), historyId: record.id, time: record.time || record.scheduledTime || record.hora || record.Hora || '', serviceId: record.serviceId || '', service: record.service || '', customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', paymentMethod: record.paymentMethod || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', ...serviceTrace(record) }
+      const recoveredTask = { taskId: record.sourceTaskId || record.id || createTaskId(), historyId: record.id, time: record.time || record.scheduledTime || record.hora || record.Hora || '', serviceId: record.serviceId || '', service: record.service || '', customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', ...serviceTrace(record) }
       const sameTask = task => (record.id && String(task.historyId || '') === String(record.id)) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
       if (current.tasks.some(sameTask)) current.tasks = current.tasks.map(task => sameTask(task) ? { ...task, ...recoveredTask } : task)
       else current.tasks.push(recoveredTask)
@@ -1641,6 +1665,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       if (!task.address) fields.push('dirección')
       if (!task.phone) fields.push('contacto')
       if (serviceCode(serviceForTask(task)) === 'alarm-installation' && !task.installationZone) fields.push('ubicación de la instalación')
+      if (requiresPaymentAmount(task, serviceForTask(task))) fields.push('monto')
       if (fields.length) missing.push(`Equipo ${teamIndex + 1}, servicio ${taskIndex + 1}: ${fields.join(', ')}`)
     }))
     if (!missing.length) return true
@@ -1656,6 +1681,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     const lines = [
       `Observación: ${previewValue(task.detail)}`,
       available.paymentMethod && `Forma de pago: ${previewValue(extras.paymentMethod)}`,
+      available.paymentMethod && extras.paymentMethod && `Monto: ${previewValue(extras.amount)}`,
       available.monthlyFee && `Abono mensual: ${previewValue(extras.monthlyFee)}`,
       available.form && `Formulario: ${previewValue(extras.form)}`
     ].filter(Boolean)
@@ -2079,6 +2105,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     if (!String(draft.address || '').trim()) missing.push('dirección')
     if (!String(draft.detail || '').trim()) missing.push('detalle')
     if (serviceCode(serviceForWeeklyTask(draft)) === 'alarm-installation' && !draft.installationZone) missing.push('ubicación de la instalación')
+    if (requiresPaymentAmount(draft, serviceForWeeklyTask(draft))) missing.push('monto')
     if (missing.length) {
       setNotice(`Completá ${missing.join(', ')} antes de guardar el servicio.`)
       return
@@ -2269,12 +2296,13 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     if (!hours) { setNotice('Los domingos no están habilitados para programar servicios.'); return }
     const invalidTime = dayPlan(day).teams.flatMap(team => team.tasks).find(task => task.time && (task.time < hours.min || task.time > hours.max))
     if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
-    const scheduledTasks = dayPlan(day).teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, teamIndex, taskIndex }))).filter(({ task }) => [task.service, task.client, task.address, task.detail, task.phone, task.paymentMethod, task.monthlyFee, task.form].some(value => String(value || '').trim()))
-    const incompleteTask = scheduledTasks.find(({ task }) => !task.time || !task.service || !task.customerId || !task.address || !task.phone || !task.detail || (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone))
+    const scheduledTasks = dayPlan(day).teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, teamIndex, taskIndex }))).filter(({ task }) => [task.service, task.client, task.address, task.detail, task.phone, task.paymentMethod, task.amount, task.monthlyFee, task.form].some(value => String(value || '').trim()))
+    const incompleteTask = scheduledTasks.find(({ task }) => !task.time || !task.service || !task.customerId || !task.address || !task.phone || !task.detail || (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) || requiresPaymentAmount(task, serviceForWeeklyTask(task)))
     if (incompleteTask) {
       const { task, teamIndex, taskIndex } = incompleteTask
       const missing = [['hora', task.time], ['tipo de servicio', task.service], ['cliente', task.client], ['dirección', task.address], ['contacto', task.phone], ['detalle', task.detail]].filter(([, value]) => !String(value || '').trim()).map(([label]) => label)
       if (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) missing.push('ubicación de la instalación')
+      if (requiresPaymentAmount(task, serviceForWeeklyTask(task))) missing.push('monto')
       setNotice(`Completá los campos obligatorios de Equipo ${teamIndex + 1}, tarjeta ${taskIndex + 1}: ${missing.join(', ')}.`)
       return
     }
@@ -2472,6 +2500,7 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
   const [observation, setObservation] = useState('')
   const [confirm, setConfirm] = useState(null)
   const [view, setView] = useState('agenda')
+  const [menuOpen, setMenuOpen] = useState(false)
   const [historySearch, setHistorySearch] = useState('')
   const today = new Date().toISOString().slice(0, 10)
   const resolved = record => Boolean(record.technicalStatus || record.status === 'Completado' || record.status === 'Cancelado' || record.status === 'Reprogramado')
@@ -2494,21 +2523,21 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
   useEffect(() => {
     const header = document.querySelector('.technician-header')
     if (!header) return undefined
-    const navigation = document.createElement('nav')
-    navigation.className = 'technician-header-nav'
-    navigation.setAttribute('aria-label', 'Módulos técnicos')
-    navigation.innerHTML = '<button data-view="agenda">▣ <span>Agenda técnica</span></button><button data-view="history">◷ <span>Historial</span></button>'
     const desktopNavigation = document.createElement('aside')
-    desktopNavigation.className = 'sidebar technician-sidebar'
+    desktopNavigation.className = `sidebar technician-sidebar ${menuOpen ? 'open' : ''}`
     desktopNavigation.innerHTML = '<div class="brand" aria-label="Pignus"></div><p class="nav-label">MÓDULOS</p><nav aria-label="Módulos técnicos"><button data-view="agenda">▣ <span>Agenda técnica</span></button><button data-view="history">◷ <span>Historial</span></button></nav><div class="sidebar-bottom">v1.1 · Agenda técnica</div>'
-    ;[navigation, desktopNavigation].forEach(container => container.querySelectorAll('button').forEach(button => {
+    desktopNavigation.querySelectorAll('button').forEach(button => {
       button.classList.toggle('active', button.dataset.view === view)
-      button.onclick = () => setView(button.dataset.view)
-    }))
-    header.append(navigation)
+      button.onclick = () => { setView(button.dataset.view); setMenuOpen(false) }
+    })
+    const mobileToggle = document.createElement('button')
+    mobileToggle.type = 'button'; mobileToggle.className = 'mobile-menu technician-mobile-menu'; mobileToggle.setAttribute('aria-label', 'Abrir menú'); mobileToggle.textContent = '☰'; mobileToggle.onclick = () => setMenuOpen(true)
+    header.prepend(mobileToggle)
     document.body.append(desktopNavigation)
-    return () => { navigation.remove(); desktopNavigation.remove() }
-  }, [view])
+    const backdrop = menuOpen ? document.createElement('button') : null
+    if (backdrop) { backdrop.type = 'button'; backdrop.className = 'backdrop technician-menu-backdrop'; backdrop.setAttribute('aria-label', 'Cerrar menú'); backdrop.onclick = () => setMenuOpen(false); document.body.append(backdrop) }
+    return () => { mobileToggle.remove(); desktopNavigation.remove(); backdrop?.remove() }
+  }, [view, menuOpen])
   useEffect(() => {
     const title = document.querySelector('.technician-content h1')
     const help = document.querySelector('.technician-help')
