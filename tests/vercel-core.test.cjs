@@ -39,6 +39,17 @@ test('el técnico usa el mismo menú móvil desplegable que los demás roles', (
   assert.match(styles, /@media\(max-width:640px\)\{\.technician-sidebar\{display:flex;z-index:8\}/)
 })
 
+test('el control para compactar la barra lateral no se activa en smartphones', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/weekly-enhancements.css'), 'utf8')
+  assert.match(source, /matchMedia\?\.\('\(min-width: 641px\)'\)/)
+  assert.match(source, /classList\.toggle\('sidebar-collapsed', desktopSidebar && sidebarCollapsed\)/)
+  assert.match(source, /if \(!desktopSidebar\) return undefined/)
+  assert.doesNotMatch(source, /zIndex: '20', display: 'grid'/)
+  assert.match(styles, /\.sidebar-collapse-toggle \{\s*display: none !important;/)
+  assert.match(styles, /\.sidebar\.sidebar-compact nav button::after \{\s*display: none;\s*content: none;/)
+})
+
 test('configura formulario, forma de pago y monto según el servicio', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /PAYMENT_OPTIONS = \['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'A confirmar'\]/)

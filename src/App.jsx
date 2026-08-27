@@ -592,6 +592,7 @@ export default function App() {
   const [module, setModule] = useState('dashboard')
   const [menuOpen, setMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readLocalValue('pignus-sidebar-collapsed') === 'true')
+  const [desktopSidebar, setDesktopSidebar] = useState(() => globalThis.matchMedia?.('(min-width: 641px)').matches ?? true)
   const [theme, setTheme] = useState(() => readLocalValue('pignus-theme', 'light'))
   const [roles, setRoles] = useState([])
   const [employees, setEmployees] = useState([])
@@ -631,6 +632,13 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [notice])
   useEffect(() => writeLocalValue('pignus-sidebar-collapsed', sidebarCollapsed), [sidebarCollapsed])
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 641px)')
+    const syncSidebarMode = () => setDesktopSidebar(media.matches)
+    syncSidebarMode()
+    media.addEventListener('change', syncSidebarMode)
+    return () => media.removeEventListener('change', syncSidebarMode)
+  }, [])
   useEffect(clearOperationalStorage, [])
   useEffect(() => {
     if (!services.length) return
@@ -709,15 +717,17 @@ export default function App() {
     const shell = document.querySelector('.app-shell')
     const sidebar = shell?.querySelector('.sidebar')
     if (!shell || !sidebar) return undefined
-    shell.classList.toggle('sidebar-collapsed', sidebarCollapsed)
-    sidebar.classList.toggle('sidebar-compact', sidebarCollapsed)
+    shell.classList.toggle('sidebar-collapsed', desktopSidebar && sidebarCollapsed)
+    sidebar.classList.toggle('sidebar-compact', desktopSidebar && sidebarCollapsed)
+    // En móvil el único control del menú es el botón hamburguesa.
+    if (!desktopSidebar) return undefined
     const control = document.createElement('button')
     control.type = 'button'
     control.className = `sidebar-collapse-toggle ${sidebarCollapsed ? 'is-collapsed' : ''}`
     // Estilos críticos en línea: el control no depende del orden de las hojas de estilo.
     Object.assign(control.style, {
       position: 'absolute', top: '16px', left: '100%', transform: 'translateX(-50%)',
-      zIndex: '20', display: 'grid', placeItems: 'center', width: '34px', height: '34px',
+      zIndex: '20', placeItems: 'center', width: '34px', height: '34px',
       padding: '0', border: '1px solid #54705e', borderRadius: '50%', background: '#1b412d',
       color: '#fff', fontSize: '22px', lineHeight: '1', boxShadow: '0 3px 9px rgba(5, 26, 14, .25)'
     })
@@ -730,7 +740,7 @@ export default function App() {
     // Se ubica dentro de la barra: así se mantiene alineado con su borde al cambiar el ancho.
     sidebar.append(control)
     return () => { control.removeEventListener('click', toggle); control.remove() }
-  })
+  }, [desktopSidebar, sidebarCollapsed])
   useEffect(() => {
     const goToHistory = () => setModule('history')
     window.addEventListener('pignus:open-history', goToHistory)

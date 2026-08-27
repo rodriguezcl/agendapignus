@@ -893,13 +893,13 @@ body.dark .weekly-task-form .weekly-installation-zone label {
   height: 20px;
 }
 
-.app-shell.sidebar-collapsed .sidebar nav button::after {
-  content: attr(title);
-}
-
 /* En modo compacto se elimina el logotipo completo: así nunca queda recortado
    y la barra mantiene el mismo ancho visual a ambos lados de cada icono. */
 @media (min-width: 641px) {
+  .app-shell.sidebar-collapsed .sidebar nav button::after {
+    content: attr(title);
+  }
+
   .sidebar.sidebar-compact {
     width: 72px !important;
   }
@@ -951,7 +951,13 @@ body.dark .weekly-task-form .weekly-installation-zone label {
 
 @media (max-width: 640px) {
   .sidebar-collapse-toggle {
+    display: none !important;
+  }
+
+  .app-shell.sidebar-collapsed .sidebar nav button::after,
+  .sidebar.sidebar-compact nav button::after {
     display: none;
+    content: none;
   }
 
   .app-shell.sidebar-collapsed .sidebar {
