@@ -50,6 +50,14 @@ test('el control para compactar la barra lateral no se activa en smartphones', (
   assert.match(styles, /\.sidebar\.sidebar-compact nav button::after \{\s*display: none;\s*content: none;/)
 })
 
+test('la evolución anual oculta meses futuros y conserva años cerrados', async () => {
+  const { visibleAnnualMonthLabels } = await import('../src/annual-chart.mjs')
+  const august2026 = new Date(2026, 7, 26, 12)
+  assert.deepEqual(visibleAnnualMonthLabels('2026', august2026), ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago'])
+  assert.equal(visibleAnnualMonthLabels('2025', august2026).length, 12)
+  assert.deepEqual(visibleAnnualMonthLabels('2027', august2026), [])
+})
+
 test('configura formulario, forma de pago y monto según el servicio', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /PAYMENT_OPTIONS = \['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'A confirmar'\]/)
