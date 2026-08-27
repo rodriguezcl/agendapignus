@@ -81,6 +81,28 @@ test('las exportaciones usan una descarga compatible con navegadores móviles', 
   assert.equal(reportDownloadName('2026-08', 'retirements', 'pdf'), 'bajas-servicio-2026-08.pdf')
 })
 
+test('la agenda diaria restablece una grilla angosta en smartphones', () => {
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(styles, /\.content > \.team-card \.task-row \{[\s\S]*?grid-template-columns: minmax\(76px, \.7fr\) minmax\(0, 1\.3fr\) !important;/)
+  assert.match(styles, /\.content > \.team-card \.task-row > label:nth-of-type\(1\) \{\s*grid-column: 1 !important;/)
+  assert.match(styles, /\.content > \.team-card \.task-row > label:nth-of-type\(2\) \{\s*grid-column: 2 !important;/)
+  assert.match(styles, /\.content > \.team-card \.task-row > \.customer-autocomplete,[\s\S]*?grid-column: 1 \/ -1 !important;/)
+  assert.match(styles, /\.app-shell > main \{[\s\S]*?overflow-x: clip;/)
+})
+
+test('todos los roles comparten protecciones responsive para controles y modales', () => {
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(styles, /zoom automático[\s\S]*?font-size: 16px;/)
+  assert.match(styles, /button \{\s*min-height: 44px !important;/)
+  assert.match(styles, /\.audit-row \{\s*min-width: 0;\s*grid-template-columns: minmax\(0, 1fr\) auto;/)
+  assert.match(styles, /max-height: calc\(100dvh - 20px\)/)
+  assert.match(styles, /\.history-edit-grid,[\s\S]*?\.monthly-team-list \{\s*grid-template-columns: minmax\(0, 1fr\) !important;/)
+  assert.match(styles, /\.technician-header,[\s\S]*?\.technician-history-search \{\s*width: 100%;/)
+  assert.match(styles, /\.mobile-menu,[\s\S]*?\.technician-header-nav button\) \{\s*min-height: 44px !important;/)
+  assert.match(styles, /\.weekly-remove-team,[\s\S]*?\.weekly-task-delete,[\s\S]*?min-height: 44px !important;/)
+  assert.match(styles, /\.history-toolbar > label,[\s\S]*?flex: 0 0 auto;/)
+})
+
 test('configura formulario, forma de pago y monto según el servicio', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /PAYMENT_OPTIONS = \['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'A confirmar'\]/)

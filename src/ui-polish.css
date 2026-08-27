@@ -622,6 +622,111 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
   }
 }
 
+/* Agenda del día en smartphones. Esta regla debe permanecer después de la
+   grilla de escritorio para impedir que sus siete columnas ensanchen la página. */
+@media (max-width: 640px) {
+  html,
+  body,
+  #root,
+  .app-shell,
+  .app-shell > main {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  .content {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .content > .agenda-toolbar,
+  .content > .team-card,
+  .content > .add-team {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .content > .team-card .tasks {
+    min-width: 0;
+    padding-inline: 12px;
+  }
+
+  .content > .team-card .task-row {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: minmax(76px, .7fr) minmax(0, 1.3fr) !important;
+    gap: 12px 10px;
+    overflow: visible;
+  }
+
+  .content > .team-card .task-row > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .content > .team-card .task-row > .task-title,
+  .content > .team-card .task-row > label,
+  .content > .team-card .task-row > .customer-autocomplete,
+  .content > .team-card .task-row > .installation-zone,
+  .content > .team-card .task-row > .daily-extra-fields,
+  .content > .team-card .task-row > .service-trace {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+  }
+
+  .content > .team-card .task-row > label:nth-of-type(1) {
+    grid-column: 1 !important;
+  }
+
+  .content > .team-card .task-row > label:nth-of-type(2) {
+    grid-column: 2 !important;
+  }
+
+  .content > .team-card .task-row :is(input, select, textarea) {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .content > .team-card .task-row > .icon-btn {
+    grid-row: auto !important;
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+  }
+
+  .content > .team-card .task-row > .delete {
+    grid-column: 1 !important;
+  }
+
+  .content > .team-card .task-row > .daily-move-button {
+    grid-column: 2 !important;
+  }
+
+  .content > .team-card .task-row > .icon-btn:only-of-type {
+    grid-column: 1 / -1 !important;
+  }
+
+  .content > .team-card .installation-zone {
+    display: grid;
+    gap: 9px;
+  }
+
+  .content > .team-card .installation-zone label {
+    width: 100%;
+  }
+
+  .content > .team-card .team-header,
+  .content > .team-card .team-header > div:first-child,
+  .content > .team-card .technicians-picker {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
 .history-modal-trace {
   grid-column: 1 / -1;
   margin-top: 3px;
@@ -661,4 +766,391 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
   overflow: visible;
   text-overflow: clip;
   white-space: normal;
+}
+
+/* Capa responsive transversal. Se declara al final para que ningún módulo
+   recupere después anchos, grillas o tamaños táctiles propios de escritorio. */
+@media (max-width: 640px) {
+  body {
+    min-width: 0;
+    font-size: 14px;
+  }
+
+  .app-shell > main,
+  .topbar,
+  .content,
+  .module-intro,
+  .data-card,
+  .team-card,
+  .accounts-bar,
+  .history-toolbar,
+  .settings-grid,
+  .dashboard-analytics,
+  .technician-page,
+  .audit-page,
+  .help-center {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .content {
+    padding: 22px 12px 44px;
+  }
+
+  .topbar {
+    gap: 6px;
+    padding-inline: 10px;
+  }
+
+  .page-heading {
+    min-width: 0;
+    margin-right: auto;
+  }
+
+  .page-heading b {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .profile {
+    min-width: 0;
+    gap: 4px;
+  }
+
+  .profile-popover {
+    position: fixed;
+    top: 64px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+    min-width: 0;
+  }
+
+  .module-intro > div,
+  .module-intro p,
+  .module-intro h1,
+  .team-header,
+  .team-header > div,
+  .technician-service,
+  .technician-service p {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .action-group {
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  /* 16px evita el zoom automático al enfocar campos en Safari/iOS. */
+  :is(.content, .modal, .login-card, .technician-page, .audit-page) :is(input, select, textarea):not([type='checkbox']):not([type='radio']) {
+    min-width: 0;
+    max-width: 100%;
+    font-size: 16px;
+  }
+
+  button {
+    min-height: 44px !important;
+    touch-action: manipulation;
+  }
+
+  :is(.primary, .secondary, .danger-button, .detail-button, .logout-button, .icon-btn, .link-button, .save, .all-alarms-export, .monthly-add-team, .weekly-add-task, .weekly-add-team, .weekly-remove-team, .weekly-add-tech-button, .weekly-task-move, .weekly-task-delete, .mobile-menu, .theme-toggle, .profile-trigger, .team-delete, .status, .row-actions button, .roles-card button, .pagination-controls button, .technician-header-nav button) {
+    min-height: 44px !important;
+    touch-action: manipulation;
+  }
+
+  :is(.primary, .secondary, .danger-button, .detail-button, .logout-button, .link-button, .save, .all-alarms-export, .monthly-add-team, .weekly-add-task, .employee-form-actions button, .service-form-actions button, .customer-form-actions button, .modal-actions button, .technician-actions button):not(.small) {
+    min-inline-size: 0;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  :is(.mobile-menu, .theme-toggle, .profile-trigger, .logout-button, .icon-btn, .weekly-remove-team, .weekly-add-tech-button, .weekly-task-move, .weekly-task-delete, .row-actions button, .roles-card button, .modal-close, .close-modal) {
+    min-width: 44px;
+  }
+
+  .row-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .employee-form,
+  .employee-form-wide,
+  .customer-form,
+  .service-form,
+  .role-editor,
+  .history-date-filters,
+  .audit-filters {
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  :is(.employee-form, .employee-form-wide, .customer-form, .service-form) > :is(label, button),
+  .history-date-filters > *,
+  .audit-filters > * {
+    width: 100%;
+    min-width: 0;
+    grid-column: 1 !important;
+  }
+
+  .accounts-bar,
+  .history-toolbar {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .history-toolbar {
+    flex-direction: column;
+  }
+
+  .history-toolbar > label,
+  .history-toolbar > div:not(.history-date-filters) {
+    flex: 0 0 auto;
+    height: auto;
+    margin-left: 0;
+  }
+
+  .accounts-bar > *,
+  .history-toolbar > *,
+  .history-toolbar .history-date-filters {
+    width: 100%;
+    min-width: 0;
+  }
+
+  :is(.employee-row, .service-row, .account-row, .history-row, .dashboard-row) {
+    width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .roles-card > div,
+  .permission {
+    min-width: 0;
+    gap: 10px;
+    padding: 13px 14px;
+  }
+
+  .permission span,
+  .roles-card > div > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .dashboard-analytics,
+  .dashboard-summary-column,
+  .stats-grid,
+  .zone-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .zone-summary > div {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 9px;
+  }
+
+  .zone-summary > div > button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .accounts-pagination {
+    width: 100%;
+    min-width: 0;
+    padding: 12px;
+  }
+
+  .pagination-size,
+  .pagination-controls {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  /* Auditoría deja de ser una tabla horizontal y se lee como tarjetas. */
+  .audit-content {
+    width: 100%;
+    min-width: 0;
+    padding: 22px 12px 44px;
+  }
+
+  .audit-table {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .audit-table-head {
+    display: none;
+  }
+
+  .audit-row {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 15px 14px;
+  }
+
+  .audit-row > span {
+    grid-column: 1 / -1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .audit-row > button {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .audit-row small {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .audit-topbar {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 10px;
+  }
+
+  .audit-topbar > div:nth-child(2) {
+    min-width: 0;
+  }
+
+  .audit-topbar > div:nth-child(2) :is(b, span) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Modales utilizables con teclado virtual y botones siempre alcanzables. */
+  .modal-layer,
+  .modal-backdrop {
+    align-items: center;
+    padding: 10px;
+    overflow-y: auto;
+  }
+
+  :is(.modal, .confirm-modal, .detail-modal, .bulk-modal, .alarm-details-modal, .dashboard-insight-modal, .audit-modal, .weekly-task-modal, .monthly-teams-modal, .task-move-modal, .technician-status-modal) {
+    width: min(100%, calc(100vw - 20px));
+    max-width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
+    margin: auto;
+    padding: 22px 16px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  :is(.modal, .confirm-modal, .detail-modal, .bulk-modal, .alarm-details-modal, .dashboard-insight-modal, .audit-modal, .weekly-task-modal, .monthly-teams-modal, .task-move-modal, .technician-status-modal) h2 {
+    padding-right: 38px;
+    overflow-wrap: anywhere;
+  }
+
+  :is(.modal, .confirm-modal, .detail-modal, .bulk-modal, .alarm-details-modal, .dashboard-insight-modal, .audit-modal, .weekly-task-modal) :is(.modal-close, .close-modal) {
+    top: 8px;
+    right: 8px;
+    width: 44px;
+    height: 44px;
+  }
+
+  .modal-actions,
+  .confirm-actions {
+    width: 100%;
+    gap: 9px;
+  }
+
+  .modal-actions > button,
+  .confirm-actions > button,
+  .modal-actions > label {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .history-detail-grid,
+  .history-edit-grid,
+  .detail-grid,
+  .audit-detail-meta,
+  .audit-diff,
+  .weekly-task-form .week-task-top,
+  .weekly-task-form .weekly-extra-fields,
+  .monthly-team-list {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .history-detail-grid > *,
+  .history-edit-grid > *,
+  .detail-grid > *,
+  .audit-detail-meta > *,
+  .audit-diff > * {
+    min-width: 0;
+    grid-column: 1 !important;
+  }
+
+  .modal pre,
+  .audit-diff pre {
+    max-width: 100%;
+    min-height: 100px;
+    max-height: 34dvh;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .weekly-board {
+    max-width: 100%;
+    overscroll-behavior-inline: contain;
+  }
+
+  .week-day {
+    min-width: min(88vw, 330px);
+  }
+
+  .technician-header,
+  .technician-content,
+  .technician-service,
+  .technician-history-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .technician-header {
+    gap: 8px;
+    padding-inline: 12px !important;
+  }
+
+  .technician-header-nav {
+    gap: 7px;
+  }
+
+  .technician-service {
+    padding: 17px 15px;
+  }
+
+  .technician-service-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .technician-service-head > div {
+    min-width: 0;
+  }
+
+  .technician-service-head .work-status {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .help-content,
+  .help-results,
+  .help-tip {
+    min-width: 0;
+    max-width: 100%;
+  }
 }
