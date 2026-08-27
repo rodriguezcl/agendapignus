@@ -1,6 +1,7 @@
 const crypto = require('node:crypto')
 const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
 const { appendAudit, database, readExportState, readRevision, readState, replaceCollections } = require('./_lib/database.cjs')
+const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
 const {
   auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
@@ -325,6 +326,16 @@ module.exports = async function handler(req, res) {
     if (!session) return
     if (req.method === 'GET' && route === '/state/revision') return send(res, 200, { revision: await readRevision(sql) })
     if (req.method === 'GET' && route === '/state') return send(res, 200, visibleStateForUser(await readState(sql), session.user))
+    if (req.method === 'GET' && route === '/holidays') {
+      const year = validHolidayYear(req.query.year)
+      if (!year) return send(res, 400, { error: 'El año solicitado no es válido.' })
+      try {
+        return send(res, 200, { year, holidays: await fetchNationalHolidays(year) })
+      } catch (error) {
+        console.error('No se pudieron consultar los feriados:', error.message)
+        return send(res, 503, { error: error.message })
+      }
+    }
     if (req.method === 'PUT' && route === '/state') {
       if (session.user.roleCode === 'technician') return send(res, 403, { error: 'El rol técnico no puede modificar la agenda.' })
       return await handleSaveState(req, res, sql, session.user)

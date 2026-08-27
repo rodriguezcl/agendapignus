@@ -9,6 +9,7 @@ import { sortOperationalHistory } from './history-order.mjs'
 import { submitTechnicianStatus } from './technician-status.mjs'
 import { countYearToDateAlarmInstallations, countYearToDateCompletedRecords } from './dashboard-metrics.mjs'
 import { advancedSaturdayGuardMessage, findAdvancedSaturdayGuard, suppressAdvancedSaturdayAvailability } from './weekend-guard.mjs'
+import { holidayDecisionForDate, holidayDecisionLabel, holidayForDate, holidayIsBlocked } from './holidays.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -18,6 +19,57 @@ import './login.css'
 
 function RequiredLabel({ children }) {
   return <span className="field-label-text">{children}<span className="required-mark" aria-hidden="true">*</span></span>
+}
+
+function useNationalHolidays(years) {
+  const yearKey = [...new Set((years || []).filter(Boolean).map(String))].sort().join(',')
+  const [state, setState] = useState({ key: '', records: [], loading: true, error: '' })
+  useEffect(() => {
+    const requestedYears = yearKey.split(',').filter(Boolean)
+    if (!requestedYears.length) { setState({ key: yearKey, records: [], loading: false, error: '' }); return undefined }
+    let active = true
+    setState(previous => ({ ...previous, key: yearKey, loading: true, error: '' }))
+    Promise.all(requestedYears.map(async year => {
+      const response = await fetchWithTimeout(`/api/holidays?year=${encodeURIComponent(year)}`, { cache: 'no-store', credentials: 'same-origin' })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error || 'No se pudo consultar el calendario de feriados.')
+      return payload.holidays || []
+    })).then(groups => {
+      if (active) setState({ key: yearKey, records: groups.flat(), loading: false, error: '' })
+    }).catch(error => {
+      if (active) setState({ key: yearKey, records: [], loading: false, error: error.message })
+    })
+    return () => { active = false }
+  }, [yearKey])
+  return state.key === yearKey ? state : { records: [], loading: true, error: '' }
+}
+
+function HolidayDecisionPanel({ holiday, decision, canDecide, onDecision, compact = false }) {
+  if (!holiday) return null
+  const status = holidayDecisionLabel(decision)
+  return <section className={`holiday-decision ${compact ? 'compact' : ''} ${decision?.status || 'pending'}`} role="status"><div className="holiday-decision-icon"><Icon name="calendar" size={20} /></div><div className="holiday-decision-copy"><p className="eyebrow">FERIADO NACIONAL · {status.toUpperCase()}</p><h3>{holiday.name}</h3><p>{decision?.status === 'working' ? 'La fecha fue habilitada como jornada laboral y admite servicios normalmente.' : decision?.status === 'closed' ? 'La fecha fue definida como no operativa. La agenda permanece bloqueada.' : 'Antes de cargar servicios, definí si la empresa trabajará durante este feriado.'}</p>{decision?.decidedByName && <small>Definido por {decision.decidedByName}.</small>}</div>{canDecide ? <div className="holiday-decision-actions"><button type="button" className={decision?.status === 'working' ? 'primary' : 'secondary'} onClick={() => onDecision('working')}><Icon name="check" size={16} />Día laboral</button><button type="button" className={decision?.status === 'closed' ? 'danger-button' : 'secondary'} onClick={() => onDecision('closed')}><Icon name="lock" size={16} />Día no operativo</button></div> : !decision && <small className="holiday-admin-note">Pendiente de definición por un administrador.</small>}</section>
+}
+
+function recordHolidayDecision(setWeekly, setNotice, date, holiday, status) {
+  const user = globalThis.__pignusCurrentUser
+  if (user?.roleCode !== 'administrator') {
+    setNotice('Solamente un administrador puede definir la operación durante un feriado.')
+    return
+  }
+  setWeekly(previous => ({
+    ...previous,
+    _holidayOverrides: {
+      ...(previous?._holidayOverrides || {}),
+      [date]: {
+        status,
+        holidayName: holiday?.name || 'Feriado nacional',
+        decidedAt: new Date().toISOString(),
+        decidedById: user.id,
+        decidedByName: user.name
+      }
+    }
+  }))
+  setNotice(status === 'working' ? `${prettyDate(date)} quedó habilitado como día laboral.` : `${prettyDate(date)} quedó definido como día no operativo.`)
 }
 
 const copyTextToClipboard = async text => {
@@ -1541,6 +1593,9 @@ function BufferedInput({ value, onCommit, delay = 500, ...inputProps }) {
 
 function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }) {
   const authUser = globalThis.__pignusCurrentUser || null
+  const holidayCalendar = useNationalHolidays([authUser ? String(date || '').slice(0, 4) : ''])
+  const holiday = holidayForDate(holidayCalendar.records, date)
+  const holidayDecision = holidayDecisionForDate(weekly, date)
   const saveAgenda = () => requestAgendaAction('save')
   const [preview, setPreview] = useState(false)
   const [techOpen, setTechOpen] = useState(null)
@@ -1805,6 +1860,10 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     setNotice(action === 'copy' ? 'La agenda fue copiada al portapapeles y registrada en el historial.' : 'La agenda fue guardada en el historial.')
   }
   const requestAgendaAction = (action, allowWithoutTechnicians = false, agendaTeams = teams, skipCustomerProposal = false) => {
+    if (holidayIsBlocked(holiday, holidayDecision)) {
+      setNotice(holidayDecision?.status === 'closed' ? 'La fecha fue definida como día no operativo.' : 'Primero definí si el feriado será laboral o no operativo.')
+      return
+    }
     const meaningful = value => String(value || '').trim() && String(value || '').trim() !== '-'
     const existingUpdates = new Map()
     const newClients = new Map()
@@ -1989,6 +2048,9 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     return () => layer.remove()
   }, [taskMove, teams])
   const dailyCustomerField = (task, teamIndex, taskIndex) => <DailyCustomerField task={task} customers={customers} teamIndex={teamIndex} taskIndex={taskIndex} onTextCommit={commitCustomerText} onCustomerSelect={selectCustomerResult} />
+  if (holidayCalendar.loading || holidayCalendar.error || holidayIsBlocked(holiday, holidayDecision)) {
+    return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>La disponibilidad se habilita después de verificar el calendario laboral.</p></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{holidayCalendar.loading ? <div className="holiday-calendar-state"><span className="loading-spinner" />Verificando feriados nacionales…</div> : holidayCalendar.error ? <div className="holiday-calendar-state error"><Icon name="alert" /><div><b>No se pudo verificar el calendario nacional</b><p>{holidayCalendar.error}</p></div><button className="secondary" onClick={() => window.location.reload()}>Reintentar</button></div> : <HolidayDecisionPanel holiday={holiday} decision={holidayDecision} canDecide={authUser?.roleCode === 'administrator'} onDecision={status => recordHolidayDecision(setWeekly, setNotice, date, holiday, status)} />}</>
+  }
   return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setConfirmation('clear')}><Icon name="trash" />Limpiar agenda</button><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button><button className="primary" onClick={() => { navigator.clipboard?.writeText(message); clearAgenda() }}><Icon name="copy" />Copiar agenda</button></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, teamIndex) => <article className="team-card" key={team.teamId || teamIndex}><div className="team-header"><div><span className="team-number">{teamIndex + 1}</span><strong>Equipo {teamIndex + 1}</strong>{teams.length > 1 && <button className="team-delete" onClick={() => setConfirmation({ type: 'team', index: teamIndex })}><Icon name="trash" size={16} />Eliminar equipo</button>}</div><div className="technicians-picker"><span className="technician-assignment-label"><RequiredLabel>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</RequiredLabel></span><button className="secondary small" onClick={() => { setTechOpen(techOpen === teamIndex ? null : teamIndex); setFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === teamIndex && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={filter} onChange={event => setFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(filter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={(team.memberIds || []).some(id => String(id) === String(tech.id))} onChange={() => toggleTech(teamIndex, tech)} />{tech.name}</label>)}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, taskIndex) => <div className="task-row" key={task.taskId || task.historyId || `${team.teamId || teamIndex}-${taskIndex}`}><div className="task-title"><span>{taskIndex + 1}</span><b>Servicio</b></div><label className="daily-field-time"><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" value={task.time} onChange={event => updateTask(teamIndex, taskIndex, { time: event.target.value })} /></label><label className="daily-field-service"><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForTask(task)?.id || ''} onChange={event => selectTaskService(teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
 {dailyCustomerField(task, teamIndex, taskIndex)}
 <label className="daily-field-address"><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label className="daily-field-contact"><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations daily-field-observations">Observaciones<BufferedTextarea value={task.detail} onCommit={value => updateTask(teamIndex, taskIndex, { detail: value })} /></label>{serviceCode(serviceForTask(task)) === 'alarm-installation' && <fieldset className="installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" aria-required="true" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForTask(task)) }) }} />{label}</label>)}</fieldset>}<ServiceExtraFields className="daily-extra-fields" task={task} service={serviceForTask(task)} buffered onChange={patch => updateTask(teamIndex, taskIndex, patch)} /><div className="daily-task-actions"><button type="button" className="icon-btn daily-copy-button" title="Copiar este servicio" aria-label={`Copiar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => copySingleTask(task, team, teamIndex, taskIndex)}><Icon name="copy" size={16} /><span>Copiar</span></button>{teams.length > 1 && <button type="button" className="icon-btn move daily-move-button" title="Reasignar a otro equipo" aria-label={`Reasignar servicio ${taskIndex + 1} a otro equipo`} onClick={() => openTaskMove(teamIndex, taskIndex)}><span aria-hidden="true">⇄</span><span>Reasignar</span></button>}{team.tasks.length > 1 && <button type="button" className="icon-btn delete" title="Eliminar servicio" aria-label={`Eliminar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.filter((_, index) => index !== taskIndex) }))}><Icon name="trash" size={16} /><span>Eliminar</span></button>}</div></div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
@@ -1999,6 +2061,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
  * impactan en el Historial hasta que el operador abre y guarda la agenda diaria.
  */
 function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, setNotice, openDaily, authUser }) {
+  authUser = authUser || globalThis.__pignusCurrentUser || null
   const localToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const [today, setToday] = useState(localToday)
   const [anchor, setAnchor] = useState(today)
@@ -2055,6 +2118,12 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     value.setDate(monday.getDate() + index)
     return value.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   }), [monday])
+  const holidayCalendar = useNationalHolidays(days.map(day => day.slice(0, 4)))
+  const holidayStateForDay = day => {
+    const holiday = holidayForDate(holidayCalendar.records, day)
+    const decision = holidayDecisionForDate(weekly, day)
+    return { holiday, decision, blocked: holidayIsBlocked(holiday, decision) }
+  }
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       const records = days.flatMap(day => dayPlan(day).teams.flatMap(team => team.tasks || []))
@@ -2304,6 +2373,11 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   const commitWeeklyCustomerText = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, { customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
   const selectWeeklyCustomerResult = (day, teamIndex, taskIndex, customer) => updateTask(day, teamIndex, taskIndex, { customerId: customer.customerId, client: `${customer.account} ${customer.name}`, clientAccount: customer.account, clientNameAtService: customer.name, address: customer.address, phone: customer.phone })
   const addTask = (day, teamIndex) => {
+    const holidayState = holidayStateForDay(day)
+    if (holidayState.blocked) {
+      setNotice(holidayState.decision?.status === 'closed' ? 'La fecha fue definida como día no operativo.' : 'Primero definí si el feriado será laboral o no operativo.')
+      return
+    }
     const advance = advancedGuardForDay(day)
     if (advance) {
       setNotice(advancedSaturdayGuardMessage(advance))
@@ -2358,6 +2432,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   const openDay = day => {
     const hours = hoursForDay(day)
     if (!hours) { setNotice('Los domingos no están habilitados para programar servicios.'); return }
+    const holidayState = holidayStateForDay(day)
+    if (holidayState.blocked) { setNotice(holidayState.decision?.status === 'closed' ? 'La fecha fue definida como día no operativo.' : 'Primero definí si el feriado será laboral o no operativo.'); return }
     const advance = advancedGuardForDay(day)
     if (advance) { setNotice(advancedSaturdayGuardMessage(advance)); return }
     const invalidTime = dayPlan(day).teams.flatMap(team => team.tasks).find(task => task.time && (task.time < hours.min || task.time > hours.max))
@@ -2404,14 +2480,17 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
       {days.map(day => {
         const storedPlan = dayPlan(day)
         const advancedGuard = advancedGuardForDay(day)
-        const plan = suppressAdvancedSaturdayAvailability(storedPlan, advancedGuard)
+        const holidayState = holidayStateForDay(day)
+        const calendarUnavailable = holidayCalendar.loading || Boolean(holidayCalendar.error)
+        const plan = calendarUnavailable || holidayState.blocked ? { ...storedPlan, teams: [] } : suppressAdvancedSaturdayAvailability(storedPlan, advancedGuard)
         const hours = hoursForDay(day)
         const conflicts = conflictsForDay(day)
-        return <section className={`week-day ${!hours ? 'closed-day' : ''}`} data-day={day} key={day}>
-          <header><div><b>{displayDate(day)}</b><small>{!hours ? 'No operativo' : day === today ? 'Hoy' : prettyDate(day)}</small></div><button className="secondary small" disabled={!hours || Boolean(advancedGuard)} title={advancedGuard ? advancedSaturdayGuardMessage(advancedGuard) : ''} onClick={() => openDay(day)}>Abrir día</button></header>
+        return <section className={`week-day ${!hours || holidayState.decision?.status === 'closed' ? 'closed-day' : ''}`} data-day={day} key={day}>
+          <header><div><b>{displayDate(day)}</b><small>{!hours ? 'No operativo' : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : day === today ? 'Hoy' : prettyDate(day)}</small></div><button className="secondary small" disabled={!hours || Boolean(advancedGuard) || calendarUnavailable || holidayState.blocked} title={advancedGuard ? advancedSaturdayGuardMessage(advancedGuard) : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : ''} onClick={() => openDay(day)}>Abrir día</button></header>
           {!hours ? <p className="closed-day-note">Domingo · sin programación</p> : <>
             <small className="weekly-hours">Horario habilitado: {hours.label}</small>
-            {advancedGuard && <p className={`weekly-guard-advanced ${advancedGuard.hasSaturdayConflict ? 'has-conflict' : ''}`}><Icon name={advancedGuard.hasSaturdayConflict ? 'alert' : 'check'} size={16} /><span>{advancedSaturdayGuardMessage(advancedGuard)}</span></p>}
+            {calendarUnavailable ? <div className={`weekly-calendar-state ${holidayCalendar.error ? 'error' : ''}`}>{holidayCalendar.error ? 'No se pudo verificar el calendario de feriados.' : 'Verificando feriados nacionales…'}</div> : holidayState.holiday && <HolidayDecisionPanel compact holiday={holidayState.holiday} decision={holidayState.decision} canDecide={authUser?.roleCode === 'administrator'} onDecision={status => recordHolidayDecision(setWeekly, setNotice, day, holidayState.holiday, status)} />}
+            {!holidayState.blocked && advancedGuard && <p className={`weekly-guard-advanced ${advancedGuard.hasSaturdayConflict ? 'has-conflict' : ''}`}><Icon name={advancedGuard.hasSaturdayConflict ? 'alert' : 'check'} size={16} /><span>{advancedSaturdayGuardMessage(advancedGuard)}</span></p>}
             {conflicts.length > 0 && <p className="weekly-conflict">Conflicto: {conflicts.map(item => `${item.name} ${item.time}`).join(', ')}</p>}
             <div className="week-teams">{plan.teams.map((team, teamIndex) => {
               const pickerKey = `${day}-${teamIndex}`
