@@ -104,6 +104,15 @@ test('todos los roles comparten protecciones responsive para controles y modales
   assert.match(styles, /\.history-toolbar > label,[\s\S]*?flex: 0 0 auto;/)
 })
 
+test('los controles nativos permanecen contenidos dentro de todos los modales', () => {
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(styles, /Contención transversal:[\s\S]*?\.weekly-task-modal[\s\S]*?min-width: 0;[\s\S]*?max-width: 100%;/)
+  assert.match(styles, /:not\(\[type='checkbox'\]\):not\(\[type='radio'\]\) \{\s*width: 100%;/)
+  assert.match(styles, /input\[type='time'\],[\s\S]*?input\[type='date'\],[\s\S]*?input\[type='month'\][\s\S]*?min-inline-size: 0;/)
+  assert.match(styles, /\.weekly-task-modal \.week-task-top \{\s*grid-template-columns: minmax\(132px, \.36fr\) minmax\(0, 1fr\);/)
+  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.weekly-task-modal \.week-task-top \{\s*grid-template-columns: minmax\(0, 1fr\) !important;/)
+})
+
 test('los campos obligatorios usan un único indicador junto a la etiqueta', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
