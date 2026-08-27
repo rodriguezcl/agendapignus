@@ -242,6 +242,34 @@ test('la exportación técnica contiene solamente trabajos asignados', async () 
   assert.ok(!report.includes(excluded))
 })
 
+test('el historial contextual del técnico es de solo lectura y registra quién informó', async () => {
+  const cookie = await login('qa-tech@pignus.test')
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const records = [
+    { id: 'qa-tech-current', date: '2999-08-27', time: '10:00', customerId: 'qa-customer-a', clientAccount: 'PIG-9001', client: 'PIG-9001 CLIENTE INCLUIDO QA', service: 'Service técnico', status: 'Pendiente', technicianIds: ['qa-tech'], technicians: ['QA Técnico'] },
+    { id: 'qa-tech-context', date: '2095-01-10', customerId: 'qa-customer-a', clientAccount: 'PIG-9001', client: 'PIG-9001 CLIENTE INCLUIDO QA', service: 'Service técnico', status: 'Completado', technicianIds: ['otro-tecnico'], technicians: ['Otro Técnico'], technicalObservation: 'Revisar magnético.' },
+    { id: 'qa-tech-private', date: '2095-01-10', customerId: 'qa-customer-b', clientAccount: 'PIG-9002', client: 'PIG-9002 CLIENTE EXCLUIDO QA', service: 'Service técnico', status: 'Completado', technicianIds: ['otro-tecnico'], technicians: ['Otro Técnico'] }
+  ]
+  records.forEach(record => upsertJson(db, 'work_history', 'id', record))
+  db.close()
+
+  const visible = await state(cookie)
+  assert.ok(visible.history.some(record => record.id === 'qa-tech-current'))
+  assert.ok(visible.history.some(record => record.id === 'qa-tech-context'))
+  assert.equal(visible.history.some(record => record.id === 'qa-tech-private'), false)
+  assert.deepEqual(visible.customers, [])
+
+  const response = await api('/api/technician/status', cookie, { method: 'POST', body: JSON.stringify({ recordId: 'qa-tech-current', type: 'Completado', observation: 'Trabajo completado; revisar magnético en la próxima visita.' }) })
+  assert.equal(response.status, 200)
+  const payload = await response.json()
+  assert.equal(payload.record.technicalReportedById, 'qa-tech')
+  assert.equal(payload.record.technicalReportedByName, 'QA Técnico')
+  assert.match(payload.record.technicalObservation, /revisar magnético/i)
+
+  const forbidden = await api('/api/technician/status', cookie, { method: 'POST', body: JSON.stringify({ recordId: 'qa-tech-context', type: 'Completado', observation: 'No autorizado' }) })
+  assert.equal(forbidden.status, 403)
+})
+
 test('ordena las instalaciones por fecha en Excel y PDF', async () => {
   const cookie = await login('qa-admin@pignus.test')
   const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))

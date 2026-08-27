@@ -192,6 +192,39 @@ test('resuelve el rol y limita el estado visible del técnico', () => {
   assert.deepEqual(visible.customers, [])
 })
 
+test('el técnico recibe contexto histórico sólo de clientes con trabajos vigentes asignados', () => {
+  const user = userForEmployee(employee, roles)
+  const state = {
+    revision: 7, roles, employees: [employee], services: [], customers: [], agenda: {}, preferences: {},
+    history: [
+      { id: 'assigned-current', date: '2999-01-10', status: 'Pendiente', customerId: 'customer-a', clientAccount: 'PIG-100', technicianIds: ['e1'] },
+      { id: 'same-customer-previous', date: '2025-01-10', status: 'Completado', customerId: 'customer-a', clientAccount: 'PIG-100', technicianIds: ['e2'], technicalObservation: 'Revisar magnético.' },
+      { id: 'same-account-legacy', date: '2024-01-10', status: 'Completado', client: 'PIG-100 CLIENTE HISTÓRICO', technicianIds: ['e3'] },
+      { id: 'own-old', date: '2023-01-10', status: 'Completado', customerId: 'customer-b', technicianIds: ['e1'] },
+      { id: 'unrelated', date: '2025-01-10', status: 'Completado', customerId: 'customer-z', clientAccount: 'PIG-999', technicianIds: ['e2'] }
+    ]
+  }
+  const visible = visibleStateForUser(state, user)
+  assert.deepEqual(visible.history.map(record => record.id), ['assigned-current', 'same-customer-previous', 'same-account-legacy', 'own-old'])
+  assert.deepEqual(visible.customers, [])
+  assert.equal(visible.history.some(record => record.id === 'unrelated'), false)
+})
+
+test('vincula abonados con su historial y conserva autoría de las observaciones técnicas', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(source, /serviceHistoryForCustomer/)
+  assert.match(source, /Ver historial de servicios/)
+  assert.match(source, /Ver historial del cliente/)
+  assert.match(source, /CONSULTA TÉCNICA · SOLO LECTURA/)
+  assert.match(source, /Observación de agenda \/ administración/)
+  assert.match(source, /Observación técnica \(opcional\)/)
+  assert.match(apiSource, /technicalReportedById: user\.id/)
+  assert.match(apiSource, /technicalReportedByName: user\.name/)
+  assert.match(styles, /\.customer-history-modal/)
+})
+
 test('ignora roles nulos al resolver una sesión', () => {
   const user = userForEmployee(employee, [null, undefined, ...roles])
   assert.equal(user.id, employee.id)

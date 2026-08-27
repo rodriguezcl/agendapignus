@@ -61,10 +61,26 @@ function userForEmployee(employee, roles) {
 
 function visibleStateForUser(state, user) {
   if (user.roleCode === 'technician') {
+    const technicianId = String(user.id)
+    const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+    const assignedHistory = state.history.filter(record => record.technicianIds?.some(id => String(id) === technicianId))
+    const activeAssigned = assignedHistory.filter(record => String(record.date || '') >= today && !record.technicalStatus && !['Completado', 'Cancelado', 'Reprogramado'].includes(record.status))
+    const activeCustomerIds = new Set(activeAssigned
+      .map(record => String(record.customerId || ''))
+      .filter(Boolean))
+    const activeCustomerAccounts = new Set(activeAssigned
+      .map(record => String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase())
+      .filter(Boolean))
+    const visibleHistory = state.history.filter(record => {
+      if (record.technicianIds?.some(id => String(id) === technicianId)) return true
+      const customerId = String(record.customerId || '')
+      const account = String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()
+      return (customerId && activeCustomerIds.has(customerId)) || (account && activeCustomerAccounts.has(account))
+    })
     return {
       revision: state.revision,
       roles: [], employees: [], services: [], customers: [], agenda: null, preferences: {},
-      history: state.history.filter(record => record.technicianIds?.some(id => String(id) === String(user.id)))
+      history: visibleHistory
     }
   }
   const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
@@ -74,7 +90,7 @@ function visibleStateForUser(state, user) {
     employees: userCan(user, 'employees') ? state.employees.map(publicEmployee) : state.employees.map(({ id, firstName, lastName, name, roleId, role, status }) => ({ id, firstName, lastName, name, roleId, role, status })),
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? state.services : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
-    history: userCan(user, 'history') ? state.history : [],
+    history: userCan(user, 'history') || userCan(user, 'accounts') ? state.history : [],
     agenda: canPlan ? state.agenda : null,
     preferences: state.preferences
   }
