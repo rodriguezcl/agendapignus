@@ -1359,3 +1359,174 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
     grid-template-columns: minmax(0, 1fr) !important;
   }
 }
+
+/* Agenda diaria: cada servicio se presenta como una ficha ordenada por contexto. */
+.content > .team-card .tasks {
+  padding: 12px 18px 2px;
+}
+
+.content > .team-card .task-row {
+  grid-template-columns: 76px 110px minmax(190px, 1fr) minmax(210px, 1.12fr) 112px !important;
+  grid-auto-rows: auto;
+  align-items: end;
+  gap: 14px 12px;
+  margin-bottom: 12px;
+  padding: 18px;
+  border: 1px solid #dfe8e0;
+  border-radius: 12px;
+  background: #fbfdfb;
+}
+
+.content > .team-card .task-row > .task-title {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.content > .team-card .task-row > .task-title span {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #245c3d;
+  color: #fff;
+}
+
+.content > .team-card .task-row > .daily-field-time { grid-column: 2; grid-row: 1; }
+.content > .team-card .task-row > .daily-field-service { grid-column: 3; grid-row: 1; }
+.content > .team-card .task-row > .daily-field-customer { grid-column: 4; grid-row: 1; }
+.content > .team-card .task-row > .daily-field-address { grid-column: 2 / 4; grid-row: 2; }
+.content > .team-card .task-row > .daily-field-contact { grid-column: 4; grid-row: 2; }
+
+.content > .team-card .task-row > .daily-field-observations {
+  grid-column: 2 / 5 !important;
+  grid-row: 3 !important;
+}
+
+.content > .team-card .task-row > .daily-field-observations textarea {
+  min-height: 72px;
+  line-height: 1.45;
+}
+
+.content > .team-card .task-row > .installation-zone,
+.content > .team-card .task-row > .daily-extra-fields,
+.content > .team-card .task-row > .service-trace {
+  grid-column: 2 / 5 !important;
+  grid-row: auto !important;
+}
+
+.content > .team-card .task-row > .daily-extra-fields {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  padding-top: 2px;
+}
+
+.content > .team-card .task-row :is(input, select, .customer-autocomplete-control) {
+  min-height: 44px;
+}
+
+.content > .team-card .task-row > .daily-task-actions {
+  grid-column: 5 !important;
+  grid-row: 1 / span 7 !important;
+  align-self: stretch;
+  justify-content: center;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-left: 10px;
+  border-left: 1px solid #e1e9e2;
+}
+
+.content > .team-card .daily-task-actions .icon-btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  height: auto;
+  padding: 8px 9px;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.content > .team-card .daily-task-actions .icon-btn > span:not([aria-hidden='true']) {
+  display: inline;
+}
+
+.app-shell[data-theme='dark'] .content > .team-card .task-row {
+  border-color: #334a3c;
+  background: #17271e;
+}
+
+.app-shell[data-theme='dark'] .content > .team-card .task-row > .daily-task-actions {
+  border-color: #334a3c;
+}
+
+@media (max-width: 1100px) {
+  .content > .team-card .task-row {
+    grid-template-columns: 70px 105px minmax(170px, 1fr) minmax(180px, 1fr) !important;
+  }
+
+  .content > .team-card .task-row > .daily-field-address { grid-column: 2 / 4; }
+  .content > .team-card .task-row > .daily-field-contact { grid-column: 4; }
+  .content > .team-card .task-row > .daily-field-observations,
+  .content > .team-card .task-row > .installation-zone,
+  .content > .team-card .task-row > .daily-extra-fields,
+  .content > .team-card .task-row > .service-trace { grid-column: 2 / 5 !important; }
+
+  .content > .team-card .task-row > .daily-task-actions {
+    grid-column: 2 / 5 !important;
+    grid-row: auto !important;
+    align-self: auto;
+    flex-direction: row;
+    justify-content: flex-end;
+    padding: 12px 0 0;
+    border-left: 0;
+    border-top: 1px solid #e1e9e2;
+  }
+
+  .content > .team-card .daily-task-actions .icon-btn {
+    width: auto;
+    min-width: 106px;
+  }
+}
+
+@media (max-width: 640px) {
+  .content > .team-card .tasks { padding: 10px; }
+
+  .content > .team-card .task-row {
+    grid-template-columns: minmax(96px, .65fr) minmax(0, 1.35fr) !important;
+    gap: 12px 10px;
+    padding: 15px 13px;
+  }
+
+  .content > .team-card .task-row > .task-title { grid-column: 1 / -1 !important; grid-row: auto !important; }
+  .content > .team-card .task-row > .daily-field-time { grid-column: 1 !important; grid-row: auto !important; }
+  .content > .team-card .task-row > .daily-field-service { grid-column: 2 !important; grid-row: auto !important; }
+  .content > .team-card .task-row > .daily-field-customer,
+  .content > .team-card .task-row > .daily-field-address,
+  .content > .team-card .task-row > .daily-field-contact,
+  .content > .team-card .task-row > .daily-field-observations,
+  .content > .team-card .task-row > .installation-zone,
+  .content > .team-card .task-row > .daily-extra-fields,
+  .content > .team-card .task-row > .service-trace,
+  .content > .team-card .task-row > .daily-task-actions {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+  }
+
+  .content > .team-card .task-row > .daily-task-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    padding-top: 12px;
+  }
+
+  .content > .team-card .daily-task-actions .icon-btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+  }
+}
