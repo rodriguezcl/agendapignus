@@ -8,6 +8,7 @@ import { fetchWithTimeout } from './fetch-timeout.mjs'
 import { sortOperationalHistory } from './history-order.mjs'
 import { submitTechnicianStatus } from './technician-status.mjs'
 import { countYearToDateAlarmInstallations, countYearToDateCompletedRecords } from './dashboard-metrics.mjs'
+import { advancedSaturdayGuardMessage, findAdvancedSaturdayGuard, suppressAdvancedSaturdayAvailability } from './weekend-guard.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -2116,6 +2117,13 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     const normalized = isSaturday(day) ? { ...visiblePlan, teams: normalizeSaturdayTeams(visiblePlan.teams) } : visiblePlan
     return sortPlanTasksByTime(normalized)
   }
+  const advancedGuardForDay = day => {
+    if (!isSaturday(day)) return null
+    const friday = new Date(`${day}T12:00:00`)
+    friday.setDate(friday.getDate() - 1)
+    const fridayKey = friday.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+    return findAdvancedSaturdayGuard({ fridayPlan: dayPlan(fridayKey), saturdayPlan: dayPlan(day) })
+  }
   const updateDay = (day, mutate) => setWeekly(previous => {
     const defaults = createDay(day)
     const saved = previous[day]
@@ -2295,7 +2303,14 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   }
   const commitWeeklyCustomerText = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, { customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
   const selectWeeklyCustomerResult = (day, teamIndex, taskIndex, customer) => updateTask(day, teamIndex, taskIndex, { customerId: customer.customerId, client: `${customer.account} ${customer.name}`, clientAccount: customer.account, clientNameAtService: customer.name, address: customer.address, phone: customer.phone })
-  const addTask = (day, teamIndex) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, tasks: [...team.tasks, { ...blankTask(), time: '', manualSlot: true }] } : team) }))
+  const addTask = (day, teamIndex) => {
+    const advance = advancedGuardForDay(day)
+    if (advance) {
+      setNotice(advancedSaturdayGuardMessage(advance))
+      return
+    }
+    updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, tasks: [...team.tasks, { ...blankTask(), time: '', manualSlot: true }] } : team) }))
+  }
   const removeWeeklyTask = ({ day, teamId, teamIndex, taskId, historyId, taskIndex, time, wasPlaceholder }) => {
     updateDay(day, plan => {
       let removedSlots = plan.removedSlots || []
@@ -2343,6 +2358,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   const openDay = day => {
     const hours = hoursForDay(day)
     if (!hours) { setNotice('Los domingos no están habilitados para programar servicios.'); return }
+    const advance = advancedGuardForDay(day)
+    if (advance) { setNotice(advancedSaturdayGuardMessage(advance)); return }
     const invalidTime = dayPlan(day).teams.flatMap(team => team.tasks).find(task => task.time && (task.time < hours.min || task.time > hours.max))
     if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
     const scheduledTasks = dayPlan(day).teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, teamIndex, taskIndex }))).filter(({ task }) => [task.service, task.client, task.address, task.detail, task.phone, task.paymentMethod, task.amount, task.monthlyFee, task.form].some(value => String(value || '').trim()))
@@ -2385,13 +2402,16 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     <div className="weekly-scroll-top" ref={weeklyTopScrollRef} tabIndex={0} aria-label="Desplazamiento horizontal superior" onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyBoardRef.current)}><div style={{ width: `${weeklyScrollWidth}px` }} /></div>
     <div className="weekly-board" ref={weeklyBoardRef} onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyTopScrollRef.current)}>
       {days.map(day => {
-        const plan = dayPlan(day)
+        const storedPlan = dayPlan(day)
+        const advancedGuard = advancedGuardForDay(day)
+        const plan = suppressAdvancedSaturdayAvailability(storedPlan, advancedGuard)
         const hours = hoursForDay(day)
         const conflicts = conflictsForDay(day)
         return <section className={`week-day ${!hours ? 'closed-day' : ''}`} data-day={day} key={day}>
-          <header><div><b>{displayDate(day)}</b><small>{!hours ? 'No operativo' : day === today ? 'Hoy' : prettyDate(day)}</small></div><button className="secondary small" disabled={!hours} onClick={() => openDay(day)}>Abrir día</button></header>
+          <header><div><b>{displayDate(day)}</b><small>{!hours ? 'No operativo' : day === today ? 'Hoy' : prettyDate(day)}</small></div><button className="secondary small" disabled={!hours || Boolean(advancedGuard)} title={advancedGuard ? advancedSaturdayGuardMessage(advancedGuard) : ''} onClick={() => openDay(day)}>Abrir día</button></header>
           {!hours ? <p className="closed-day-note">Domingo · sin programación</p> : <>
             <small className="weekly-hours">Horario habilitado: {hours.label}</small>
+            {advancedGuard && <p className={`weekly-guard-advanced ${advancedGuard.hasSaturdayConflict ? 'has-conflict' : ''}`}><Icon name={advancedGuard.hasSaturdayConflict ? 'alert' : 'check'} size={16} /><span>{advancedSaturdayGuardMessage(advancedGuard)}</span></p>}
             {conflicts.length > 0 && <p className="weekly-conflict">Conflicto: {conflicts.map(item => `${item.name} ${item.time}`).join(', ')}</p>}
             <div className="week-teams">{plan.teams.map((team, teamIndex) => {
               const pickerKey = `${day}-${teamIndex}`
@@ -2407,7 +2427,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
                   <label><RequiredLabel>Detalle</RequiredLabel><textarea aria-required="true" value={task.detail} onChange={event => updateTask(day, teamIndex, taskIndex, { detail: event.target.value })} /></label>
                   <ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} buffered onChange={patch => updateTask(day, teamIndex, taskIndex, patch)} />
                 </div>)}
-                <button className="weekly-add-task" onClick={() => addTask(day, teamIndex)}><Icon name="plus" size={15} />Agregar servicio</button>
+                {!advancedGuard && <button className="weekly-add-task" onClick={() => addTask(day, teamIndex)}><Icon name="plus" size={15} />Agregar servicio</button>}
               </article>
             })}</div>
             {!isSaturday(day) && <button className="weekly-add-team" onClick={() => addTeam(day)}><Icon name="plus" size={16} />Agregar otro equipo</button>}
