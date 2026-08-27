@@ -141,6 +141,37 @@ test('la evolución anual oculta meses futuros y conserva años cerrados', async
   assert.deepEqual(visibleAnnualMonthLabels('2027', august2026), [])
 })
 
+test('el menú principal acumula instalaciones de alarma de Docta desde enero hasta hoy', async () => {
+  const { countYearToDateAlarmInstallations, countYearToDateCompletedRecords } = await import('../src/dashboard-metrics.mjs')
+  const records = [
+    { id: 'jan', date: '2026-01-10', status: 'Completado', alarm: true, zone: 'docta' },
+    { id: 'today', date: '2026-08-27', status: 'Completado', alarm: true, zone: 'docta' },
+    { id: 'future', date: '2026-09-01', status: 'Completado', alarm: true, zone: 'docta' },
+    { id: 'pending', date: '2026-05-01', status: 'Pendiente', alarm: true, zone: 'docta' },
+    { id: 'service', date: '2026-05-02', status: 'Completado', alarm: false, zone: 'docta' },
+    { id: 'nobu', date: '2026-05-03', status: 'Completado', alarm: true, zone: 'nobu-town' },
+    { id: 'previous-year', date: '2025-12-31', status: 'Completado', alarm: true, zone: 'docta' }
+  ]
+  const total = countYearToDateAlarmInstallations(records, {
+    throughDate: '2026-08-27',
+    isAlarmRecord: record => record.alarm,
+    zoneOf: record => record.zone
+  })
+  assert.equal(total, 2)
+
+  assert.equal(countYearToDateCompletedRecords(records, {
+    throughDate: '2026-08-27',
+    matches: record => record.id === 'today' || record.id === 'future' || record.id === 'pending'
+  }), 1)
+
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  assert.match(source, /Desde el 1 de enero hasta hoy · \{currentYear\}/)
+  assert.match(source, /Instalaciones en Docta/)
+  assert.match(source, /Instalaciones en Nobu Town/)
+  assert.match(source, /Instalaciones residenciales/)
+  assert.match(source, /annualRetirements/)
+})
+
 test('las exportaciones usan una descarga compatible con navegadores móviles', async () => {
   const { reportDownloadName, triggerBrowserDownload } = await import('../src/browser-download.mjs')
   const created = []
