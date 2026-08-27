@@ -1303,3 +1303,39 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
     max-width: 100%;
   }
 }
+
+/* Contención transversal: ningún control o acción puede exceder su modal. */
+:is(.modal, .confirm-modal, .detail-modal, .bulk-modal, .alarm-details-modal, .dashboard-insight-modal, .audit-modal, .weekly-task-modal, .monthly-teams-modal, .task-move-modal, .technician-status-modal) :is(form, fieldset, label, input, select, textarea, button, .week-task-top, .weekly-extra-fields, .customer-autocomplete, .customer-autocomplete-control, .history-edit-grid, .history-actions, .modal-actions, .confirm-actions) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+:is(.modal, .confirm-modal, .detail-modal, .bulk-modal, .alarm-details-modal, .dashboard-insight-modal, .audit-modal, .weekly-task-modal, .monthly-teams-modal, .task-move-modal, .technician-status-modal) :is(input, select, textarea):not([type='checkbox']):not([type='radio']) {
+  width: 100%;
+}
+
+:is(.modal, .confirm-modal, .detail-modal, .bulk-modal, .alarm-details-modal, .dashboard-insight-modal, .audit-modal, .weekly-task-modal, .monthly-teams-modal, .task-move-modal, .technician-status-modal) :is(input[type='time'], input[type='date'], input[type='month']) {
+  min-inline-size: 0;
+}
+
+:is(.modal-actions, .confirm-actions, .history-actions) > button:not(.modal-close):not(.close-modal) {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* La tarjeta de Hora necesita alojar el ancho intrínseco del selector nativo. */
+.weekly-task-modal .week-task-top {
+  grid-template-columns: minmax(132px, .36fr) minmax(0, 1fr);
+}
+
+.weekly-task-modal .week-task-top > label,
+.weekly-task-modal .week-task-top > label > :is(input, select) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .weekly-task-modal .week-task-top {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
