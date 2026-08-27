@@ -58,6 +58,29 @@ test('la evolución anual oculta meses futuros y conserva años cerrados', async
   assert.deepEqual(visibleAnnualMonthLabels('2027', august2026), [])
 })
 
+test('las exportaciones usan una descarga compatible con navegadores móviles', async () => {
+  const { reportDownloadName, triggerBrowserDownload } = await import('../src/browser-download.mjs')
+  const created = []
+  const appended = []
+  const documentRef = {
+    body: { append: element => appended.push(element) },
+    createElement: tag => {
+      const element = { tag, style: {}, clicked: false, removed: false, click() { this.clicked = true }, remove() { this.removed = true } }
+      created.push(element)
+      return element
+    }
+  }
+  triggerBrowserDownload('/api/history/export?format=pdf', 'reporte.pdf', documentRef)
+  assert.equal(created[0].tag, 'a')
+  assert.equal(created[0].download, 'reporte.pdf')
+  assert.equal(created[0].target, '_blank')
+  assert.equal(created[0].clicked, true)
+  assert.equal(created[0].removed, true)
+  assert.deepEqual(appended, created)
+  assert.equal(reportDownloadName('2026-08', 'all'), 'instalaciones-alarma-all-2026-08.xls')
+  assert.equal(reportDownloadName('2026-08', 'retirements', 'pdf'), 'bajas-servicio-2026-08.pdf')
+})
+
 test('configura formulario, forma de pago y monto según el servicio', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /PAYMENT_OPTIONS = \['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'A confirmar'\]/)
