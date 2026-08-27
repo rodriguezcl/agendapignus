@@ -4,6 +4,7 @@ import { HelpShell } from './HelpCenter.jsx'
 import { visibleAnnualMonthLabels } from './annual-chart.mjs'
 import { reportDownloadName, triggerBrowserDownload } from './browser-download.mjs'
 import { filterTechnicianHistory } from './technician-history.mjs'
+import { fetchWithTimeout } from './fetch-timeout.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -622,7 +623,7 @@ function Login({ onLogin }) {
     setError('')
     setSubmitting(true)
     try {
-      const response = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
+      const response = await fetchWithTimeout('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
       const data = await response.json().catch(() => ({ error: 'La base de datos todavía está iniciando. Esperá un momento e intentá nuevamente.' }))
       if (!response.ok) throw new Error(data.error || 'No se pudo iniciar sesión.')
       setPassword('')
@@ -749,7 +750,7 @@ export default function App() {
     setHistory(previous => { const next = previous.map(normalizeAssignments); return JSON.stringify(next) === JSON.stringify(previous) ? previous : next })
   }, [employees])
   useEffect(() => {
-    fetch('/api/auth/session').then(response => response.ok ? response.json() : null).then(data => setAuthUser(data?.user || null)).catch(() => setAuthUser(null)).finally(() => setAuthLoading(false))
+    fetchWithTimeout('/api/auth/session', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(data => setAuthUser(data?.user || null)).catch(() => setAuthUser(null)).finally(() => setAuthLoading(false))
   }, [])
   useEffect(() => {
     const brand = document.querySelector('.brand')
