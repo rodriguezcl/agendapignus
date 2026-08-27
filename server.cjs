@@ -6,6 +6,7 @@ const { DatabaseSync } = require('node:sqlite')
 const { normalizeScheduling } = require('./scripts/normalize-scheduling.cjs')
 const { rebuildWeeklyFromHistory, dedupeAgendaTeams } = require('./scripts/rebuild-weekly-from-history.cjs')
 const { writeProfessionalPdf } = require('./scripts/professional-pdf.cjs')
+const { fetchNationalHolidays, validHolidayYear } = require('./api/_lib/holidays.cjs')
 
 // API local: Vite reenvía las rutas /api a este proceso durante el desarrollo.
 const port = Number(process.env.PIGNUS_PORT || 3001)
@@ -751,10 +752,17 @@ function authorizedIncomingState(state, user) {
   }
   const currentAgenda = current.agenda || {}
   const incomingAgenda = state.agenda || {}
+  const { _holidayOverrides: ignoredHolidayOverrides, ...incomingWeeklyWithoutHolidayOverrides } = incomingAgenda.weekly || {}
+  const protectedWeekly = administrator
+    ? incomingAgenda.weekly
+    : {
+        ...incomingWeeklyWithoutHolidayOverrides,
+        ...(currentAgenda.weekly?._holidayOverrides ? { _holidayOverrides: currentAgenda.weekly._holidayOverrides } : {})
+      }
   const agenda = {
     ...currentAgenda,
     ...(userCan(user, 'agenda') ? { date: incomingAgenda.date, teams: incomingAgenda.teams } : {}),
-    ...(userCan(user, 'weekly') ? { weekly: incomingAgenda.weekly } : {})
+    ...(userCan(user, 'weekly') ? { weekly: protectedWeekly } : {})
   }
   return {
     ...state,
@@ -1359,6 +1367,15 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     return send(res, 200, readStateForUser(user))
+  }
+  if (req.method === 'GET' && url.pathname === '/api/holidays') {
+    const user = requireSession(req, res)
+    if (!user) return
+    const year = validHolidayYear(url.searchParams.get('year'))
+    if (!year) return send(res, 400, { error: 'El año solicitado no es válido.' })
+    return fetchNationalHolidays(year)
+      .then(holidays => send(res, 200, { year, holidays }))
+      .catch(error => send(res, 503, { error: error.message }))
   }
   if (req.method === 'GET' && url.pathname === '/api/audit') {
     const user = requireSession(req, res)

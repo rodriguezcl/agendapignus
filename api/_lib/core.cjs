@@ -117,6 +117,13 @@ function authorizeIncomingState(incoming, current, user) {
   }
   const currentAgenda = current.agenda || {}
   const incomingAgenda = incoming.agenda || {}
+  const { _holidayOverrides: ignoredHolidayOverrides, ...incomingWeeklyWithoutHolidayOverrides } = incomingAgenda.weekly || {}
+  const protectedWeekly = administrator
+    ? incomingAgenda.weekly
+    : {
+        ...incomingWeeklyWithoutHolidayOverrides,
+        ...(currentAgenda.weekly?._holidayOverrides ? { _holidayOverrides: currentAgenda.weekly._holidayOverrides } : {})
+      }
   return {
     ...incoming,
     roles: administrator ? incoming.roles : current.roles,
@@ -128,7 +135,7 @@ function authorizeIncomingState(incoming, current, user) {
     agenda: {
       ...currentAgenda,
       ...(userCan(user, 'agenda') ? { date: incomingAgenda.date, teams: incomingAgenda.teams } : {}),
-      ...(userCan(user, 'weekly') ? { weekly: incomingAgenda.weekly } : {})
+      ...(userCan(user, 'weekly') ? { weekly: protectedWeekly } : {})
     }
   }
 }
