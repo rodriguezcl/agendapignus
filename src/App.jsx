@@ -132,6 +132,16 @@ const sortPlanTasksByTime = plan => ({
   teams: (plan?.teams || []).map(team => ({ ...team, tasks: sortTasksByTime(team.tasks) }))
 })
 const isSaturday = date => Boolean(date) && new Date(`${date}T12:00:00`).getDay() === 6
+const advancedGuardForSaturdayDate = (date, weekly, saturdayTeams) => {
+  if (!isSaturday(date)) return null
+  const friday = new Date(`${date}T12:00:00`)
+  friday.setDate(friday.getDate() - 1)
+  const fridayKey = friday.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+  return findAdvancedSaturdayGuard({
+    fridayPlan: weekly?.[fridayKey],
+    saturdayPlan: { ...(weekly?.[date] || {}), teams: saturdayTeams || weekly?.[date]?.teams || [] }
+  })
+}
 const taskHasContent = task => Boolean(task && (
   task.historyId || task.customerId || task.serviceId ||
   ['client', 'service', 'address', 'phone', 'detail'].some(key => String(task[key] || '').trim())
@@ -1596,6 +1606,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   const holidayCalendar = useNationalHolidays([authUser ? String(date || '').slice(0, 4) : ''])
   const holiday = holidayForDate(holidayCalendar.records, date)
   const holidayDecision = holidayDecisionForDate(weekly, date)
+  const advancedGuard = useMemo(() => advancedGuardForSaturdayDate(date, weekly, teams), [date, weekly, teams])
   const saveAgenda = () => requestAgendaAction('save')
   const [preview, setPreview] = useState(false)
   const [techOpen, setTechOpen] = useState(null)
@@ -1618,6 +1629,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   useEffect(() => {
     // Ambos módulos escriben sobre el mismo día: los cambios de la agenda del día
     // se reflejan inmediatamente en la agenda semanal, conservando campos extra.
+    if (advancedGuard) return
     const hasContent = teams.some(team => team.members?.length || team.tasks.some(task => Object.entries(task).some(([key, value]) => !['time', 'taskId', 'historyId'].includes(key) && String(value || '').trim())))
     if (!hasContent) return
     setWeekly(previous => {
@@ -1652,7 +1664,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       const nextDay = { ...savedDay, teams: nextTeams }
       return JSON.stringify(savedDay) === JSON.stringify(nextDay) ? previous : { ...previous, [date]: nextDay }
     })
-  }, [date, teams, setWeekly])
+  }, [date, teams, setWeekly, advancedGuard])
   useEffect(() => {
     // Migra agendas creadas antes del identificador estable sin alterar sus datos.
     setTeams(previous => {
@@ -1860,6 +1872,10 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     setNotice(action === 'copy' ? 'La agenda fue copiada al portapapeles y registrada en el historial.' : 'La agenda fue guardada en el historial.')
   }
   const requestAgendaAction = (action, allowWithoutTechnicians = false, agendaTeams = teams, skipCustomerProposal = false) => {
+    if (advancedGuard) {
+      setNotice(advancedSaturdayGuardMessage(advancedGuard))
+      return
+    }
     if (holidayIsBlocked(holiday, holidayDecision)) {
       setNotice(holidayDecision?.status === 'closed' ? 'La fecha fue definida como día no operativo.' : 'Primero definí si el feriado será laboral o no operativo.')
       return
@@ -2051,6 +2067,9 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   if (holidayCalendar.loading || holidayCalendar.error || holidayIsBlocked(holiday, holidayDecision)) {
     return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>La disponibilidad se habilita después de verificar el calendario laboral.</p></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{holidayCalendar.loading ? <div className="holiday-calendar-state"><span className="loading-spinner" />Verificando feriados nacionales…</div> : holidayCalendar.error ? <div className="holiday-calendar-state error"><Icon name="alert" /><div><b>No se pudo verificar el calendario nacional</b><p>{holidayCalendar.error}</p></div><button className="secondary" onClick={() => window.location.reload()}>Reintentar</button></div> : <HolidayDecisionPanel holiday={holiday} decision={holidayDecision} canDecide={authUser?.roleCode === 'administrator'} onDecision={status => recordHolidayDecision(setWeekly, setNotice, date, holiday, status)} />}</>
   }
+  if (advancedGuard) {
+    return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Agenda del sábado bloqueada</h1><p>La guardia de fin de semana ya fue cubierta el viernes y no admite nuevos equipos, técnicos ni servicios.</p></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div><p className={`weekly-guard-advanced ${advancedGuard.hasSaturdayConflict ? 'has-conflict' : ''}`}><Icon name={advancedGuard.hasSaturdayConflict ? 'alert' : 'check'} size={16} /><span>{advancedSaturdayGuardMessage(advancedGuard)}</span></p></>
+  }
   return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setConfirmation('clear')}><Icon name="trash" />Limpiar agenda</button><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button><button className="primary" onClick={() => { navigator.clipboard?.writeText(message); clearAgenda() }}><Icon name="copy" />Copiar agenda</button></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, teamIndex) => <article className="team-card" key={team.teamId || teamIndex}><div className="team-header"><div><span className="team-number">{teamIndex + 1}</span><strong>Equipo {teamIndex + 1}</strong>{teams.length > 1 && <button className="team-delete" onClick={() => setConfirmation({ type: 'team', index: teamIndex })}><Icon name="trash" size={16} />Eliminar equipo</button>}</div><div className="technicians-picker"><span className="technician-assignment-label"><RequiredLabel>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</RequiredLabel></span><button className="secondary small" onClick={() => { setTechOpen(techOpen === teamIndex ? null : teamIndex); setFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === teamIndex && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={filter} onChange={event => setFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(filter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={(team.memberIds || []).some(id => String(id) === String(tech.id))} onChange={() => toggleTech(teamIndex, tech)} />{tech.name}</label>)}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, taskIndex) => <div className="task-row" key={task.taskId || task.historyId || `${team.teamId || teamIndex}-${taskIndex}`}><div className="task-title"><span>{taskIndex + 1}</span><b>Servicio</b></div><label className="daily-field-time"><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" value={task.time} onChange={event => updateTask(teamIndex, taskIndex, { time: event.target.value })} /></label><label className="daily-field-service"><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForTask(task)?.id || ''} onChange={event => selectTaskService(teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
 {dailyCustomerField(task, teamIndex, taskIndex)}
 <label className="daily-field-address"><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label className="daily-field-contact"><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations daily-field-observations">Observaciones<BufferedTextarea value={task.detail} onCommit={value => updateTask(teamIndex, taskIndex, { detail: value })} /></label>{serviceCode(serviceForTask(task)) === 'alarm-installation' && <fieldset className="installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" aria-required="true" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForTask(task)) }) }} />{label}</label>)}</fieldset>}<ServiceExtraFields className="daily-extra-fields" task={task} service={serviceForTask(task)} buffered onChange={patch => updateTask(teamIndex, taskIndex, patch)} /><div className="daily-task-actions"><button type="button" className="icon-btn daily-copy-button" title="Copiar este servicio" aria-label={`Copiar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => copySingleTask(task, team, teamIndex, taskIndex)}><Icon name="copy" size={16} /><span>Copiar</span></button>{teams.length > 1 && <button type="button" className="icon-btn move daily-move-button" title="Reasignar a otro equipo" aria-label={`Reasignar servicio ${taskIndex + 1} a otro equipo`} onClick={() => openTaskMove(teamIndex, taskIndex)}><span aria-hidden="true">⇄</span><span>Reasignar</span></button>}{team.tasks.length > 1 && <button type="button" className="icon-btn delete" title="Eliminar servicio" aria-label={`Eliminar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.filter((_, index) => index !== taskIndex) }))}><Icon name="trash" size={16} /><span>Eliminar</span></button>}</div></div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
@@ -2224,6 +2243,12 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   const saveTaskEditor = () => {
     if (!taskEditor) return
     const { day, teamIndex, taskIndex, teamId, teamSnapshot, taskId, draft } = taskEditor
+    const advance = advancedGuardForDay(day)
+    if (advance) {
+      setTaskEditor(null)
+      setNotice(advancedSaturdayGuardMessage(advance))
+      return
+    }
     const missing = []
     if (!draft.time) missing.push('hora')
     if (!draft.serviceId || !draft.service) missing.push('tipo de servicio')
@@ -2327,6 +2352,12 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   }
   const updateTeam = (day, teamIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, ...patch } : team) }))
   const toggleWeeklyTech = (day, teamIndex, technician) => {
+    const advance = advancedGuardForDay(day)
+    if (advance) {
+      setTechPicker(null)
+      setNotice(advancedSaturdayGuardMessage(advance))
+      return
+    }
     technician = typeof technician === 'string' ? activeTechs.find(item => item.name === technician) : technician
     if (!technician) return
     updateDay(day, plan => {

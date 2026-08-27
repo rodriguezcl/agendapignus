@@ -30,34 +30,46 @@ const teamIncludesTechnician = (team, technicianId, technicianName) => {
  * El rango es inclusivo: 16:00 a 20:00.
  */
 export const findAdvancedSaturdayGuard = ({ fridayPlan, saturdayPlan }) => {
-  const saturdayTeam = saturdayPlan?.teams?.[0]
+  const saturdayTeams = saturdayPlan?.teams || []
+  const saturdayTeam = saturdayTeams[0]
   const assignedSaturdayId = saturdayTeam?.memberIds?.[0] || ''
   const assignedSaturdayName = saturdayTeam?.members?.[0] || ''
+  const candidates = []
 
   for (const fridayTeam of fridayPlan?.teams || []) {
-    if ((assignedSaturdayId || assignedSaturdayName) && !teamIncludesTechnician(fridayTeam, assignedSaturdayId, assignedSaturdayName)) continue
     const advancedTask = (fridayTeam.tasks || []).find(task => {
       const minutes = timeInMinutes(task?.time || task?.scheduledTime)
       return hasScheduledService(task) && minutes !== null && minutes >= 16 * 60 && minutes <= 20 * 60
     })
     if (!advancedTask) continue
 
-    const technicianId = assignedSaturdayId || fridayTeam.memberIds?.[0] || ''
-    const technicianName = assignedSaturdayName || fridayTeam.members?.[0] || ''
+    const technicianId = fridayTeam.memberIds?.[0] || ''
+    const technicianName = fridayTeam.members?.[0] || ''
     if (!technicianId && !technicianName) continue
-
-    const saturdayServices = (saturdayTeam.tasks || []).filter(hasScheduledService)
-    return {
+    candidates.push({
       technicianId,
       technicianName,
       displayName: String(technicianName || 'El técnico').trim().split(/\s+/)[0],
       fridayTime: advancedTask.time || advancedTask.scheduledTime,
-      fridayTask: advancedTask,
-      saturdayServices,
-      hasSaturdayConflict: saturdayServices.length > 0
-    }
+      fridayTask: advancedTask
+    })
   }
-  return null
+  if (!candidates.length) return null
+
+  // Si el sábado ya tenía al guardia correcto, se prioriza esa coincidencia.
+  // Si alguien asigna otro técnico, la guardia del viernes sigue vigente y no
+  // puede desaparecer por esa modificación posterior.
+  const advance = candidates.find(candidate => teamIncludesTechnician(
+    { memberIds: [candidate.technicianId], members: [candidate.technicianName] },
+    assignedSaturdayId,
+    assignedSaturdayName
+  )) || candidates[0]
+  const saturdayServices = saturdayTeams.flatMap(team => team?.tasks || []).filter(hasScheduledService)
+  return {
+    ...advance,
+    saturdayServices,
+    hasSaturdayConflict: saturdayServices.length > 0
+  }
 }
 
 /** Oculta únicamente espacios disponibles; nunca elimina servicios reales. */
@@ -65,10 +77,9 @@ export const suppressAdvancedSaturdayAvailability = (saturdayPlan, advance) => {
   if (!advance) return saturdayPlan
   return {
     ...saturdayPlan,
-    teams: (saturdayPlan?.teams || []).map(team => ({
-      ...team,
-      tasks: (team.tasks || []).filter(hasScheduledService)
-    }))
+    teams: (saturdayPlan?.teams || [])
+      .map(team => ({ ...team, tasks: (team.tasks || []).filter(hasScheduledService) }))
+      .filter(team => team.tasks.length > 0)
   }
 }
 
