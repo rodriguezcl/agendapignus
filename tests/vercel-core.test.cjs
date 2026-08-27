@@ -163,6 +163,20 @@ test('permite copiar un servicio individual de la agenda diaria', () => {
   assert.match(styles, /grid-template-columns: repeat\(auto-fit, minmax\(96px, 1fr\)\)/)
 })
 
+test('ordena los campos y centra las acciones de cada servicio diario', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(source, /className="daily-field-time"/)
+  assert.match(source, /className="daily-field-service"/)
+  assert.match(source, /className="daily-field-address"/)
+  assert.match(source, /className="daily-field-contact"/)
+  assert.match(source, /className="observations daily-field-observations"/)
+  assert.match(source, /className="icon-btn move daily-move-button"/)
+  assert.doesNotMatch(source, /document\.querySelectorAll\('\.content \.team-card \.task-row'\)/)
+  assert.match(styles, /\.content > \.team-card \.task-row > \.daily-field-observations \{[\s\S]*?grid-column: 2 \/ 5 !important;/)
+  assert.match(styles, /\.content > \.team-card \.task-row > \.daily-task-actions \{[\s\S]*?align-self: stretch;[\s\S]*?justify-content: center;/)
+})
+
 test('genera y verifica hashes compatibles con las credenciales existentes', () => {
   const hash = hashPassword('Prueba1234')
   assert.equal(verifyPassword('Prueba1234', hash), true)
