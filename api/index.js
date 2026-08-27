@@ -249,13 +249,25 @@ async function handleTechnicianStatus(req, res, sql, user) {
   if (user.roleCode !== 'technician') return send(res, 403, { error: 'Esta acción es exclusiva del rol técnico.' })
   const { recordId, type, observation } = requestBody(req)
   const allowed = ['Completado', 'Cancelado', 'Reprogramación solicitada']
+  if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
   try {
     const updated = await sql.begin(async transaction => {
+      // Todos los escritores toman primero la revisión global. Mantener el mismo
+      // orden evita esperas circulares con el guardado general de la agenda.
+      await transaction`set local lock_timeout = '5s'`
+      await transaction`set local statement_timeout = '15s'`
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const rows = await transaction`select data from pignus_work_history where id = ${String(recordId)} for update`
       const record = rows[0]?.data
       if (!record) { const error = new Error('El servicio no existe.'); error.statusCode = 404; throw error }
       if (!record.technicianIds?.some(id => String(id) === String(user.id))) { const error = new Error('El servicio no está asignado al técnico autenticado.'); error.statusCode = 403; throw error }
-      if (!allowed.includes(type) || record.technicalStatus) throw new Error('No se puede actualizar este servicio.')
+      // Si el primer envío se guardó pero el teléfono perdió la respuesta, el
+      // reintento devuelve el mismo resultado sin duplicar auditoría ni cambios.
+      if (record.technicalStatus) {
+        if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return record
+        const error = new Error('Este servicio ya fue informado desde otra sesión.'); error.statusCode = 409; throw error
+      }
       if (type !== 'Completado' && !String(observation || '').trim()) throw new Error('La observación es obligatoria.')
       const now = new Date().toISOString()
       const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim(), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type }
@@ -276,7 +288,8 @@ async function handleTechnicianStatus(req, res, sql, user) {
     })
     return send(res, 200, { record: updated })
   } catch (error) {
-    return send(res, error.statusCode || 400, { error: error.message || 'No se pudo informar el estado.' })
+    const databaseBusy = error.code === '55P03' || error.code === '57014'
+    return send(res, databaseBusy ? 503 : (error.statusCode || 400), { error: databaseBusy ? 'La base de datos está ocupada. El sistema volverá a intentarlo automáticamente.' : (error.message || 'No se pudo informar el estado.') })
   }
 }
 

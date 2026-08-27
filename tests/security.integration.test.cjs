@@ -266,6 +266,11 @@ test('el historial contextual del técnico es de solo lectura y registra quién 
   assert.equal(payload.record.technicalReportedByName, 'QA Técnico')
   assert.match(payload.record.technicalObservation, /revisar magnético/i)
 
+  const repeated = await api('/api/technician/status', cookie, { method: 'POST', body: JSON.stringify({ recordId: 'qa-tech-current', type: 'Completado', observation: 'Trabajo completado; revisar magnético en la próxima visita.' }) })
+  assert.equal(repeated.status, 200)
+  const repeatedPayload = await repeated.json()
+  assert.equal(repeatedPayload.record.technicalReportedAt, payload.record.technicalReportedAt)
+
   const forbidden = await api('/api/technician/status', cookie, { method: 'POST', body: JSON.stringify({ recordId: 'qa-tech-context', type: 'Completado', observation: 'No autorizado' }) })
   assert.equal(forbidden.status, 403)
 })
