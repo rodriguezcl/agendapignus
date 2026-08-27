@@ -11,6 +11,155 @@
   --ui-focus: rgba(204, 147, 16, .18);
 }
 
+/* Normalización transversal de formularios y acciones (UX/UI). */
+span.field-label-text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.25;
+  vertical-align: baseline;
+}
+
+span.field-label-text > span.required-mark,
+.customer-editor-modal .required-mark {
+  display: inline-block;
+  flex: 0 0 auto;
+  color: #b93832;
+  font-size: .95em;
+  font-weight: 800;
+  line-height: 1;
+  transform: translateY(-.03em);
+}
+
+.app-shell[data-theme="dark"] .required-mark {
+  color: #ff8b84;
+}
+
+.technician-assignment-label {
+  min-width: 0;
+}
+
+.task-row > label::after,
+.installation-zone legend::after,
+.technicians-picker > span::after {
+  content: none !important;
+}
+
+:is(.task-row, .weekly-task-form, .employee-form, .customer-form, .service-form, .role-editor, .login-card) label > :is(input, select, textarea, .customer-autocomplete-control) {
+  margin-top: 5px;
+}
+
+:is(.employee-form, .employee-form-wide, .customer-form, .service-form, .role-editor) :is(input, select):not([type="checkbox"]):not([type="radio"]) {
+  min-height: 40px;
+  height: 40px;
+}
+
+:is(.employee-form, .customer-form, .service-form, .role-editor) textarea {
+  min-height: 76px;
+}
+
+.employee-form-wide {
+  max-width: 1080px;
+}
+
+.service-form {
+  grid-template-columns: minmax(220px, 320px) minmax(300px, 520px) auto auto;
+  justify-content: start;
+}
+
+.service-form > button,
+.employee-form-wide > button,
+.customer-form > button {
+  width: auto;
+  min-width: 132px;
+  max-width: 220px;
+}
+
+.history-toolbar > label,
+.accounts-bar > label {
+  max-width: 420px;
+}
+
+.month-filter input {
+  width: 180px;
+  max-width: 100%;
+}
+
+.modal-actions > button,
+.confirm-actions > button {
+  min-width: 120px;
+  width: auto;
+}
+
+/* El encabezado, la leyenda y el área de valores del gráfico no se superponen. */
+.annual-chart > div:first-child {
+  margin-bottom: 14px;
+}
+
+.annual-chart .chart-legend {
+  justify-content: flex-start;
+  margin: 0 5px 20px;
+}
+
+.annual-chart .bar-chart {
+  margin-top: 0;
+  padding-top: 10px;
+}
+
+@media (max-width: 640px) {
+  .module-intro > button {
+    align-self: flex-start;
+    width: auto !important;
+    min-width: min(100%, 170px);
+  }
+
+  .module-intro .action-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: 8px;
+  }
+
+  .module-intro .action-group > button {
+    width: 100%;
+  }
+
+  .module-intro .action-group > button:only-child {
+    grid-column: 1 / -1;
+    justify-self: start;
+    width: auto;
+    min-width: 170px;
+  }
+
+  :is(.employee-form, .employee-form-wide, .customer-form, .service-form) > button {
+    justify-self: end;
+    width: min(100%, 220px) !important;
+    max-width: 220px;
+  }
+
+  .annual-chart > div:first-child {
+    margin-bottom: 12px;
+  }
+
+  .annual-chart .chart-legend {
+    justify-content: flex-start;
+    margin: 0 0 18px;
+  }
+
+  .annual-chart .bar-chart {
+    margin-top: 0;
+    padding-top: 8px;
+  }
+}
+
+@media (max-width: 360px) {
+  .module-intro .action-group {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .help-updated {
   display: inline-flex;
   align-items: center;
