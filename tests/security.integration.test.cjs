@@ -167,6 +167,38 @@ test('sirve la aplicación compilada y conserva aisladas las rutas API', async (
   assert.match(missingApi.headers.get('content-type'), /application\/json/)
 })
 
+test('gestiona solicitudes de contraseña únicamente para administradores', async () => {
+  let response = await api('/api/auth/login', null, { method: 'POST', body: JSON.stringify({ email: 'inexistente@pignus.test', password: 'Prueba1234' }) })
+  assert.equal(response.status, 404)
+  assert.match((await response.json()).error, /no está dado de alta/i)
+
+  response = await api('/api/auth/password-reset-requests', null, { method: 'POST', body: JSON.stringify({ email: 'inexistente@pignus.test' }) })
+  assert.equal(response.status, 404)
+  assert.match((await response.json()).error, /contacto con un Administrador/i)
+
+  response = await api('/api/auth/password-reset-requests', null, { method: 'POST', body: JSON.stringify({ email: 'QA-TECH@PIGNUS.TEST' }) })
+  assert.equal(response.status, 200)
+  response = await api('/api/auth/password-reset-requests', null, { method: 'POST', body: JSON.stringify({ email: 'qa-tech@pignus.test' }) })
+  assert.equal(response.status, 200)
+
+  const nonAdministratorCookie = await login('qa-employees@pignus.test')
+  response = await api('/api/auth/password-reset-requests', nonAdministratorCookie)
+  assert.equal(response.status, 403)
+
+  const administratorCookie = await login('qa-admin@pignus.test')
+  response = await api('/api/auth/password-reset-requests', administratorCookie)
+  assert.equal(response.status, 200)
+  let payload = await response.json()
+  const matching = payload.requests.filter(request => request.email === 'qa-tech@pignus.test')
+  assert.equal(matching.length, 1, 'Las solicitudes repetidas deben consolidarse por correo.')
+
+  response = await api('/api/auth/password-reset-requests', administratorCookie, { method: 'DELETE', body: JSON.stringify({ id: matching[0].id }) })
+  assert.equal(response.status, 200)
+  response = await api('/api/auth/password-reset-requests', administratorCookie)
+  payload = await response.json()
+  assert.equal(payload.requests.some(request => request.email === 'qa-tech@pignus.test'), false)
+})
+
 test('un gestor de empleados no puede elevar privilegios', async () => {
   const cookie = await login('qa-employees@pignus.test')
   let current = await state(cookie)
@@ -247,6 +279,7 @@ test('el historial contextual del técnico es de solo lectura y registra quién 
   const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
   const records = [
     { id: 'qa-tech-current', date: '2999-08-27', time: '10:00', customerId: 'qa-customer-a', clientAccount: 'PIG-9001', client: 'PIG-9001 CLIENTE INCLUIDO QA', service: 'Service técnico', status: 'Pendiente', technicianIds: ['qa-tech'], technicians: ['QA Técnico'] },
+    { id: 'qa-tech-empty-observation', date: '2999-08-28', time: '11:00', customerId: 'qa-customer-a', clientAccount: 'PIG-9001', client: 'PIG-9001 CLIENTE INCLUIDO QA', service: 'Service técnico', status: 'Pendiente', technicianIds: ['qa-tech'], technicians: ['QA Técnico'] },
     { id: 'qa-tech-context', date: '2095-01-10', customerId: 'qa-customer-a', clientAccount: 'PIG-9001', client: 'PIG-9001 CLIENTE INCLUIDO QA', service: 'Service técnico', status: 'Completado', technicianIds: ['otro-tecnico'], technicians: ['Otro Técnico'], technicalObservation: 'Revisar magnético.' },
     { id: 'qa-tech-private', date: '2095-01-10', customerId: 'qa-customer-b', clientAccount: 'PIG-9002', client: 'PIG-9002 CLIENTE EXCLUIDO QA', service: 'Service técnico', status: 'Completado', technicianIds: ['otro-tecnico'], technicians: ['Otro Técnico'] }
   ]
@@ -258,6 +291,10 @@ test('el historial contextual del técnico es de solo lectura y registra quién 
   assert.ok(visible.history.some(record => record.id === 'qa-tech-context'))
   assert.equal(visible.history.some(record => record.id === 'qa-tech-private'), false)
   assert.deepEqual(visible.customers, [])
+
+  const withoutObservation = await api('/api/technician/status', cookie, { method: 'POST', body: JSON.stringify({ recordId: 'qa-tech-empty-observation', type: 'Completado', observation: '   ' }) })
+  assert.equal(withoutObservation.status, 400)
+  assert.match((await withoutObservation.json()).error, /observación es obligatoria/i)
 
   const response = await api('/api/technician/status', cookie, { method: 'POST', body: JSON.stringify({ recordId: 'qa-tech-current', type: 'Completado', observation: 'Trabajo completado; revisar magnético en la próxima visita.' }) })
   assert.equal(response.status, 200)

@@ -13,6 +13,8 @@ const SESSION_MAX_AGE = 8 * 60 * 60 * 1000
 const LOGIN_WINDOW = 15 * 60 * 1000
 const LOGIN_MAX_ATTEMPTS = 5
 const AUDIT_LOG_LIMIT = 100
+const PASSWORD_RESET_REQUESTS_KEY = 'password_reset_requests'
+const PASSWORD_RESET_REQUESTS_LIMIT = 50
 
 function productionSecretsAreValid() {
   return ['PIGNUS_SESSION_SECRET', 'PIGNUS_RATE_LIMIT_SECRET'].every(name => String(process.env[name] || '').length >= 32)
@@ -109,6 +111,10 @@ async function handleLogin(req, res, sql) {
   const { email, password } = requestBody(req)
   const employees = await sql`select data from pignus_employees where email = ${String(email || '').trim().toLowerCase()}`
   const employee = employees[0]?.data
+  if (!employee) {
+    await sql`insert into pignus_login_attempts (fingerprint, attempts, blocked_until, updated_at) values (${fingerprint}, 1, ${new Date(Date.now() + LOGIN_WINDOW)}, now()) on conflict (fingerprint) do update set attempts = case when pignus_login_attempts.blocked_until > now() then pignus_login_attempts.attempts + 1 else 1 end, blocked_until = ${new Date(Date.now() + LOGIN_WINDOW)}, updated_at = now()`
+    return send(res, 404, { error: 'El correo ingresado no está dado de alta en el sistema. Ponete en contacto con un Administrador.' })
+  }
   const legacy = Buffer.from(String(employee?.password || ''))
   const supplied = Buffer.from(String(password || ''))
   const legacyValid = legacy.length === supplied.length && legacy.length > 0 && crypto.timingSafeEqual(legacy, supplied)
@@ -135,6 +141,53 @@ async function handleLogin(req, res, sql) {
   })
   res.setHeader('Set-Cookie', `pignus_session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE / 1000}`)
   return send(res, 200, { user })
+}
+
+function parsePasswordResetRequests(value) {
+  try {
+    const requests = JSON.parse(value || '[]')
+    return Array.isArray(requests) ? requests.filter(item => item?.id && item?.email && item?.requestedAt) : []
+  } catch {
+    return []
+  }
+}
+
+async function handlePasswordResetRequest(req, res, sql) {
+  const email = String(requestBody(req).email || '').trim().toLowerCase()
+  if (!/^\S+@\S+\.\S+$/.test(email)) return send(res, 400, { error: 'Ingresá un correo electrónico válido.' })
+  const employees = await sql`select id, data from pignus_employees where email = ${email}`
+  const employee = employees[0]?.data
+  if (!employee) return send(res, 404, { error: 'El correo ingresado no está dado de alta en el sistema. Ponete en contacto con un Administrador.' })
+  await sql.begin(async transaction => {
+    await transaction`insert into pignus_preferences (key, value) values (${PASSWORD_RESET_REQUESTS_KEY}, '[]') on conflict (key) do nothing`
+    const rows = await transaction`select value from pignus_preferences where key = ${PASSWORD_RESET_REQUESTS_KEY} for update`
+    const requests = parsePasswordResetRequests(rows[0]?.value)
+    const existing = requests.find(item => item.email === email)
+    const request = { id: existing?.id || crypto.randomUUID(), employeeId: String(employee.id), email, requestedAt: new Date().toISOString() }
+    const next = [request, ...requests.filter(item => item.email !== email)].slice(0, PASSWORD_RESET_REQUESTS_LIMIT)
+    await transaction`update pignus_preferences set value = ${JSON.stringify(next)}, updated_at = now() where key = ${PASSWORD_RESET_REQUESTS_KEY}`
+  })
+  return send(res, 200, { ok: true, message: 'La solicitud fue enviada al Administrador.' })
+}
+
+async function readPasswordResetRequests(sql) {
+  const rows = await sql`select value from pignus_preferences where key = ${PASSWORD_RESET_REQUESTS_KEY}`
+  return parsePasswordResetRequests(rows[0]?.value).sort((a, b) => String(b.requestedAt).localeCompare(String(a.requestedAt)))
+}
+
+async function resolvePasswordResetRequest(req, res, sql, user) {
+  const id = String(requestBody(req).id || '')
+  if (!id) return send(res, 400, { error: 'La solicitud no es válida.' })
+  let resolved = null
+  await sql.begin(async transaction => {
+    await transaction`insert into pignus_preferences (key, value) values (${PASSWORD_RESET_REQUESTS_KEY}, '[]') on conflict (key) do nothing`
+    const rows = await transaction`select value from pignus_preferences where key = ${PASSWORD_RESET_REQUESTS_KEY} for update`
+    const requests = parsePasswordResetRequests(rows[0]?.value)
+    resolved = requests.find(item => item.id === id) || null
+    await transaction`update pignus_preferences set value = ${JSON.stringify(requests.filter(item => item.id !== id))}, updated_at = now() where key = ${PASSWORD_RESET_REQUESTS_KEY}`
+    if (resolved) await appendAudit(transaction, [auditEntry(user, 'Resolvió', 'Solicitud de contraseña', id, resolved, null)])
+  })
+  return resolved ? send(res, 200, { ok: true }) : send(res, 404, { error: 'La solicitud ya no está pendiente.' })
 }
 
 async function handleLogout(req, res, sql) {
@@ -269,7 +322,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
         if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return record
         const error = new Error('Este servicio ya fue informado desde otra sesión.'); error.statusCode = 409; throw error
       }
-      if (type !== 'Completado' && !String(observation || '').trim()) throw new Error('La observación es obligatoria.')
+      if (!String(observation || '').trim()) throw new Error('La observación es obligatoria para informar el servicio.')
       const now = new Date().toISOString()
       const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim(), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type }
       await transaction`update pignus_work_history set status = ${next.status}, data = ${transaction.json(next)} where id = ${String(record.id)}`
@@ -317,6 +370,7 @@ module.exports = async function handler(req, res) {
     const sql = database()
     const route = routePath(req)
     if (req.method === 'POST' && route === '/auth/login') return await handleLogin(req, res, sql)
+    if (req.method === 'POST' && route === '/auth/password-reset-requests') return await handlePasswordResetRequest(req, res, sql)
     if (req.method === 'POST' && route === '/auth/logout') return await handleLogout(req, res, sql)
     if (req.method === 'GET' && route === '/auth/session') {
       const session = await sessionContext(req, sql)
@@ -324,6 +378,11 @@ module.exports = async function handler(req, res) {
     }
     const session = await requireSession(req, res, sql)
     if (!session) return
+    if (route === '/auth/password-reset-requests') {
+      if (session.user.roleCode !== 'administrator') return send(res, 403, { error: 'Las solicitudes de contraseña son exclusivas del rol Administrador.' })
+      if (req.method === 'GET') return send(res, 200, { requests: await readPasswordResetRequests(sql) })
+      if (req.method === 'DELETE') return await resolvePasswordResetRequest(req, res, sql, session.user)
+    }
     if (req.method === 'GET' && route === '/state/revision') return send(res, 200, { revision: await readRevision(sql) })
     if (req.method === 'GET' && route === '/state') return send(res, 200, visibleStateForUser(await readState(sql), session.user))
     if (req.method === 'GET' && route === '/holidays') {
