@@ -100,6 +100,7 @@ test('todos los roles comparten protecciones responsive para controles y modales
   assert.match(styles, /\.technician-header,[\s\S]*?\.technician-history-search \{\s*width: 100%;/)
   assert.match(styles, /\.mobile-menu,[\s\S]*?\.technician-header-nav button\) \{\s*min-height: 44px !important;/)
   assert.match(styles, /\.weekly-remove-team,[\s\S]*?\.weekly-task-delete,[\s\S]*?min-height: 44px !important;/)
+  assert.match(styles, /\.profile-trigger,[\s\S]*?\.logout-button,[\s\S]*?min-width: 44px !important;/)
   assert.match(styles, /\.history-toolbar > label,[\s\S]*?flex: 0 0 auto;/)
 })
 

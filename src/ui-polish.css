@@ -868,7 +868,7 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
   }
 
   :is(.mobile-menu, .theme-toggle, .profile-trigger, .logout-button, .icon-btn, .weekly-remove-team, .weekly-add-tech-button, .weekly-task-move, .weekly-task-delete, .row-actions button, .roles-card button, .modal-close, .close-modal) {
-    min-width: 44px;
+    min-width: 44px !important;
   }
 
   .row-actions {
