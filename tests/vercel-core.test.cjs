@@ -104,6 +104,30 @@ test('todos los roles comparten protecciones responsive para controles y modales
   assert.match(styles, /\.history-toolbar > label,[\s\S]*?flex: 0 0 auto;/)
 })
 
+test('los campos obligatorios usan un único indicador junto a la etiqueta', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  const legacyStyles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
+  assert.match(source, /function RequiredLabel\(\{ children \}\)/)
+  assert.doesNotMatch(source, /<b>\s*\*\s*<\/b>/)
+  assert.doesNotMatch(legacyStyles, /task-row>label:nth-of-type\(1\)::after/)
+  assert.doesNotMatch(legacyStyles, /installation-zone legend::after/)
+  assert.match(styles, /span\.field-label-text \{[\s\S]*?display: inline-flex;[\s\S]*?align-items: baseline;/)
+  assert.match(styles, /span\.field-label-text > span\.required-mark,[\s\S]*?color: #b93832;/)
+  assert.match(source, /<RequiredLabel>Hora<\/RequiredLabel>/)
+  assert.match(source, /<RequiredLabel>Correo electrónico<\/RequiredLabel>/)
+  assert.match(source, /<RequiredLabel>Observación<\/RequiredLabel>/)
+})
+
+test('la evolución anual reserva espacio para valores y separa la leyenda', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(source, /value \/ max \* 78/)
+  assert.match(source, /stack\.style\.height = `\$\{chartHeightPercent\(monthData\?\.value\)\}%`/)
+  assert.match(styles, /\.annual-chart \.chart-legend \{[\s\S]*?margin: 0 5px 20px;/)
+  assert.match(styles, /\.annual-chart \.bar-chart \{[\s\S]*?padding-top: 10px;/)
+})
+
 test('configura formulario, forma de pago y monto según el servicio', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /PAYMENT_OPTIONS = \['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'A confirmar'\]/)
