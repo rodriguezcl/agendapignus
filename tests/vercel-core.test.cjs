@@ -139,13 +139,28 @@ test('la evolución anual reserva espacio para valores y separa la leyenda', () 
 
 test('configura formulario, forma de pago y monto según el servicio', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
-  assert.match(source, /PAYMENT_OPTIONS = \['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'A confirmar'\]/)
+  assert.match(source, /PAYMENT_OPTIONS = \['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'A confirmar', 'No aplica'\]/)
   assert.match(source, /form: alarmInstallation \|\| ownershipChange/)
-  assert.match(source, /paymentMethod !== 'A confirmar'/)
+  assert.match(source, /!\['A confirmar', 'No aplica'\]\.includes\(paymentMethod\)/)
+  assert.match(source, /task\.paymentMethod !== 'No aplica'/)
+  assert.match(source, /event\.target\.value === 'No aplica' \? \{ amount: '' \}/)
   assert.match(source, /if \(key === 'amount' && !enabled\) return null/)
-  assert.match(source, /amount: paymentMethod \? task\?\.amount \|\| '' : ''/)
+  assert.match(source, /amount: paymentMethod && paymentMethod !== 'No aplica' \? task\?\.amount \|\| '' : ''/)
   assert.match(source, /requiresPaymentAmount\(task, serviceForTask\(task\)\)/)
   assert.match(source, /requiresPaymentAmount\(draft, serviceForWeeklyTask\(draft\)\)/)
+})
+
+test('permite copiar un servicio individual de la agenda diaria', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(source, /const copyTextToClipboard = async text =>/)
+  assert.match(source, /const individualTaskMessage = \(task, team, teamIndex\) =>/)
+  assert.match(source, /const copySingleTask = async \(task, team, teamIndex, taskIndex\) =>/)
+  assert.match(source, /className="icon-btn daily-copy-button"/)
+  assert.match(source, /title="Copiar este servicio"/)
+  assert.match(source, /No se pudo acceder al portapapeles/)
+  assert.match(styles, /\.task-row > \.daily-task-actions/)
+  assert.match(styles, /grid-template-columns: repeat\(auto-fit, minmax\(96px, 1fr\)\)/)
 })
 
 test('genera y verifica hashes compatibles con las credenciales existentes', () => {

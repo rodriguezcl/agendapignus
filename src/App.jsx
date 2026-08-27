@@ -15,6 +15,34 @@ function RequiredLabel({ children }) {
   return <span className="field-label-text">{children}<span className="required-mark" aria-hidden="true">*</span></span>
 }
 
+const copyTextToClipboard = async text => {
+  try {
+    if (globalThis.navigator?.clipboard?.writeText) {
+      await globalThis.navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // Algunos navegadores móviles bloquean la API moderna aun bajo HTTPS.
+  }
+  if (!globalThis.document?.body) return false
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.readOnly = true
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  textarea.style.pointerEvents = 'none'
+  document.body.append(textarea)
+  textarea.select()
+  textarea.setSelectionRange(0, textarea.value.length)
+  try {
+    return document.execCommand('copy')
+  } catch {
+    return false
+  } finally {
+    textarea.remove()
+  }
+}
+
 const INSTALLATION_ZONES = [
   ['docta', 'Docta Urbanización'],
   ['nobu-town', 'Nobu Town'],
@@ -434,7 +462,7 @@ const PAYMENT_SERVICE_NAMES = new Set([
   'otro service'
 ])
 const FORM_OPTIONS = ['Completo', 'Incompleto (Abonado completa a mano)']
-const PAYMENT_OPTIONS = ['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'A confirmar']
+const PAYMENT_OPTIONS = ['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'A confirmar', 'No aplica']
 const normalizeFormValue = value => {
   const normalized = normalizeServiceName(value)
   if (normalized === 'completo') return FORM_OPTIONS[0]
@@ -456,14 +484,14 @@ const applicableServiceExtras = (task, service) => {
   const paymentMethod = available.paymentMethod ? task?.paymentMethod || '' : ''
   return {
     paymentMethod,
-    amount: paymentMethod ? task?.amount || '' : '',
+    amount: paymentMethod && paymentMethod !== 'No aplica' ? task?.amount || '' : '',
     monthlyFee: available.monthlyFee ? task?.monthlyFee || '' : '',
     form: available.form ? normalizeFormValue(task?.form) : ''
   }
 }
 const requiresPaymentAmount = (task, service) => {
   const paymentMethod = serviceExtraAvailability(service, task?.installationZone).paymentMethod ? String(task?.paymentMethod || '').trim() : ''
-  return Boolean(paymentMethod && paymentMethod !== 'A confirmar' && !String(task?.amount || '').trim())
+  return Boolean(paymentMethod && !['A confirmar', 'No aplica'].includes(paymentMethod) && !String(task?.amount || '').trim())
 }
 const prettyDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, x => x.toUpperCase()) : ''
 // Cada familia de trabajo tiene un color consistente en el historial para facilitar su lectura.
@@ -1424,7 +1452,7 @@ function ServiceExtraFields({ className, task, service, onChange, buffered = fal
     ['form', 'Formulario']
   ]
   return <div className={className}>{fields.map(([key, label]) => {
-    const enabled = key === 'amount' ? available.paymentMethod && Boolean(task?.paymentMethod) : available[key]
+    const enabled = key === 'amount' ? available.paymentMethod && Boolean(task?.paymentMethod) && task.paymentMethod !== 'No aplica' : available[key]
     if (key === 'amount' && !enabled) return null
     const props = {
       value: enabled ? task?.[key] || '' : '',
@@ -1438,7 +1466,7 @@ function ServiceExtraFields({ className, task, service, onChange, buffered = fal
     if (key === 'paymentMethod') {
       const paymentValue = enabled ? task?.paymentMethod || '' : ''
       const legacyValue = paymentValue && !PAYMENT_OPTIONS.includes(paymentValue) ? paymentValue : ''
-      return <label key={key}>{label}<select value={paymentValue} disabled={!enabled} title={props.title} onChange={event => onChange({ paymentMethod: event.target.value, ...(event.target.value ? {} : { amount: '' }) })}><option value="">{enabled ? 'Seleccionar' : 'No aplica'}</option>{legacyValue && <option value={legacyValue}>{legacyValue}</option>}{enabled && PAYMENT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
+      return <label key={key}>{label}<select value={paymentValue} disabled={!enabled} title={props.title} onChange={event => onChange({ paymentMethod: event.target.value, ...(!event.target.value || event.target.value === 'No aplica' ? { amount: '' } : {}) })}><option value="">{enabled ? 'Seleccionar' : 'No aplica'}</option>{legacyValue && <option value={legacyValue}>{legacyValue}</option>}{enabled && PAYMENT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
     }
     if (key === 'amount') {
       const required = task?.paymentMethod !== 'A confirmar'
@@ -1697,13 +1725,22 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     const lines = [
       `Observación: ${previewValue(task.detail)}`,
       available.paymentMethod && `Forma de pago: ${previewValue(extras.paymentMethod)}`,
-      available.paymentMethod && extras.paymentMethod && `Monto: ${previewValue(extras.amount)}`,
+      available.paymentMethod && extras.paymentMethod && extras.paymentMethod !== 'No aplica' && `Monto: ${previewValue(extras.amount)}`,
       available.monthlyFee && `Abono mensual: ${previewValue(extras.monthlyFee)}`,
       available.form && `Formulario: ${previewValue(extras.form)}`
     ].filter(Boolean)
     return `\n📝 *Detalle:*\n${lines.join('\n')}`
   }
-  const message = `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n${teams.map((team, index) => `👥 *Equipo ${index + 1}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${team.tasks.map(task => `🕒 ${task.time || '--:--'} Hs\n🛠️ *${task.service || 'Servicio'}*\n👤 *${task.client || 'Cliente'}*${previewDetails(task)}${task.address ? `\n📍 *Dirección:* ${task.address}` : ''}${task.phone ? `\n📞 *Contacto:* ${task.phone}` : ''}`).join('\n\n')}`).join('\n\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n')}`
+  const taskMessage = task => `🕒 ${task.time || '--:--'} Hs\n🛠️ *${task.service || 'Servicio'}*\n👤 *${task.client || 'Cliente'}*${previewDetails(task)}${task.address ? `\n📍 *Dirección:* ${task.address}` : ''}${task.phone ? `\n📞 *Contacto:* ${task.phone}` : ''}`
+  const teamMessage = (team, index) => `👥 *Equipo ${index + 1}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${team.tasks.map(taskMessage).join('\n\n')}`
+  const individualTaskMessage = (task, team, teamIndex) => `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n👥 *Equipo ${teamIndex + 1}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${taskMessage(task)}`
+  const message = `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n${teams.map(teamMessage).join('\n\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n')}`
+  const copySingleTask = async (task, team, teamIndex, taskIndex) => {
+    const copied = await copyTextToClipboard(individualTaskMessage(task, team, teamIndex))
+    setNotice(copied
+      ? `El servicio ${taskIndex + 1} del Equipo ${teamIndex + 1} fue copiado al portapapeles.`
+      : 'No se pudo acceder al portapapeles. Revisá los permisos del navegador e intentá nuevamente.')
+  }
   const registerHistory = (agendaTeams = teams) => {
     if (!validateAgenda(agendaTeams)) return false
     setHistory(previous => {
@@ -1904,7 +1941,8 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       button.setAttribute('aria-label', 'Reasignar servicio a otro equipo')
       button.innerHTML = '<span aria-hidden="true">⇄</span>'
       button.onclick = () => openTaskMove(teamIndex, taskIndex)
-      row.append(button)
+      const actions = row.querySelector('.daily-task-actions')
+      ;(actions || row).append(button)
     })
     return () => document.querySelectorAll('.daily-move-button').forEach(button => button.remove())
   }, [teams])
@@ -1957,7 +1995,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   const dailyCustomerField = (task, teamIndex, taskIndex) => <DailyCustomerField task={task} customers={customers} teamIndex={teamIndex} taskIndex={taskIndex} onTextCommit={commitCustomerText} onCustomerSelect={selectCustomerResult} />
   return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setConfirmation('clear')}><Icon name="trash" />Limpiar agenda</button><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button><button className="primary" onClick={() => { navigator.clipboard?.writeText(message); clearAgenda() }}><Icon name="copy" />Copiar agenda</button></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, teamIndex) => <article className="team-card" key={team.teamId || teamIndex}><div className="team-header"><div><span className="team-number">{teamIndex + 1}</span><strong>Equipo {teamIndex + 1}</strong>{teams.length > 1 && <button className="team-delete" onClick={() => setConfirmation({ type: 'team', index: teamIndex })}><Icon name="trash" size={16} />Eliminar equipo</button>}</div><div className="technicians-picker"><span className="technician-assignment-label"><RequiredLabel>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</RequiredLabel></span><button className="secondary small" onClick={() => { setTechOpen(techOpen === teamIndex ? null : teamIndex); setFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === teamIndex && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={filter} onChange={event => setFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(filter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={(team.memberIds || []).some(id => String(id) === String(tech.id))} onChange={() => toggleTech(teamIndex, tech)} />{tech.name}</label>)}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, taskIndex) => <div className="task-row" key={task.taskId || task.historyId || `${team.teamId || teamIndex}-${taskIndex}`}><div className="task-title"><span>{taskIndex + 1}</span><b>Servicio</b></div><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" value={task.time} onChange={event => updateTask(teamIndex, taskIndex, { time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForTask(task)?.id || ''} onChange={event => selectTaskService(teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
 {dailyCustomerField(task, teamIndex, taskIndex)}
-<label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations">Observaciones<BufferedTextarea value={task.detail} onCommit={value => updateTask(teamIndex, taskIndex, { detail: value })} /></label>{serviceCode(serviceForTask(task)) === 'alarm-installation' && <fieldset className="installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" aria-required="true" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForTask(task)) }) }} />{label}</label>)}</fieldset>}<ServiceExtraFields className="daily-extra-fields" task={task} service={serviceForTask(task)} buffered onChange={patch => updateTask(teamIndex, taskIndex, patch)} />{team.tasks.length > 1 && <button className="icon-btn delete" onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.filter((_, index) => index !== taskIndex) }))}><Icon name="trash" size={16} /></button>}</div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
+<label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations">Observaciones<BufferedTextarea value={task.detail} onCommit={value => updateTask(teamIndex, taskIndex, { detail: value })} /></label>{serviceCode(serviceForTask(task)) === 'alarm-installation' && <fieldset className="installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" aria-required="true" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForTask(task)) }) }} />{label}</label>)}</fieldset>}<ServiceExtraFields className="daily-extra-fields" task={task} service={serviceForTask(task)} buffered onChange={patch => updateTask(teamIndex, taskIndex, patch)} /><div className="daily-task-actions"><button type="button" className="icon-btn daily-copy-button" title="Copiar este servicio" aria-label={`Copiar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => copySingleTask(task, team, teamIndex, taskIndex)}><Icon name="copy" size={16} /><span>Copiar</span></button>{team.tasks.length > 1 && <button type="button" className="icon-btn delete" title="Eliminar servicio" aria-label={`Eliminar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.filter((_, index) => index !== taskIndex) }))}><Icon name="trash" size={16} /><span>Eliminar</span></button>}</div></div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
 }
 
 /**

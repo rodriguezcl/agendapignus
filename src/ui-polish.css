@@ -256,13 +256,32 @@ span.field-label-text > span.required-mark,
 
 /* Reasignación operativa de un servicio entre equipos de la agenda diaria. */
 .task-row .daily-move-button {
-  grid-column: 7 !important;
-  grid-row: 1 !important;
-  align-self: end;
   color: #245c3d;
   font-size: 19px;
   font-weight: 700;
 }
+
+.task-row > .daily-task-actions {
+  grid-column: 7;
+  grid-row: 1 / span 4;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.daily-task-actions .icon-btn {
+  width: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.daily-task-actions .icon-btn > span:not([aria-hidden="true"]) { display: none; }
+.daily-task-actions .daily-copy-button { color: #245c3d; }
 
 .task-move-modal label {
   display: flex;
@@ -303,9 +322,11 @@ span.field-label-text > span.required-mark,
 }
 
 @media (max-width: 900px) {
-  .task-row .daily-move-button {
-    grid-column: 3 !important;
-    grid-row: auto !important;
+  .task-row > .daily-task-actions {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    flex-direction: row;
+    justify-content: flex-end;
   }
 }
 
@@ -600,7 +621,7 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
   font-size: .7rem;
 }
 
-.task-row > .service-trace { grid-column: 2 / -1; }
+.task-row > .service-trace { grid-column: 2 / 7; }
 .week-task-summary > .service-trace { margin: 0 14px 9px; }
 .history-client .service-trace { max-width: 100%; }
 
@@ -821,7 +842,8 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
   .content > .team-card .task-row > .customer-autocomplete,
   .content > .team-card .task-row > .installation-zone,
   .content > .team-card .task-row > .daily-extra-fields,
-  .content > .team-card .task-row > .service-trace {
+  .content > .team-card .task-row > .service-trace,
+  .content > .team-card .task-row > .daily-task-actions {
     grid-column: 1 / -1 !important;
     grid-row: auto !important;
   }
@@ -840,23 +862,21 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
     max-width: 100%;
   }
 
-  .content > .team-card .task-row > .icon-btn {
-    grid-row: auto !important;
+  .content > .team-card .task-row > .daily-task-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: 8px;
+  }
+
+  .content > .team-card .daily-task-actions .icon-btn {
     width: 100%;
     min-width: 0;
     min-height: 44px;
+    gap: 7px;
   }
 
-  .content > .team-card .task-row > .delete {
-    grid-column: 1 !important;
-  }
-
-  .content > .team-card .task-row > .daily-move-button {
-    grid-column: 2 !important;
-  }
-
-  .content > .team-card .task-row > .icon-btn:only-of-type {
-    grid-column: 1 / -1 !important;
+  .content > .team-card .daily-task-actions .icon-btn > span:not([aria-hidden="true"]) {
+    display: inline;
   }
 
   .content > .team-card .installation-zone {
