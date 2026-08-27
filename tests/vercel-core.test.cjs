@@ -29,6 +29,25 @@ test('el buscador del historial técnico contempla todos los datos útiles', asy
   assert.deepEqual(filterTechnicianHistory(records, 'registro inexistente'), [])
 })
 
+test('el acceso cancela solicitudes bloqueadas y permite reintentar', async () => {
+  const { AUTH_REQUEST_TIMEOUT_MS, fetchWithTimeout } = await import('../src/fetch-timeout.mjs')
+  assert.equal(AUTH_REQUEST_TIMEOUT_MS, 15_000)
+  let aborted = false
+  const hangingFetch = (resource, options) => new Promise((resolve, reject) => {
+    options.signal.addEventListener('abort', () => {
+      aborted = true
+      const error = new Error('aborted')
+      error.name = 'AbortError'
+      reject(error)
+    })
+  })
+  await assert.rejects(fetchWithTimeout('/api/auth/login', {}, 5, hangingFetch), /La conexión demoró demasiado/)
+  assert.equal(aborted, true)
+
+  const response = { ok: true }
+  assert.equal(await fetchWithTimeout('/api/auth/session', {}, 100, async () => response), response)
+})
+
 test('el técnico usa el mismo menú móvil desplegable que los demás roles', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
