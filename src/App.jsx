@@ -6,6 +6,7 @@ import { reportDownloadName, triggerBrowserDownload } from './browser-download.m
 import { filterTechnicianHistory } from './technician-history.mjs'
 import { fetchWithTimeout } from './fetch-timeout.mjs'
 import { sortOperationalHistory } from './history-order.mjs'
+import { submitTechnicianStatus } from './technician-status.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -1152,6 +1153,7 @@ export default function App() {
     // Sincronización ligera del tablero semanal. Evita recargar la página y no pisa
     // un campo que el usuario está editando en ese momento.
     if (!databaseReady || !authUser) return undefined
+    if (authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return undefined
     let refreshing = false
     let stopped = false
     const refreshWeekly = async () => {
@@ -2559,13 +2561,24 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
   useEffect(() => {
     // Todos los integrantes de un equipo consultan el mismo registro compartido.
     // Así, al informar un estado un compañero, se retira o actualiza para los demás.
-    const refreshSharedAgenda = () => {
-      if (document.visibilityState === 'hidden') return
-      fetch('/api/state', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(data => { if (Array.isArray(data?.history)) setHistory(data.history) }).catch(() => {})
+    let refreshing = false
+    let stopped = false
+    const refreshSharedAgenda = async () => {
+      if (stopped || refreshing || document.visibilityState === 'hidden') return
+      refreshing = true
+      try {
+        const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' })
+        const data = response.ok ? await response.json() : null
+        if (!stopped && Array.isArray(data?.history)) setHistory(data.history)
+      } catch {
+        // La agenda visible no se descarta ante un fallo temporal de conectividad.
+      } finally {
+        refreshing = false
+      }
     }
-    const interval = window.setInterval(refreshSharedAgenda, 10000)
+    const interval = window.setInterval(refreshSharedAgenda, 30000)
     window.addEventListener('focus', refreshSharedAgenda)
-    return () => { window.clearInterval(interval); window.removeEventListener('focus', refreshSharedAgenda) }
+    return () => { stopped = true; window.clearInterval(interval); window.removeEventListener('focus', refreshSharedAgenda) }
   }, [setHistory])
   useEffect(() => {
     const header = document.querySelector('.technician-header')
@@ -2602,11 +2615,9 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
   }, [services])
   const saveStatus = async () => {
     const { record, type } = confirm
-    const response = await fetch('/api/technician/status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recordId: record.id, type, observation }) })
-    const data = await response.json()
-    if (!response.ok) return window.alert(data.error || 'No se pudo informar el estado.')
-    setHistory(previous => previous.map(item => item.id === record.id ? data.record : item))
-    setConfirm(null); setDraft(null); setObservation('')
+    const updated = await submitTechnicianStatus({ recordId: record.id, type, observation })
+    setHistory(previous => previous.map(item => item.id === record.id ? updated : item))
+    setDraft(null); setObservation('')
   }
   const requestStatus = (record, type) => {
     if ((type === 'Cancelado' || type === 'Reprogramación solicitada') && !observation.trim()) return
@@ -3172,4 +3183,21 @@ function CustomerServiceHistory({ customer, history, close, technicianView = fal
 
 function CustomerDetail({ customer, close }) { const entries = Object.entries(customer.fields || {}).filter(([, v]) => v); return <div className="modal-layer"><div className="modal detail-modal"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">{customerKindLabel(customer).toUpperCase()} · {customer.account}</p><h2>{customer.name}</h2><div className="detail-grid">{entries.length ? entries.map(([k, v]) => <div key={k}><b>{k}</b><span>{v}</span></div>) : <><div><b>Dirección</b><span>{customer.address}</span></div><div><b>Teléfono</b><span>{customer.phone}</span></div></>}</div></div></div> }
 function Preview({ title, text, close }) { const format = line => line.split(/(\*[^*]+\*)/g).map((part, index) => part.startsWith('*') && part.endsWith('*') ? <strong key={index}>{part.slice(1, -1)}</strong> : part); return <div className="modal-layer"><div className="modal preview-modal"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">AGENDA TÉCNICA</p><h2>{title}</h2><div className="whatsapp-preview">{text.split('\n').map((line, index) => line ? <p key={index}>{format(line)}</p> : <div className="preview-space" key={index} />)}</div></div></div> }
-function Confirm({ title, detail, action, destructive, confirmLabel, close }) { return <div className="modal-layer"><div className="modal confirm-modal"><span className={destructive ? 'confirm-icon danger' : 'confirm-icon'}>{destructive ? <Icon name="trash" /> : <Icon name="lock" />}</span><h2>{title}</h2><p>{detail}</p><div className="confirm-actions"><button className="secondary" onClick={close}>Cancelar</button><button className={destructive ? 'danger-button' : 'primary'} onClick={() => { action(); close() }}>{confirmLabel || (destructive ? 'Sí, eliminar' : 'Confirmar cambios')}</button></div></div></div> }
+function Confirm({ title, detail, action, destructive, confirmLabel, close }) {
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const submit = async () => {
+    if (submitting) return
+    setSubmitting(true)
+    setError('')
+    try {
+      await action()
+      close()
+    } catch (submitError) {
+      setError(submitError?.message || 'No se pudo completar la operación. Intentá nuevamente.')
+      setSubmitting(false)
+    }
+  }
+  const label = confirmLabel || (destructive ? 'Sí, eliminar' : 'Confirmar cambios')
+  return <div className="modal-layer"><div className="modal confirm-modal"><span className={destructive ? 'confirm-icon danger' : 'confirm-icon'}>{destructive ? <Icon name="trash" /> : <Icon name="lock" />}</span><h2>{title}</h2><p>{detail}</p>{error && <div className="notice confirm-error" role="alert">{error}</div>}<div className="confirm-actions"><button className="secondary" disabled={submitting} onClick={close}>Cancelar</button><button className={destructive ? 'danger-button' : 'primary'} disabled={submitting} onClick={submit}>{submitting ? 'Guardando…' : label}</button></div></div></div>
+}

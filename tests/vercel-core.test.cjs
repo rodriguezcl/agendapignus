@@ -48,6 +48,48 @@ test('el acceso cancela solicitudes bloqueadas y permite reintentar', async () =
   assert.equal(await fetchWithTimeout('/api/auth/session', {}, 100, async () => response), response)
 })
 
+test('el estado técnico reintenta una indisponibilidad temporal sin duplicar el contenido', async () => {
+  const { submitTechnicianStatus } = await import('../src/technician-status.mjs')
+  const requests = []
+  const fetcher = async (_url, options) => {
+    requests.push(JSON.parse(options.body))
+    if (requests.length === 1) return { ok: false, status: 503, json: async () => ({ error: 'Base ocupada' }) }
+    return { ok: true, status: 200, json: async () => ({ record: { id: 'service-1', status: 'Completado' } }) }
+  }
+
+  const record = await submitTechnicianStatus({ recordId: 'service-1', type: 'Completado', observation: 'Trabajo realizado.', fetcher, retryDelay: 0 })
+  assert.equal(record.status, 'Completado')
+  assert.equal(requests.length, 2)
+  assert.deepEqual(requests[0], requests[1])
+})
+
+test('el estado técnico conserva el error funcional y no lo reintenta', async () => {
+  const { submitTechnicianStatus } = await import('../src/technician-status.mjs')
+  let requests = 0
+  const fetcher = async () => {
+    requests += 1
+    return { ok: false, status: 409, json: async () => ({ error: 'Este servicio ya fue informado desde otra sesión.' }) }
+  }
+
+  await assert.rejects(
+    submitTechnicianStatus({ recordId: 'service-1', type: 'Completado', observation: '', fetcher, retryDelay: 0 }),
+    /otra sesión/
+  )
+  assert.equal(requests, 1)
+})
+
+test('la confirmación espera el guardado y el servidor admite reintentos idempotentes', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
+  assert.match(source, /await action\(\)/)
+  assert.match(source, /submitting \? 'Guardando…' : label/)
+  assert.match(source, /role="alert"/)
+  assert.match(source, /window\.setInterval\(refreshSharedAgenda, 30000\)/)
+  assert.match(apiSource, /set local lock_timeout = '5s'/)
+  assert.match(apiSource, /record\.technicalStatus === type/)
+  assert.match(apiSource, /technicalReportedById\) === String\(user\.id\)/)
+})
+
 test('el historial prioriza fecha reciente, pendientes y horario temprano', async () => {
   const { sortOperationalHistory } = await import('../src/history-order.mjs')
   const records = [

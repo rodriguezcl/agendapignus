@@ -649,6 +649,26 @@ input[type='radio'] {
   color: #b9cabd;
 }
 
+.confirm-modal .confirm-error {
+  display: block;
+  margin: -8px 0 18px;
+  border-color: #efc3bd;
+  background: #fff0ee;
+  color: #963d35;
+  text-align: left;
+}
+
+.app-shell[data-theme='dark'] .confirm-modal .confirm-error {
+  border-color: #77443e;
+  background: #351f1d;
+  color: #ffc9c2;
+}
+
+.confirm-actions button:disabled {
+  cursor: wait;
+  opacity: .68;
+}
+
 .app-shell[data-theme='dark'] :is(.weekly-task-form, .modal > .history-edit-grid, .modal > .monthly-team-list, .modal > .role-editor) {
   border-color: #3d5946;
   background: #17271e;

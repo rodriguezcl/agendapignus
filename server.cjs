@@ -1385,7 +1385,11 @@ const server = http.createServer((req, res) => {
       if (!record) return send(res, 404, { error: 'El servicio no existe.' })
       const assigned = record.technicianIds?.some(id => String(id) === String(user.id))
       if (!assigned) return send(res, 403, { error: 'El servicio no está asignado al técnico autenticado.' })
-      if (!allowed.includes(type) || record.technicalStatus) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
+        if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
+        if (record.technicalStatus) {
+          if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record })
+          return send(res, 409, { error: 'Este servicio ya fue informado desde otra sesión.' })
+        }
       if (type !== 'Completado' && !String(observation || '').trim()) return send(res, 400, { error: 'La observación es obligatoria.' })
       const now = new Date().toISOString()
       const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim(), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type }
