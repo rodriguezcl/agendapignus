@@ -154,6 +154,83 @@ span.field-label-text > span.required-mark,
   }
 }
 
+/* Historial operativo: hora visible y lectura priorizada sin abandonar la tabla. */
+.history-bulk .table-head,
+.history-bulk .history-row {
+  grid-template-columns: 42px minmax(145px, .85fr) 78px minmax(235px, 1.6fr) minmax(125px, .75fr) minmax(120px, .75fr) 98px 108px !important;
+}
+
+.history-bulk .history-time {
+  min-width: 0;
+  color: #264b36;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.app-shell[data-theme='dark'] .history-bulk .history-time {
+  color: #dce9df;
+}
+
+@media (min-width: 641px) and (max-width: 900px) {
+  .history-bulk {
+    overflow-x: auto;
+  }
+
+  .history-bulk .table-head,
+  .history-bulk .history-row {
+    min-width: 760px;
+    grid-template-columns: 35px 125px 72px minmax(190px, 1fr) minmax(135px, .8fr) 102px 110px !important;
+  }
+
+  .history-bulk .history-technicians {
+    display: none !important;
+  }
+
+  .history-bulk .table-head > span:nth-child(5) {
+    display: block !important;
+  }
+
+  .history-bulk .table-head > span:nth-child(6) {
+    display: none !important;
+  }
+
+  .history-bulk .history-row > div:nth-child(5) {
+    display: block !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .history-bulk .table-head {
+    display: none !important;
+  }
+
+  .history-bulk .history-row {
+    grid-template-columns: 32px minmax(0, 1fr) auto !important;
+  }
+
+  .history-bulk .history-row > .history-time {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    justify-self: start;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #edf4ed;
+    font-size: 12px;
+  }
+
+  .history-bulk .history-row > div:nth-child(5) {
+    display: block !important;
+  }
+
+  .history-bulk .history-technicians {
+    display: flex !important;
+  }
+
+  .app-shell[data-theme='dark'] .history-bulk .history-row > .history-time {
+    background: #263b2e;
+  }
+}
+
 /* Historial contextual del abonado/cliente: lectura rápida y trazable. */
 .customer-history-modal {
   width: min(760px, calc(100vw - 28px));
