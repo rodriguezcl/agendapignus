@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './components/ui/Icon.jsx'
 import { HelpShell } from './HelpCenter.jsx'
 import { visibleAnnualMonthLabels } from './annual-chart.mjs'
+import { reportDownloadName, triggerBrowserDownload } from './browser-download.mjs'
 import { filterTechnicianHistory } from './technician-history.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
@@ -2657,7 +2658,10 @@ function DashboardStatusView({ history, services }) {
     })
     return () => { legend.remove(); chart.querySelectorAll('.bar-retirements, .retirement-value, .bar-installation-stack').forEach(element => element.remove()) }
   }, [months.map(item => `${item.value}:${item.retirements}:${item.locations.docta}:${item.locations['nobu-town']}:${item.locations.residencial}`).join('|'), max])
-  const download = (category, format = 'excel') => window.location.assign(`/api/history/export?month=${encodeURIComponent(month)}&category=${category}&format=${format}`)
+  const download = (category, format = 'excel') => {
+    const href = `/api/history/export?month=${encodeURIComponent(month)}&category=${encodeURIComponent(category)}&format=${encodeURIComponent(format)}`
+    triggerBrowserDownload(href, reportDownloadName(month, category, format))
+  }
   const serviceBreakdown = Object.entries(records.reduce((summary, record) => { const name = record.service?.trim() || 'Sin especificar'; summary[name] = (summary[name] || 0) + 1; return summary }, {})).sort(([, left], [, right]) => right - left)
   const [selectedYear, selectedMonth] = month.split('-').map(Number)
   const today = new Date()
