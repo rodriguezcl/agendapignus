@@ -11,6 +11,21 @@
   --ui-focus: rgba(204, 147, 16, .18);
 }
 
+@media (max-width: 640px) {
+  /* El menú móvil debe cubrir encabezados de equipos, selectores y tarjetas. */
+  .app-shell > .sidebar.open,
+  .audit-shell > .sidebar.open,
+  body > .technician-sidebar.open {
+    z-index: 120 !important;
+  }
+
+  .app-shell > .backdrop,
+  .audit-shell > .backdrop,
+  body > .technician-menu-backdrop {
+    z-index: 110 !important;
+  }
+}
+
 /* Normalización transversal de formularios y acciones (UX/UI). */
 span.field-label-text {
   display: inline-flex;

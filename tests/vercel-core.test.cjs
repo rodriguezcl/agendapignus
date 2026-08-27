@@ -404,3 +404,19 @@ test('convierte el abonado y todas sus referencias al completar una baja', () =>
   assert.equal(result.state.history[0].clientAccount, 'CLI-0001')
   assert.equal(result.state.agenda.teams[0].tasks[0].clientAccount, 'CLI-0001')
 })
+
+test('el menú móvil cubre las tarjetas de Agenda del día y el acceso directo usa el búho', () => {
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  const html = fs.readFileSync(path.resolve(__dirname, '../index.html'), 'utf8')
+  const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../public/manifest.webmanifest'), 'utf8'))
+  const icon = fs.readFileSync(path.resolve(__dirname, '../public/apple-touch-icon.png'))
+
+  assert.match(styles, /\.app-shell > \.sidebar\.open[\s\S]*z-index: 120 !important/)
+  assert.match(styles, /\.app-shell > \.backdrop[\s\S]*z-index: 110 !important/)
+  assert.match(html, /rel="apple-touch-icon" href="\/apple-touch-icon\.png"/)
+  assert.match(html, /rel="manifest" href="\/manifest\.webmanifest"/)
+  assert.equal(manifest.short_name, 'Agenda Pignus')
+  assert.ok(manifest.icons.some(item => item.src === '/apple-touch-icon.png'))
+  assert.equal(icon.readUInt32BE(16), 180)
+  assert.equal(icon.readUInt32BE(20), 180)
+})
