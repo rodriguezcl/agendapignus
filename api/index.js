@@ -258,7 +258,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
       if (!allowed.includes(type) || record.technicalStatus) throw new Error('No se puede actualizar este servicio.')
       if (type !== 'Completado' && !String(observation || '').trim()) throw new Error('La observación es obligatoria.')
       const now = new Date().toISOString()
-      const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim(), technicalReportedAt: now, completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type }
+      const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim(), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type }
       await transaction`update pignus_work_history set status = ${next.status}, data = ${transaction.json(next)} where id = ${String(record.id)}`
       const entries = [auditEntry(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, next)]
       if (next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo')) {

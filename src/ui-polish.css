@@ -154,6 +154,135 @@ span.field-label-text > span.required-mark,
   }
 }
 
+/* Historial contextual del abonado/cliente: lectura rápida y trazable. */
+.customer-history-modal {
+  width: min(760px, calc(100vw - 28px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+}
+
+.customer-history-summary {
+  margin: 6px 0 18px;
+  color: #607066;
+}
+
+.customer-history-list {
+  display: grid;
+  gap: 12px;
+}
+
+.customer-history-entry {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #d9e4da;
+  border-radius: 12px;
+  background: #fbfdfb;
+}
+
+.customer-history-entry > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e9e3;
+}
+
+.customer-history-entry > header > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.customer-history-entry > header span {
+  color: #54675b;
+  overflow-wrap: anywhere;
+}
+
+.customer-history-entry dl {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+}
+
+.customer-history-entry dl > div {
+  display: grid;
+  gap: 3px;
+}
+
+.customer-history-entry dt {
+  color: #64766a;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+
+.customer-history-entry dd {
+  margin: 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.customer-history-entry .customer-history-technical {
+  padding: 11px 12px;
+  border-left: 3px solid #c99600;
+  border-radius: 4px 9px 9px 4px;
+  background: #fff8df;
+}
+
+.customer-history-technical small {
+  margin-top: 3px;
+  color: #6c766f;
+}
+
+.technician-customer-history {
+  width: fit-content;
+  margin: 4px 0 12px;
+}
+
+@media (min-width: 641px) and (max-width: 900px) {
+  .accounts-table .account-row > .row-actions {
+    display: flex;
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+}
+
+.app-shell[data-theme='dark'] .customer-history-entry,
+.technician-page[data-theme='dark'] .customer-history-entry {
+  border-color: #334a3c;
+  background: #17271e;
+}
+
+.app-shell[data-theme='dark'] .customer-history-entry .customer-history-technical,
+.technician-page[data-theme='dark'] .customer-history-entry .customer-history-technical {
+  background: #2b2b17;
+}
+
+@media (max-width: 640px) {
+  .customer-history-modal {
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
+    padding: 22px 16px 16px;
+  }
+
+  .customer-history-entry {
+    padding: 13px;
+  }
+
+  .customer-history-entry > header {
+    flex-direction: column;
+  }
+
+  .customer-history-entry > header .work-status {
+    align-self: flex-start;
+  }
+
+  .technician-customer-history {
+    width: 100%;
+  }
+}
+
 @media (max-width: 360px) {
   .module-intro .action-group {
     grid-template-columns: minmax(0, 1fr);

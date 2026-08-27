@@ -677,12 +677,24 @@ function readState() {
 }
 
 function readTechnicianState(user) {
+  const technicianId = String(user.id)
+  const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+  const history = rows('work_history')
+  const assignedHistory = history.filter(record => record.technicianIds?.some(id => String(id) === technicianId))
+  const activeAssigned = assignedHistory.filter(record => String(record.date || '') >= today && !record.technicalStatus && !['Completado', 'Cancelado', 'Reprogramado'].includes(record.status))
+  const activeCustomerIds = new Set(activeAssigned.map(record => String(record.customerId || '')).filter(Boolean))
+  const activeCustomerAccounts = new Set(activeAssigned.map(record => String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()).filter(Boolean))
   return {
     revision: currentStateRevision(),
     roles: [], employees: [], services: [], customers: [], agenda: null, preferences: {},
     // El nombre es solamente una etiqueta visible. El acceso se decide siempre
     // mediante el identificador inmutable del empleado autenticado.
-    history: rows('work_history').filter(record => record.technicianIds?.some(id => String(id) === String(user.id)))
+    history: history.filter(record => {
+      if (record.technicianIds?.some(id => String(id) === technicianId)) return true
+      const customerId = String(record.customerId || '')
+      const account = String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()
+      return (customerId && activeCustomerIds.has(customerId)) || (account && activeCustomerAccounts.has(account))
+    })
   }
 }
 
@@ -697,7 +709,7 @@ function readStateForUser(user) {
     employees: userCan(user, 'employees') ? state.employees : state.employees.map(({ id, firstName, lastName, name, roleId, role, status }) => ({ id, firstName, lastName, name, roleId, role, status })),
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? state.services : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
-    history: userCan(user, 'history') ? state.history : [],
+    history: userCan(user, 'history') || userCan(user, 'accounts') ? state.history : [],
     agenda: canPlan ? state.agenda : null
   }
 }
@@ -1376,7 +1388,7 @@ const server = http.createServer((req, res) => {
       if (!allowed.includes(type) || record.technicalStatus) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
       if (type !== 'Completado' && !String(observation || '').trim()) return send(res, 400, { error: 'La observación es obligatoria.' })
       const now = new Date().toISOString()
-      const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim(), technicalReportedAt: now, completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type }
+      const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim(), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type }
       db.exec('BEGIN')
       try {
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(updated), String(record.id))
