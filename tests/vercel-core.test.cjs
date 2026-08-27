@@ -48,6 +48,28 @@ test('el acceso cancela solicitudes bloqueadas y permite reintentar', async () =
   assert.equal(await fetchWithTimeout('/api/auth/session', {}, 100, async () => response), response)
 })
 
+test('el historial prioriza fecha reciente, pendientes y horario temprano', async () => {
+  const { sortOperationalHistory } = await import('../src/history-order.mjs')
+  const records = [
+    { id: 'older-pending', date: '2026-08-26', time: '08:00', status: 'Pendiente', client: 'Cliente anterior' },
+    { id: 'completed-early', date: '2026-08-27', time: '08:30', status: 'Completado', client: 'Completado' },
+    { id: 'pending-late', date: '2026-08-27', time: '13:00', status: 'Pendiente', client: 'Pendiente tarde' },
+    { id: 'pending-early', date: '2026-08-27', time: '09:30', status: 'Pendiente', client: 'Pendiente temprano' },
+    { id: 'review', date: '2026-08-27', time: '10:00', status: 'Requiere revisión', client: 'Revisión' },
+    { id: 'pending-no-time', date: '2026-08-27', status: 'Pendiente', client: 'Sin horario' }
+  ]
+  assert.deepEqual(records.sort(sortOperationalHistory).map(record => record.id), ['pending-early', 'review', 'pending-late', 'pending-no-time', 'completed-early', 'older-pending'])
+})
+
+test('el historial muestra la hora asignada como una columna propia', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(source, /<span>Hora<\/span>/)
+  assert.match(source, /Hora asignada:/)
+  assert.match(source, /sort\(sortOperationalHistory\)/)
+  assert.match(styles, /\.history-bulk \.history-time/)
+})
+
 test('el técnico usa el mismo menú móvil desplegable que los demás roles', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
