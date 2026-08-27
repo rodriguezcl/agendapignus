@@ -1338,3 +1338,53 @@ body.dark .week-task-summary.available-slot:focus-visible {
 .weekly-customer-results button span {
   color: #607466;
 }
+
+/* El gráfico anual usa sólo los meses disponibles y reserva más aire para sus
+   dos series cuando se consulta desde una pantalla angosta. */
+@media (max-width: 640px) {
+  .annual-chart {
+    overflow: hidden;
+    padding: 17px 13px;
+  }
+
+  .annual-chart h2 {
+    font-size: 16px;
+  }
+
+  .annual-chart .chart-legend {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+    gap: 8px 12px;
+    margin: 0 0 10px;
+    font-size: 11px;
+  }
+
+  .annual-chart .chart-legend span {
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .annual-chart .bar-chart {
+    gap: 5px;
+    margin-top: 16px;
+    padding-inline: 1px;
+  }
+
+  .annual-chart .bar-installation-stack {
+    width: 12px;
+    max-width: 12px;
+    transform: translateX(-7px);
+  }
+
+  .annual-chart .bar-retirements {
+    left: calc(50% + 1px);
+    width: 12px;
+    max-width: 12px;
+  }
+
+  .annual-chart .retirement-value {
+    left: calc(50% + 1px);
+    width: 12px;
+  }
+}

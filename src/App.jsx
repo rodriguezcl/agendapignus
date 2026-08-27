@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './components/ui/Icon.jsx'
 import { HelpShell } from './HelpCenter.jsx'
+import { visibleAnnualMonthLabels } from './annual-chart.mjs'
 import { filterTechnicianHistory } from './technician-history.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
@@ -2598,7 +2599,7 @@ function DashboardStatusView({ history, services }) {
   const netGrowth = alarms.length - retirements.length
   const zoneOf = record => record.installationZone || (`${record.address || ''} ${record.client || ''}`.toLowerCase().includes('docta') ? 'docta' : `${record.address || ''} ${record.client || ''}`.toLowerCase().includes('nobu') ? 'nobu-town' : 'residencial')
   const zones = [['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residenciales']]
-  const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'].map((label, index) => {
+  const months = visibleAnnualMonthLabels(year).map((label, index) => {
     const monthKey = `${year}-${String(index + 1).padStart(2, '0')}`
     const monthlyAlarms = history.filter(record => record.date?.startsWith(monthKey) && isComplete(record) && isAlarmRecord(record))
     return {
@@ -2642,15 +2643,16 @@ function DashboardStatusView({ history, services }) {
       })
       item.insertBefore(stack, item.querySelector('small'))
       const retirements = months[index]?.retirements || 0
+      if (!retirements) return
       const bar = document.createElement('i')
       bar.className = 'bar-retirements'
-      bar.style.height = `${Math.max(retirements ? 4 : 0, retirements / max * 100)}%`
+      bar.style.height = `${Math.max(4, retirements / max * 100)}%`
       bar.title = `${retirements} baja${retirements === 1 ? '' : 's'}`
       item.append(bar)
       const value = document.createElement('span')
       value.className = 'retirement-value'
       value.textContent = retirements
-      value.style.bottom = `calc(${Math.max(retirements ? 4 : 0, retirements / max * 100)}% + 22px)`
+      value.style.bottom = `calc(${Math.max(4, retirements / max * 100)}% + 22px)`
       item.append(value)
     })
     return () => { legend.remove(); chart.querySelectorAll('.bar-retirements, .retirement-value, .bar-installation-stack').forEach(element => element.remove()) }
