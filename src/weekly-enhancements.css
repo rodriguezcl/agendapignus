@@ -29,6 +29,44 @@
   font-weight: 700;
 }
 
+.weekly-guard-advanced {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 8px 10px 0;
+  padding: 9px 10px;
+  border: 1px solid #b9d7c1;
+  border-radius: 8px;
+  background: #e9f6ec;
+  color: #215b32;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.weekly-guard-advanced svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.weekly-guard-advanced.has-conflict {
+  border-color: #e2aaa5;
+  background: #fde8e6;
+  color: #a73932;
+}
+
+.app-shell[data-theme='dark'] .weekly-guard-advanced {
+  border-color: #3f7650;
+  background: #173c25;
+  color: #bfe5c9;
+}
+
+.app-shell[data-theme='dark'] .weekly-guard-advanced.has-conflict {
+  border-color: #98534e;
+  background: #492421;
+  color: #ffd0cc;
+}
+
 .weekly-add-team {
   display: flex;
   width: calc(100% - 20px);
