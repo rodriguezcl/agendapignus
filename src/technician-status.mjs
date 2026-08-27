@@ -3,6 +3,7 @@ const retryableStatuses = new Set([503, 504])
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 
 export async function submitTechnicianStatus({ recordId, type, observation, fetcher = fetch, retryDelay = 700 }) {
+  if (!String(observation || '').trim()) throw new Error('La observación es obligatoria para informar el servicio.')
   let lastError
 
   for (let attempt = 0; attempt < 2; attempt += 1) {

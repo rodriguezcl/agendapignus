@@ -72,10 +72,25 @@ test('el estado técnico conserva el error funcional y no lo reintenta', async (
   }
 
   await assert.rejects(
-    submitTechnicianStatus({ recordId: 'service-1', type: 'Completado', observation: '', fetcher, retryDelay: 0 }),
+    submitTechnicianStatus({ recordId: 'service-1', type: 'Completado', observation: 'Trabajo informado.', fetcher, retryDelay: 0 }),
     /otra sesión/
   )
   assert.equal(requests, 1)
+})
+
+test('el técnico no puede informar un servicio sin observación', async () => {
+  const { submitTechnicianStatus } = await import('../src/technician-status.mjs')
+  let requests = 0
+  await assert.rejects(
+    submitTechnicianStatus({ recordId: 'service-1', type: 'Completado', observation: '   ', fetcher: async () => { requests += 1 } }),
+    /observación es obligatoria/i
+  )
+  assert.equal(requests, 0)
+
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  assert.match(source, /<RequiredLabel>Observación<\/RequiredLabel>/)
+  assert.match(source, /disabled=\{!observation\.trim\(\)\}/)
+  assert.doesNotMatch(source, /Observación técnica \(opcional\)/)
 })
 
 test('la confirmación espera el guardado y el servidor admite reintentos idempotentes', () => {
@@ -333,7 +348,8 @@ test('vincula abonados con su historial y conserva autoría de las observaciones
   assert.match(source, /Ver historial del cliente/)
   assert.match(source, /CONSULTA TÉCNICA · SOLO LECTURA/)
   assert.match(source, /Observación de agenda \/ administración/)
-  assert.match(source, /Observación técnica \(opcional\)/)
+  assert.match(source, /<RequiredLabel>Observación<\/RequiredLabel>/)
+  assert.match(apiSource, /La observación es obligatoria para informar el servicio/)
   assert.match(apiSource, /technicalReportedById: user\.id/)
   assert.match(apiSource, /technicalReportedByName: user\.name/)
   assert.match(styles, /\.customer-history-modal/)

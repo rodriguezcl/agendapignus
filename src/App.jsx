@@ -683,10 +683,13 @@ function Login({ onLogin }) {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [requestingReset, setRequestingReset] = useState(false)
   const submit = async event => {
     event.preventDefault()
     setError('')
+    setMessage('')
     setSubmitting(true)
     try {
       const response = await fetchWithTimeout('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
@@ -697,7 +700,19 @@ function Login({ onLogin }) {
     } catch (loginError) { setError(loginError.message) }
     finally { setSubmitting(false) }
   }
-  return <main className="login-page"><form className="login-card" onSubmit={submit}><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">ACCESO SEGURO</p><h1>Ingresá a Agenda técnica</h1><p>Usá el correo y la contraseña definidos en el módulo Empleados.</p><label><RequiredLabel>Correo electrónico</RequiredLabel><input required autoComplete="username" type="email" value={email} onChange={event => setEmail(event.target.value)} /></label><label htmlFor="login-password"><RequiredLabel>Contraseña</RequiredLabel></label><div className="password-field"><input id="login-password" aria-label="Contraseña" required autoComplete="current-password" minLength="8" type={showPassword ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} /><button type="button" className="password-visibility" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}><Icon name="eye" size={17} /><span>{showPassword ? 'Ocultar' : 'Mostrar'}</span></button></div>{error && <p className="login-error" role="alert">{error}</p>}<button className="primary" disabled={submitting}>{submitting ? 'Verificando acceso...' : 'Iniciar sesión'}</button><small>El acceso se cierra automáticamente al finalizar la sesión.</small></form></main>
+  const requestPasswordReset = async () => {
+    setError(''); setMessage('')
+    if (!email.trim()) return setError('Ingresá tu correo electrónico para solicitar el cambio de contraseña.')
+    setRequestingReset(true)
+    try {
+      const response = await fetchWithTimeout('/api/auth/password-reset-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) })
+      const data = await response.json().catch(() => ({ error: 'No se pudo registrar la solicitud.' }))
+      if (!response.ok) throw new Error(data.error || 'No se pudo registrar la solicitud.')
+      setMessage(data.message || 'La solicitud fue enviada al Administrador.')
+    } catch (requestError) { setError(requestError.message) }
+    finally { setRequestingReset(false) }
+  }
+  return <main className="login-page"><form className="login-card" onSubmit={submit}><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">ACCESO SEGURO</p><h1>Ingresá a Agenda técnica</h1><p>Usá el correo y la contraseña definidos en el módulo Empleados.</p><label><RequiredLabel>Correo electrónico</RequiredLabel><input required autoComplete="username" type="email" value={email} onChange={event => setEmail(event.target.value)} /></label><label htmlFor="login-password"><RequiredLabel>Contraseña</RequiredLabel></label><div className="password-field"><input id="login-password" aria-label="Contraseña" required autoComplete="current-password" minLength="8" type={showPassword ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} /><button type="button" className="password-visibility" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}><Icon name="eye" size={17} /><span>{showPassword ? 'Ocultar' : 'Mostrar'}</span></button></div><button type="button" className="forgot-password" disabled={requestingReset || submitting} onClick={requestPasswordReset}>{requestingReset ? 'Enviando solicitud...' : 'Olvidé mi contraseña'}</button>{error && <p className="login-error" role="alert">{error}</p>}{message && <p className="login-success" role="status">{message}</p>}<button className="primary" disabled={submitting || requestingReset}>{submitting ? 'Verificando acceso...' : 'Iniciar sesión'}</button><small>El acceso se cierra automáticamente al finalizar la sesión.</small></form></main>
 }
 
 export default function App() {
@@ -855,8 +870,13 @@ export default function App() {
   }, [desktopSidebar, sidebarCollapsed])
   useEffect(() => {
     const goToHistory = () => setModule('history')
+    const goToEmployees = () => setModule('employees')
     window.addEventListener('pignus:open-history', goToHistory)
-    return () => window.removeEventListener('pignus:open-history', goToHistory)
+    window.addEventListener('pignus:open-employees', goToEmployees)
+    return () => {
+      window.removeEventListener('pignus:open-history', goToHistory)
+      window.removeEventListener('pignus:open-employees', goToEmployees)
+    }
   }, [])
   useEffect(() => {
     const replaceCustomers = event => {
@@ -2548,6 +2568,35 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   </>
 }
 
+function PasswordResetReminder() {
+  const [requests, setRequests] = useState([])
+  const [error, setError] = useState('')
+  const load = useCallback(async () => {
+    try {
+      const response = await fetchWithTimeout('/api/auth/password-reset-requests')
+      const data = await response.json().catch(() => ({}))
+      if (response.status === 403) { setRequests([]); setError(''); return }
+      if (!response.ok) throw new Error(data.error || 'No se pudieron consultar las solicitudes.')
+      setRequests(data.requests || []); setError('')
+    } catch (loadError) { setError(loadError.message) }
+  }, [])
+  useEffect(() => {
+    load()
+    const timer = setInterval(load, 30000)
+    const refresh = () => load()
+    globalThis.addEventListener?.('focus', refresh)
+    return () => { clearInterval(timer); globalThis.removeEventListener?.('focus', refresh) }
+  }, [load])
+  const resolve = async id => {
+    const response = await fetchWithTimeout('/api/auth/password-reset-requests', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) return setError(data.error || 'No se pudo cerrar la solicitud.')
+    setRequests(current => current.filter(item => item.id !== id)); setError('')
+  }
+  if (!requests.length && !error) return null
+  return <section className="password-reset-reminders" aria-label="Solicitudes de cambio de contraseña">{error && <p className="login-error" role="alert">{error}</p>}{requests.map(request => <article className="password-reset-reminder" key={request.id}><Icon name="settings" /><div><b>Solicitud de cambio de contraseña</b><span><strong>{request.email}</strong> solicita actualizar su contraseña.</span><small>{new Date(request.requestedAt).toLocaleString('es-AR')}</small></div><div className="password-reset-actions"><button className="secondary" type="button" onClick={() => window.dispatchEvent(new Event('pignus:open-employees'))}>Gestionar en Empleados</button><button className="primary" type="button" onClick={() => resolve(request.id)}>Marcar resuelta</button></div></article>)}</section>
+}
+
 function Dashboard({ history, services }) {
   return <DashboardView history={history} services={services} />
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
@@ -2561,7 +2610,7 @@ function Dashboard({ history, services }) {
 }
 
 function DashboardView({ history, services }) {
-  return <DashboardStatusView history={history} services={services} />
+  return <><PasswordResetReminder /><DashboardStatusView history={history} services={services} /></>
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
   const year = month.slice(0, 4)
   const records = history.filter(record => record.date?.startsWith(month)).sort((a, b) => b.date.localeCompare(a.date))
@@ -2754,7 +2803,7 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
     if ((type === 'Cancelado' || type === 'Reprogramación solicitada') && !observation.trim()) return
     setConfirm({ record, type })
   }
-  return <main className="technician-page"><header className="technician-header"><img src="/logo-pignus.png" alt="Pignus" /><div><b>{user.name}</b><span>{user.email}</span></div><button className="logout-button" onClick={() => setConfirm({ logout: true })}><Icon name="logout" size={17} />Cerrar sesión</button></header><section className="technician-content"><p className="eyebrow">MI AGENDA</p><h1>Servicios asignados</h1><p className="technician-help">Completá cada servicio en el orden indicado. La dirección y el contacto del siguiente se habilitan al informar el estado del actual.</p>{view === 'history' && <div className="technician-history-search"><label htmlFor="technician-history-query">Buscar en mi historial</label><div><Icon name="search" size={18} /><input id="technician-history-query" type="search" value={historySearch} onChange={event => setHistorySearch(event.target.value)} placeholder="Cliente, código, servicio, fecha o detalle..." autoComplete="off" /></div><small>{services.length} de {completedServices.length} servicio(s)</small></div>}{services.length ? services.map((record, index) => { const unlocked = view === 'history' || index === 0 || resolved(services[index - 1]); const done = resolved(record); return <article className={`technician-service ${unlocked ? '' : 'locked'}`} key={record.id}><div className="technician-service-head"><span>{index + 1}</span><div><b>{record.time ? `${record.time} Hs` : 'Horario a confirmar'}</b><small>{prettyDate(record.date)}</small></div><em className={`work-status ${done ? 'completado' : 'pendiente'}`}>{record.technicalStatus || record.status || 'Pendiente'}</em></div><h2>{record.service}</h2><p className="tech-client">{record.client}</p><p><b>Detalle:</b> {record.detail || 'Sin observaciones'}</p>{unlocked ? <><p><b>Dirección:</b> {record.address || 'Sin dirección'}</p><p><b>Contacto:</b> {record.phone || 'Sin contacto'}</p><button className="secondary technician-customer-history" onClick={() => setCustomerHistoryRecord(record)}><Icon name="history" size={17} />Ver historial del cliente</button></> : <p className="locked-info">La dirección y el contacto se habilitarán al informar el estado del servicio anterior.</p>}{unlocked && !done && <div className="technician-actions"><button className="primary" onClick={() => { setDraft({ record, type: 'Completado' }); setObservation('') }}><Icon name="check" />Marcar completado</button><button className="secondary" onClick={() => { setDraft({ record, type: 'Reprogramación solicitada' }); setObservation('') }}>Solicitar reprogramación</button><button className="secondary" onClick={() => { setDraft({ record, type: 'Cancelado' }); setObservation('') }}>Informar cancelación</button></div>}{done && record.technicalReportedAt && <small className="reported-at">Informado: {prettyReportDateTime(record.technicalReportedAt)}</small>}</article> }) : <div className="empty-state">{view === 'history' && historySearch.trim() ? 'No hay servicios que coincidan con la búsqueda.' : view === 'history' ? 'Todavía no informaste servicios.' : 'No tenés servicios asignados pendientes para hoy o fechas futuras.'}</div>}</section>{draft && <div className="modal-layer"><div className="modal technician-status-modal"><button className="close-modal" onClick={() => setDraft(null)}><Icon name="close" /></button><p className="eyebrow">ACTUALIZAR SERVICIO</p><h2>{draft.type}</h2><p>{draft.record.client} · {draft.record.service}</p><label>{draft.type === 'Completado' ? 'Observación técnica (opcional)' : <RequiredLabel>Observación</RequiredLabel>}<textarea required={draft.type !== 'Completado'} value={observation} onChange={event => setObservation(event.target.value)} placeholder={draft.type === 'Completado' ? 'Dejá información útil para futuras visitas a este cliente.' : 'Explicá el motivo para que Administración pueda gestionarlo.'} /></label><div className="modal-actions"><button className="secondary" onClick={() => setDraft(null)}>Cancelar</button><button className="primary" disabled={draft.type !== 'Completado' && !observation.trim()} onClick={() => setConfirm({ record: draft.record, type: draft.type })}>Continuar</button></div></div></div>}{customerHistoryRecord && <CustomerServiceHistory customer={customerHistoryRecord} history={history} close={() => setCustomerHistoryRecord(null)} technicianView />}{confirm?.record && <Confirm title="Confirmar estado" detail={`¿Confirmás que querés informar “${confirm.type}”? Luego quedará registrado y cualquier cambio deberá ser revisado por Administración.`} action={saveStatus} confirmLabel="Sí, confirmar estado" close={() => setConfirm(null)} />}{confirm?.logout && <Confirm title="Cerrar sesión" detail="¿Querés cerrar sesión?" action={logout} confirmLabel="Sí, cerrar sesión" close={() => setConfirm(null)} />}</main>
+  return <main className="technician-page"><header className="technician-header"><img src="/logo-pignus.png" alt="Pignus" /><div><b>{user.name}</b><span>{user.email}</span></div><button className="logout-button" onClick={() => setConfirm({ logout: true })}><Icon name="logout" size={17} />Cerrar sesión</button></header><section className="technician-content"><p className="eyebrow">MI AGENDA</p><h1>Servicios asignados</h1><p className="technician-help">Completá cada servicio en el orden indicado. La dirección y el contacto del siguiente se habilitan al informar el estado del actual.</p>{view === 'history' && <div className="technician-history-search"><label htmlFor="technician-history-query">Buscar en mi historial</label><div><Icon name="search" size={18} /><input id="technician-history-query" type="search" value={historySearch} onChange={event => setHistorySearch(event.target.value)} placeholder="Cliente, código, servicio, fecha o detalle..." autoComplete="off" /></div><small>{services.length} de {completedServices.length} servicio(s)</small></div>}{services.length ? services.map((record, index) => { const unlocked = view === 'history' || index === 0 || resolved(services[index - 1]); const done = resolved(record); return <article className={`technician-service ${unlocked ? '' : 'locked'}`} key={record.id}><div className="technician-service-head"><span>{index + 1}</span><div><b>{record.time ? `${record.time} Hs` : 'Horario a confirmar'}</b><small>{prettyDate(record.date)}</small></div><em className={`work-status ${done ? 'completado' : 'pendiente'}`}>{record.technicalStatus || record.status || 'Pendiente'}</em></div><h2>{record.service}</h2><p className="tech-client">{record.client}</p><p><b>Detalle:</b> {record.detail || 'Sin observaciones'}</p>{unlocked ? <><p><b>Dirección:</b> {record.address || 'Sin dirección'}</p><p><b>Contacto:</b> {record.phone || 'Sin contacto'}</p><button className="secondary technician-customer-history" onClick={() => setCustomerHistoryRecord(record)}><Icon name="history" size={17} />Ver historial del cliente</button></> : <p className="locked-info">La dirección y el contacto se habilitarán al informar el estado del servicio anterior.</p>}{unlocked && !done && <div className="technician-actions"><button className="primary" onClick={() => { setDraft({ record, type: 'Completado' }); setObservation('') }}><Icon name="check" />Marcar completado</button><button className="secondary" onClick={() => { setDraft({ record, type: 'Reprogramación solicitada' }); setObservation('') }}>Solicitar reprogramación</button><button className="secondary" onClick={() => { setDraft({ record, type: 'Cancelado' }); setObservation('') }}>Informar cancelación</button></div>}{done && record.technicalReportedAt && <small className="reported-at">Informado: {prettyReportDateTime(record.technicalReportedAt)}</small>}</article> }) : <div className="empty-state">{view === 'history' && historySearch.trim() ? 'No hay servicios que coincidan con la búsqueda.' : view === 'history' ? 'Todavía no informaste servicios.' : 'No tenés servicios asignados pendientes para hoy o fechas futuras.'}</div>}</section>{draft && <div className="modal-layer"><div className="modal technician-status-modal"><button className="close-modal" onClick={() => setDraft(null)}><Icon name="close" /></button><p className="eyebrow">ACTUALIZAR SERVICIO</p><h2>{draft.type}</h2><p>{draft.record.client} · {draft.record.service}</p><label><RequiredLabel>Observación</RequiredLabel><textarea required value={observation} onChange={event => setObservation(event.target.value)} placeholder="Detallá el trabajo realizado, el resultado y cualquier recomendación para futuras visitas." /></label><div className="modal-actions"><button className="secondary" onClick={() => setDraft(null)}>Cancelar</button><button className="primary" disabled={!observation.trim()} onClick={() => setConfirm({ record: draft.record, type: draft.type })}>Continuar</button></div></div></div>}{customerHistoryRecord && <CustomerServiceHistory customer={customerHistoryRecord} history={history} close={() => setCustomerHistoryRecord(null)} technicianView />}{confirm?.record && <Confirm title="Confirmar estado" detail={`¿Confirmás que querés informar “${confirm.type}”? Luego quedará registrado y cualquier cambio deberá ser revisado por Administración.`} action={saveStatus} confirmLabel="Sí, confirmar estado" close={() => setConfirm(null)} />}{confirm?.logout && <Confirm title="Cerrar sesión" detail="¿Querés cerrar sesión?" action={logout} confirmLabel="Sí, cerrar sesión" close={() => setConfirm(null)} />}</main>
 }
 
 function DashboardStatusView({ history, services }) {

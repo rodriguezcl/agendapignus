@@ -25,6 +25,8 @@ const SESSION_MAX_AGE = 8 * 60 * 60 * 1000
 const LOGIN_WINDOW = 15 * 60 * 1000
 const LOGIN_MAX_ATTEMPTS = 5
 const AUDIT_LOG_LIMIT = 100
+const PASSWORD_RESET_REQUESTS_KEY = 'password_reset_requests'
+const PASSWORD_RESET_REQUESTS_LIMIT = 50
 
 // Esquema idempotente: permite iniciar el sistema en una instalación nueva.
 db.exec(`
@@ -646,6 +648,20 @@ function writeAudit(user, action, entity, entityId, before, after) {
   const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), user: { id: user.id, name: user.name, email: user.email, role: user.role }, action, entity, entityId, before: auditSafe(before), after: auditSafe(after) }
   db.prepare('INSERT INTO audit_log (id, data) VALUES (?, ?)').run(entry.id, JSON.stringify(entry))
   trimAuditLog()
+}
+
+function passwordResetRequests() {
+  const row = db.prepare('SELECT value FROM preferences WHERE key = ?').get(PASSWORD_RESET_REQUESTS_KEY)
+  try {
+    const requests = JSON.parse(row?.value || '[]')
+    return Array.isArray(requests) ? requests.filter(item => item?.id && item?.email && item?.requestedAt) : []
+  } catch {
+    return []
+  }
+}
+
+function savePasswordResetRequests(requests) {
+  db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run(PASSWORD_RESET_REQUESTS_KEY, JSON.stringify(requests.slice(0, PASSWORD_RESET_REQUESTS_LIMIT)))
 }
 
 function auditChanges(table, records, key, entity, user) {
@@ -1313,11 +1329,15 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/auth/login') {
     if (loginLimited(req)) return send(res, 429, { error: 'Demasiados intentos. Esperá 15 minutos antes de volver a intentar.' })
     return readJson(req).then(({ email, password }) => {
-      const employee = rows('employees').find(item => item.status === 'Activo' && item.email?.trim().toLowerCase() === String(email || '').trim().toLowerCase())
+      const employee = rows('employees').find(item => item.email?.trim().toLowerCase() === String(email || '').trim().toLowerCase())
+      if (!employee) {
+        registerLoginFailure(req)
+        return send(res, 404, { error: 'El correo ingresado no está dado de alta en el sistema. Ponete en contacto con un Administrador.' })
+      }
       const legacyPassword = Buffer.from(String(employee?.password || ''))
       const suppliedPassword = Buffer.from(String(password || ''))
       const validLegacyPassword = legacyPassword.length === suppliedPassword.length && crypto.timingSafeEqual(suppliedPassword, legacyPassword)
-      const valid = employee && (employee.passwordHash ? verifyPassword(password, employee.passwordHash) : validLegacyPassword)
+      const valid = employee.status === 'Activo' && (employee.passwordHash ? verifyPassword(password, employee.passwordHash) : validLegacyPassword)
       if (!valid) {
         registerLoginFailure(req)
         return send(res, 401, { error: 'Usuario o contraseña incorrectos.' })
@@ -1348,6 +1368,19 @@ const server = http.createServer((req, res) => {
       send(res, clientError ? 400 : 500, { error: clientError ? error.message : 'No se pudo completar el ingreso. Reiniciá Agenda técnica e intentá nuevamente.' })
     })
   }
+  if (req.method === 'POST' && url.pathname === '/api/auth/password-reset-requests') {
+    return readJson(req).then(({ email }) => {
+      const normalizedEmail = String(email || '').trim().toLowerCase()
+      if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) return send(res, 400, { error: 'Ingresá un correo electrónico válido.' })
+      const employee = rows('employees').find(item => item.email?.trim().toLowerCase() === normalizedEmail)
+      if (!employee) return send(res, 404, { error: 'El correo ingresado no está dado de alta en el sistema. Ponete en contacto con un Administrador.' })
+      const requests = passwordResetRequests()
+      const existing = requests.find(item => item.email === normalizedEmail)
+      const request = { id: existing?.id || crypto.randomUUID(), employeeId: String(employee.id), email: normalizedEmail, requestedAt: new Date().toISOString() }
+      savePasswordResetRequests([request, ...requests.filter(item => item.email !== normalizedEmail)])
+      return send(res, 200, { ok: true, message: 'La solicitud fue enviada al Administrador.' })
+    }).catch(error => send(res, 400, { error: error.message || 'No se pudo registrar la solicitud.' }))
+  }
   if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
     const token = parseCookies(req.headers.cookie).pignus_session
     const session = token && sessions.get(token)
@@ -1355,6 +1388,20 @@ const server = http.createServer((req, res) => {
     if (token) sessions.delete(token)
     res.setHeader('Set-Cookie', 'pignus_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
     return send(res, 200, { ok: true })
+  }
+  if (url.pathname === '/api/auth/password-reset-requests' && ['GET', 'DELETE'].includes(req.method)) {
+    const user = requireSession(req, res)
+    if (!user) return
+    if (user.roleCode !== 'administrator') return send(res, 403, { error: 'Las solicitudes de contraseña son exclusivas del rol Administrador.' })
+    if (req.method === 'GET') return send(res, 200, { requests: passwordResetRequests().sort((a, b) => String(b.requestedAt).localeCompare(String(a.requestedAt))) })
+    return readJson(req).then(({ id }) => {
+      const requests = passwordResetRequests()
+      const resolved = requests.find(item => item.id === String(id || ''))
+      if (!resolved) return send(res, 404, { error: 'La solicitud ya no está pendiente.' })
+      savePasswordResetRequests(requests.filter(item => item.id !== resolved.id))
+      writeAudit(user, 'Resolvió', 'Solicitud de contraseña', resolved.id, resolved, null)
+      return send(res, 200, { ok: true })
+    }).catch(error => send(res, 400, { error: error.message || 'No se pudo resolver la solicitud.' }))
   }
   if (req.method === 'GET' && url.pathname === '/api/history/export') {
     const user = requireSession(req, res)
@@ -1407,7 +1454,7 @@ const server = http.createServer((req, res) => {
           if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record })
           return send(res, 409, { error: 'Este servicio ya fue informado desde otra sesión.' })
         }
-      if (type !== 'Completado' && !String(observation || '').trim()) return send(res, 400, { error: 'La observación es obligatoria.' })
+      if (!String(observation || '').trim()) return send(res, 400, { error: 'La observación es obligatoria para informar el servicio.' })
       const now = new Date().toISOString()
       const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim(), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type }
       db.exec('BEGIN')
