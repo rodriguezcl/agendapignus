@@ -15,7 +15,7 @@ test('reconstruye el estado de Supabase en una única consulta agregada', async 
       history: [{ id: 'history-1' }],
       agenda: { teams: [] },
       reviews: [],
-      preferences: { state_revision: '4', theme: 'dark' }
+      preferences: { state_revision: '4', theme: 'dark', vehicles: JSON.stringify([{ id: 'vehicle-1', brand: 'Ford', model: 'Ranger', year: 2026, plate: 'AB123CD' }]) }
     }]
   }
 
@@ -25,6 +25,7 @@ test('reconstruye el estado de Supabase en una única consulta agregada', async 
   assert.equal(state.revision, 4)
   assert.equal(state.customers.length, 1)
   assert.equal(state.history.length, 1)
+  assert.deepEqual(state.vehicles, [{ id: 'vehicle-1', brand: 'Ford', model: 'Ranger', year: 2026, plate: 'AB123CD' }])
   assert.deepEqual(state.agenda, { teams: [] })
   assert.equal(state.preferences.theme, 'dark')
 })

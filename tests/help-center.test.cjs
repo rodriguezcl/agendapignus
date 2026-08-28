@@ -18,6 +18,7 @@ test('el Centro de ayuda documenta las funciones operativas vigentes', () => {
     'tipo de servicio con el mismo color utilizado en Historial',
     'Horarios del mes',
     'La ficha muestra también si el servicio está Pendiente',
+    'La matrícula se guarda en mayúsculas y no puede repetirse',
     "id: 'technician'",
     "id: 'mobile'"
   ]) assert.match(helpSource, new RegExp(expected, 'i'))

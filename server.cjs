@@ -665,7 +665,8 @@ function savePasswordResetRequests(requests) {
 }
 
 function auditChanges(table, records, key, entity, user) {
-  const previous = new Map(rows(table).map(record => [String(record[key]), record]))
+  const storedRecords = Array.isArray(table) ? table : rows(table)
+  const previous = new Map(storedRecords.map(record => [String(record[key]), record]))
   const incoming = new Map((records || []).map(record => [String(record[key]), record]))
   for (const [id, record] of incoming) {
     const old = previous.get(id)
@@ -679,12 +680,16 @@ function auditChanges(table, records, key, entity, user) {
 function readState() {
   const agenda = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
   const theme = db.prepare('SELECT value FROM preferences WHERE key = ?').get('theme')
+  const storedVehicles = db.prepare('SELECT value FROM preferences WHERE key = ?').get('vehicles')
+  let vehicles = []
+  try { const parsed = JSON.parse(storedVehicles?.value || '[]'); vehicles = Array.isArray(parsed) ? parsed : [] } catch { vehicles = [] }
   return {
     revision: currentStateRevision(),
     roles: rows('roles'),
     // Nunca se exponen hashes ni contraseñas a la interfaz.
     employees: sanitizeEmployeesForRead(),
     services: rows('services'),
+    vehicles,
     history: rows('work_history'),
     customers: rows('customers'),
     reviews: rows('reviews'),
@@ -703,7 +708,7 @@ function readTechnicianState(user) {
   const activeCustomerAccounts = new Set(activeAssigned.map(record => String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()).filter(Boolean))
   return {
     revision: currentStateRevision(),
-    roles: [], employees: [], services: [], customers: [], agenda: null, preferences: {},
+    roles: [], employees: [], services: [], vehicles: [], customers: [], agenda: null, preferences: {},
     // El nombre es solamente una etiqueta visible. El acceso se decide siempre
     // mediante el identificador inmutable del empleado autenticado.
     history: history.filter(record => {
@@ -725,6 +730,7 @@ function readStateForUser(user) {
     ...visibleState,
     employees: userCan(user, 'employees') ? state.employees : state.employees.map(({ id, firstName, lastName, name, roleId, role, status }) => ({ id, firstName, lastName, name, roleId, role, status })),
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? state.services : [],
+    vehicles: userCan(user, 'vehicles') ? state.vehicles : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
     history: userCan(user, 'history') || userCan(user, 'accounts') ? state.history : [],
     agenda: canPlan ? state.agenda : null
@@ -785,6 +791,7 @@ function authorizedIncomingState(state, user) {
     roles: administrator ? state.roles : current.roles,
     employees,
     services: userCan(user, 'services') ? state.services : current.services,
+    vehicles: userCan(user, 'vehicles') && Array.isArray(state.vehicles) ? state.vehicles : current.vehicles,
     history: userCan(user, 'history') ? state.history : current.history,
     customers: userCan(user, 'accounts') ? state.customers : current.customers,
     // El módulo fue retirado. Sus registros históricos se conservan internamente
@@ -813,7 +820,7 @@ function replaceRows(table, records, key) {
 function validateState(state) {
   if (!state || typeof state !== 'object') throw new Error('El estado recibido no es válido.')
 
-  const collections = ['roles', 'employees', 'services', 'customers', 'history']
+  const collections = ['roles', 'employees', 'services', 'vehicles', 'customers', 'history']
   collections.forEach(name => {
     if (!Array.isArray(state[name])) throw new Error(`La colección ${name} no es válida.`)
   })
@@ -838,6 +845,8 @@ function validateState(state) {
   ensureUnique(state.employees, 'id', 'Empleado')
   ensureUnique(state.services, 'id', 'Tipo de servicio')
   ensureUnique(state.services, 'code', 'Código de servicio')
+  ensureUnique(state.vehicles, 'id', 'Vehículo')
+  ensureUnique(state.vehicles, 'plate', 'Matrícula')
   ensureUnique(state.customers, 'customerId', 'Cliente')
   ensureUnique(state.customers, 'account', 'Cliente')
   ensureUnique(state.history, 'id', 'Registro de historial')
@@ -863,6 +872,13 @@ function validateState(state) {
     if (!String(service.name ?? '').trim() || !text(service.name, 120) || !String(service.code ?? '').trim() || !text(service.code, 120)) throw new Error(`Tipo de servicio ${index + 1}: nombre o código inválido.`)
     if (!text(service.description, 500)) throw new Error(`Tipo de servicio ${index + 1}: la descripción es demasiado extensa.`)
     if (!['Activo', 'Inactivo'].includes(service.status)) throw new Error(`Tipo de servicio ${index + 1}: el estado no es válido.`)
+  })
+  const maximumVehicleYear = new Date().getFullYear() + 1
+  state.vehicles.forEach((vehicle, index) => {
+    if (!String(vehicle.brand ?? '').trim() || !text(vehicle.brand, 80)) throw new Error(`Vehículo ${index + 1}: la marca es obligatoria o demasiado extensa.`)
+    if (!String(vehicle.model ?? '').trim() || !text(vehicle.model, 120)) throw new Error(`Vehículo ${index + 1}: el modelo es obligatorio o demasiado extenso.`)
+    if (!Number.isInteger(Number(vehicle.year)) || Number(vehicle.year) < 1886 || Number(vehicle.year) > maximumVehicleYear) throw new Error(`Vehículo ${index + 1}: el año no es válido.`)
+    if (!String(vehicle.plate ?? '').trim() || !text(vehicle.plate, 20)) throw new Error(`Vehículo ${index + 1}: la matrícula es obligatoria o demasiado extensa.`)
   })
   state.customers.forEach((customer, index) => {
     if (!String(customer.name ?? '').trim() || !text(customer.name, 180)) throw new Error(`Cliente ${index + 1}: el titular es obligatorio.`)
@@ -956,6 +972,7 @@ function saveState(state, user) {
   const employeeById = new Map(normalizedEmployees.map(employee => [String(employee.id), employee]))
   const employeeByName = new Map(normalizedEmployees.map(employee => [normalizedCustomerValue(employee.name), employee]))
   const normalizedServices = (state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') }))
+  const normalizedVehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
   const serviceById = new Map(normalizedServices.map(service => [String(service.id), service]))
   const serviceByName = new Map(normalizedServices.map(service => [normalizedServiceName(service.name), service]))
   const normalizeServiceReference = item => {
@@ -1015,7 +1032,7 @@ function saveState(state, user) {
     const teamIndex = Number(String(base.team || '').match(/\d+/)?.[0]) - 1
     return { ...base, status: base.status || 'Pendiente', teamId: base.teamId ?? (teamIndex >= 0 ? stableTeamId(String(base.date || '').slice(0, 7), teamIndex) : null), technicianIds: technicians.map(employee => employee.id), technicians: technicians.map(employee => employee.name) }
   }
-  state = { ...state, roles: normalizedRoles, employees: normalizedEmployees, services: normalizedServices, customers: normalizedCustomers, history: (state.history || []).map(normalizeHistoryRecord), agenda: { ...incomingAgenda, teams: normalizeTeams(incomingAgenda.teams, String(incomingAgenda.date || '').slice(0, 7)), weekly: normalizedWeekly } }
+  state = { ...state, roles: normalizedRoles, employees: normalizedEmployees, services: normalizedServices, vehicles: normalizedVehicles, customers: normalizedCustomers, history: (state.history || []).map(normalizeHistoryRecord), agenda: { ...incomingAgenda, teams: normalizeTeams(incomingAgenda.teams, String(incomingAgenda.date || '').slice(0, 7)), weekly: normalizedWeekly } }
   const storedAgenda = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
   const previousAgenda = storedAgenda ? JSON.parse(storedAgenda.data) : {}
   state = stampStateServiceTrace(state, previousAgenda, rows('work_history'), user)
@@ -1044,6 +1061,7 @@ function saveState(state, user) {
     auditChanges('roles', state.roles, 'id', 'Rol', user)
     auditChanges('employees', securedEmployees, 'id', 'Empleado', user)
     auditChanges('services', state.services, 'id', 'Tipo de servicio', user)
+    auditChanges(readState().vehicles, state.vehicles, 'id', 'Vehículo', user)
     auditChanges('work_history', normalizedHistory, 'id', 'Servicio / historial', user)
     auditChanges('customers', state.customers, 'customerId', 'Abonado / Cliente', user)
     auditChanges('reviews', state.reviews, 'id', 'Reseña', user)
@@ -1056,6 +1074,7 @@ function saveState(state, user) {
     replaceRows('reviews', state.reviews, 'id')
     db.prepare('INSERT OR REPLACE INTO agendas (id, data) VALUES (?, ?)').run('current', JSON.stringify(nextAgenda))
     db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('theme', state.preferences?.theme || 'light')
+    db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('vehicles', JSON.stringify(state.vehicles || []))
     const nextRevision = actualRevision + 1
     db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(nextRevision))
     db.exec('COMMIT')

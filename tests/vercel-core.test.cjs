@@ -431,6 +431,12 @@ test('el escritorio aprovecha el ancho y el servicio del historial no ocupa dos 
   assert.match(styles, /minmax\(175px, \.9fr\)/)
 })
 
+test('la columna Estado conserva sus óvalos en una sola línea', () => {
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(styles, /minmax\(120px, \.75fr\) 128px 108px/)
+  assert.match(styles, /\.history-bulk \.history-row > div:nth-child\(7\) \.work-status \{[\s\S]*?width: max-content;[\s\S]*?white-space: nowrap;/)
+})
+
 test('genera y verifica hashes compatibles con las credenciales existentes', () => {
   const hash = hashPassword('Prueba1234')
   assert.equal(verifyPassword('Prueba1234', hash), true)
@@ -506,12 +512,36 @@ test('dos sesiones simultáneas no crean revisiones al guardar el mismo estado',
 
 test('impide que un rol de consulta modifique colecciones sin permiso', () => {
   const user = userForEmployee({ ...employee, roleId: '4', role: 'Consulta' }, roles)
-  const current = { roles, employees: [employee], services: [{ id: 1 }], customers: [{ account: 'CLI-1' }], history: [{ id: 'old' }], reviews: [], agenda: { date: '2026-01-01', teams: [], weekly: {} } }
-  const incoming = { ...current, services: [], customers: [], history: [], agenda: { date: '2030-01-01', teams: [{ teamId: 'x' }], weekly: {} } }
+  const current = { roles, employees: [employee], services: [{ id: 1 }], vehicles: [{ id: 'v1', plate: 'AB123CD' }], customers: [{ account: 'CLI-1' }], history: [{ id: 'old' }], reviews: [], agenda: { date: '2026-01-01', teams: [], weekly: {} } }
+  const incoming = { ...current, services: [], vehicles: [], customers: [], history: [], agenda: { date: '2030-01-01', teams: [{ teamId: 'x' }], weekly: {} } }
   const authorized = authorizeIncomingState(incoming, current, user)
   assert.deepEqual(authorized.services, current.services)
+  assert.deepEqual(authorized.vehicles, current.vehicles)
   assert.deepEqual(authorized.customers, current.customers)
   assert.deepEqual(authorized.agenda, current.agenda)
+})
+
+test('el ABM de vehículos integra estado, permisos, validación y los cuatro campos requeridos', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const apiCore = fs.readFileSync(path.resolve(__dirname, '../api/_lib/core.cjs'), 'utf8')
+  const database = fs.readFileSync(path.resolve(__dirname, '../api/_lib/database.cjs'), 'utf8')
+  const icon = fs.readFileSync(path.resolve(__dirname, '../src/components/ui/Icon.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(source, /\['vehicles', 'Vehículos', 'Administrar la flota de la empresa'\]/)
+  assert.match(source, /\['vehicles', 'vehicle', 'Vehículos'\]/)
+  assert.match(source, /function Vehicles\(\{ vehicles, setVehicles, setNotice, ask \}\)/)
+  for (const label of ['Marca', 'Modelo', 'Año', 'Matrícula']) assert.match(source, new RegExp(`<RequiredLabel>${label}<\\/RequiredLabel>`))
+  assert.match(source, /Ya existe un vehículo con esa matrícula/)
+  assert.match(apiCore, /unique\(state\.vehicles, 'plate', 'Matrícula'\)/)
+  assert.match(apiCore, /vehicles: userCan\(user, 'vehicles'\)/)
+  assert.match(database, /JSON\.stringify\(state\.vehicles \|\| \[\]\)/)
+  assert.match(icon, /vehicle:/)
+  assert.match(styles, /\.vehicles-table \.table-head,[\s\S]*?\.vehicle-row/)
+})
+
+test('normaliza la matrícula y el año de los vehículos antes de persistir', () => {
+  const normalized = normalizeStateForSave({ roles, employees: [], services: [], vehicles: [{ id: 'v1', brand: ' Ford ', model: ' Ranger ', year: '2025', plate: ' ab 123 cd ' }], customers: [], history: [], reviews: [], agenda: {} }, { reviews: [] })
+  assert.deepEqual(normalized.vehicles, [{ id: 'v1', brand: 'Ford', model: 'Ranger', year: 2025, plate: 'AB 123 CD' }])
 })
 
 test('conserva el hash al editar un empleado sin cambiar su contraseña', () => {

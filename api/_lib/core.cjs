@@ -79,7 +79,7 @@ function visibleStateForUser(state, user) {
     })
     return {
       revision: state.revision,
-      roles: [], employees: [], services: [], customers: [], agenda: null, preferences: {},
+      roles: [], employees: [], services: [], vehicles: [], customers: [], agenda: null, preferences: {},
       history: visibleHistory
     }
   }
@@ -89,6 +89,7 @@ function visibleStateForUser(state, user) {
     roles: state.roles,
     employees: userCan(user, 'employees') ? state.employees.map(publicEmployee) : state.employees.map(({ id, firstName, lastName, name, roleId, role, status }) => ({ id, firstName, lastName, name, roleId, role, status })),
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? state.services : [],
+    vehicles: userCan(user, 'vehicles') ? state.vehicles || [] : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
     history: userCan(user, 'history') || userCan(user, 'accounts') ? state.history : [],
     agenda: canPlan ? state.agenda : null,
@@ -129,6 +130,7 @@ function authorizeIncomingState(incoming, current, user) {
     roles: administrator ? incoming.roles : current.roles,
     employees,
     services: userCan(user, 'services') ? incoming.services : current.services,
+    vehicles: userCan(user, 'vehicles') && Array.isArray(incoming.vehicles) ? incoming.vehicles : current.vehicles || [],
     history: userCan(user, 'history') ? incoming.history : current.history,
     customers: userCan(user, 'accounts') ? incoming.customers : current.customers,
     reviews: current.reviews,
@@ -153,9 +155,10 @@ function normalizeStateForSave(state, current) {
     return { ...employee, name: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(), ...(role ? { roleId: role.id, role: role.name } : {}) }
   })
   const services = (state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') }))
+  const vehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
   const customers = (state.customers || []).map(customer => ({ ...customer, kind: customerKind(customer), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }))
   const history = (state.history || []).map(record => ({ ...record, status: record.status || 'Pendiente' }))
-  return normalizeRetirementCustomers({ ...state, roles, employees, services, customers, history, reviews: state.reviews || current.reviews || [] }).state
+  return normalizeRetirementCustomers({ ...state, roles, employees, services, vehicles, customers, history, reviews: state.reviews || current.reviews || [] }).state
 }
 
 function statePersistenceChanged(current, next) {
@@ -165,7 +168,7 @@ function statePersistenceChanged(current, next) {
     return value
   }
   const persistent = state => ({
-    roles: state.roles || [], employees: state.employees || [], services: state.services || [],
+    roles: state.roles || [], employees: state.employees || [], services: state.services || [], vehicles: state.vehicles || [],
     customers: state.customers || [], history: state.history || [], reviews: state.reviews || [],
     agenda: state.agenda || {}, preferences: { theme: state.preferences?.theme || 'light' }
   })
@@ -217,7 +220,7 @@ function secureEmployees(employees, previousEmployees) {
 
 function validateState(state) {
   if (!state || typeof state !== 'object') throw new Error('El estado recibido no es válido.')
-  for (const name of ['roles', 'employees', 'services', 'customers', 'history']) if (!Array.isArray(state[name])) throw new Error(`La colección ${name} no es válida.`)
+  for (const name of ['roles', 'employees', 'services', 'vehicles', 'customers', 'history']) if (!Array.isArray(state[name])) throw new Error(`La colección ${name} no es válida.`)
   const unique = (items, key, label) => {
     const found = new Set()
     items.forEach((item, index) => {
@@ -230,6 +233,7 @@ function validateState(state) {
   unique(state.roles, 'id', 'Rol'); unique(state.roles, 'code', 'Código de rol')
   unique(state.employees, 'id', 'Empleado'); unique(state.employees, 'email', 'Correo electrónico')
   unique(state.services, 'id', 'Tipo de servicio'); unique(state.services, 'code', 'Código de servicio')
+  unique(state.vehicles, 'id', 'Vehículo'); unique(state.vehicles, 'plate', 'Matrícula')
   unique(state.customers, 'account', 'Cliente'); unique(state.customers, 'customerId', 'Cliente')
   unique(state.history, 'id', 'Registro de historial')
   const roleIds = new Set(state.roles.map(item => String(item.id)))
@@ -238,6 +242,13 @@ function validateState(state) {
   const employeeIds = new Set(state.employees.map(item => String(item.id)))
   state.employees.forEach((employee, index) => {
     if (!employee.firstName || !employee.lastName || !/^\S+@\S+\.\S+$/.test(String(employee.email || '')) || !roleIds.has(String(employee.roleId))) throw new Error(`Empleado ${index + 1}: datos incompletos.`)
+  })
+  const maximumVehicleYear = new Date().getFullYear() + 1
+  state.vehicles.forEach((vehicle, index) => {
+    if (!String(vehicle.brand || '').trim() || String(vehicle.brand).trim().length > 80) throw new Error(`Vehículo ${index + 1}: la marca es obligatoria o demasiado extensa.`)
+    if (!String(vehicle.model || '').trim() || String(vehicle.model).trim().length > 120) throw new Error(`Vehículo ${index + 1}: el modelo es obligatorio o demasiado extenso.`)
+    if (!Number.isInteger(Number(vehicle.year)) || Number(vehicle.year) < 1886 || Number(vehicle.year) > maximumVehicleYear) throw new Error(`Vehículo ${index + 1}: el año no es válido.`)
+    if (!String(vehicle.plate || '').trim() || String(vehicle.plate).trim().length > 20) throw new Error(`Vehículo ${index + 1}: la matrícula es obligatoria o demasiado extensa.`)
   })
   state.history.forEach((record, index) => {
     if (record.date && !/^\d{4}-\d{2}-\d{2}$/.test(record.date)) throw new Error(`Historial ${index + 1}: fecha inválida.`)
