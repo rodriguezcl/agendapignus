@@ -367,6 +367,19 @@ test('las agendas diaria y semanal renderizan directamente el estado de cada ser
   assert.match(weeklyStyles, /:not\(\.agenda-task-status\)/)
 })
 
+test('las agendas muestran el tipo de servicio junto al estado con los colores del historial', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const polishStyles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  const weeklyStyles = fs.readFileSync(path.resolve(__dirname, '../src/weekly-enhancements.css'), 'utf8')
+  assert.match(source, /className=\{`role-chip agenda-service-chip \$\{serviceColorClass\(service\)\}`\}/)
+  assert.match(source, /title=\{service\}>\{service\}<\/em>/)
+  assert.match(polishStyles, /\.agenda-task-status \{[\s\S]*?display: flex;[\s\S]*?gap: 6px;/)
+  assert.match(polishStyles, /\.agenda-task-status > \.agenda-service-chip \{[\s\S]*?text-overflow: ellipsis;/)
+  assert.match(polishStyles, /\.agenda-service-chip\.service-alarm \{ background: #e1edff; color: #315d98; \}/)
+  assert.match(polishStyles, /\.agenda-service-chip\.service-ownership \{ background: #fff1c9; color: #8a6500; \}/)
+  assert.match(weeklyStyles, /\.week-task-summary > \.weekly-agenda-task-status \{[\s\S]*?display: flex;/)
+})
+
 test('la agenda diaria mantiene visibles los nombres de los técnicos del equipo', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
