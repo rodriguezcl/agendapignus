@@ -146,6 +146,35 @@ const taskHasContent = task => Boolean(task && (
   task.historyId || task.customerId || task.serviceId ||
   ['client', 'service', 'address', 'phone', 'detail'].some(key => String(task[key] || '').trim())
 ))
+const DEFAULT_SERVICE_TIME_CHANGE_DATE = '2026-09-01'
+const fallbackDefaultServiceTimesForDate = date => String(date || '') >= DEFAULT_SERVICE_TIME_CHANGE_DATE
+  ? ['09:00', '14:00']
+  : ['08:30', '13:00']
+const validDefaultServiceTimes = times => Array.isArray(times) && times.length === 2 && times.every(time => /^\d{2}:\d{2}$/.test(String(time || ''))) && times[0] !== times[1]
+const defaultServiceTimesForDate = (date, weekly = {}) => {
+  const configured = weekly?._monthlyTeams?.[String(date || '').slice(0, 7)]?.defaultTimes
+  return validDefaultServiceTimes(configured) ? configured : fallbackDefaultServiceTimesForDate(date)
+}
+const defaultServiceTasksForDate = (date, weekly) => defaultServiceTimesForDate(date, weekly).map(time => ({ ...blankTask(), time }))
+const alignDefaultServiceTimes = (teams = [], date = '', targetTimes = fallbackDefaultServiceTimesForDate(date), sourceTimes = ['08:30', '13:00']) => {
+  if (!validDefaultServiceTimes(targetTimes) || !validDefaultServiceTimes(sourceTimes)) return teams
+  const replacements = Object.fromEntries(sourceTimes.map((time, index) => [time, targetTimes[index]]))
+  return teams.map(team => ({
+    ...team,
+    tasks: (team.tasks || []).map(task => (!taskHasContent(task) && !task.manualSlot && replacements[task.time])
+      ? { ...task, time: replacements[task.time] }
+      : task)
+  }))
+}
+const applyMonthlyDefaultTimes = (weekly = {}, month = '', sourceTimes, targetTimes) => Object.fromEntries(Object.entries(weekly || {}).map(([key, value]) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || !key.startsWith(`${month}-`)) return [key, value]
+  const replacements = Object.fromEntries(sourceTimes.map((time, index) => [time, targetTimes[index]]))
+  return [key, {
+    ...value,
+    teams: alignDefaultServiceTimes(value?.teams || [], key, targetTimes, sourceTimes),
+    removedSlots: (value?.removedSlots || []).map(slot => replacements[slot.time] ? { ...slot, time: replacements[slot.time] } : slot)
+  }]
+}))
 const normalizedTaskValue = value => String(value || '').trim().toLocaleLowerCase('es')
 const taskOccurrenceIdentity = task => {
   if (!taskHasContent(task)) return ''
@@ -227,7 +256,7 @@ const appendTraceElement = (container, record) => {
 // Los sábados opera un único técnico. Los servicios que pudieran existir en
 // equipos históricos se consolidan sin perderlos y se elimina cualquier
 // tarjeta vacía que compita con un servicio real del mismo horario.
-const normalizeSaturdayTeams = teams => {
+const normalizeSaturdayTeams = (teams, date = '', weekly = {}) => {
   const sourceTeams = Array.isArray(teams) ? teams : []
   const base = sourceTeams[0] || {}
   const assignedTeam = sourceTeams.find(team => team?.members?.length || team?.memberIds?.length) || base
@@ -241,7 +270,9 @@ const normalizeSaturdayTeams = teams => {
     return true
   })
   const existingBlank = sourceTeams.flatMap(team => team?.tasks || []).find(task => !taskHasContent(task))
-  const tasks = scheduledTasks.length ? sortTasksByTime(scheduledTasks) : [{ ...(existingBlank || blankTask()), time: existingBlank?.time || '08:30' }]
+  const saturdayDefaultTime = defaultServiceTimesForDate(date, weekly)[0]
+  const existingBlankTime = existingBlank?.manualSlot && existingBlank?.time ? existingBlank.time : saturdayDefaultTime
+  const tasks = scheduledTasks.length ? sortTasksByTime(scheduledTasks) : [{ ...(existingBlank || blankTask()), time: existingBlankTime }]
   return [{
     ...base,
     teamId: base.teamId || createTeamId(),
@@ -362,14 +393,15 @@ const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?
     label: team?.label || `Equipo ${index + 1}`,
     memberIds: team?.memberIds || [],
     members: team?.members || [],
-    tasks: isSaturday(date) ? [{ ...blankTask(), time: '08:30' }] : [{ ...blankTask(), time: '08:30' }, { ...blankTask(), time: '13:00' }]
+    tasks: isSaturday(date) ? defaultServiceTasksForDate(date, weekly).slice(0, 1) : defaultServiceTasksForDate(date, weekly)
   }))
   // Una fecha que todavía no fue editada no existe en `weekly`: su contenido se
   // dibuja a partir de los equipos mensuales. Al reprogramar hay que materializar
   // esa plantilla completa; crear `{ teams: [] }` hacía desaparecer los demás
   // equipos del día destino.
   const destinationWithDefaults = day => {
-    const storedTeams = day?.teams || []
+    const targetTimes = defaultServiceTimesForDate(nextDate, weekly)
+    const storedTeams = alignDefaultServiceTimes(day?.teams || [], nextDate, targetTimes, fallbackDefaultServiceTimesForDate(nextDate))
     const defaults = createDefaultTeams(nextDate)
     return { ...(day || {}), teams: mergeStoredTeamsWithDefaults(defaults, storedTeams) }
   }
@@ -413,7 +445,7 @@ const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?
     members: destinationHasTechnicians ? (teams[teamIndex].members || []) : (record.technicians || []),
     tasks: sortTasksByTime(mergedTasks)
   }
-  next[nextDate] = { ...destination, teams: isSaturday(nextDate) ? normalizeSaturdayTeams(teams) : teams }
+  next[nextDate] = { ...destination, teams: isSaturday(nextDate) ? normalizeSaturdayTeams(teams, nextDate, weekly) : teams }
   return next
 }
 const blankEmployee = { firstName: '', lastName: '', name: '', roleId: 3, role: 'Técnico', phone: '', email: '', password: '', status: 'Activo' }
@@ -1708,7 +1740,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   useEffect(() => {
     if (!isSaturday(date)) return
     setTeams(previous => {
-      const normalized = normalizeSaturdayTeams(previous)
+      const normalized = normalizeSaturdayTeams(previous, date, weekly)
       return JSON.stringify(previous) === JSON.stringify(normalized) ? previous : normalized
     })
   }, [date, setTeams])
@@ -1774,7 +1806,8 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     setDate(nextDate)
     const weeklyDay = weekly?.[nextDate]
     if (!saved.length && !weeklyDay?.teams?.length) {
-      setTeams([{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])
+      const tasks = isSaturday(nextDate) ? defaultServiceTasksForDate(nextDate, weekly).slice(0, 1) : defaultServiceTasksForDate(nextDate, weekly)
+      setTeams([{ teamId: createTeamId(), memberIds: [], members: [], tasks }])
       if (announce) setNotice('No hay una agenda guardada para la fecha seleccionada. Podés crear una nueva.')
       return
     }
@@ -1782,13 +1815,15 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     ;(weeklyDay?.teams || []).forEach((team, index) => {
       const position = Number(String(team.label || '').match(/\d+/)?.[0]) || index + 1
       const teamKey = team.teamId || `legacy-team-${position}`
+      const targetTimes = defaultServiceTimesForDate(nextDate, weekly)
+      const alignedTeam = alignDefaultServiceTimes([team], nextDate, targetTimes, fallbackDefaultServiceTimesForDate(nextDate))[0] || team
       byTeam.set(teamKey, {
-        ...team,
+        ...alignedTeam,
         position,
         teamId: team.teamId || createTeamId(),
         memberIds: team.memberIds || [],
         members: team.members || [],
-        tasks: (team.tasks || []).filter(task => task.service || task.client || task.historyId).map(task => ({ ...blankTask(), ...task }))
+        tasks: (alignedTeam.tasks || []).map(task => ({ ...blankTask(), ...task }))
       })
     })
     saved.forEach(record => {
@@ -1806,7 +1841,8 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       byTeam.set(teamKey, current)
     })
     const recoveredTeams = [...byTeam.values()].sort((a, b) => a.position - b.position).map(({ position, ...team }) => ({ ...team, tasks: sortTasksByTime(team.tasks.length ? team.tasks : [blankTask()]) }))
-    setTeams(isSaturday(nextDate) ? normalizeSaturdayTeams(recoveredTeams) : recoveredTeams)
+    const targetTimes = defaultServiceTimesForDate(nextDate, weekly)
+    setTeams(isSaturday(nextDate) ? normalizeSaturdayTeams(recoveredTeams, nextDate, weekly) : alignDefaultServiceTimes(recoveredTeams, nextDate, targetTimes, fallbackDefaultServiceTimesForDate(nextDate)))
     const reprogrammedCount = saved.filter(record => record.rescheduledFrom).length
     if (announce) {
       setNotice(reprogrammedCount
@@ -1865,7 +1901,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     showAgendaValidationModal(missing)
     return false
   }
-  const clearAgenda = () => { if (confirmation !== 'clear') { if (!registerHistory()) return; setNotice('La agenda fue copiada al portapapeles y registrada en el historial.'); return }; setTeams([{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }]); setDate(new Date().toISOString().slice(0, 10)); setNotice('La agenda quedó limpia y lista para una nueva planificación.') }
+  const clearAgenda = () => { if (confirmation !== 'clear') { if (!registerHistory()) return; setNotice('La agenda fue copiada al portapapeles y registrada en el historial.'); return }; const today = currentLocalDate(); setTeams([{ teamId: createTeamId(), memberIds: [], members: [], tasks: isSaturday(today) ? defaultServiceTasksForDate(today, weekly).slice(0, 1) : defaultServiceTasksForDate(today, weekly) }]); setDate(today); setNotice('La agenda quedó limpia y lista para una nueva planificación.') }
   const previewValue = value => String(value || '').trim() || 'Sin información'
   const previewDetails = task => {
     const service = serviceForTask(task)
@@ -2146,11 +2182,13 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
  */
 function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, setNotice, openDaily, authUser }) {
   authUser = authUser || globalThis.__pignusCurrentUser || null
+  const isAdministrator = authUser?.roleCode === 'administrator'
   const operationalHistory = globalThis.__pignusHistory || []
   const localToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const [today, setToday] = useState(localToday)
   const [anchor, setAnchor] = useState(today)
   const [monthlySetup, setMonthlySetup] = useState(null)
+  const [monthlyTimesSetup, setMonthlyTimesSetup] = useState(null)
   const [techPicker, setTechPicker] = useState(null)
   const [techFilter, setTechFilter] = useState('')
   const [taskEditor, setTaskEditor] = useState(null)
@@ -2182,16 +2220,16 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   const monthlyTeams = weekly._monthlyTeams || {}
   const previousMonthKey = (() => { const value = new Date(`${monthKey}-01T12:00:00`); value.setMonth(value.getMonth() - 1); return value.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).slice(0, 7) })()
   const baseTeams = monthlyTeams[monthKey]?.teams
-  const createTeam = (index, source) => ({ teamId: source?.teamId || createTeamId(), memberIds: source?.memberIds || [], members: source?.members || [], tasks: [{ ...blankTask(), time: '08:30' }, { ...blankTask(), time: '13:00' }], label: source?.label || `Equipo ${index + 1}` })
+  const createTeam = (index, source, day) => ({ teamId: source?.teamId || createTeamId(), memberIds: source?.memberIds || [], members: source?.members || [], tasks: defaultServiceTasksForDate(day, weekly), label: source?.label || `Equipo ${index + 1}` })
   const createDay = day => {
     const sources = monthlyTeams[day.slice(0, 7)]?.teams || [null, null, null]
     if (isSaturday(day)) {
       // La guardia sabatina rota: cada sábado nuevo comienza sin técnico y el
       // operador elige manualmente quién cubre esa fecha.
-      const team = createTeam(0, null)
-      return { teams: [{ ...team, memberIds: [], members: [], tasks: [{ ...blankTask(), time: '08:30' }] }] }
+      const team = createTeam(0, null, day)
+      return { teams: [{ ...team, memberIds: [], members: [], tasks: defaultServiceTasksForDate(day, weekly).slice(0, 1) }] }
     }
-    return { teams: sources.map((team, index) => createTeam(index, team)) }
+    return { teams: sources.map((team, index) => createTeam(index, team, day)) }
   }
   const monday = useMemo(() => {
     const value = new Date(`${anchor}T12:00:00`)
@@ -2266,11 +2304,13 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   const dayPlan = day => {
     const defaults = createDay(day)
     const stored = weekly[day]
+    const targetTimes = defaultServiceTimesForDate(day, weekly)
+    const storedTeams = alignDefaultServiceTimes(stored?.teams || [], day, targetTimes, fallbackDefaultServiceTimesForDate(day))
     const plan = stored
-      ? { ...stored, teams: mergeStoredTeamsWithDefaults(defaults.teams, stored.teams || []) }
+      ? { ...stored, teams: mergeStoredTeamsWithDefaults(defaults.teams, storedTeams) }
       : defaults
     const visiblePlan = { ...plan, teams: applyRemovedWeeklySlots(plan.teams, plan.removedSlots || []) }
-    const normalized = isSaturday(day) ? { ...visiblePlan, teams: normalizeSaturdayTeams(visiblePlan.teams) } : visiblePlan
+    const normalized = isSaturday(day) ? { ...visiblePlan, teams: normalizeSaturdayTeams(visiblePlan.teams, day, weekly) } : visiblePlan
     return sortPlanTasksByTime(normalized)
   }
   const advancedGuardForDay = day => {
@@ -2283,13 +2323,15 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   const updateDay = (day, mutate) => setWeekly(previous => {
     const defaults = createDay(day)
     const saved = previous[day]
+    const targetTimes = defaultServiceTimesForDate(day, previous)
+    const savedTeams = alignDefaultServiceTimes(saved?.teams || [], day, targetTimes, fallbackDefaultServiceTimesForDate(day))
     const stored = saved
-      ? { ...saved, teams: mergeStoredTeamsWithDefaults(defaults.teams, saved.teams || []) }
+      ? { ...saved, teams: mergeStoredTeamsWithDefaults(defaults.teams, savedTeams) }
       : defaults
     const visibleStored = { ...stored, teams: applyRemovedWeeklySlots(stored.teams, stored.removedSlots || []) }
-    const base = isSaturday(day) ? { ...visibleStored, teams: normalizeSaturdayTeams(visibleStored.teams) } : visibleStored
+    const base = isSaturday(day) ? { ...visibleStored, teams: normalizeSaturdayTeams(visibleStored.teams, day, previous) } : visibleStored
     const next = mutate(base)
-    const normalized = isSaturday(day) ? { ...next, teams: normalizeSaturdayTeams(next.teams) } : next
+    const normalized = isSaturday(day) ? { ...next, teams: normalizeSaturdayTeams(next.teams, day, previous) } : next
     return { ...previous, [day]: sortPlanTasksByTime(normalized) }
   })
   const openTaskEditor = (day, teamIndex, taskIndex) => {
@@ -2448,7 +2490,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   const updateTask = (day, teamIndex, taskIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index !== teamIndex ? team : { ...team, tasks: team.tasks.map((task, index) => index === taskIndex ? stampServiceRecord({ ...task, ...patch }, authUser) : task) }) }))
   const addTeam = day => {
     if (isSaturday(day)) { setNotice('Los sábados trabaja un solo técnico, por lo que la agenda admite únicamente un equipo.'); return }
-    updateDay(day, plan => ({ ...plan, teams: [...plan.teams, createTeam(plan.teams.length)] }))
+    updateDay(day, plan => ({ ...plan, teams: [...plan.teams, createTeam(plan.teams.length, null, day)] }))
   }
   const removeWeeklyTeam = (day, teamIndex) => {
     updateDay(day, plan => ({
@@ -2516,18 +2558,60 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     setNotice('El servicio fue eliminado de la planificación semanal.')
   }
   const suggestedMonthlyTeams = () => (monthlyTeams[previousMonthKey]?.teams || [null, null, null]).map((team, index) => ({ teamId: team?.teamId || createTeamId(), label: team?.label || `Equipo ${index + 1}`, memberIds: team?.memberIds || [], members: team?.members || [] }))
-  const openMonthlySetup = () => setMonthlySetup({ month: monthKey, teams: baseTeams ? baseTeams.map(team => ({ teamId: team.teamId || createTeamId(), label: team.label, memberIds: team.memberIds || [], members: team.members || [] })) : suggestedMonthlyTeams() })
+  const suggestedMonthlyTimes = () => {
+    const current = monthlyTeams[monthKey]?.defaultTimes
+    if (validDefaultServiceTimes(current)) return current
+    const previous = monthlyTeams[previousMonthKey]?.defaultTimes
+    return validDefaultServiceTimes(previous) ? previous : fallbackDefaultServiceTimesForDate(`${monthKey}-01`)
+  }
+  const openMonthlySetup = () => {
+    if (!isAdministrator) { setNotice('Solo un administrador puede definir los equipos mensuales.'); return }
+    setMonthlySetup({ month: monthKey, teams: baseTeams ? baseTeams.map(team => ({ teamId: team.teamId || createTeamId(), label: team.label, memberIds: team.memberIds || [], members: team.members || [] })) : suggestedMonthlyTeams() })
+  }
+  const openMonthlyTimesSetup = () => {
+    if (!isAdministrator) { setNotice('Solo un administrador puede definir los horarios mensuales.'); return }
+    setMonthlyTimesSetup({ month: monthKey, times: [...suggestedMonthlyTimes()] })
+  }
   const updateMonthlyTeam = (index, memberIds) => { const selected = activeTechs.filter(tech => memberIds.some(id => String(id) === String(tech.id))); setMonthlySetup(previous => ({ ...previous, teams: previous.teams.map((team, teamIndex) => teamIndex === index ? { ...team, memberIds: selected.map(tech => tech.id), members: selected.map(tech => tech.name) } : team) })) }
   const addMonthlyTeam = () => setMonthlySetup(previous => ({ ...previous, teams: [...previous.teams, { teamId: createTeamId(), label: `Equipo ${previous.teams.length + 1}`, memberIds: [], members: [] }] }))
   const saveMonthlySetup = () => {
-    setWeekly(previous => ({ ...previous, _monthlyTeams: { ...(previous._monthlyTeams || {}), [monthlySetup.month]: { teams: monthlySetup.teams } } }))
+    setWeekly(previous => ({ ...previous, _monthlyTeams: { ...(previous._monthlyTeams || {}), [monthlySetup.month]: { ...(previous._monthlyTeams?.[monthlySetup.month] || {}), teams: monthlySetup.teams } } }))
     setMonthlySetup(null)
     setNotice(`Los equipos predeterminados de ${new Date(`${monthKey}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} fueron guardados.`)
   }
+  const saveMonthlyTimesSetup = () => {
+    if (!validDefaultServiceTimes(monthlyTimesSetup?.times)) return
+    setWeekly(previous => {
+      const currentConfig = previous._monthlyTeams?.[monthlyTimesSetup.month] || {}
+      const sourceTimes = validDefaultServiceTimes(currentConfig.defaultTimes)
+        ? currentConfig.defaultTimes
+        : fallbackDefaultServiceTimesForDate(`${monthlyTimesSetup.month}-01`)
+      const migrated = applyMonthlyDefaultTimes(previous, monthlyTimesSetup.month, sourceTimes, monthlyTimesSetup.times)
+      return {
+        ...migrated,
+        _monthlyTeams: {
+          ...(migrated._monthlyTeams || {}),
+          [monthlyTimesSetup.month]: { ...currentConfig, defaultTimes: monthlyTimesSetup.times }
+        }
+      }
+    })
+    setMonthlyTimesSetup(null)
+    setNotice(`Los horarios predeterminados de ${new Date(`${monthKey}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} fueron guardados.`)
+  }
   useEffect(() => {
-    // Al comenzar un nuevo mes se solicita confirmar la rotación del equipo.
-    if (!monthlyTeams[monthKey] && monthlySetup?.month !== monthKey) setMonthlySetup({ month: monthKey, teams: suggestedMonthlyTeams() })
-  }, [monthKey, monthlyTeams[monthKey]])
+    // Al comenzar un mes el administrador confirma primero los equipos y luego
+    // los dos turnos que se usarán como horarios predeterminados.
+    if (!isAdministrator) return
+    const config = monthlyTeams[monthKey]
+    if (!config?.teams?.length && monthlySetup?.month !== monthKey) {
+      setMonthlyTimesSetup(null)
+      setMonthlySetup({ month: monthKey, teams: suggestedMonthlyTeams() })
+      return
+    }
+    if (config?.teams?.length && !validDefaultServiceTimes(config.defaultTimes) && !monthlySetup && monthlyTimesSetup?.month !== monthKey) {
+      setMonthlyTimesSetup({ month: monthKey, times: [...suggestedMonthlyTimes()] })
+    }
+  }, [isAdministrator, monthKey, monthlyTeams[monthKey], monthlySetup, monthlyTimesSetup])
   const openDay = day => {
     const hours = hoursForDay(day)
     if (!hours) { setNotice('Los domingos no están habilitados para programar servicios.'); return }
@@ -2638,7 +2722,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
       return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskMove(null)}><section className="modal task-move-modal weekly-move-modal" role="dialog" aria-modal="true" aria-labelledby="weekly-move-title" onMouseDown={event => event.stopPropagation()}><button className="modal-close" onClick={() => setTaskMove(null)}><Icon name="close" /></button><p className="eyebrow">REASIGNAR SERVICIO</p><h2 id="weekly-move-title">Mover a otro equipo</h2><p>El servicio conservará horario, cliente, tipo de servicio y observaciones. También se actualizarán Agenda del día e Historial si ya fueron registrados.</p><label>Equipo actual<input value={sourceTeam?.label || `Equipo ${taskMove.sourceTeamIndex + 1}`} readOnly /></label><label>Nuevo equipo<select value={taskMove.destinationTeamIndex} onChange={event => setTaskMove(previous => ({ ...previous, destinationTeamIndex: Number(event.target.value) }))}>{plan.teams.map((team, index) => index !== taskMove.sourceTeamIndex && <option key={team.teamId || index} value={index}>{team.label || `Equipo ${index + 1}`} · {team.members?.join(' / ') || 'Sin técnicos'}</option>)}</select></label><div className="modal-actions"><button className="secondary" onClick={() => setTaskMove(null)}>Cancelar</button><button className="primary" onClick={confirmWeeklyTaskMove}><span aria-hidden="true">⇄</span>Reasignar servicio</button></div></section></div>
     })()}
     {monthlySetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setMonthlySetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de {new Date(`${monthlySetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Estos técnicos se asignarán por defecto a cada nuevo día del mes. Las agendas ya cargadas no se modifican.</p><div className="monthly-team-list">{monthlySetup.teams.map((team, index) => <label key={team.teamId || index}><b>{team.label || `Equipo ${index + 1}`}</b><select multiple value={team.memberIds || []} onChange={event => updateMonthlyTeam(index, [...event.target.selectedOptions].map(option => option.value))}>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName || tech.name.split(' ')[0]}</option>)}</select><small>Mantené presionada la tecla Ctrl para seleccionar más de un técnico.</small></label>)}</div><button className="secondary monthly-add-team" onClick={addMonthlyTeam}><Icon name="plus" size={15} />Agregar equipo</button><div className="modal-actions"><button className="secondary" onClick={() => setMonthlySetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlySetup}>Guardar equipos del mes</button></div></section></div>}
-    <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Prepará las visitas de cada equipo y luego abrí el día para terminar de validar y guardar la agenda del día.</p></div><div className="weekly-actions"><button className="secondary" onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button><label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
+    {monthlyTimesSetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-times-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-times-title"><button className="modal-close" onClick={() => setMonthlyTimesSetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2 id="monthly-times-title">Horarios de {new Date(`${monthlyTimesSetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Definí los dos horarios que se aplicarán por defecto a los servicios nuevos del mes. Los servicios ya cargados conservarán su hora.</p><div className="monthly-time-grid">{monthlyTimesSetup.times.map((time, index) => <label key={index}><b>Turno {index + 1}</b><input type="time" required value={time} onChange={event => setMonthlyTimesSetup(previous => ({ ...previous, times: previous.times.map((item, timeIndex) => timeIndex === index ? event.target.value : item) }))} /></label>)}</div>{monthlyTimesSetup.times[0] === monthlyTimesSetup.times[1] && <p className="field-error">Los dos horarios deben ser diferentes.</p>}<div className="modal-actions"><button className="secondary" onClick={() => setMonthlyTimesSetup(null)}>Cancelar</button><button className="primary" disabled={!validDefaultServiceTimes(monthlyTimesSetup.times)} onClick={saveMonthlyTimesSetup}>Guardar horarios del mes</button></div></section></div>}
+    <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Prepará las visitas de cada equipo y luego abrí el día para terminar de validar y guardar la agenda del día.</p></div><div className="weekly-actions"><button className="secondary" onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button><button className="secondary" onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button><label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
     {taskEditor && (() => {
       const { day, teamIndex, taskIndex } = taskEditor
       const task = taskEditor.draft
