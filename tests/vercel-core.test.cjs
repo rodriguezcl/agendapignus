@@ -15,6 +15,12 @@ const roles = [
 
 const employee = { id: 'e1', firstName: 'Ana', lastName: 'Técnica', name: 'Ana Técnica', email: 'ana@example.com', roleId: '3', role: 'Técnico', status: 'Activo' }
 
+test('declara los hooks usados por la alerta de recuperación de contraseña', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  assert.match(source, /import React, \{[^}]*useCallback[^}]*\} from 'react'/)
+  assert.match(source, /function PasswordResetReminder/)
+})
+
 test('el buscador del historial técnico contempla todos los datos útiles', async () => {
   const { filterTechnicianHistory } = await import('../src/technician-history.mjs')
   const records = [
