@@ -634,6 +634,15 @@ const requiresPaymentAmount = (task, service) => {
   const paymentMethod = serviceExtraAvailability(service, task?.installationZone).paymentMethod ? String(task?.paymentMethod || '').trim() : ''
   return Boolean(paymentMethod && !['A confirmar', 'No aplica'].includes(paymentMethod) && !String(task?.amount || '').trim())
 }
+const weeklyTaskMissingFields = (task, service) => {
+  const missing = [['hora', task?.time], ['tipo de servicio', task?.service], ['cliente', task?.customerId], ['dirección', task?.address], ['contacto', task?.phone], ['detalle', task?.detail]]
+    .filter(([, value]) => !String(value || '').trim())
+    .map(([label]) => label)
+  if (serviceCode(service) === 'alarm-installation' && !task?.installationZone) missing.push('ubicación de la instalación')
+  if (requiresPaymentAmount(task, service)) missing.push('monto')
+  return missing
+}
+const weeklyTaskReadyToSave = (task, team, service) => taskHasContent(task) && weeklyTaskMissingFields(task, service).length === 0 && (team?.members || []).length > 0
 const prettyDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^./, x => x.toUpperCase()) : ''
 // Cada familia de trabajo tiene un color consistente en el historial para facilitar su lectura.
 const serviceColorClass = service => {
@@ -2184,10 +2193,10 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
  * Planificador semanal: es el espacio de preparación previa. Sus tarjetas no
  * impactan en el Historial hasta que el operador abre y guarda la agenda diaria.
  */
-function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, setNotice, openDaily, authUser }) {
+function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, history, setHistory, setNotice, openDaily, authUser }) {
   authUser = authUser || globalThis.__pignusCurrentUser || null
   const isAdministrator = authUser?.roleCode === 'administrator'
-  const operationalHistory = globalThis.__pignusHistory || []
+  const operationalHistory = history || globalThis.__pignusHistory || []
   const localToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const [today, setToday] = useState(localToday)
   const [anchor, setAnchor] = useState(today)
@@ -2672,7 +2681,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
       sameList(record.technicianIds, expected.technicianIds) && sameList(record.technicians, expected.technicians)
   }
   const dayNeedsSave = day => dayPlan(day).teams.some((team, teamIndex) => (team.tasks || []).some((task, taskIndex) => {
-    if (!taskHasContent(task)) return false
+    if (!weeklyTaskReadyToSave(task, team, serviceForWeeklyTask(task))) return false
     return !recordMatchesWeeklyTask(historyRecordForTask(task, day, operationalHistory), weeklyHistoryRecord(day, team, teamIndex, task, taskIndex))
   }))
   const saveWeeklyDay = day => {
@@ -2683,25 +2692,24 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     const advance = advancedGuardForDay(day)
     if (advance) { setNotice(advancedSaturdayGuardMessage(advance)); return }
     const plan = dayPlan(day)
-    const invalidTime = plan.teams.flatMap(team => team.tasks).find(task => task.time && (task.time < hours.min || task.time > hours.max))
-    if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
     const scheduledTasks = plan.teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, team, teamIndex, taskIndex }))).filter(({ task }) => taskHasContent(task))
     if (!scheduledTasks.length) { setNotice('No hay servicios cargados para guardar en este día.'); return }
-    const incompleteTask = scheduledTasks.find(({ task }) => !task.time || !task.service || !task.customerId || !task.address || !task.phone || !task.detail || (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) || requiresPaymentAmount(task, serviceForWeeklyTask(task)))
-    if (incompleteTask) {
+    const readyTasks = scheduledTasks.filter(({ task, team }) => weeklyTaskReadyToSave(task, team, serviceForWeeklyTask(task)))
+    if (!readyTasks.length) {
+      const incompleteTask = scheduledTasks[0]
       const { task, teamIndex, taskIndex } = incompleteTask
-      const missing = [['hora', task.time], ['tipo de servicio', task.service], ['cliente', task.client], ['dirección', task.address], ['contacto', task.phone], ['detalle', task.detail]].filter(([, value]) => !String(value || '').trim()).map(([label]) => label)
-      if (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) missing.push('ubicación de la instalación')
-      if (requiresPaymentAmount(task, serviceForWeeklyTask(task))) missing.push('monto')
+      const missing = weeklyTaskMissingFields(task, serviceForWeeklyTask(task))
+      if (!(incompleteTask.team.members || []).length) missing.push('técnicos asignados')
       setNotice(`Completá los campos obligatorios de Equipo ${teamIndex + 1}, tarjeta ${taskIndex + 1}: ${missing.join(', ')}.`)
       return
     }
-    const missingTeam = scheduledTasks.find(({ team }) => !(team.members || []).length)
-    if (missingTeam) { setNotice(`${missingTeam.team.label || `Equipo ${missingTeam.teamIndex + 1}`} debe tener al menos un técnico asignado antes de guardar.`); return }
-    const conflicts = conflictsForDay(day)
+    const invalidTime = readyTasks.find(({ task }) => task.time < hours.min || task.time > hours.max)
+    if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
+    const readyTaskSet = new Set(readyTasks.map(({ task }) => task))
+    const conflicts = technicianTimeConflicts(plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => readyTaskSet.has(task)) })), activeTechs)
     if (conflicts.length) { setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`); return }
-    const records = scheduledTasks.map(({ task, team, teamIndex, taskIndex }) => weeklyHistoryRecord(day, team, teamIndex, task, taskIndex))
-    const setOperationalHistory = globalThis.__pignusSetHistory
+    const records = readyTasks.map(({ task, team, teamIndex, taskIndex }) => weeklyHistoryRecord(day, team, teamIndex, task, taskIndex))
+    const setOperationalHistory = setHistory || globalThis.__pignusSetHistory
     if (typeof setOperationalHistory !== 'function') { setNotice('No se pudo acceder al Historial. Recargá la página e intentá nuevamente.'); return }
     setOperationalHistory(previous => {
       const replacements = records.map(record => {
@@ -2713,7 +2721,10 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     })
     const historyIds = new Map(records.map(record => [String(record.sourceTaskId || record.id), record.id]))
     updateDay(day, current => ({ ...current, teams: current.teams.map(team => ({ ...team, tasks: team.tasks.map(task => ({ ...task, historyId: historyIds.get(String(task.taskId || task.historyId)) || task.historyId })) })) }))
-    setNotice(`La agenda del ${prettyDate(day)} fue guardada y sus servicios quedaron pendientes en el Historial.`)
+    const skipped = scheduledTasks.length - readyTasks.length
+    setNotice(skipped
+      ? `Se guardaron ${records.length} servicio(s) del ${prettyDate(day)}. ${skipped} servicio(s) incompleto(s) quedaron sin guardar.`
+      : `La agenda del ${prettyDate(day)} fue guardada y sus servicios quedaron pendientes en el Historial.`)
   }
   const displayDate = day => new Date(`${day}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).replace('.', '')
   return <>
