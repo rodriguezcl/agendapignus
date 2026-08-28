@@ -376,6 +376,29 @@ test('la agenda diaria mantiene visibles los nombres de los técnicos del equipo
   assert.match(styles, /\.daily-team-member-names \{[\s\S]*?text-overflow: ellipsis;[\s\S]*?white-space: nowrap;/)
 })
 
+test('los horarios predeterminados cambian desde septiembre sin alterar servicios cargados', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  assert.match(source, /DEFAULT_SERVICE_TIME_CHANGE_DATE = '2026-09-01'/)
+  assert.match(source, /fallbackDefaultServiceTimesForDate = date =>[\s\S]*?\? \['09:00', '14:00'\][\s\S]*?: \['08:30', '13:00'\]/)
+  assert.match(source, /const configured = weekly\?\._monthlyTeams\?\.\[String\(date \|\| ''\)\.slice\(0, 7\)\]\?\.defaultTimes/)
+  assert.match(source, /!taskHasContent\(task\) && !task\.manualSlot && replacements\[task\.time\]/)
+  assert.match(source, /tasks: isSaturday\(date\) \? defaultServiceTasksForDate\(date, weekly\)\.slice\(0, 1\) : defaultServiceTasksForDate\(date, weekly\)/)
+  assert.match(source, /const createTeam = \(index, source, day\)[\s\S]*?tasks: defaultServiceTasksForDate\(day, weekly\)/)
+})
+
+test('el administrador configura dos horarios predeterminados para cada mes', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/weekly-enhancements.css'), 'utf8')
+  assert.match(source, /Horarios del mes/)
+  assert.match(source, /className="modal monthly-times-modal"/)
+  assert.match(source, /monthlyTimesSetup\.times\.map\(\(time, index\)/)
+  assert.match(source, /Solo un administrador puede definir los horarios mensuales/)
+  assert.match(source, /defaultTimes: monthlyTimesSetup\.times/)
+  assert.match(source, /applyMonthlyDefaultTimes\(previous, monthlyTimesSetup\.month, sourceTimes, monthlyTimesSetup\.times\)/)
+  assert.match(source, /!validDefaultServiceTimes\(config\.defaultTimes\)/)
+  assert.match(styles, /\.monthly-time-grid \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/)
+})
+
 test('la agenda semanal permite guardar un día directamente en el historial', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')

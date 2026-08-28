@@ -1260,6 +1260,48 @@ body.dark .week-selector input[type='date'] {
   width: min(620px, calc(100vw - 32px));
 }
 
+.monthly-times-modal {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.monthly-times-modal h2 {
+  margin: 4px 0 10px;
+  text-transform: capitalize;
+}
+
+.monthly-times-modal > p:not(.eyebrow):not(.field-error) {
+  margin: 0 0 20px;
+  color: #667568;
+}
+
+.monthly-time-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.monthly-time-grid label {
+  display: grid;
+  gap: 7px;
+  color: #36513f;
+}
+
+.monthly-time-grid input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid #c9d8ca;
+  border-radius: 9px;
+  background: #fff;
+  color: #173527;
+}
+
+.monthly-times-modal .field-error {
+  margin: 10px 0 0;
+  color: #a83d36;
+  font-weight: 700;
+}
+
 .monthly-teams-modal h2 {
   margin: 4px 0 10px;
   text-transform: capitalize;
@@ -1298,8 +1340,19 @@ body.dark .week-selector input[type='date'] {
 }
 
 body.dark .monthly-teams-modal > p:not(.eyebrow),
+body.dark .monthly-times-modal > p:not(.eyebrow),
 body.dark .monthly-team-list small {
   color: #aab9ac;
+}
+
+body.dark .monthly-time-grid label {
+  color: #c8d8cb;
+}
+
+body.dark .monthly-time-grid input {
+  border-color: #405a48;
+  background: #172b20;
+  color: #edf8ef;
 }
 
 body.dark .monthly-team-list label {
@@ -1392,6 +1445,10 @@ body.dark .week-task-summary.available-slot:focus-visible {
   }
 
   .weekly-extra-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .monthly-time-grid {
     grid-template-columns: 1fr;
   }
 
