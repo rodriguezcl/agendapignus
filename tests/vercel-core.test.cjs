@@ -627,3 +627,13 @@ test('el menú móvil cubre las tarjetas de Agenda del día y el acceso directo 
   assert.equal(icon.readUInt32BE(16), 180)
   assert.equal(icon.readUInt32BE(20), 180)
 })
+
+test('todas las cruces de los modales quedan ancladas arriba a la derecha', () => {
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  const closeRule = styles.match(/:is\(\.modal,[^}]+:is\(\.modal-close, \.close-modal\)\s*\{([^}]*)\}/s)?.[1] || ''
+
+  assert.match(closeRule, /position:\s*absolute/)
+  assert.match(closeRule, /top:\s*10px/)
+  assert.match(closeRule, /right:\s*12px/)
+  assert.match(closeRule, /left:\s*auto/)
+})
