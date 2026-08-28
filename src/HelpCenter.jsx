@@ -35,7 +35,7 @@ const MODULES = [
       { title: 'Eliminar o mover un servicio', body: 'Usá el botón rojo del servicio para eliminarlo. Para cambiarlo de equipo sin volver a cargar sus datos, utilizá el botón de traslado y elegí el equipo de destino.' },
       { title: 'Guardia del sábado', body: 'Los sábados se prepara un solo equipo y el técnico se elige manualmente porque la guardia es rotativa. Si ese técnico recibe un servicio el viernes entre las 16:00 y las 20:00, el sistema interpreta que adelantó su guardia: bloquea cualquier nuevo equipo, técnico o servicio del sábado y muestra una leyenda informativa.' },
       { title: 'Conflicto de guardia adelantada', body: 'Si el sábado ya tenía un servicio real cuando se detecta la guardia adelantada del viernes, el sistema no lo elimina. Muestra una advertencia para que Administración revise el conflicto y decida cómo resolverlo.' },
-      { title: 'Servicios reprogramados', body: 'Una reprogramación confirmada desde Historial se incorpora al nuevo día y conserva cliente, servicio, horario, equipo y técnicos. No reemplaza otros trabajos, salvo que encuentre el mismo cliente en el mismo equipo y horario.' }
+      { title: 'Servicios reprogramados y estados', body: 'Una reprogramación confirmada desde Historial se incorpora al nuevo día y conserva cliente, servicio, horario, equipo y técnicos. Cada tarjeta muestra su estado vigente —Pendiente, Completado, Cancelado, Reprogramado o Requiere revisión— sin necesidad de abrir el Historial. No reemplaza otros trabajos, salvo que encuentre el mismo cliente en el mismo equipo y horario.' }
     ]
   },
   {
@@ -46,7 +46,7 @@ const MODULES = [
       { title: 'Cliente con datos incompletos', body: 'Dirección y contacto son obligatorios para usar un cliente en las agendas. Corregilos desde Abonados y clientes antes de programar el servicio; de esa forma el dato actualizado se reutiliza en futuras agendas.' },
       { title: 'Guardar, copiar y limpiar', body: 'Guardar agenda registra los servicios para su seguimiento. Vista previa permite revisar el mensaje completo y Copiar agenda lo lleva al portapapeles para compartir toda la jornada. Limpiar agenda elimina la carga del día; usalo solamente cuando quieras comenzar nuevamente.' },
       { title: 'Copiar un solo servicio', body: 'Cada servicio tiene un botón Copiar. Usalo cuando aparezca un trabajo nuevo durante el día y necesites enviar únicamente esa información, sin repetir toda la agenda que ya fue compartida.' },
-      { title: 'Mover un servicio', body: 'Presioná Reasignar en el bloque de acciones del servicio y elegí otro equipo. Se conservan todos los datos y la lista vuelve a ordenarse por horario.' }
+      { title: 'Mover un servicio y consultar su estado', body: 'Presioná Reasignar en el bloque de acciones del servicio y elegí otro equipo. Se conservan todos los datos y la lista vuelve a ordenarse por horario. La ficha muestra también si el servicio está Pendiente, Completado, Cancelado, Reprogramado o Requiere revisión.' }
     ]
   },
   {

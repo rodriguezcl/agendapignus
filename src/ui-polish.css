@@ -344,6 +344,10 @@ span.field-label-text > span.required-mark,
 }
 
 .daily-agenda-task-status {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: start;
+  justify-self: start;
   padding: 4px 7px;
   font-size: 10px;
 }
@@ -1947,7 +1951,8 @@ html.modal-open body {
     padding: 15px 13px;
   }
 
-  .content > .team-card .task-row > .task-title { grid-column: 1 / -1 !important; grid-row: auto !important; }
+  .content > .team-card .task-row > .task-title,
+  .content > .team-card .task-row > .daily-agenda-task-status { grid-column: 1 / -1 !important; grid-row: auto !important; }
   .content > .team-card .task-row > label.daily-field-time,
   .content > .team-card .task-row > label.daily-field-service {
     grid-column: 1 / -1 !important;

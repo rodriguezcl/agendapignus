@@ -629,8 +629,13 @@ body.dark .weekly-add-task {
   outline: none;
 }
 
-.week-task-summary > :not(.week-task-title):not(.week-task-client) {
+.week-task-summary > :not(.week-task-title):not(.week-task-client):not(.agenda-task-status) {
   display: none;
+}
+
+.week-task-summary > .weekly-agenda-task-status {
+  display: inline-block;
+  margin: 7px 0 0;
 }
 
 .week-task-summary .week-task-title {
