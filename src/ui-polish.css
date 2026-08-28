@@ -59,7 +59,14 @@ span.field-label-text > span.required-mark,
   text-align: right;
 }
 
-.daily-team-member-names {
+.task-row > label::after,
+.installation-zone legend::after,
+.technicians-picker > span::after {
+  content: none !important;
+}
+
+.technicians-picker > .technician-assignment-label[data-technician-names]::after {
+  content: attr(data-technician-names) !important;
   display: block;
   max-width: 430px;
   color: #315643;
@@ -69,14 +76,8 @@ span.field-label-text > span.required-mark,
   overflow-wrap: anywhere;
 }
 
-.app-shell[data-theme='dark'] .daily-team-member-names {
+.app-shell[data-theme='dark'] .technician-assignment-label[data-technician-names]::after {
   color: #c7dfcf;
-}
-
-.task-row > label::after,
-.installation-zone legend::after,
-.technicians-picker > span::after {
-  content: none !important;
 }
 
 :is(.task-row, .weekly-task-form, .employee-form, .customer-form, .service-form, .role-editor, .login-card) label > :is(input, select, textarea, .customer-autocomplete-control) {

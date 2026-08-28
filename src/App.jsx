@@ -1469,13 +1469,9 @@ function Agenda({ date, setDate, teams, setTeams, activeTechs, customers, servic
       document.querySelectorAll('.content > .team-card').forEach((card, index) => {
         const assignment = card.querySelector('.technician-assignment-label')
         if (!assignment) return
-        assignment.querySelector('.daily-team-member-names')?.remove()
         const names = (teams[index]?.members || []).filter(Boolean)
-        if (!names.length) return
-        const detail = document.createElement('small')
-        detail.className = 'daily-team-member-names'
-        detail.textContent = names.join(' / ')
-        assignment.append(detail)
+        if (names.length) assignment.dataset.technicianNames = names.join(' / ')
+        else assignment.removeAttribute('data-technician-names')
       })
     })
     return () => cancelAnimationFrame(frame)
