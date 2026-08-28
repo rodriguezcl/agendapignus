@@ -336,6 +336,17 @@ test('ordena los campos y centra las acciones de cada servicio diario', () => {
   assert.match(styles, /\.content > \.team-card \.task-row > \.daily-task-actions \{[\s\S]*?align-self: stretch;[\s\S]*?justify-content: center;/)
 })
 
+test('la agenda diaria renderiza sus acciones inmediatamente y separa hora de servicio', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(source, /className="secondary save-agenda-button" onClick=\{saveAgenda\}/)
+  assert.doesNotMatch(source, /actionGroup\.querySelector\('\.save-agenda-button'\)\?\.remove\(\)/)
+  assert.match(source, /taskHasContent\(task\) && <button type="button" className="icon-btn delete daily-delete-button"/)
+  assert.match(styles, /grid-template-columns: 132px minmax\(220px, 1fr\) minmax\(220px, 1fr\)/)
+  assert.match(styles, /\.daily-field-time input\[type='time'\] \{[\s\S]*?max-width: 100%;/)
+  assert.match(styles, /label\.daily-field-time,[\s\S]*?label\.daily-field-service \{\s*grid-column: 1 \/ -1 !important;/)
+})
+
 test('la agenda semanal permite guardar un día directamente en el historial', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')

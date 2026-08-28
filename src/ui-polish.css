@@ -1798,7 +1798,7 @@ html.modal-open body {
 }
 
 .content > .team-card .task-row {
-  grid-template-columns: 132px 110px minmax(190px, 1fr) minmax(210px, 1.12fr) 112px !important;
+  grid-template-columns: 132px minmax(220px, 1fr) minmax(220px, 1fr) minmax(260px, 1.2fr) 112px !important;
   grid-auto-rows: auto;
   align-items: end;
   gap: 14px 12px;
@@ -1862,6 +1862,16 @@ html.modal-open body {
   min-height: 44px;
 }
 
+.content > .team-card .task-row > :is(.daily-field-time, .daily-field-service) {
+  min-width: 0;
+}
+
+.content > .team-card .task-row > .daily-field-time input[type='time'] {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .content > .team-card .task-row > .daily-task-actions {
   grid-column: 5 !important;
   grid-row: 1 / span 7 !important;
@@ -1900,7 +1910,7 @@ html.modal-open body {
 
 @media (max-width: 1100px) {
   .content > .team-card .task-row {
-    grid-template-columns: 70px 105px minmax(170px, 1fr) minmax(180px, 1fr) !important;
+    grid-template-columns: 70px minmax(170px, 1fr) minmax(170px, 1fr) minmax(180px, 1fr) !important;
   }
 
   .content > .team-card .task-row > .daily-field-address { grid-column: 2 / 4; }
@@ -1937,8 +1947,11 @@ html.modal-open body {
   }
 
   .content > .team-card .task-row > .task-title { grid-column: 1 / -1 !important; grid-row: auto !important; }
-  .content > .team-card .task-row > .daily-field-time { grid-column: 1 !important; grid-row: auto !important; }
-  .content > .team-card .task-row > .daily-field-service { grid-column: 2 !important; grid-row: auto !important; }
+  .content > .team-card .task-row > label.daily-field-time,
+  .content > .team-card .task-row > label.daily-field-service {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+  }
   .content > .team-card .task-row > .daily-field-customer,
   .content > .team-card .task-row > .daily-field-address,
   .content > .team-card .task-row > .daily-field-contact,
