@@ -222,7 +222,7 @@ function TaskStatusBadge({ task, date, history, weekly = false }) {
   const status = taskStatus(task, date, history)
   if (!status) return null
   const service = String(task?.service || 'Sin tipo de servicio').trim()
-  return <div className={`agenda-task-status ${weekly ? 'weekly-agenda-task-status' : 'daily-agenda-task-status'}`}><em className={`work-status ${statusClassName(status)}`}>{status}</em><em className={`role-chip agenda-service-chip ${serviceColorClass(service)}`} title={service}>{service}</em></div>
+  return <div className={`agenda-task-status ${weekly ? 'weekly-agenda-task-status' : 'daily-agenda-task-status'}`}><em className={`work-status ${statusClassName(status)}`}>{status}</em>{weekly && <em className={`role-chip agenda-service-chip ${serviceColorClass(service)}`} title={service}>{service}</em>}</div>
 }
 const serviceActor = user => {
   const current = user || globalThis.__pignusCurrentUser

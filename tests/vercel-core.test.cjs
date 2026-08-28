@@ -367,11 +367,12 @@ test('las agendas diaria y semanal renderizan directamente el estado de cada ser
   assert.match(weeklyStyles, /:not\(\.agenda-task-status\)/)
 })
 
-test('las agendas muestran el tipo de servicio junto al estado con los colores del historial', () => {
+test('la agenda semanal muestra el tipo de servicio junto al estado y la diaria muestra solo el estado', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const polishStyles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   const weeklyStyles = fs.readFileSync(path.resolve(__dirname, '../src/weekly-enhancements.css'), 'utf8')
   assert.match(source, /className=\{`role-chip agenda-service-chip \$\{serviceColorClass\(service\)\}`\}/)
+  assert.match(source, /\{weekly && <em className=\{`role-chip agenda-service-chip/)
   assert.match(source, /title=\{service\}>\{service\}<\/em>/)
   assert.match(polishStyles, /\.agenda-task-status \{[\s\S]*?display: flex;[\s\S]*?gap: 6px;/)
   assert.match(polishStyles, /\.agenda-task-status > \.agenda-service-chip \{[\s\S]*?text-overflow: ellipsis;/)
