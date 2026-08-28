@@ -417,6 +417,16 @@ test('el administrador configura dos horarios predeterminados para cada mes', ()
   assert.match(styles, /\.monthly-time-grid \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/)
 })
 
+test('equipos del mes propone dos duplas y una salida individual rotativas', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
+  assert.match(source, /import \{ monthlyTeamRotation \} from '\.\/monthly-team-rotation\.mjs'/)
+  assert.match(source, /const rotation = monthlyTeamRotation\(activeTechs, monthKey\)/)
+  assert.match(source, /rotation\.length === 3/)
+  assert.match(source, /dos duplas y una salida individual/)
+  assert.match(help, /cada persona trabaje una vez con cada compañero y una vez individualmente/)
+})
+
 test('el administrador configura una rotación anual editable para las guardias de los sábados', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/weekly-enhancements.css'), 'utf8')
