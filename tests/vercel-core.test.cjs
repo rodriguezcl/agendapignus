@@ -468,8 +468,14 @@ test('el escritorio aprovecha el ancho y el servicio del historial no ocupa dos 
 
 test('la columna Estado conserva sus óvalos en una sola línea', () => {
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
-  assert.match(styles, /minmax\(120px, \.75fr\) 128px 108px/)
+  assert.match(styles, /minmax\(120px, \.75fr\) 128px 125px/)
   assert.match(styles, /\.history-bulk \.history-row > div:nth-child\(7\) \.work-status \{[\s\S]*?width: max-content;[\s\S]*?white-space: nowrap;/)
+})
+
+test('el historial reduce Fecha y reserva ancho suficiente para Gestionar', () => {
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(styles, /grid-template-columns: 42px minmax\(128px, \.75fr\)[^;]+128px 125px !important;/)
+  assert.match(styles, /@media \(min-width: 1200px\)[\s\S]*?grid-template-columns: 42px minmax\(130px, \.7fr\)[^;]+128px 132px !important;/)
 })
 
 test('genera y verifica hashes compatibles con las credenciales existentes', () => {

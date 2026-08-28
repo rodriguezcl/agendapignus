@@ -287,7 +287,7 @@ span.field-label-text > span.required-mark,
 /* Historial operativo: hora visible y lectura priorizada sin abandonar la tabla. */
 .history-bulk .table-head,
 .history-bulk .history-row {
-  grid-template-columns: 42px minmax(145px, .85fr) 78px minmax(235px, 1.6fr) minmax(125px, .75fr) minmax(120px, .75fr) 128px 108px !important;
+  grid-template-columns: 42px minmax(128px, .75fr) 78px minmax(235px, 1.6fr) minmax(125px, .75fr) minmax(120px, .75fr) 128px 125px !important;
 }
 
 .history-bulk .history-time {
@@ -344,7 +344,7 @@ span.field-label-text > span.required-mark,
 
   .history-bulk .table-head,
   .history-bulk .history-row {
-    grid-template-columns: 42px minmax(150px, .78fr) 82px minmax(280px, 1.55fr) minmax(175px, .9fr) minmax(145px, .78fr) 128px 112px !important;
+    grid-template-columns: 42px minmax(130px, .7fr) 82px minmax(280px, 1.55fr) minmax(175px, .9fr) minmax(145px, .78fr) 128px 132px !important;
   }
 }
 
