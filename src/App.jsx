@@ -2352,7 +2352,10 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
   const createDay = (day, sourceWeekly = weekly) => {
     const sources = sourceWeekly?._monthlyTeams?.[day.slice(0, 7)]?.teams || [null, null, null]
     if (isSaturday(day)) {
-      const team = createTeam(0, null, day)
+      // El sábado no usa la plantilla mensual, pero debe conservar el ID que
+      // ya fue materializado para que el guardado pueda compararse con Historial.
+      const storedSaturday = sourceWeekly?.[day]?.teams?.[0]
+      const team = createTeam(0, storedSaturday ? { teamId: storedSaturday.teamId } : null, day)
       return { teams: assignGuardToEmptySaturday([{ ...team, memberIds: [], members: [], tasks: defaultServiceTasksForDate(day, sourceWeekly).slice(0, 1) }], day, sourceWeekly, activeTechs) }
     }
     return { teams: sources.map((team, index) => createTeam(index, team, day)) }
