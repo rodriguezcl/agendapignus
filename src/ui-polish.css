@@ -54,6 +54,23 @@ span.field-label-text > span.required-mark,
 
 .technician-assignment-label {
   min-width: 0;
+  display: grid;
+  gap: 3px;
+  text-align: right;
+}
+
+.daily-team-member-names {
+  display: block;
+  max-width: 430px;
+  color: #315643;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.app-shell[data-theme='dark'] .daily-team-member-names {
+  color: #c7dfcf;
 }
 
 .task-row > label::after,
@@ -250,7 +267,10 @@ span.field-label-text > span.required-mark,
 .customer-history-modal {
   width: min(760px, calc(100vw - 28px));
   max-height: calc(100dvh - 32px);
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 16px;
 }
 
 .customer-history-summary {
@@ -260,7 +280,33 @@ span.field-label-text > span.required-mark,
 
 .customer-history-list {
   display: grid;
+  flex: 1 1 auto;
   gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 6px;
+}
+
+.customer-history-modal > .modal-actions {
+  flex: 0 0 auto;
+}
+
+.agenda-task-status {
+  margin: 0;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.daily-agenda-task-status {
+  padding: 4px 7px;
+  font-size: 10px;
+}
+
+.weekly-agenda-task-status {
+  padding: 3px 7px;
+  font-size: 10px;
 }
 
 .customer-history-entry {
@@ -352,6 +398,10 @@ span.field-label-text > span.required-mark,
 }
 
 @media (max-width: 640px) {
+  .technician-assignment-label {
+    text-align: left;
+  }
+
   .customer-history-modal {
     width: calc(100vw - 20px);
     max-height: calc(100dvh - 20px);
@@ -1705,7 +1755,7 @@ html.modal-open body {
 }
 
 .content > .team-card .task-row {
-  grid-template-columns: 76px 110px minmax(190px, 1fr) minmax(210px, 1.12fr) 112px !important;
+  grid-template-columns: 132px 110px minmax(190px, 1fr) minmax(210px, 1.12fr) 112px !important;
   grid-auto-rows: auto;
   align-items: end;
   gap: 14px 12px;
@@ -1723,6 +1773,7 @@ html.modal-open body {
   flex-direction: row;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .content > .team-card .task-row > .task-title span {
