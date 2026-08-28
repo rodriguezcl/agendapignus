@@ -20,8 +20,8 @@ test('el Centro de ayuda documenta las funciones operativas vigentes', () => {
 })
 
 test('la ayuda explica el orden actual del Historial', () => {
-  assert.match(helpSource, /fechas más recientes/)
-  assert.match(helpSource, /prioriza los servicios pendientes/)
+  assert.match(helpSource, /primero todos los servicios pendientes/)
+  assert.match(helpSource, /fecha más antigua a la más nueva/)
   assert.match(helpSource, /horario más temprano al más tarde/)
   assert.match(helpSource, /La columna Hora/)
   assert.doesNotMatch(helpSource, /También podés limitar los resultados por fecha y estado/)
@@ -34,5 +34,5 @@ test('la búsqueda incluye módulos y preguntas frecuentes', () => {
 })
 
 test('la fecha visible de actualización corresponde a esta revisión', () => {
-  assert.match(helpSource, /Actualizado · 27 de agosto de 2026/)
+  assert.match(helpSource, /Actualizado · 28 de agosto de 2026/)
 })

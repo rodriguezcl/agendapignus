@@ -200,7 +200,8 @@ span.field-label-text > span.required-mark,
 }
 
 .history-bulk .role-chip {
-  display: block;
+  display: inline-block;
+  width: fit-content;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
