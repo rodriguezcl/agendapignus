@@ -215,6 +215,16 @@ span.field-label-text > span.required-mark,
   gap: 7px;
 }
 
+.weekly-day-actions > button {
+  box-sizing: border-box;
+  width: 92px;
+  min-width: 92px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 10px !important;
+  justify-content: center;
+}
+
 .weekly-save-day {
   display: inline-flex;
   align-items: center;
@@ -1767,6 +1777,24 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
 
 .history-clear-filters[hidden] {
   display: none !important;
+}
+
+/* El título puede envolver, pero la acción de edición conserva todo su contenido dentro del marco. */
+.history-detail-heading h2 {
+  flex: 1 1 auto;
+}
+
+.history-detail-heading > .detail-edit {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: max-content !important;
+  min-height: 40px;
+  padding: 8px 12px !important;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 html.modal-open,
