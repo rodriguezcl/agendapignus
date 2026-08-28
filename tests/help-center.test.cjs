@@ -17,6 +17,7 @@ test('el Centro de ayuda documenta las funciones operativas vigentes', () => {
     'En Agenda semanal, cada tarjeta muestra su estado vigente',
     'tipo de servicio con el mismo color utilizado en Historial',
     'Horarios del mes',
+    'Los horarios disponibles y las tarjetas incompletas no bloquean la acción',
     'La ficha muestra también si el servicio está Pendiente',
     'Marca, Modelo, Año, Kilometraje y Matrícula',
     'La matrícula se guarda en mayúsculas y no puede repetirse',
