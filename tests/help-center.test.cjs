@@ -14,6 +14,8 @@ test('el Centro de ayuda documenta las funciones operativas vigentes', () => {
     'No aplica',
     'Ver el historial de un cliente',
     'Observación técnica',
+    'Cada tarjeta muestra su estado vigente',
+    'La ficha muestra también si el servicio está Pendiente',
     "id: 'technician'",
     "id: 'mobile'"
   ]) assert.match(helpSource, new RegExp(expected, 'i'))

@@ -350,6 +350,18 @@ test('la agenda diaria renderiza sus acciones inmediatamente y separa hora de se
   assert.match(styles, /label\.daily-field-time,[\s\S]*?label\.daily-field-service \{\s*grid-column: 1 \/ -1 !important;/)
 })
 
+test('las agendas diaria y semanal renderizan directamente el estado de cada servicio', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const polishStyles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  const weeklyStyles = fs.readFileSync(path.resolve(__dirname, '../src/weekly-enhancements.css'), 'utf8')
+  assert.match(source, /function TaskStatusBadge\(\{ task, date, history, weekly = false \}\)/)
+  assert.match(source, /<TaskStatusBadge task=\{task\} date=\{date\} history=\{history\} \/>/)
+  assert.match(source, /<TaskStatusBadge task=\{task\} date=\{day\} history=\{operationalHistory\} weekly \/>/)
+  assert.doesNotMatch(source, /appendTaskStatusElement/)
+  assert.match(polishStyles, /\.daily-agenda-task-status \{[\s\S]*?grid-column: 1;[\s\S]*?grid-row: 2;/)
+  assert.match(weeklyStyles, /:not\(\.agenda-task-status\)/)
+})
+
 test('la agenda semanal permite guardar un día directamente en el historial', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
