@@ -2,6 +2,15 @@ const postgres = require('postgres')
 
 let client
 
+function vehicleCollection(value) {
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 function database() {
   if (!process.env.DATABASE_URL) throw new Error('Falta configurar DATABASE_URL.')
   if (!client) client = postgres(process.env.DATABASE_URL, { max: 1, prepare: false, idle_timeout: 20, connect_timeout: 15, ssl: 'require' })
@@ -20,13 +29,14 @@ async function readState(sql) {
       coalesce((select jsonb_agg(data order by created_at, id) from pignus_work_history), '[]'::jsonb) as history,
       (select data from pignus_agendas where id = 'current') as agenda,
       coalesce((select jsonb_agg(data order by created_at, id) from pignus_reviews), '[]'::jsonb) as reviews,
-      coalesce((select jsonb_object_agg(key, value) from pignus_preferences where key in ('state_revision', 'theme')), '{}'::jsonb) as preferences
+      coalesce((select jsonb_object_agg(key, value) from pignus_preferences where key in ('state_revision', 'theme', 'vehicles')), '{}'::jsonb) as preferences
   `
   return {
     revision: Number(state.preferences?.state_revision || 0),
     roles: state.roles || [],
     employees: state.employees || [],
     services: state.services || [],
+    vehicles: vehicleCollection(state.preferences?.vehicles),
     customers: state.customers || [],
     history: state.history || [],
     agenda: state.agenda || null,
@@ -60,6 +70,8 @@ async function replaceCollections(sql, state) {
 
   await sql`delete from pignus_services`
   if (state.services.length) await sql`insert into pignus_services ${sql(state.services.map(record => ({ id: String(record.id), data: sql.json(record) })))}`
+
+  await sql`insert into pignus_preferences (key, value, updated_at) values ('vehicles', ${JSON.stringify(state.vehicles || [])}, now()) on conflict (key) do update set value = excluded.value, updated_at = now()`
 
   await sql`delete from pignus_customers`
   if (state.customers.length) await sql`insert into pignus_customers ${sql(state.customers.map(record => ({ account: String(record.account), customer_id: String(record.customerId), data: sql.json(record) })))}`

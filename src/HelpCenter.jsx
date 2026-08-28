@@ -112,6 +112,14 @@ const MODULES = [
     ]
   },
   {
+    id: 'vehicles', module: 'vehicles', icon: 'vehicle', title: 'Vehículos', summary: 'Administrá la flota y sus datos identificatorios.',
+    articles: [
+      { title: 'Registrar un vehículo', body: 'Presioná Nuevo vehículo y completá Marca, Modelo, Año y Matrícula. La matrícula se guarda en mayúsculas y no puede repetirse.' },
+      { title: 'Editar los datos', body: 'Usá el botón de edición de la fila correspondiente para corregir cualquiera de los cuatro campos y guardá los cambios.' },
+      { title: 'Eliminar de la flota', body: 'Usá el botón rojo de la fila y confirmá la eliminación. El registro dejará de formar parte de la flota disponible.' }
+    ]
+  },
+  {
     id: 'settings', module: 'settings', icon: 'settings', title: 'Configuración', summary: 'Definí roles y decidí qué módulos puede utilizar cada perfil.',
     articles: [
       { title: 'Editar un rol', body: 'Podés cambiar su nombre y descripción. Los empleados vinculados conservarán el mismo rol y verán el nuevo nombre.' },

@@ -241,6 +241,7 @@ async function handleSaveState(req, res, sql, user) {
         ...auditChanges(current.roles, next.roles, 'id', 'Rol', user),
         ...auditChanges(current.employees, next.employees, 'id', 'Empleado', user),
         ...auditChanges(current.services, next.services, 'id', 'Tipo de servicio', user),
+        ...auditChanges(current.vehicles, next.vehicles, 'id', 'Vehículo', user),
         ...auditChanges(current.history, next.history, 'id', 'Servicio / historial', user),
         ...auditChanges(current.customers, next.customers, 'customerId', 'Abonado / Cliente', user),
         ...auditChanges(current.reviews, next.reviews, 'id', 'Reseña', user)

@@ -119,6 +119,86 @@ span.field-label-text > span.required-mark,
   justify-content: start;
 }
 
+.vehicle-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(180px, 1.2fr) 110px minmax(150px, .8fr) auto auto;
+  gap: 13px;
+  align-items: end;
+  padding: 17px;
+  margin-bottom: 18px;
+  border: 1px solid #d8e5d8;
+  border-radius: 10px;
+  background: #eff5ef;
+}
+
+.vehicle-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  color: #4c6654;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.vehicle-form input {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 5px;
+  padding: 7px;
+  border: 1px solid #d3dfd4;
+  border-radius: 6px;
+  background: #fff;
+  color: #274533;
+  outline: none;
+}
+
+.vehicle-form > button {
+  width: auto;
+  min-height: 40px;
+}
+
+.vehicles-table .table-head,
+.vehicle-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.3fr) 100px minmax(140px, .8fr) 100px;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 17px;
+}
+
+.vehicle-row {
+  border-top: 1px solid #e5ece5;
+  color: #53675a;
+  transition: background .15s ease;
+}
+
+.vehicle-row:hover { background: #fbfdf9; }
+.vehicle-row > b { color: #193829; }
+.vehicle-row > strong { color: #31533e; letter-spacing: .04em; }
+
+.app-shell[data-theme='dark'] .vehicle-form { background: #23352a; border-color: #3b5645; }
+.app-shell[data-theme='dark'] .vehicle-form input { background: #142219; border-color: #405c4a; color: #ecf4ed; }
+.app-shell[data-theme='dark'] .vehicle-row { border-color: #334a3c; color: #b7c9ba; }
+.app-shell[data-theme='dark'] .vehicle-row > b,
+.app-shell[data-theme='dark'] .vehicle-row > strong { color: #edf5ef; }
+.app-shell[data-theme='dark'] .vehicle-row:hover { background: #1b3023; }
+
+@media (max-width: 900px) {
+  .vehicle-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vehicle-form > button { width: 100%; }
+}
+
+@media (max-width: 640px) {
+  .vehicle-form { grid-template-columns: minmax(0, 1fr); }
+  .vehicles-table .table-head { display: none; }
+  .vehicle-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; }
+  .vehicle-row > b,
+  .vehicle-row > span,
+  .vehicle-row > strong { grid-column: 1; }
+  .vehicle-row > .row-actions { grid-column: 2; grid-row: 1 / span 4; align-self: center; }
+}
+
 .service-form > button,
 .employee-form-wide > button,
 .customer-form > button {
@@ -207,7 +287,7 @@ span.field-label-text > span.required-mark,
 /* Historial operativo: hora visible y lectura priorizada sin abandonar la tabla. */
 .history-bulk .table-head,
 .history-bulk .history-row {
-  grid-template-columns: 42px minmax(145px, .85fr) 78px minmax(235px, 1.6fr) minmax(125px, .75fr) minmax(120px, .75fr) 98px 108px !important;
+  grid-template-columns: 42px minmax(145px, .85fr) 78px minmax(235px, 1.6fr) minmax(125px, .75fr) minmax(120px, .75fr) 128px 108px !important;
 }
 
 .history-bulk .history-time {
@@ -223,6 +303,12 @@ span.field-label-text > span.required-mark,
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-bulk .history-row > div:nth-child(7) .work-status {
+  width: max-content;
+  max-width: 100%;
   white-space: nowrap;
 }
 
@@ -258,7 +344,7 @@ span.field-label-text > span.required-mark,
 
   .history-bulk .table-head,
   .history-bulk .history-row {
-    grid-template-columns: 42px minmax(150px, .78fr) 82px minmax(280px, 1.55fr) minmax(175px, .9fr) minmax(145px, .78fr) 105px 112px !important;
+    grid-template-columns: 42px minmax(150px, .78fr) 82px minmax(280px, 1.55fr) minmax(175px, .9fr) minmax(145px, .78fr) 128px 112px !important;
   }
 }
 
