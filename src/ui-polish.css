@@ -199,6 +199,40 @@ span.field-label-text > span.required-mark,
   white-space: nowrap;
 }
 
+.history-bulk .role-chip {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weekly-day-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.weekly-save-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+@media (min-width: 1200px) {
+  .app-shell > main > .content {
+    width: 100%;
+    max-width: 1640px;
+    padding-inline: clamp(24px, 2.2vw, 44px);
+  }
+
+  .history-bulk .table-head,
+  .history-bulk .history-row {
+    grid-template-columns: 42px minmax(150px, .78fr) 82px minmax(280px, 1.55fr) minmax(175px, .9fr) minmax(145px, .78fr) 105px 112px !important;
+  }
+}
+
 .app-shell[data-theme='dark'] .history-bulk .history-time {
   color: #dce9df;
 }
@@ -232,6 +266,15 @@ span.field-label-text > span.required-mark,
 }
 
 @media (max-width: 640px) {
+  .weekly-day-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .weekly-day-actions > button {
+    flex: 1 1 0;
+  }
+
   .history-bulk .table-head {
     display: none !important;
   }

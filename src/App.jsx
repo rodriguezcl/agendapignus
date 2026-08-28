@@ -786,6 +786,7 @@ export default function App() {
   const [authUser, setAuthUser] = useState(null)
   globalThis.__pignusCurrentUser = authUser
   globalThis.__pignusHistory = history
+  globalThis.__pignusSetHistory = setHistory
   const [authLoading, setAuthLoading] = useState(true)
   const [databaseError, setDatabaseError] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
@@ -2596,6 +2597,80 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
     openDaily(day, teams)
     setNotice(`Se cargó la planificación semanal del ${prettyDate(day)} en la agenda técnica.`)
   }
+  const weeklyHistoryRecord = (day, team, teamIndex, task, taskIndex) => ({
+    id: task.historyId || `work-${task.taskId || `${day}-${teamIndex}-${taskIndex}`}`,
+    sourceTaskId: task.taskId,
+    date: day,
+    time: task.time,
+    scheduledTime: task.time,
+    team: team.label || `Equipo ${teamIndex + 1}`,
+    teamId: team.teamId,
+    technicianIds: team.memberIds || [],
+    technicians: team.members || [],
+    serviceId: serviceForWeeklyTask(task)?.id || task.serviceId,
+    service: serviceForWeeklyTask(task)?.name || task.service,
+    client: task.client,
+    customerId: task.customerId || '',
+    clientAccount: task.clientAccount || '',
+    clientNameAtService: task.clientNameAtService || String(task.client || '').replace(/^[^\s]+\s+/, ''),
+    detail: task.detail,
+    ...applicableServiceExtras(task, serviceForWeeklyTask(task)),
+    address: task.address,
+    phone: task.phone,
+    installationZone: task.installationZone || '',
+    ...serviceTrace(task)
+  })
+  const recordMatchesWeeklyTask = (record, expected) => {
+    if (!record) return false
+    const comparable = value => String(value || '').trim()
+    const sameList = (left, right) => JSON.stringify((left || []).map(String)) === JSON.stringify((right || []).map(String))
+    return ['date', 'time', 'teamId', 'serviceId', 'service', 'customerId', 'clientAccount', 'client', 'detail', 'address', 'phone', 'installationZone', 'paymentMethod', 'amount', 'monthlyFee', 'form'].every(key => comparable(record[key]) === comparable(expected[key])) &&
+      sameList(record.technicianIds, expected.technicianIds) && sameList(record.technicians, expected.technicians)
+  }
+  const dayNeedsSave = day => dayPlan(day).teams.some((team, teamIndex) => (team.tasks || []).some((task, taskIndex) => {
+    if (!taskHasContent(task)) return false
+    return !recordMatchesWeeklyTask(historyRecordForTask(task, day, operationalHistory), weeklyHistoryRecord(day, team, teamIndex, task, taskIndex))
+  }))
+  const saveWeeklyDay = day => {
+    const hours = hoursForDay(day)
+    if (!hours) { setNotice('Los domingos no están habilitados para programar servicios.'); return }
+    const holidayState = holidayStateForDay(day)
+    if (holidayState.blocked) { setNotice(holidayState.decision?.status === 'closed' ? 'La fecha fue definida como día no operativo.' : 'Primero definí si el feriado será laboral o no operativo.'); return }
+    const advance = advancedGuardForDay(day)
+    if (advance) { setNotice(advancedSaturdayGuardMessage(advance)); return }
+    const plan = dayPlan(day)
+    const invalidTime = plan.teams.flatMap(team => team.tasks).find(task => task.time && (task.time < hours.min || task.time > hours.max))
+    if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
+    const scheduledTasks = plan.teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, team, teamIndex, taskIndex }))).filter(({ task }) => taskHasContent(task))
+    if (!scheduledTasks.length) { setNotice('No hay servicios cargados para guardar en este día.'); return }
+    const incompleteTask = scheduledTasks.find(({ task }) => !task.time || !task.service || !task.customerId || !task.address || !task.phone || !task.detail || (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) || requiresPaymentAmount(task, serviceForWeeklyTask(task)))
+    if (incompleteTask) {
+      const { task, teamIndex, taskIndex } = incompleteTask
+      const missing = [['hora', task.time], ['tipo de servicio', task.service], ['cliente', task.client], ['dirección', task.address], ['contacto', task.phone], ['detalle', task.detail]].filter(([, value]) => !String(value || '').trim()).map(([label]) => label)
+      if (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) missing.push('ubicación de la instalación')
+      if (requiresPaymentAmount(task, serviceForWeeklyTask(task))) missing.push('monto')
+      setNotice(`Completá los campos obligatorios de Equipo ${teamIndex + 1}, tarjeta ${taskIndex + 1}: ${missing.join(', ')}.`)
+      return
+    }
+    const missingTeam = scheduledTasks.find(({ team }) => !(team.members || []).length)
+    if (missingTeam) { setNotice(`${missingTeam.team.label || `Equipo ${missingTeam.teamIndex + 1}`} debe tener al menos un técnico asignado antes de guardar.`); return }
+    const conflicts = conflictsForDay(day)
+    if (conflicts.length) { setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`); return }
+    const records = scheduledTasks.map(({ task, team, teamIndex, taskIndex }) => weeklyHistoryRecord(day, team, teamIndex, task, taskIndex))
+    const setOperationalHistory = globalThis.__pignusSetHistory
+    if (typeof setOperationalHistory !== 'function') { setNotice('No se pudo acceder al Historial. Recargá la página e intentá nuevamente.'); return }
+    setOperationalHistory(previous => {
+      const replacements = records.map(record => {
+        const existing = previous.find(item => item.id === record.id || (record.sourceTaskId && String(item.sourceTaskId || '') === String(record.sourceTaskId)))
+        return existing ? { ...existing, ...record, id: existing.id } : { ...record, status: 'Pendiente' }
+      })
+      const replacedIds = new Set(replacements.map(record => record.id))
+      return [...replacements, ...previous.filter(record => !replacedIds.has(record.id))]
+    })
+    const historyIds = new Map(records.map(record => [String(record.sourceTaskId || record.id), record.id]))
+    updateDay(day, current => ({ ...current, teams: current.teams.map(team => ({ ...team, tasks: team.tasks.map(task => ({ ...task, historyId: historyIds.get(String(task.taskId || task.historyId)) || task.historyId })) })) }))
+    setNotice(`La agenda del ${prettyDate(day)} fue guardada y sus servicios quedaron pendientes en el Historial.`)
+  }
   const displayDate = day => new Date(`${day}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).replace('.', '')
   return <>
     {techPicker && <button className="picker-backdrop" aria-label="Cerrar selector de técnicos" onClick={() => setTechPicker(null)} />}
@@ -2628,7 +2703,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
         const hours = hoursForDay(day)
         const conflicts = conflictsForDay(day)
         return <section className={`week-day ${!hours || holidayState.decision?.status === 'closed' ? 'closed-day' : ''}`} data-day={day} key={day}>
-          <header><div><b>{displayDate(day)}</b><small>{!hours ? 'No operativo' : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : day === today ? 'Hoy' : prettyDate(day)}</small></div><button className="secondary small" disabled={!hours || Boolean(advancedGuard) || calendarUnavailable || holidayState.blocked} title={advancedGuard ? advancedSaturdayGuardMessage(advancedGuard) : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : ''} onClick={() => openDay(day)}>Abrir día</button></header>
+          <header><div><b>{displayDate(day)}</b><small>{!hours ? 'No operativo' : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : day === today ? 'Hoy' : prettyDate(day)}</small></div><div className="weekly-day-actions">{hours && !advancedGuard && !calendarUnavailable && !holidayState.blocked && dayNeedsSave(day) && <button className="primary small weekly-save-day" title="Guardado pendiente: guardar agenda" onClick={() => saveWeeklyDay(day)}><Icon name="check" size={15} />Guardar</button>}<button className="secondary small" disabled={!hours || Boolean(advancedGuard) || calendarUnavailable || holidayState.blocked} title={advancedGuard ? advancedSaturdayGuardMessage(advancedGuard) : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : ''} onClick={() => openDay(day)}>Abrir día</button></div></header>
           {!hours ? <p className="closed-day-note">Domingo · sin programación</p> : <>
             <small className="weekly-hours">Horario habilitado: {hours.label}</small>
             {calendarUnavailable ? <div className={`weekly-calendar-state ${holidayCalendar.error ? 'error' : ''}`}>{holidayCalendar.error ? 'No se pudo verificar el calendario de feriados.' : 'Verificando feriados nacionales…'}</div> : holidayState.holiday && <HolidayDecisionPanel compact holiday={holidayState.holiday} decision={holidayState.decision} canDecide={authUser?.roleCode === 'administrator'} onDecision={status => recordHolidayDecision(setWeekly, setNotice, day, holidayState.holiday, status)} />}
@@ -3238,6 +3313,7 @@ function HistoryBulkView({ history, setHistory, customers, services, employees, 
     document.querySelectorAll('.history-bulk .role-chip').forEach(chip => {
       chip.classList.remove(...colorClasses)
       chip.classList.add(serviceColorClass(chip.textContent))
+      chip.title = chip.textContent
     })
   }, [records])
   return <><div className="module-intro"><div><p className="eyebrow">TRABAJOS REALIZADOS</p><h1>Historial técnico</h1><p>Seleccioná varios servicios para confirmarlos, cancelarlos o reprogramarlos en una sola acción.</p></div><button className="primary" disabled={!selected.length} onClick={() => setBulkOpen(true)}><Icon name="check" />{selected.length ? `Gestionar ${selected.length} seleccionados` : 'Gestionar selección'}</button></div><div className="accounts-bar history-toolbar"><div><b>{history.length}</b> trabajos registrados</div><label><Icon name="search" size={16} /><input placeholder="Buscar cliente, servicio o técnico..." value={search} onChange={event => setSearch(event.target.value)} /></label></div><div className="data-card history-table history-bulk"><div className="table-head"><span><input aria-label="Seleccionar todos" type="checkbox" checked={records.length > 0 && selected.length === records.length} onChange={toggleAll} /></span><span>Fecha</span><span>Hora</span><span>Cliente</span><span>Servicio</span><span>Técnicos asignados</span><span>Estado</span><span>Acciones</span></div>{records.length ? records.map(record => <div className="history-row" key={record.id}><span><input aria-label={`Seleccionar ${record.client}`} type="checkbox" checked={selected.includes(record.id)} onChange={() => toggle(record.id)} /></span><b>{prettyDate(record.date)}</b><div className="history-time" aria-label={`Hora asignada: ${record.time || record.scheduledTime ? `${record.time || record.scheduledTime} Hs` : 'A confirmar'}`}>{record.time || record.scheduledTime ? `${record.time || record.scheduledTime} Hs` : 'A confirmar'}</div><div className="history-client"><strong>{record.client}</strong><small>{record.address || 'Sin dirección'}</small></div><div><em className="role-chip">{record.service}</em></div><div className="history-technicians" title={record.technicians?.join(' / ') || 'Sin asignar'}><span>{technicianNames(record)}</span></div><div><span className={`work-status ${status(record).toLowerCase().replace(/\s/g, '-')}`}>{status(record)}</span>{record.scheduledDate && <small className="scheduled-date">Para: {prettyDate(record.scheduledDate)}</small>}</div><div><button className="secondary detail-button" onClick={() => setDetail(record)}><Icon name="eye" size={16} />Gestionar</button></div></div>) : <div className="empty-state">No hay trabajos para mostrar.</div>}</div>{bulkOpen && <div className="modal-layer"><div className="modal bulk-modal"><button className="close-modal" onClick={() => setBulkOpen(false)}><Icon name="close" /></button><p className="eyebrow">GESTIÓN MÚLTIPLE</p><h2>{selected.length} servicio(s) seleccionados</h2><p>La modificación se aplicará a todos los servicios elegidos.</p><label>Nuevo estado<select value={bulkStatus} onChange={event => setBulkStatus(event.target.value)}><option>Completado</option><option>Cancelado</option><option>Reprogramado</option></select></label>{bulkStatus === 'Reprogramado' && <label>Reprogramar para<input type="date" min={minimumRescheduleDate} value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} /></label>}<div className="modal-actions"><button className="secondary" onClick={() => setBulkOpen(false)}>Cancelar</button><button className="primary" disabled={bulkStatus === 'Reprogramado' && (!rescheduleDate || rescheduleDate < minimumRescheduleDate)} onClick={applyBulk}>Aplicar cambios</button></div></div></div>}{detail && <HistoryManagementDetail record={detail} setHistory={setHistory} close={() => setDetail(null)} customers={customers} services={services} employees={employees} />}</>
