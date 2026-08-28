@@ -22,7 +22,7 @@ test('declara los hooks usados por la alerta de recuperación de contraseña', (
 })
 
 test('el buscador del historial técnico contempla todos los datos útiles', async () => {
-  const { filterTechnicianHistory } = await import('../src/technician-history.mjs')
+  const { filterTechnicianHistory, technicianTeamLabel } = await import('../src/technician-history.mjs')
   const records = [
     { id: 'a', client: 'PIG-6425 LORENA MAZZAGLIA', service: 'Service de alarma', detail: 'Falsos disparos por humedad', address: 'Docta', phone: '351152022189', date: '2026-08-26', status: 'Completado' },
     { id: 'b', client: 'CLI-0093 OTRO CLIENTE', service: 'Instalación de cámaras', detail: 'Cambio de equipos', date: '2026-01-02', status: 'Cancelado' }
@@ -33,6 +33,8 @@ test('el buscador del historial técnico contempla todos los datos útiles', asy
   }
   assert.deepEqual(filterTechnicianHistory(records, 'camaras cancelado').map(record => record.id), ['b'])
   assert.deepEqual(filterTechnicianHistory(records, 'registro inexistente'), [])
+  assert.equal(technicianTeamLabel({ team: 'Equipo 1', technicians: ['Rodrigo Gonzalez', 'Mariano Diaz Tillard'] }), 'Equipo 1 · Rodrigo Gonzalez / Mariano Diaz Tillard')
+  assert.equal(technicianTeamLabel({ technicians: ['Rodrigo Gonzalez', 'Rodrigo Gonzalez'] }), 'Rodrigo Gonzalez')
 })
 
 test('el acceso cancela solicitudes bloqueadas y permite reintentar', async () => {

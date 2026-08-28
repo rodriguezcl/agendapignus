@@ -37,3 +37,10 @@ export function filterTechnicianHistory(records, query) {
     return terms.every(term => searchable.includes(term))
   })
 }
+
+export function technicianTeamLabel(record) {
+  const technicians = [...new Set((record?.technicians || []).map(name => String(name).trim()).filter(Boolean))]
+  const team = String(record?.team || '').trim()
+  if (!technicians.length) return team || 'Sin técnicos asignados'
+  return [team, technicians.join(' / ')].filter(Boolean).join(' · ')
+}
