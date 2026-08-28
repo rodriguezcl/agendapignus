@@ -36,8 +36,9 @@ test('el buscador del historial técnico contempla todos los datos útiles', asy
 })
 
 test('el acceso cancela solicitudes bloqueadas y permite reintentar', async () => {
-  const { AUTH_REQUEST_TIMEOUT_MS, fetchWithTimeout } = await import('../src/fetch-timeout.mjs')
+  const { AUTH_LOGIN_TIMEOUT_MS, AUTH_REQUEST_TIMEOUT_MS, fetchAuthWithRetry, fetchWithTimeout } = await import('../src/fetch-timeout.mjs')
   assert.equal(AUTH_REQUEST_TIMEOUT_MS, 15_000)
+  assert.equal(AUTH_LOGIN_TIMEOUT_MS, 30_000)
   let aborted = false
   const hangingFetch = (resource, options) => new Promise((resolve, reject) => {
     options.signal.addEventListener('abort', () => {
@@ -52,6 +53,27 @@ test('el acceso cancela solicitudes bloqueadas y permite reintentar', async () =
 
   const response = { ok: true }
   assert.equal(await fetchWithTimeout('/api/auth/session', {}, 100, async () => response), response)
+
+  let attempts = 0
+  const recovered = await fetchAuthWithRetry('/api/auth/session', {}, 100, async () => {
+    attempts += 1
+    if (attempts === 1) {
+      const error = new Error('offline')
+      error.name = 'TypeError'
+      throw error
+    }
+    return { ok: true, status: 200 }
+  }, 0)
+  assert.equal(recovered.ok, true)
+  assert.equal(attempts, 2)
+
+  attempts = 0
+  const rejectedCredentials = await fetchAuthWithRetry('/api/auth/login', {}, 100, async () => {
+    attempts += 1
+    return { ok: false, status: 401 }
+  }, 0)
+  assert.equal(rejectedCredentials.status, 401)
+  assert.equal(attempts, 1)
 })
 
 test('el estado técnico reintenta una indisponibilidad temporal sin duplicar el contenido', async () => {

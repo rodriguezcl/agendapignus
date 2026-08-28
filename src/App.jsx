@@ -4,7 +4,7 @@ import { HelpShell } from './HelpCenter.jsx'
 import { visibleAnnualMonthLabels } from './annual-chart.mjs'
 import { reportDownloadName, triggerBrowserDownload } from './browser-download.mjs'
 import { filterTechnicianHistory } from './technician-history.mjs'
-import { fetchWithTimeout } from './fetch-timeout.mjs'
+import { AUTH_LOGIN_TIMEOUT_MS, fetchAuthWithRetry, fetchWithTimeout } from './fetch-timeout.mjs'
 import { sortOperationalHistory } from './history-order.mjs'
 import { submitTechnicianStatus } from './technician-status.mjs'
 import { countYearToDateAlarmInstallations, countYearToDateCompletedRecords } from './dashboard-metrics.mjs'
@@ -688,11 +688,16 @@ function Login({ onLogin }) {
   const [requestingReset, setRequestingReset] = useState(false)
   const submit = async event => {
     event.preventDefault()
+    // Safari puede mostrar valores autocompletados antes de sincronizarlos con
+    // React. Leer el formulario al enviar garantiza que viajen esos valores.
+    const form = event.currentTarget
+    const submittedEmail = form.elements.email.value.trim()
+    const submittedPassword = form.elements.password.value
     setError('')
     setMessage('')
     setSubmitting(true)
     try {
-      const response = await fetchWithTimeout('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
+      const response = await fetchWithTimeout('/api/auth/login', { credentials: 'same-origin', method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: submittedEmail, password: submittedPassword }) }, AUTH_LOGIN_TIMEOUT_MS)
       const data = await response.json().catch(() => ({ error: 'La base de datos todavía está iniciando. Esperá un momento e intentá nuevamente.' }))
       if (!response.ok) throw new Error(data.error || 'No se pudo iniciar sesión.')
       setPassword('')
@@ -712,7 +717,7 @@ function Login({ onLogin }) {
     } catch (requestError) { setError(requestError.message) }
     finally { setRequestingReset(false) }
   }
-  return <main className="login-page"><form className="login-card" onSubmit={submit}><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">ACCESO SEGURO</p><h1>Ingresá a Agenda técnica</h1><p>Usá el correo y la contraseña definidos en el módulo Empleados.</p><label><RequiredLabel>Correo electrónico</RequiredLabel><input required autoComplete="username" type="email" value={email} onChange={event => setEmail(event.target.value)} /></label><label htmlFor="login-password"><RequiredLabel>Contraseña</RequiredLabel></label><div className="password-field"><input id="login-password" aria-label="Contraseña" required autoComplete="current-password" minLength="8" type={showPassword ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} /><button type="button" className="password-visibility" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}><Icon name="eye" size={17} /><span>{showPassword ? 'Ocultar' : 'Mostrar'}</span></button></div><button type="button" className="forgot-password" disabled={requestingReset || submitting} onClick={requestPasswordReset}>{requestingReset ? 'Enviando solicitud...' : 'Olvidé mi contraseña'}</button>{error && <p className="login-error" role="alert">{error}</p>}{message && <p className="login-success" role="status">{message}</p>}<button className="primary" disabled={submitting || requestingReset}>{submitting ? 'Verificando acceso...' : 'Iniciar sesión'}</button><small>El acceso se cierra automáticamente al finalizar la sesión.</small></form></main>
+  return <main className="login-page"><form className="login-card" onSubmit={submit}><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">ACCESO SEGURO</p><h1>Ingresá a Agenda técnica</h1><p>Usá el correo y la contraseña definidos en el módulo Empleados.</p><label htmlFor="login-email"><RequiredLabel>Correo electrónico</RequiredLabel><input id="login-email" name="email" required autoCapitalize="none" autoCorrect="off" autoComplete="username" type="email" value={email} onChange={event => setEmail(event.target.value)} /></label><label htmlFor="login-password"><RequiredLabel>Contraseña</RequiredLabel></label><div className="password-field"><input id="login-password" name="password" aria-label="Contraseña" required autoComplete="current-password" minLength="8" type={showPassword ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} /><button type="button" className="password-visibility" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}><Icon name="eye" size={17} /><span>{showPassword ? 'Ocultar' : 'Mostrar'}</span></button></div><button type="button" className="forgot-password" disabled={requestingReset || submitting} onClick={requestPasswordReset}>{requestingReset ? 'Enviando solicitud...' : 'Olvidé mi contraseña'}</button>{error && <p className="login-error" role="alert">{error}</p>}{message && <p className="login-success" role="status">{message}</p>}<button className="primary" disabled={submitting || requestingReset}>{submitting ? 'Verificando acceso...' : 'Iniciar sesión'}</button><small>El acceso se cierra automáticamente al finalizar la sesión.</small></form></main>
 }
 
 export default function App() {
@@ -831,7 +836,7 @@ export default function App() {
     setHistory(previous => { const next = previous.map(normalizeAssignments); return JSON.stringify(next) === JSON.stringify(previous) ? previous : next })
   }, [employees])
   useEffect(() => {
-    fetchWithTimeout('/api/auth/session', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(data => setAuthUser(data?.user || null)).catch(() => setAuthUser(null)).finally(() => setAuthLoading(false))
+    fetchAuthWithRetry('/api/auth/session', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(data => setAuthUser(data?.user || null)).catch(() => setAuthUser(null)).finally(() => setAuthLoading(false))
   }, [])
   useEffect(() => {
     const brand = document.querySelector('.brand')
@@ -3096,26 +3101,38 @@ function HistoryBulkView({ history, setHistory, customers, services, employees, 
   }, [bulkDeleteConfirm, selected])
   useEffect(() => {
     const toolbar = document.querySelector('.history-toolbar')
-    if (!toolbar) return
+    if (!toolbar) return undefined
     const filters = document.createElement('div'); filters.className = 'history-date-filters'
-    const createDateInput = (label, value, update) => { const field = document.createElement('label'); field.textContent = label; const input = document.createElement('input'); input.type = 'date'; input.value = value; input.onchange = event => update(event.target.value); field.append(input); return field }
+    const createDateInput = (label, value, update) => {
+      const field = document.createElement('label'); field.textContent = label
+      const input = document.createElement('input'); input.type = 'date'; input.value = value
+      input.onchange = event => update(event.target.value)
+      field.append(input)
+      return { field, input }
+    }
+    const from = createDateInput('Desde', fromDate, setFromDate)
+    const to = createDateInput('Hasta', toDate, setToDate)
     const statusField = document.createElement('label'); statusField.textContent = 'Estado'
     const statusSelect = document.createElement('select')
-    ;[['all', 'Todos'], ['Pendiente', 'Pendiente'], ['Completado', 'Completado'], ['Requiere revisión', 'Requiere revisión'], ['Reprogramado', 'Reprogramado'], ['Cancelado', 'Cancelado']].forEach(([value, label]) => { const option = document.createElement('option'); option.value = value; option.textContent = label; statusSelect.append(option) })
-    // El valor se asigna después de crear las opciones; de lo contrario el navegador
-    // muestra "Todos" aunque internamente conserva el filtro anterior.
+    ;[['all', 'Todos'], ['Pendiente', 'Pendiente'], ['Completado', 'Completado'], ['Requiere revisión', 'Requiere revisión'], ['Reprogramado', 'Reprogramado'], ['Cancelado', 'Cancelado']].forEach(([value, label]) => {
+      const option = document.createElement('option'); option.value = value; option.textContent = label; statusSelect.append(option)
+    })
     statusSelect.value = statusFilter
-    statusSelect.onchange = event => setStatusFilter(event.target.value); statusField.append(statusSelect)
-    filters.append(createDateInput('Desde', fromDate, setFromDate), createDateInput('Hasta', toDate, setToDate), statusField)
-    if (fromDate || toDate || statusFilter !== 'all') { const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'secondary'; clear.textContent = 'Limpiar filtros'; clear.onclick = () => { setFromDate(''); setToDate(''); setStatusFilter('all') }; filters.append(clear) }
+    statusSelect.onchange = event => setStatusFilter(event.target.value)
+    statusField.append(statusSelect)
+    const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'secondary history-clear-filters'; clear.textContent = 'Limpiar filtros'
+    clear.onclick = () => { from.input.value = ''; to.input.value = ''; statusSelect.value = 'all'; setFromDate(''); setToDate(''); setStatusFilter('all') }
+    filters.append(from.field, to.field, statusField, clear)
     toolbar.prepend(filters)
     return () => filters.remove()
-  }, [fromDate, toDate, statusFilter])
+    // Los inputs permanecen montados mientras se usa el selector nativo de iOS.
+  }, [])
   useEffect(() => {
-    // El contador representa el resultado del filtro activo, no el total histórico.
+    const clear = document.querySelector('.history-clear-filters')
+    if (clear) clear.hidden = !fromDate && !toDate && statusFilter === 'all'
     const counter = document.querySelector('.history-toolbar>div:not(.history-date-filters)')
     if (counter) counter.innerHTML = `<b>${records.length}</b> ${records.length === history.length ? 'trabajos registrados' : 'trabajos encontrados'}`
-  }, [records.length, history.length])
+  }, [fromDate, toDate, statusFilter, records.length, history.length])
   useEffect(() => {
     // El componente de historial conserva parte de su estructura legada; aplicar la clase
     // al chip ya renderizado evita duplicar la tabla y mantiene el color sincronizado al filtrar.
@@ -3191,6 +3208,28 @@ function HistoryManagementDetail({ record, setHistory, close, customers, service
     grid.append(report)
     return () => report.remove()
   }, [record, editing])
+  useEffect(() => {
+    if (editing) return undefined
+    const actions = document.querySelector('.history-detail .history-actions')
+    const dateInput = actions?.querySelector('input[type="date"]')
+    const field = dateInput?.closest('label')
+    const trigger = [...(actions?.querySelectorAll('button') || [])].find(button => button.textContent.trim() === 'Reprogramar')
+    if (!field || !trigger) return undefined
+    field.classList.add('reschedule-field')
+    trigger.classList.add('reschedule-trigger')
+    field.hidden = true
+    trigger.disabled = false
+    trigger.setAttribute('aria-expanded', 'false')
+    const reveal = event => {
+      if (!field.hidden) return
+      event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation()
+      field.hidden = false
+      trigger.setAttribute('aria-expanded', 'true')
+      requestAnimationFrame(() => dateInput.focus({ preventScroll: true }))
+    }
+    trigger.addEventListener('click', reveal, true)
+    return () => trigger.removeEventListener('click', reveal, true)
+  }, [editing])
   useEffect(() => {
     if (!pendingAction) return undefined
     const layer = document.createElement('div')
