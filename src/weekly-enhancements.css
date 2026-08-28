@@ -1264,6 +1264,73 @@ body.dark .week-selector input[type='date'] {
   width: min(520px, calc(100vw - 32px));
 }
 
+.annual-guards-modal {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.annual-guards-modal h2 {
+  margin: 4px 0 10px;
+}
+
+.annual-guards-modal > p:not(.eyebrow):not(.field-error) {
+  margin: 0 0 16px;
+  color: #667568;
+}
+
+.annual-guard-year {
+  display: grid;
+  gap: 6px;
+  width: 150px;
+  margin-bottom: 14px;
+  color: #36513f;
+  font-weight: 700;
+}
+
+.annual-guard-year input {
+  min-height: 44px;
+}
+
+.annual-guard-list {
+  display: grid;
+  gap: 8px;
+}
+
+.annual-guard-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 40px 40px 42px;
+  align-items: center;
+  gap: 8px;
+}
+
+.annual-guard-row > span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #e8f1e9;
+  color: #1f5c3a;
+  font-weight: 800;
+}
+
+.annual-guard-row select,
+.annual-guard-row button {
+  min-height: 40px;
+}
+
+.annual-guard-row button {
+  padding: 0;
+}
+
+.annual-guard-add {
+  margin-top: 12px;
+}
+
+.annual-guards-modal .annual-guard-help {
+  margin: 14px 0 0 !important;
+  font-size: .82rem;
+}
+
 .monthly-times-modal h2 {
   margin: 4px 0 10px;
   text-transform: capitalize;
@@ -1341,8 +1408,18 @@ body.dark .week-selector input[type='date'] {
 
 body.dark .monthly-teams-modal > p:not(.eyebrow),
 body.dark .monthly-times-modal > p:not(.eyebrow),
+body.dark .annual-guards-modal > p:not(.eyebrow),
 body.dark .monthly-team-list small {
   color: #aab9ac;
+}
+
+body.dark .annual-guard-year {
+  color: #c8d8cb;
+}
+
+body.dark .annual-guard-row > span {
+  background: #264635;
+  color: #dff2e4;
 }
 
 body.dark .monthly-time-grid label {
@@ -1450,6 +1527,11 @@ body.dark .week-task-summary.available-slot:focus-visible {
 
   .monthly-time-grid {
     grid-template-columns: 1fr;
+  }
+
+  .annual-guard-row {
+    grid-template-columns: 30px minmax(0, 1fr) repeat(3, 36px);
+    gap: 5px;
   }
 
   .agenda-toolbar > label {
