@@ -3,7 +3,7 @@ import Icon from './components/ui/Icon.jsx'
 import { HelpShell } from './HelpCenter.jsx'
 import { visibleAnnualMonthLabels } from './annual-chart.mjs'
 import { reportDownloadName, triggerBrowserDownload } from './browser-download.mjs'
-import { filterTechnicianHistory } from './technician-history.mjs'
+import { filterTechnicianHistory, technicianTeamLabel } from './technician-history.mjs'
 import { AUTH_LOGIN_TIMEOUT_MS, fetchAuthWithRetry, fetchWithTimeout } from './fetch-timeout.mjs'
 import { sortOperationalHistory } from './history-order.mjs'
 import { submitTechnicianStatus } from './technician-status.mjs'
@@ -764,6 +764,38 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [notice])
   useEffect(() => writeLocalValue('pignus-sidebar-collapsed', sidebarCollapsed), [sidebarCollapsed])
+  useEffect(() => {
+    const body = document.body
+    let locked = false
+    let scrollPosition = 0
+    const previous = {}
+    const unlock = () => {
+      if (!locked) return
+      Object.entries(previous).forEach(([property, value]) => { body.style[property] = value })
+      document.documentElement.classList.remove('modal-open')
+      locked = false
+      window.scrollTo(0, scrollPosition)
+    }
+    const syncModalScrollLock = () => {
+      const hasModal = Boolean(document.querySelector('.modal-layer'))
+      if (!hasModal) return unlock()
+      if (locked) return
+      scrollPosition = window.scrollY
+      ;['position', 'top', 'left', 'right', 'width', 'overflow'].forEach(property => { previous[property] = body.style[property] })
+      body.style.position = 'fixed'
+      body.style.top = `-${scrollPosition}px`
+      body.style.left = '0'
+      body.style.right = '0'
+      body.style.width = '100%'
+      body.style.overflow = 'hidden'
+      document.documentElement.classList.add('modal-open')
+      locked = true
+    }
+    const observer = new MutationObserver(syncModalScrollLock)
+    observer.observe(body, { childList: true, subtree: true })
+    syncModalScrollLock()
+    return () => { observer.disconnect(); unlock() }
+  }, [])
   useEffect(() => {
     const media = window.matchMedia('(min-width: 641px)')
     const syncSidebarMode = () => setDesktopSidebar(media.matches)
@@ -2790,14 +2822,26 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
     if (help) help.textContent = view === 'agenda' ? 'Completá cada servicio en el orden indicado. La dirección y el contacto del siguiente se habilitan al informar el estado del actual.' : 'Consultá los servicios que ya informaste y el estado registrado en cada uno.'
   }, [view])
   useEffect(() => {
-    document.querySelectorAll('.technician-service .work-status').forEach(badge => {
+    const cards = document.querySelectorAll('.technician-service')
+    cards.forEach((card, index) => {
+      const badge = card.querySelector('.work-status')
+      if (!badge) return
       badge.classList.remove('tech-status-completado', 'tech-status-cancelado', 'tech-status-reprogramacion')
       const label = badge.textContent.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
       if (label.includes('cancel')) badge.classList.add('tech-status-cancelado')
       else if (label.includes('reprogram')) badge.classList.add('tech-status-reprogramacion')
       else if (label.includes('complet')) badge.classList.add('tech-status-completado')
+      card.querySelector(':scope > .technician-team')?.remove()
+      if (view === 'history') {
+        const team = document.createElement('p')
+        team.className = 'technician-team'
+        const title = document.createElement('b'); title.textContent = 'Equipo de trabajo: '
+        team.append(title, document.createTextNode(technicianTeamLabel(services[index])))
+        card.querySelector(':scope > .tech-client')?.after(team)
+      }
     })
-  }, [services])
+    return () => cards.forEach(card => card.querySelector(':scope > .technician-team')?.remove())
+  }, [services, view])
   const saveStatus = async () => {
     const { record, type } = confirm
     const updated = await submitTechnicianStatus({ recordId: record.id, type, observation })

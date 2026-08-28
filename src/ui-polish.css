@@ -1604,12 +1604,15 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
 /* Historial móvil: filtros compactos, selector de fecha estable y cierre visible. */
 @media (max-width: 640px) {
   .history-date-filters {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
-    gap: 10px;
+    grid-template-columns: calc(50% - 6px) calc(50% - 6px) !important;
+    column-gap: 12px !important;
+    row-gap: 10px !important;
   }
 
   .history-date-filters > label {
     grid-column: auto !important;
+    min-width: 0 !important;
+    overflow: hidden;
   }
 
   .history-date-filters > label:nth-of-type(3),
@@ -1619,9 +1622,19 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
 
   .history-date-filters input,
   .history-date-filters select {
-    height: 44px !important;
-    min-height: 44px !important;
-    padding-block: 7px !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    padding: 4px 9px !important;
+    line-height: 1.2 !important;
+  }
+
+  .history-date-filters input[type='date'] {
+    -webkit-appearance: none;
+    appearance: none;
   }
 
   .history-detail .close-modal {
@@ -1652,6 +1665,38 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
   .history-actions .delete-history {
     grid-row: 5;
   }
+}
+
+.history-clear-filters[hidden] {
+  display: none !important;
+}
+
+html.modal-open,
+html.modal-open body {
+  overscroll-behavior: none;
+}
+
+.modal-layer {
+  overscroll-behavior: contain;
+}
+
+.modal-layer > .modal {
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.technician-team {
+  padding: 9px 11px;
+  border: 1px solid #d8e4d9;
+  border-radius: 8px;
+  background: #f3f7f3;
+  color: #385744;
+}
+
+.technician-page[data-theme='dark'] .technician-team {
+  border-color: #385041;
+  background: #203329;
+  color: #d9e7dc;
 }
 
 /* Agenda diaria: cada servicio se presenta como una ficha ordenada por contexto. */
