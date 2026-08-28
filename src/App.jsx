@@ -165,6 +165,41 @@ const taskIdentityAliases = task => {
     taskOccurrenceIdentity(task)
   ].filter(Boolean)
 }
+const historyRecordForTask = (task, date, history = globalThis.__pignusHistory || []) => {
+  if (!taskHasContent(task)) return null
+  const directAliases = new Set([
+    task?.historyId && `history:${task.historyId}`,
+    task?.sourceHistoryId && `history:${task.sourceHistoryId}`,
+    task?.taskId && `task:${task.taskId}`,
+    task?.sourceTaskId && `task:${task.sourceTaskId}`
+  ].filter(Boolean))
+  const directMatch = history.find(record => (
+    (task?.historyId && String(record?.id || '') === String(task.historyId)) ||
+    (task?.sourceHistoryId && String(record?.id || '') === String(task.sourceHistoryId)) ||
+    taskIdentityAliases(record).some(alias => directAliases.has(alias))
+  ))
+  if (directMatch) return directMatch
+  const occurrence = taskOccurrenceIdentity(task)
+  if (!occurrence) return null
+  return history.find(record => String(record?.date || '') === String(date || '') && taskOccurrenceIdentity(record) === occurrence) || null
+}
+const taskStatus = (task, date, history) => {
+  if (!taskHasContent(task)) return ''
+  const record = historyRecordForTask(task, date, history)
+  return record?.technicalStatus || record?.status || 'Pendiente'
+}
+const statusClassName = status => String(status || 'Pendiente').toLowerCase().replace(/\s/g, '-')
+const appendTaskStatusElement = (container, task, date, history, weekly = false) => {
+  if (!container) return
+  container.querySelector('.agenda-task-status')?.remove()
+  const status = taskStatus(task, date, history)
+  if (!status) return
+  const badge = document.createElement('em')
+  badge.className = `work-status agenda-task-status ${weekly ? 'weekly-agenda-task-status' : 'daily-agenda-task-status'} ${statusClassName(status)}`
+  badge.textContent = status
+  if (weekly) container.querySelector('.week-task-title-actions')?.prepend(badge)
+  else container.querySelector('.task-title')?.append(badge)
+}
 const serviceActor = user => {
   const current = user || globalThis.__pignusCurrentUser
   return current ? { id: current.id, name: current.name || current.email || 'Usuario', role: current.role || '', at: new Date().toISOString() } : null
@@ -750,6 +785,7 @@ export default function App() {
   const remoteConflictRevisionRef = useRef(null)
   const [authUser, setAuthUser] = useState(null)
   globalThis.__pignusCurrentUser = authUser
+  globalThis.__pignusHistory = history
   const [authLoading, setAuthLoading] = useState(true)
   const [databaseError, setDatabaseError] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
@@ -1432,10 +1468,24 @@ function Agenda({ date, setDate, teams, setTeams, activeTechs, customers, servic
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       const records = teams.flatMap(team => team.tasks || [])
-      document.querySelectorAll('.task-row').forEach((node, index) => appendTraceElement(node, records[index]))
+      document.querySelectorAll('.content > .team-card .task-row').forEach((node, index) => {
+        appendTraceElement(node, records[index])
+        appendTaskStatusElement(node, records[index], date, history)
+      })
+      document.querySelectorAll('.content > .team-card').forEach((card, index) => {
+        const assignment = card.querySelector('.technician-assignment-label')
+        if (!assignment) return
+        assignment.querySelector('.daily-team-member-names')?.remove()
+        const names = (teams[index]?.members || []).filter(Boolean)
+        if (!names.length) return
+        const detail = document.createElement('small')
+        detail.className = 'daily-team-member-names'
+        detail.textContent = names.join(' / ')
+        assignment.append(detail)
+      })
     })
     return () => cancelAnimationFrame(frame)
-  }, [teams])
+  }, [teams, history, date])
   const agendaText = `Agenda de trabajo – ${prettyDate(date)}\n\n${teams.map((team, i) => `Equipo ${i + 1}: ${team.members.join(' / ') || 'Sin asignar'}\n${team.tasks.map(t => `${t.time || '--:--'} · ${t.service || 'Servicio'} · ${t.client || 'Cliente'}${t.detail ? `\nDetalle: ${t.detail}` : ''}${t.address ? `\nDirección: ${t.address}` : ''}${t.phone ? `\nContacto: ${t.phone}` : ''}`).join('\n\n')}`).join('\n\n')}`
   const chooseCustomer = (ti, i, value) => { const c = customers.find(x => x.account === value || x.name === value || `${x.name} · ${x.account}` === value); updateTask(ti, i, c ? { client: c.name, address: c.address, phone: c.phone } : { client: value }) }
   const toggleTech = (ti, name) => setTeams(prev => prev.map((t, i) => i !== ti ? t : { ...t, members: t.members.includes(name) ? t.members.filter(x => x !== name) : [...t.members, name] }))
@@ -2138,6 +2188,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
  */
 function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, setNotice, openDaily, authUser }) {
   authUser = authUser || globalThis.__pignusCurrentUser || null
+  const operationalHistory = globalThis.__pignusHistory || []
   const localToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const [today, setToday] = useState(localToday)
   const [anchor, setAnchor] = useState(today)
@@ -2202,8 +2253,11 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
   }
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      const records = days.flatMap(day => dayPlan(day).teams.flatMap(team => team.tasks || []))
-      document.querySelectorAll('.week-task-summary').forEach((node, index) => appendTraceElement(node, records[index]))
+      const records = days.flatMap(day => dayPlan(day).teams.flatMap(team => (team.tasks || []).map(task => ({ day, task }))))
+      document.querySelectorAll('.week-task-summary').forEach((node, index) => {
+        appendTraceElement(node, records[index]?.task)
+        appendTaskStatusElement(node, records[index]?.task, records[index]?.day, operationalHistory, true)
+      })
       if (taskEditor) {
         const modal = document.querySelector('.weekly-task-modal')
         appendTraceElement(modal, taskEditor.draft)
@@ -2213,7 +2267,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, se
       }
     })
     return () => cancelAnimationFrame(frame)
-  }, [weekly, days, taskEditor])
+  }, [weekly, days, taskEditor, operationalHistory])
   useEffect(() => {
     // Mantiene la ventana semanal vigente aunque la pantalla permanezca abierta a medianoche.
     const refreshDay = () => setToday(localToday())
