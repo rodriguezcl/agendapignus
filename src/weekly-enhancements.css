@@ -634,7 +634,7 @@ body.dark .weekly-add-task {
 }
 
 .week-task-summary > .weekly-agenda-task-status {
-  display: inline-block;
+  display: flex;
   margin: 7px 0 0;
 }
 

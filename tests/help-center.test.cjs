@@ -15,6 +15,7 @@ test('el Centro de ayuda documenta las funciones operativas vigentes', () => {
     'Ver el historial de un cliente',
     'Observación técnica',
     'Cada tarjeta muestra su estado vigente',
+    'tipo de servicio con el mismo color utilizado en Historial',
     'Horarios del mes',
     'La ficha muestra también si el servicio está Pendiente',
     "id: 'technician'",

@@ -367,8 +367,10 @@ span.field-label-text > span.required-mark,
 
 .agenda-task-status {
   margin: 0;
-  font-style: normal;
-  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .daily-agenda-task-status {
@@ -376,14 +378,52 @@ span.field-label-text > span.required-mark,
   grid-row: 2;
   align-self: start;
   justify-self: start;
-  padding: 4px 7px;
-  font-size: 10px;
 }
 
 .weekly-agenda-task-status {
+  width: 100%;
+}
+
+.agenda-task-status > .work-status,
+.agenda-task-status > .agenda-service-chip {
+  margin: 0;
   padding: 3px 7px;
   font-size: 10px;
+  font-style: normal;
+  line-height: 1.25;
+  white-space: nowrap;
 }
+
+.agenda-task-status > .work-status {
+  flex: 0 0 auto;
+}
+
+.agenda-task-status > .agenda-service-chip {
+  display: block;
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agenda-service-chip.service-alarm { background: #e1edff; color: #315d98; }
+.agenda-service-chip.service-cameras { background: #ddf5e7; color: #167342; }
+.agenda-service-chip.service-retirement { background: #fae3e1; color: #aa403a; }
+.agenda-service-chip.service-ownership { background: #fff1c9; color: #8a6500; }
+.agenda-service-chip.service-fence { background: #eee4ff; color: #6946a0; }
+.agenda-service-chip.service-survey { background: #dff1f0; color: #176c68; }
+.agenda-service-chip.service-upgrade { background: #ffead7; color: #a45518; }
+.agenda-service-chip.service-other { background: #edf0ed; color: #596b5d; }
+
+.app-shell[data-theme='dark'] .agenda-service-chip.service-alarm { background: #1e3653; color: #c2ddff; }
+.app-shell[data-theme='dark'] .agenda-service-chip.service-cameras { background: #174a34; color: #b9f0ce; }
+.app-shell[data-theme='dark'] .agenda-service-chip.service-retirement { background: #572b2b; color: #ffd2cf; }
+.app-shell[data-theme='dark'] .agenda-service-chip.service-ownership { background: #574414; color: #ffe6a3; }
+.app-shell[data-theme='dark'] .agenda-service-chip.service-fence { background: #3f2d61; color: #e1d4ff; }
+.app-shell[data-theme='dark'] .agenda-service-chip.service-survey { background: #164846; color: #b9f0ec; }
+.app-shell[data-theme='dark'] .agenda-service-chip.service-upgrade { background: #57371e; color: #ffd8b6; }
+.app-shell[data-theme='dark'] .agenda-service-chip.service-other { background: #38433a; color: #d7e1d9; }
 
 .customer-history-entry {
   min-width: 0;
