@@ -9,6 +9,7 @@ import { sortOperationalHistory } from './history-order.mjs'
 import { submitTechnicianStatus } from './technician-status.mjs'
 import { countYearToDateAlarmInstallations, countYearToDateCompletedRecords } from './dashboard-metrics.mjs'
 import { advancedSaturdayGuardMessage, findAdvancedSaturdayGuard, suppressAdvancedSaturdayAvailability } from './weekend-guard.mjs'
+import { annualGuardForDate, DEFAULT_2026_GUARD_ROTATION, firstSaturdayOfYear } from './annual-guards.mjs'
 import { holidayDecisionForDate, holidayDecisionLabel, holidayForDate, holidayIsBlocked } from './holidays.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
@@ -132,6 +133,31 @@ const sortPlanTasksByTime = plan => ({
   teams: (plan?.teams || []).map(team => ({ ...team, tasks: sortTasksByTime(team.tasks) }))
 })
 const isSaturday = date => Boolean(date) && new Date(`${date}T12:00:00`).getDay() === 6
+const default2026GuardRotationFor = activeTechs => {
+  const rotation = DEFAULT_2026_GUARD_ROTATION.map(tokens => activeTechs.find(tech => {
+    const normalized = normalizeServiceName(tech.name)
+    return tokens.every(token => normalized.includes(token))
+  })).filter(Boolean)
+  return rotation.length === DEFAULT_2026_GUARD_ROTATION.length
+    ? rotation.map(tech => ({ technicianId: tech.id, name: tech.name }))
+    : []
+}
+const guardForDateWithDefaults = (date, weekly, activeTechs) => {
+  const configured = annualGuardForDate(date, weekly)
+  if (configured) return configured
+  const rotation = String(date || '').startsWith('2026-') ? default2026GuardRotationFor(activeTechs) : []
+  return rotation.length ? annualGuardForDate(date, { _annualGuards: { 2026: { startDate: firstSaturdayOfYear(2026), rotation } } }) : null
+}
+const assignGuardToEmptySaturday = (teams, date, weekly, activeTechs) => {
+  if (!isSaturday(date) || !teams?.length || teams.some(team => team?.members?.length || team?.memberIds?.length)) return teams
+  const guard = guardForDateWithDefaults(date, weekly, activeTechs)
+  if (!guard) return teams
+  const technician = activeTechs.find(tech => String(tech.id) === String(guard.technicianId)) || activeTechs.find(tech => normalizeServiceName(tech.name) === normalizeServiceName(guard.name))
+  const name = technician?.name || guard.name
+  const technicianId = technician?.id || guard.technicianId
+  if (!name) return teams
+  return teams.map((team, index) => index === 0 ? { ...team, memberIds: technicianId ? [technicianId] : [], members: [name] } : team)
+}
 const advancedGuardForSaturdayDate = (date, weekly, saturdayTeams) => {
   if (!isSaturday(date)) return null
   const friday = new Date(`${date}T12:00:00`)
@@ -604,6 +630,23 @@ const PAYMENT_SERVICE_NAMES = new Set([
 ])
 const FORM_OPTIONS = ['Completo', 'Incompleto (Abonado completa a mano)']
 const PAYMENT_OPTIONS = ['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'A confirmar', 'No aplica']
+const normalizeCurrencyAmount = value => {
+  const input = String(value ?? '').trim().replace(/[^\d.,]/g, '')
+  if (!input) return ''
+  const normalized = input.includes(',') ? input.replace(/\./g, '').replace(',', '.') : input
+  const [integerPart = '', ...decimalParts] = normalized.split('.')
+  const integer = integerPart.replace(/^0+(?=\d)/, '') || '0'
+  const decimals = decimalParts.join('').slice(0, 2)
+  return decimalParts.length ? `${integer}.${decimals}` : integer
+}
+const formatCurrencyAmount = value => {
+  const normalized = normalizeCurrencyAmount(value)
+  if (!normalized) return ''
+  const amount = Number(normalized)
+  if (!Number.isFinite(amount)) return ''
+  const hasDecimals = normalized.includes('.') && Number(normalized.split('.')[1] || 0) !== 0
+  return `$ ${amount.toLocaleString('es-AR', { minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: 2 })}`
+}
 const normalizeFormValue = value => {
   const normalized = normalizeServiceName(value)
   if (normalized === 'completo') return FORM_OPTIONS[0]
@@ -1415,6 +1458,18 @@ export default function App() {
   // La capacidad técnica depende del código estable, no del nombre editable.
   const activeTechs = employees.filter(employee => employee.status === 'Activo' && roleCode(employeeRole(employee)) === 'technician')
   const isAdministrator = authUser?.roleCode === 'administrator' || (!authUser?.roleCode && normalizeRoleName(authUser?.role) === 'administrador')
+  useEffect(() => {
+    if (!isAdministrator || !databaseReady) return
+    const rotation = default2026GuardRotationFor(activeTechs)
+    if (rotation.length !== DEFAULT_2026_GUARD_ROTATION.length) return
+    setWeekly(previous => previous?._annualGuards?.['2026'] ? previous : {
+      ...previous,
+      _annualGuards: {
+        ...(previous?._annualGuards || {}),
+        2026: { startDate: firstSaturdayOfYear(2026), rotation }
+      }
+    })
+  }, [isAdministrator, databaseReady, activeTechs.map(tech => `${tech.id}:${tech.name}`).join('|')])
   // Cada módulo tiene un ícono propio para facilitar el reconocimiento visual en la navegación.
   const nav = [['dashboard', 'dashboard', 'Menú principal'], ['weekly', 'calendar', 'Agenda semanal'], ['agenda', 'agenda', 'Agenda del día'], ['history', 'history', 'Historial'], ['accounts', 'accounts', 'Abonados y clientes'], ['employees', 'users', 'Empleados'], ['services', 'tools', 'Tipo de servicio'], ['vehicles', 'vehicle', 'Vehículos'], ['settings', 'settings', 'Configuración']]
   const activeRole = roles.find(role => String(role.id) === String(authUser?.roleId)) || roles.find(role => role.name === authUser?.role)
@@ -1685,15 +1740,58 @@ function ServiceExtraFields({ className, task, service, onChange, buffered = fal
     }
     if (key === 'amount') {
       const required = task?.paymentMethod !== 'A confirmar'
-      const amountProps = { ...props, type: 'number', min: '0', step: '0.01', inputMode: 'decimal', required, placeholder: required ? 'Ingresar monto' : 'Opcional' }
-      return <label key={key}>{required ? <RequiredLabel>{label}</RequiredLabel> : label}{buffered
-        ? <BufferedInput {...amountProps} onCommit={value => onChange({ amount: value })} />
-        : <input {...amountProps} onChange={event => onChange({ amount: event.target.value })} />}</label>
+      const amountProps = { ...props, inputMode: 'decimal', required, placeholder: required ? 'Ingresar monto' : 'Opcional' }
+      return <label key={key}>{required ? <RequiredLabel>{label}</RequiredLabel> : label}<CurrencyInput {...amountProps} buffered={buffered} onCommit={value => onChange({ amount: value })} /></label>
     }
     return <label key={key}>{label}{buffered
       ? <BufferedInput {...props} onCommit={value => onChange({ [key]: value })} />
       : <input {...props} onChange={event => onChange({ [key]: event.target.value })} />}</label>
   })}</div>
+}
+
+function CurrencyInput({ value, onCommit, buffered = false, delay = 500, ...inputProps }) {
+  const normalizedValue = normalizeCurrencyAmount(value)
+  const [draft, setDraft] = useState(normalizedValue)
+  const [focused, setFocused] = useState(false)
+  const timer = useRef(null)
+  const externalValue = useRef(normalizedValue)
+  const commitHandler = useRef(onCommit)
+
+  useEffect(() => { commitHandler.current = onCommit }, [onCommit])
+  useEffect(() => {
+    externalValue.current = normalizedValue
+    if (!focused) setDraft(normalizedValue)
+  }, [normalizedValue, focused])
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+
+  const commit = nextValue => {
+    window.clearTimeout(timer.current)
+    timer.current = null
+    if (nextValue === externalValue.current) return
+    externalValue.current = nextValue
+    commitHandler.current(nextValue)
+  }
+
+  return <input
+    {...inputProps}
+    type="text"
+    value={focused ? draft : formatCurrencyAmount(draft)}
+    onFocus={event => {
+      setFocused(true)
+      window.requestAnimationFrame(() => event.target.select())
+    }}
+    onChange={event => {
+      const nextValue = normalizeCurrencyAmount(event.target.value)
+      setDraft(nextValue)
+      if (!buffered) return commit(nextValue)
+      window.clearTimeout(timer.current)
+      timer.current = window.setTimeout(() => commit(nextValue), delay)
+    }}
+    onBlur={() => {
+      setFocused(false)
+      commit(draft)
+    }}
+  />
 }
 
 function BufferedInput({ value, onCommit, delay = 500, ...inputProps }) {
@@ -1753,10 +1851,10 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   useEffect(() => {
     if (!isSaturday(date)) return
     setTeams(previous => {
-      const normalized = normalizeSaturdayTeams(previous, date, weekly)
+      const normalized = assignGuardToEmptySaturday(normalizeSaturdayTeams(previous, date, weekly), date, weekly, activeTechs)
       return JSON.stringify(previous) === JSON.stringify(normalized) ? previous : normalized
     })
-  }, [date, setTeams])
+  }, [date, setTeams, weekly?._annualGuards, activeTechs.map(tech => `${tech.id}:${tech.name}`).join('|')])
   useEffect(() => {
     const addTeamButton = document.querySelector('.content .add-team')
     if (addTeamButton) addTeamButton.hidden = isSaturday(date)
@@ -1820,7 +1918,8 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     const weeklyDay = weekly?.[nextDate]
     if (!saved.length && !weeklyDay?.teams?.length) {
       const tasks = isSaturday(nextDate) ? defaultServiceTasksForDate(nextDate, weekly).slice(0, 1) : defaultServiceTasksForDate(nextDate, weekly)
-      setTeams([{ teamId: createTeamId(), memberIds: [], members: [], tasks }])
+      const emptyTeams = [{ teamId: createTeamId(), memberIds: [], members: [], tasks }]
+      setTeams(isSaturday(nextDate) ? assignGuardToEmptySaturday(emptyTeams, nextDate, weekly, activeTechs) : emptyTeams)
       if (announce) setNotice('No hay una agenda guardada para la fecha seleccionada. Podés crear una nueva.')
       return
     }
@@ -1855,7 +1954,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     })
     const recoveredTeams = [...byTeam.values()].sort((a, b) => a.position - b.position).map(({ position, ...team }) => ({ ...team, tasks: sortTasksByTime(team.tasks.length ? team.tasks : [blankTask()]) }))
     const targetTimes = defaultServiceTimesForDate(nextDate, weekly)
-    setTeams(isSaturday(nextDate) ? normalizeSaturdayTeams(recoveredTeams, nextDate, weekly) : alignDefaultServiceTimes(recoveredTeams, nextDate, targetTimes, fallbackDefaultServiceTimesForDate(nextDate)))
+    setTeams(isSaturday(nextDate) ? assignGuardToEmptySaturday(normalizeSaturdayTeams(recoveredTeams, nextDate, weekly), nextDate, weekly, activeTechs) : alignDefaultServiceTimes(recoveredTeams, nextDate, targetTimes, fallbackDefaultServiceTimesForDate(nextDate)))
     const reprogrammedCount = saved.filter(record => record.rescheduledFrom).length
     if (announce) {
       setNotice(reprogrammedCount
@@ -1923,7 +2022,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     const lines = [
       `Observación: ${previewValue(task.detail)}`,
       available.paymentMethod && `Forma de pago: ${previewValue(extras.paymentMethod)}`,
-      available.paymentMethod && extras.paymentMethod && extras.paymentMethod !== 'No aplica' && `Monto: ${previewValue(extras.amount)}`,
+      available.paymentMethod && extras.paymentMethod && extras.paymentMethod !== 'No aplica' && `Monto: ${previewValue(formatCurrencyAmount(extras.amount))}`,
       available.monthlyFee && `Abono mensual: ${previewValue(extras.monthlyFee)}`,
       available.form && `Formulario: ${previewValue(extras.form)}`
     ].filter(Boolean)
@@ -2056,6 +2155,10 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     const selected = (target.memberIds || []).some(id => String(id) === String(technician.id))
     return previous.map((team, index) => {
       if (index !== teamIndex) return team
+      if (isSaturday(date)) {
+        if (selected) return team
+        return { ...team, teamId: team.teamId || createTeamId(), memberIds: [technician.id], members: [technician.name], tasks: (team.tasks || []).map(task => stampServiceRecord(task, authUser)) }
+      }
       const memberIds = (team.memberIds || []).filter(id => String(id) !== String(technician.id))
       const members = (team.members || []).filter(name => name !== technician.name)
       if (!selected) {
@@ -2202,6 +2305,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
   const [anchor, setAnchor] = useState(today)
   const [monthlySetup, setMonthlySetup] = useState(null)
   const [monthlyTimesSetup, setMonthlyTimesSetup] = useState(null)
+  const [annualGuardSetup, setAnnualGuardSetup] = useState(null)
   const [techPicker, setTechPicker] = useState(null)
   const [techFilter, setTechFilter] = useState('')
   const [taskEditor, setTaskEditor] = useState(null)
@@ -2230,17 +2334,26 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
   }
   const weeklyTechnicianName = fullName => activeTechs.find(tech => tech.name === fullName)?.firstName || String(fullName || '').split(' ')[0]
   const monthKey = anchor.slice(0, 7)
+  const anchorYear = anchor.slice(0, 4)
   const monthlyTeams = weekly._monthlyTeams || {}
+  const suggestedAnnualGuardRotation = (year, source = weekly) => {
+    const configured = source?._annualGuards?.[year]?.rotation
+    if (configured?.length) return configured.map(item => ({ ...item }))
+    if (String(year) === '2026') {
+      const preset = default2026GuardRotationFor(activeTechs)
+      if (preset.length) return preset
+    }
+    const previous = source?._annualGuards?.[String(Number(year) - 1)]?.rotation
+    return previous?.length ? previous.map(item => ({ ...item })) : []
+  }
   const previousMonthKey = (() => { const value = new Date(`${monthKey}-01T12:00:00`); value.setMonth(value.getMonth() - 1); return value.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).slice(0, 7) })()
   const baseTeams = monthlyTeams[monthKey]?.teams
   const createTeam = (index, source, day) => ({ teamId: source?.teamId || createTeamId(), memberIds: source?.memberIds || [], members: source?.members || [], tasks: defaultServiceTasksForDate(day, weekly), label: source?.label || `Equipo ${index + 1}` })
-  const createDay = day => {
-    const sources = monthlyTeams[day.slice(0, 7)]?.teams || [null, null, null]
+  const createDay = (day, sourceWeekly = weekly) => {
+    const sources = sourceWeekly?._monthlyTeams?.[day.slice(0, 7)]?.teams || [null, null, null]
     if (isSaturday(day)) {
-      // La guardia sabatina rota: cada sábado nuevo comienza sin técnico y el
-      // operador elige manualmente quién cubre esa fecha.
       const team = createTeam(0, null, day)
-      return { teams: [{ ...team, memberIds: [], members: [], tasks: defaultServiceTasksForDate(day, weekly).slice(0, 1) }] }
+      return { teams: assignGuardToEmptySaturday([{ ...team, memberIds: [], members: [], tasks: defaultServiceTasksForDate(day, sourceWeekly).slice(0, 1) }], day, sourceWeekly, activeTechs) }
     }
     return { teams: sources.map((team, index) => createTeam(index, team, day)) }
   }
@@ -2323,7 +2436,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       ? { ...stored, teams: mergeStoredTeamsWithDefaults(defaults.teams, storedTeams) }
       : defaults
     const visiblePlan = { ...plan, teams: applyRemovedWeeklySlots(plan.teams, plan.removedSlots || []) }
-    const normalized = isSaturday(day) ? { ...visiblePlan, teams: normalizeSaturdayTeams(visiblePlan.teams, day, weekly) } : visiblePlan
+    const normalized = isSaturday(day) ? { ...visiblePlan, teams: assignGuardToEmptySaturday(normalizeSaturdayTeams(visiblePlan.teams, day, weekly), day, weekly, activeTechs) } : visiblePlan
     return sortPlanTasksByTime(normalized)
   }
   const advancedGuardForDay = day => {
@@ -2334,7 +2447,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     return findAdvancedSaturdayGuard({ fridayPlan: dayPlan(fridayKey), saturdayPlan: dayPlan(day) })
   }
   const updateDay = (day, mutate) => setWeekly(previous => {
-    const defaults = createDay(day)
+    const defaults = createDay(day, previous)
     const saved = previous[day]
     const targetTimes = defaultServiceTimesForDate(day, previous)
     const savedTeams = alignDefaultServiceTimes(saved?.teams || [], day, targetTimes, fallbackDefaultServiceTimesForDate(day))
@@ -2342,9 +2455,9 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       ? { ...saved, teams: mergeStoredTeamsWithDefaults(defaults.teams, savedTeams) }
       : defaults
     const visibleStored = { ...stored, teams: applyRemovedWeeklySlots(stored.teams, stored.removedSlots || []) }
-    const base = isSaturday(day) ? { ...visibleStored, teams: normalizeSaturdayTeams(visibleStored.teams, day, previous) } : visibleStored
+    const base = isSaturday(day) ? { ...visibleStored, teams: assignGuardToEmptySaturday(normalizeSaturdayTeams(visibleStored.teams, day, previous), day, previous, activeTechs) } : visibleStored
     const next = mutate(base)
-    const normalized = isSaturday(day) ? { ...next, teams: normalizeSaturdayTeams(next.teams, day, previous) } : next
+    const normalized = isSaturday(day) ? { ...next, teams: assignGuardToEmptySaturday(normalizeSaturdayTeams(next.teams, day, previous), day, previous, activeTechs) } : next
     return { ...previous, [day]: sortPlanTasksByTime(normalized) }
   })
   const openTaskEditor = (day, teamIndex, taskIndex) => {
@@ -2489,6 +2602,12 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       const selected = (target.memberIds || []).some(id => String(id) === String(technician.id))
       const teams = plan.teams.map((team, index) => {
         if (index !== actualIndex) return team
+        if (isSaturday(day)) {
+          // Un sábado admite una sola persona: elegir otro nombre crea una
+          // excepción puntual sin modificar la rotación anual.
+          if (selected) return team
+          return { ...team, teamId: team.teamId || createTeamId(), memberIds: [technician.id], members: [technician.name], tasks: (team.tasks || []).map(task => stampServiceRecord(task, authUser)) }
+        }
         const memberIds = (team.memberIds || []).filter(id => String(id) !== String(technician.id))
         const members = (team.members || []).filter(name => name !== technician.name)
         if (!selected) {
@@ -2610,6 +2729,45 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     })
     setMonthlyTimesSetup(null)
     setNotice(`Los horarios predeterminados de ${new Date(`${monthKey}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} fueron guardados.`)
+  }
+  const annualGuardDraft = year => ({ year: String(year), rotation: /^\d{4}$/.test(String(year)) ? suggestedAnnualGuardRotation(String(year)) : [] })
+  const openAnnualGuardSetup = () => {
+    if (!isAdministrator) { setNotice('Solo un administrador puede definir las guardias anuales.'); return }
+    setAnnualGuardSetup(annualGuardDraft(anchorYear))
+  }
+  const changeAnnualGuardYear = year => setAnnualGuardSetup(annualGuardDraft(year))
+  const updateAnnualGuardTechnician = (index, technicianId) => {
+    const technician = activeTechs.find(item => String(item.id) === String(technicianId))
+    if (!technician) return
+    setAnnualGuardSetup(previous => ({ ...previous, rotation: previous.rotation.map((item, itemIndex) => itemIndex === index ? { technicianId: technician.id, name: technician.name } : item) }))
+  }
+  const addAnnualGuardTechnician = () => {
+    const available = activeTechs.find(tech => !annualGuardSetup.rotation.some(item => String(item.technicianId) === String(tech.id))) || activeTechs[0]
+    if (!available) return
+    setAnnualGuardSetup(previous => ({ ...previous, rotation: [...previous.rotation, { technicianId: available.id, name: available.name }] }))
+  }
+  const moveAnnualGuardTechnician = (index, direction) => setAnnualGuardSetup(previous => {
+    const destination = index + direction
+    if (destination < 0 || destination >= previous.rotation.length) return previous
+    const rotation = [...previous.rotation]
+    ;[rotation[index], rotation[destination]] = [rotation[destination], rotation[index]]
+    return { ...previous, rotation }
+  })
+  const removeAnnualGuardTechnician = index => setAnnualGuardSetup(previous => ({ ...previous, rotation: previous.rotation.filter((_, itemIndex) => itemIndex !== index) }))
+  const saveAnnualGuardSetup = () => {
+    const rotation = annualGuardSetup?.rotation || []
+    const duplicated = new Set(rotation.map(item => String(item.technicianId || item.name))).size !== rotation.length
+    if (!/^\d{4}$/.test(annualGuardSetup?.year || '') || !rotation.length || duplicated) return
+    const year = annualGuardSetup.year
+    setWeekly(previous => ({
+      ...previous,
+      _annualGuards: {
+        ...(previous._annualGuards || {}),
+        [year]: { startDate: firstSaturdayOfYear(year), rotation }
+      }
+    }))
+    setAnnualGuardSetup(null)
+    setNotice(`El cronograma de guardias de ${year} fue guardado y se repetirá automáticamente cada sábado.`)
   }
   useEffect(() => {
     // Al comenzar un mes el administrador confirma primero los equipos y luego
@@ -2738,7 +2896,15 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     })()}
     {monthlySetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setMonthlySetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de {new Date(`${monthlySetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Estos técnicos se asignarán por defecto a cada nuevo día del mes. Las agendas ya cargadas no se modifican.</p><div className="monthly-team-list">{monthlySetup.teams.map((team, index) => <label key={team.teamId || index}><b>{team.label || `Equipo ${index + 1}`}</b><select multiple value={team.memberIds || []} onChange={event => updateMonthlyTeam(index, [...event.target.selectedOptions].map(option => option.value))}>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName || tech.name.split(' ')[0]}</option>)}</select><small>Mantené presionada la tecla Ctrl para seleccionar más de un técnico.</small></label>)}</div><button className="secondary monthly-add-team" onClick={addMonthlyTeam}><Icon name="plus" size={15} />Agregar equipo</button><div className="modal-actions"><button className="secondary" onClick={() => setMonthlySetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlySetup}>Guardar equipos del mes</button></div></section></div>}
     {monthlyTimesSetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-times-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-times-title"><button className="modal-close" onClick={() => setMonthlyTimesSetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2 id="monthly-times-title">Horarios de {new Date(`${monthlyTimesSetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Definí los dos horarios que se aplicarán por defecto a los servicios nuevos del mes. Los servicios ya cargados conservarán su hora.</p><div className="monthly-time-grid">{monthlyTimesSetup.times.map((time, index) => <label key={index}><b>Turno {index + 1}</b><input type="time" required value={time} onChange={event => setMonthlyTimesSetup(previous => ({ ...previous, times: previous.times.map((item, timeIndex) => timeIndex === index ? event.target.value : item) }))} /></label>)}</div>{monthlyTimesSetup.times[0] === monthlyTimesSetup.times[1] && <p className="field-error">Los dos horarios deben ser diferentes.</p>}<div className="modal-actions"><button className="secondary" onClick={() => setMonthlyTimesSetup(null)}>Cancelar</button><button className="primary" disabled={!validDefaultServiceTimes(monthlyTimesSetup.times)} onClick={saveMonthlyTimesSetup}>Guardar horarios del mes</button></div></section></div>}
-    <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Prepará las visitas de cada equipo y luego abrí el día para terminar de validar y guardar la agenda del día.</p></div><div className="weekly-actions"><button className="secondary" onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button><button className="secondary" onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button><label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
+    {annualGuardSetup && (() => {
+      const duplicated = new Set(annualGuardSetup.rotation.map(item => String(item.technicianId || item.name))).size !== annualGuardSetup.rotation.length
+      const validYear = /^\d{4}$/.test(annualGuardSetup.year)
+      return <div className="modal-backdrop monthly-backdrop"><section className="modal annual-guards-modal" role="dialog" aria-modal="true" aria-labelledby="annual-guards-title"><button className="modal-close" onClick={() => setAnnualGuardSetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN ANUAL</p><h2 id="annual-guards-title">Guardias de fin de semana</h2><p>Definí el orden de rotación. El primer técnico cubrirá el primer sábado del año y luego el ciclo se repetirá durante todos los sábados.</p><label className="annual-guard-year">Año<input type="number" min="2026" max="2100" value={annualGuardSetup.year} onChange={event => changeAnnualGuardYear(event.target.value)} /></label><div className="annual-guard-list">{annualGuardSetup.rotation.map((guard, index) => {
+        const legacyGuard = guard.name && !activeTechs.some(tech => String(tech.id) === String(guard.technicianId))
+        return <div className="annual-guard-row" key={`${guard.technicianId || guard.name}-${index}`}><span>{index + 1}</span><select aria-label={`Técnico ${index + 1} de la rotación`} value={guard.technicianId || ''} onChange={event => updateAnnualGuardTechnician(index, event.target.value)}>{legacyGuard && <option value={guard.technicianId || ''}>{guard.name} (no activo)</option>}{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select><button type="button" className="secondary" title="Subir" aria-label={`Subir a ${guard.name}`} disabled={index === 0} onClick={() => moveAnnualGuardTechnician(index, -1)}>↑</button><button type="button" className="secondary" title="Bajar" aria-label={`Bajar a ${guard.name}`} disabled={index === annualGuardSetup.rotation.length - 1} onClick={() => moveAnnualGuardTechnician(index, 1)}>↓</button><button type="button" className="icon-btn delete" title="Quitar de la rotación" aria-label={`Quitar a ${guard.name}`} onClick={() => removeAnnualGuardTechnician(index)}><Icon name="trash" size={15} /></button></div>
+      })}</div><button type="button" className="secondary annual-guard-add" disabled={!activeTechs.length || !validYear} onClick={addAnnualGuardTechnician}><Icon name="plus" size={15} />Agregar técnico</button>{!validYear && <p className="field-error">Ingresá un año válido.</p>}{duplicated && <p className="field-error">Cada técnico puede aparecer una sola vez en la rotación.</p>}{validYear && !annualGuardSetup.rotation.length && <p className="field-error">Agregá al menos un técnico para generar el cronograma.</p>}<p className="annual-guard-help">Los cambios manuales realizados en un sábado específico se conservan como excepción.</p><div className="modal-actions"><button className="secondary" onClick={() => setAnnualGuardSetup(null)}>Cancelar</button><button className="primary" disabled={!validYear || !annualGuardSetup.rotation.length || duplicated} onClick={saveAnnualGuardSetup}>Guardar guardias del año</button></div></section></div>
+    })()}
+    <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Prepará las visitas de cada equipo y luego abrí el día para terminar de validar y guardar la agenda del día.</p></div><div className="weekly-actions"><button className="secondary" onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button><button className="secondary" onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button><button className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button><label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
     {taskEditor && (() => {
       const { day, teamIndex, taskIndex } = taskEditor
       const task = taskEditor.draft

@@ -118,12 +118,13 @@ function authorizeIncomingState(incoming, current, user) {
   }
   const currentAgenda = current.agenda || {}
   const incomingAgenda = incoming.agenda || {}
-  const { _holidayOverrides: ignoredHolidayOverrides, ...incomingWeeklyWithoutHolidayOverrides } = incomingAgenda.weekly || {}
+  const { _holidayOverrides: ignoredHolidayOverrides, _annualGuards: ignoredAnnualGuards, ...incomingWeeklyWithoutProtectedConfiguration } = incomingAgenda.weekly || {}
   const protectedWeekly = administrator
     ? incomingAgenda.weekly
     : {
-        ...incomingWeeklyWithoutHolidayOverrides,
-        ...(currentAgenda.weekly?._holidayOverrides ? { _holidayOverrides: currentAgenda.weekly._holidayOverrides } : {})
+        ...incomingWeeklyWithoutProtectedConfiguration,
+        ...(currentAgenda.weekly?._holidayOverrides ? { _holidayOverrides: currentAgenda.weekly._holidayOverrides } : {}),
+        ...(currentAgenda.weekly?._annualGuards ? { _annualGuards: currentAgenda.weekly._annualGuards } : {})
       }
   return {
     ...incoming,
