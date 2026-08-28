@@ -160,6 +160,11 @@ test('el historial muestra la hora asignada como una columna propia', () => {
   assert.match(styles, /\.history-bulk \.role-chip \{[\s\S]*display: inline-block;[\s\S]*width: fit-content;/)
 })
 
+test('el botón Editar datos conserva el icono y el texto dentro de su marco', () => {
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(styles, /\.history-detail-heading > \.detail-edit \{[\s\S]*?flex: 0 0 auto;[\s\S]*?min-width: max-content !important;[\s\S]*?min-height: 40px;[\s\S]*?white-space: nowrap;/)
+})
+
 test('el técnico usa el mismo menú móvil desplegable que los demás roles', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
@@ -370,6 +375,7 @@ test('la agenda semanal permite guardar un día directamente en el historial', (
   assert.match(source, /Guardado pendiente: guardar agenda/)
   assert.match(source, /dayNeedsSave\(day\)/)
   assert.match(styles, /\.weekly-day-actions \{/)
+  assert.match(styles, /\.weekly-day-actions > button \{[\s\S]*?width: 92px;[\s\S]*?height: 40px;[\s\S]*?justify-content: center;/)
 })
 
 test('el escritorio aprovecha el ancho y el servicio del historial no ocupa dos líneas', () => {
