@@ -333,7 +333,7 @@ test('ordena las instalaciones por fecha en Excel y PDF', async () => {
   const positions = testRecords.map(record => report.indexOf(record.client))
   assert.ok(positions.every(position => position >= 0))
   assert.ok(positions[3] < positions[1], 'En una misma fecha, la hora más temprana debe aparecer primero.')
-  assert.ok(positions[1] < positions[2] && positions[2] < positions[0], 'Las fechas deben aparecer desde la más reciente hasta la más antigua.')
+  assert.ok(positions[0] < positions[2] && positions[2] < positions[3], 'Las fechas deben aparecer desde la más antigua hasta la más reciente.')
 
   const pdfResponse = await api('/api/history/export?month=2097-04&category=docta&format=pdf', cookie)
   assert.equal(pdfResponse.status, 200)

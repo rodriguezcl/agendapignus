@@ -1227,7 +1227,7 @@ function reportDate(value) {
 }
 
 function compareReportRecords(left, right) {
-  return String(right.date || '').localeCompare(String(left.date || ''))
+  return String(left.date || '').localeCompare(String(right.date || ''))
     || String(left.time || left.scheduledTime || '').localeCompare(String(right.time || right.scheduledTime || ''))
     || String(left.client || '').localeCompare(String(right.client || ''), 'es', { sensitivity: 'base' })
     || String(left.id || '').localeCompare(String(right.id || ''))

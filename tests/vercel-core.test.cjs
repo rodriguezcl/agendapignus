@@ -428,13 +428,13 @@ test('conserva el hash al editar un empleado sin cambiar su contraseña', () => 
   assert.equal(secured[0].name, 'Ana Actualizada')
 })
 
-test('ordena reportes desde la fecha más reciente y por hora dentro del día', () => {
+test('ordena reportes desde la fecha más antigua y por hora dentro del día', () => {
   const records = [
     { id: 'old', date: '2026-01-01', time: '08:00' },
     { id: 'late', date: '2026-01-03', time: '15:00' },
     { id: 'early', date: '2026-01-03', time: '08:00' }
   ].sort(compareReportRecords)
-  assert.deepEqual(records.map(record => record.id), ['early', 'late', 'old'])
+  assert.deepEqual(records.map(record => record.id), ['old', 'early', 'late'])
 })
 
 test('convierte el abonado y todas sus referencias al completar una baja', () => {
