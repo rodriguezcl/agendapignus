@@ -155,7 +155,7 @@ function normalizeStateForSave(state, current) {
     return { ...employee, name: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(), ...(role ? { roleId: role.id, role: role.name } : {}) }
   })
   const services = (state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') }))
-  const vehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
+  const vehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), mileage: vehicle.mileage == null || vehicle.mileage === '' ? null : Number(vehicle.mileage), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
   const customers = (state.customers || []).map(customer => ({ ...customer, kind: customerKind(customer), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }))
   const history = (state.history || []).map(record => ({ ...record, status: record.status || 'Pendiente' }))
   return normalizeRetirementCustomers({ ...state, roles, employees, services, vehicles, customers, history, reviews: state.reviews || current.reviews || [] }).state
@@ -248,6 +248,7 @@ function validateState(state) {
     if (!String(vehicle.brand || '').trim() || String(vehicle.brand).trim().length > 80) throw new Error(`Vehículo ${index + 1}: la marca es obligatoria o demasiado extensa.`)
     if (!String(vehicle.model || '').trim() || String(vehicle.model).trim().length > 120) throw new Error(`Vehículo ${index + 1}: el modelo es obligatorio o demasiado extenso.`)
     if (!Number.isInteger(Number(vehicle.year)) || Number(vehicle.year) < 1886 || Number(vehicle.year) > maximumVehicleYear) throw new Error(`Vehículo ${index + 1}: el año no es válido.`)
+    if (vehicle.mileage != null && (!Number.isInteger(Number(vehicle.mileage)) || Number(vehicle.mileage) < 0 || Number(vehicle.mileage) > 99999999)) throw new Error(`Vehículo ${index + 1}: el kilometraje no es válido.`)
     if (!String(vehicle.plate || '').trim() || String(vehicle.plate).trim().length > 20) throw new Error(`Vehículo ${index + 1}: la matrícula es obligatoria o demasiado extensa.`)
   })
   state.history.forEach((record, index) => {

@@ -521,7 +521,7 @@ test('impide que un rol de consulta modifique colecciones sin permiso', () => {
   assert.deepEqual(authorized.agenda, current.agenda)
 })
 
-test('el ABM de vehículos integra estado, permisos, validación y los cuatro campos requeridos', () => {
+test('el ABM de vehículos integra estado, permisos, validación y sus cinco campos requeridos', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const apiCore = fs.readFileSync(path.resolve(__dirname, '../api/_lib/core.cjs'), 'utf8')
   const database = fs.readFileSync(path.resolve(__dirname, '../api/_lib/database.cjs'), 'utf8')
@@ -530,18 +530,19 @@ test('el ABM de vehículos integra estado, permisos, validación y los cuatro ca
   assert.match(source, /\['vehicles', 'Vehículos', 'Administrar la flota de la empresa'\]/)
   assert.match(source, /\['vehicles', 'vehicle', 'Vehículos'\]/)
   assert.match(source, /function Vehicles\(\{ vehicles, setVehicles, setNotice, ask \}\)/)
-  for (const label of ['Marca', 'Modelo', 'Año', 'Matrícula']) assert.match(source, new RegExp(`<RequiredLabel>${label}<\\/RequiredLabel>`))
+  for (const label of ['Marca', 'Modelo', 'Año', 'Kilometraje', 'Matrícula']) assert.match(source, new RegExp(`<RequiredLabel>${label}<\\/RequiredLabel>`))
   assert.match(source, /Ya existe un vehículo con esa matrícula/)
   assert.match(apiCore, /unique\(state\.vehicles, 'plate', 'Matrícula'\)/)
+  assert.match(apiCore, /el kilometraje no es válido/)
   assert.match(apiCore, /vehicles: userCan\(user, 'vehicles'\)/)
   assert.match(database, /JSON\.stringify\(state\.vehicles \|\| \[\]\)/)
   assert.match(icon, /vehicle:/)
   assert.match(styles, /\.vehicles-table \.table-head,[\s\S]*?\.vehicle-row/)
 })
 
-test('normaliza la matrícula y el año de los vehículos antes de persistir', () => {
-  const normalized = normalizeStateForSave({ roles, employees: [], services: [], vehicles: [{ id: 'v1', brand: ' Ford ', model: ' Ranger ', year: '2025', plate: ' ab 123 cd ' }], customers: [], history: [], reviews: [], agenda: {} }, { reviews: [] })
-  assert.deepEqual(normalized.vehicles, [{ id: 'v1', brand: 'Ford', model: 'Ranger', year: 2025, plate: 'AB 123 CD' }])
+test('normaliza matrícula, año y kilometraje de los vehículos antes de persistir', () => {
+  const normalized = normalizeStateForSave({ roles, employees: [], services: [], vehicles: [{ id: 'v1', brand: ' Ford ', model: ' Ranger ', year: '2025', mileage: '125000', plate: ' ab 123 cd ' }], customers: [], history: [], reviews: [], agenda: {} }, { reviews: [] })
+  assert.deepEqual(normalized.vehicles, [{ id: 'v1', brand: 'Ford', model: 'Ranger', year: 2025, mileage: 125000, plate: 'AB 123 CD' }])
 })
 
 test('conserva el hash al editar un empleado sin cambiar su contraseña', () => {
