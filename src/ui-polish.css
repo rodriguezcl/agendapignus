@@ -121,7 +121,7 @@ span.field-label-text > span.required-mark,
 
 .vehicle-form {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(180px, 1.2fr) 110px minmax(150px, .8fr) auto auto;
+  grid-template-columns: minmax(140px, 1fr) minmax(170px, 1.15fr) 100px 135px minmax(140px, .8fr) auto auto;
   gap: 13px;
   align-items: end;
   padding: 17px;
@@ -161,7 +161,7 @@ span.field-label-text > span.required-mark,
 .vehicles-table .table-head,
 .vehicle-row {
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.3fr) 100px minmax(140px, .8fr) 100px;
+  grid-template-columns: minmax(130px, 1fr) minmax(170px, 1.25fr) 90px 130px minmax(130px, .8fr) 100px;
   gap: 16px;
   align-items: center;
   padding: 14px 17px;
@@ -196,7 +196,7 @@ span.field-label-text > span.required-mark,
   .vehicle-row > b,
   .vehicle-row > span,
   .vehicle-row > strong { grid-column: 1; }
-  .vehicle-row > .row-actions { grid-column: 2; grid-row: 1 / span 4; align-self: center; }
+  .vehicle-row > .row-actions { grid-column: 2; grid-row: 1 / span 5; align-self: center; }
 }
 
 .service-form > button,

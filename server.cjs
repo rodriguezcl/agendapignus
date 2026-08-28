@@ -878,6 +878,7 @@ function validateState(state) {
     if (!String(vehicle.brand ?? '').trim() || !text(vehicle.brand, 80)) throw new Error(`Vehículo ${index + 1}: la marca es obligatoria o demasiado extensa.`)
     if (!String(vehicle.model ?? '').trim() || !text(vehicle.model, 120)) throw new Error(`Vehículo ${index + 1}: el modelo es obligatorio o demasiado extenso.`)
     if (!Number.isInteger(Number(vehicle.year)) || Number(vehicle.year) < 1886 || Number(vehicle.year) > maximumVehicleYear) throw new Error(`Vehículo ${index + 1}: el año no es válido.`)
+    if (vehicle.mileage != null && (!Number.isInteger(Number(vehicle.mileage)) || Number(vehicle.mileage) < 0 || Number(vehicle.mileage) > 99999999)) throw new Error(`Vehículo ${index + 1}: el kilometraje no es válido.`)
     if (!String(vehicle.plate ?? '').trim() || !text(vehicle.plate, 20)) throw new Error(`Vehículo ${index + 1}: la matrícula es obligatoria o demasiado extensa.`)
   })
   state.customers.forEach((customer, index) => {
@@ -972,7 +973,7 @@ function saveState(state, user) {
   const employeeById = new Map(normalizedEmployees.map(employee => [String(employee.id), employee]))
   const employeeByName = new Map(normalizedEmployees.map(employee => [normalizedCustomerValue(employee.name), employee]))
   const normalizedServices = (state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') }))
-  const normalizedVehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
+  const normalizedVehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), mileage: vehicle.mileage == null || vehicle.mileage === '' ? null : Number(vehicle.mileage), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
   const serviceById = new Map(normalizedServices.map(service => [String(service.id), service]))
   const serviceByName = new Map(normalizedServices.map(service => [normalizedServiceName(service.name), service]))
   const normalizeServiceReference = item => {
