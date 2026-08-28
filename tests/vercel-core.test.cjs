@@ -370,10 +370,10 @@ test('las agendas diaria y semanal renderizan directamente el estado de cada ser
 test('la agenda diaria mantiene visibles los nombres de los técnicos del equipo', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
-  assert.match(source, /assignment\.dataset\.technicianNames = names\.join\(' \/ '\)/)
-  assert.match(source, /assignment\.removeAttribute\('data-technician-names'\)/)
-  assert.doesNotMatch(source, /detail\.className = 'daily-team-member-names'/)
-  assert.match(styles, /\.technician-assignment-label\[data-technician-names\]::after \{[\s\S]*?content: attr\(data-technician-names\) !important;[\s\S]*?overflow-wrap: anywhere;/)
+  assert.match(source, /className="daily-team-identity"/)
+  assert.match(source, /className="daily-team-member-names"[\s\S]*?team\.members\.map\(name =>[\s\S]*?\.join\(' · '\)/)
+  assert.doesNotMatch(source, /dataset\.technicianNames|insertAdjacentElement\('afterend', names\)/)
+  assert.match(styles, /\.daily-team-member-names \{[\s\S]*?text-overflow: ellipsis;[\s\S]*?white-space: nowrap;/)
 })
 
 test('la agenda semanal permite guardar un día directamente en el historial', () => {

@@ -59,25 +59,42 @@ span.field-label-text > span.required-mark,
   text-align: right;
 }
 
+.team-header > .daily-team-heading {
+  min-width: 0;
+  align-items: center;
+}
+
+.daily-team-identity {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.daily-team-member-names {
+  max-width: 430px;
+  overflow: hidden;
+  color: #315643;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell[data-theme='dark'] .daily-team-member-names {
+  color: #c7dfcf;
+}
+
 .task-row > label::after,
 .installation-zone legend::after,
 .technicians-picker > span::after {
   content: none !important;
 }
 
-.technicians-picker > .technician-assignment-label[data-technician-names]::after {
-  content: attr(data-technician-names) !important;
-  display: block;
-  max-width: 430px;
-  color: #315643;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-
-.app-shell[data-theme='dark'] .technician-assignment-label[data-technician-names]::after {
-  color: #c7dfcf;
+@media (max-width: 640px) {
+  .daily-team-member-names {
+    max-width: min(70vw, 430px);
+  }
 }
 
 :is(.task-row, .weekly-task-form, .employee-form, .customer-form, .service-form, .role-editor, .login-card) label > :is(input, select, textarea, .customer-autocomplete-control) {
