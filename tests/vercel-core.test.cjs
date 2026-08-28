@@ -443,6 +443,12 @@ test('la agenda semanal permite guardar un día directamente en el historial', (
   assert.match(styles, /\.weekly-day-actions > button \{[\s\S]*?width: 92px;[\s\S]*?height: 40px;[\s\S]*?justify-content: center;/)
 })
 
+test('el sábado conserva el identificador del equipo después de guardar', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  assert.match(source, /const storedSaturday = sourceWeekly\?\.\[day\]\?\.teams\?\.\[0\]/)
+  assert.match(source, /createTeam\(0, storedSaturday \? \{ teamId: storedSaturday\.teamId \} : null, day\)/)
+})
+
 test('el escritorio aprovecha el ancho y el servicio del historial no ocupa dos líneas', () => {
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(styles, /@media \(min-width: 1200px\)[\s\S]*?max-width: 1640px;/)
