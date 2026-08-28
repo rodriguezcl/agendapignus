@@ -336,6 +336,23 @@ test('ordena los campos y centra las acciones de cada servicio diario', () => {
   assert.match(styles, /\.content > \.team-card \.task-row > \.daily-task-actions \{[\s\S]*?align-self: stretch;[\s\S]*?justify-content: center;/)
 })
 
+test('la agenda semanal permite guardar un día directamente en el historial', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(source, /const saveWeeklyDay = day =>/)
+  assert.match(source, /status: 'Pendiente'/)
+  assert.match(source, /Guardado pendiente: guardar agenda/)
+  assert.match(source, /dayNeedsSave\(day\)/)
+  assert.match(styles, /\.weekly-day-actions \{/)
+})
+
+test('el escritorio aprovecha el ancho y el servicio del historial no ocupa dos líneas', () => {
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(styles, /@media \(min-width: 1200px\)[\s\S]*?max-width: 1640px;/)
+  assert.match(styles, /\.history-bulk \.role-chip \{[\s\S]*?text-overflow: ellipsis;[\s\S]*?white-space: nowrap;/)
+  assert.match(styles, /minmax\(175px, \.9fr\)/)
+})
+
 test('genera y verifica hashes compatibles con las credenciales existentes', () => {
   const hash = hashPassword('Prueba1234')
   assert.equal(verifyPassword('Prueba1234', hash), true)
