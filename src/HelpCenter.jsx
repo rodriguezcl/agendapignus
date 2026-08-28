@@ -53,7 +53,7 @@ const MODULES = [
     id: 'history', module: 'history', icon: 'history', title: 'Historial', summary: 'Consultá trabajos y actualizá su estado sin perder el seguimiento.',
     articles: [
       { title: 'Buscar registros', body: 'Buscá por cliente, servicio o técnico. La búsqueda no distingue mayúsculas ni tildes: “instalacion” encuentra “Instalación”.' },
-      { title: 'Cómo se ordena la tabla', body: 'La tabla muestra primero las fechas más recientes. Dentro de cada día prioriza los servicios pendientes y, para un mismo estado, ordena desde el horario más temprano al más tarde. La columna Hora evita tener que consultar otra agenda.' },
+      { title: 'Cómo se ordena la tabla', body: 'La tabla muestra primero todos los servicios pendientes, desde la fecha más antigua a la más nueva y, dentro de cada día, desde el horario más temprano al más tarde. Después aparecen los servicios completados y los demás estados. La columna Hora evita tener que consultar otra agenda.' },
       { title: 'Gestionar un servicio', body: 'Presioná Gestionar para ver sus datos. Desde allí podés marcarlo como completado, devolverlo a pendiente, cancelarlo, reprogramarlo, editar información permitida o eliminar el registro.' },
       { title: 'Estados disponibles', body: 'Pendiente significa que todavía requiere una definición. Completado confirma que el trabajo se realizó. Cancelado indica que no se realizará. Reprogramado mueve el servicio a otra fecha.' },
       { title: 'Reprogramar correctamente', steps: ['Abrí Gestionar.', 'Elegí una fecha futura.', 'Presioná Reprogramar.', 'Revisá la nueva fecha en Agenda semanal o Agenda del día.'], note: 'El servicio se quita del día original y se incorpora una sola vez en la fecha nueva.' },
@@ -181,7 +181,7 @@ function HelpCenter({ onNavigate, isAdministrator }) {
   const visibleArticles = selected?.articles || []
   return <div className="help-center">
     <header className="help-hero">
-      <div><p className="eyebrow">GUÍAS Y PREGUNTAS FRECUENTES</p><h1>Centro de ayuda</h1><span className="help-updated">Actualizado · 27 de agosto de 2026</span><p>Encontrá instrucciones simples para completar cada tarea con seguridad.</p></div>
+      <div><p className="eyebrow">GUÍAS Y PREGUNTAS FRECUENTES</p><h1>Centro de ayuda</h1><span className="help-updated">Actualizado · 28 de agosto de 2026</span><p>Encontrá instrucciones simples para completar cada tarea con seguridad.</p></div>
       <label className="help-search"><Icon name="search" size={19} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="¿Qué necesitás hacer?" autoComplete="off" />{query && <button onClick={() => setQuery('')} aria-label="Limpiar búsqueda"><Icon name="close" size={15} /></button>}</label>
     </header>
     {query ? <section className="help-results data-card"><div className="help-section-title"><div><span>{searchResults.length}</span><h2>Resultados para “{query}”</h2></div></div>{searchResults.length ? searchResults.map(result => <button className="help-result" key={`${result.section.id}-${result.index}`} onClick={() => choose(result.section.id, result.index)}><Icon name={result.section.icon} /><span><b>{result.title}</b><small>{result.section.title}</small></span><i>Ver respuesta →</i></button>) : <div className="help-empty"><Icon name="search" size={30} /><h3>No encontramos una respuesta con esas palabras</h3><p>Probá con términos como “feriado”, “guardia”, “cliente”, “técnico” o “copiar”.</p></div>}</section> : <div className="help-layout">

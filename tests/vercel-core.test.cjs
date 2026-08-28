@@ -135,17 +135,19 @@ test('la confirmación espera el guardado y el servidor admite reintentos idempo
   assert.match(apiSource, /technicalReportedById\) === String\(user\.id\)/)
 })
 
-test('el historial prioriza fecha reciente, pendientes y horario temprano', async () => {
+test('el historial muestra primero los pendientes desde la fecha y hora más antiguas', async () => {
   const { sortOperationalHistory } = await import('../src/history-order.mjs')
   const records = [
-    { id: 'older-pending', date: '2026-08-26', time: '08:00', status: 'Pendiente', client: 'Cliente anterior' },
-    { id: 'completed-early', date: '2026-08-27', time: '08:30', status: 'Completado', client: 'Completado' },
-    { id: 'pending-late', date: '2026-08-27', time: '13:00', status: 'Pendiente', client: 'Pendiente tarde' },
-    { id: 'pending-early', date: '2026-08-27', time: '09:30', status: 'Pendiente', client: 'Pendiente temprano' },
-    { id: 'review', date: '2026-08-27', time: '10:00', status: 'Requiere revisión', client: 'Revisión' },
-    { id: 'pending-no-time', date: '2026-08-27', status: 'Pendiente', client: 'Sin horario' }
+    { id: 'completed-friday', date: '2026-08-28', time: '08:30', status: 'Completado', client: 'Completado viernes' },
+    { id: 'completed-monday', date: '2026-08-31', time: '08:30', status: 'Completado', client: 'Completado lunes' },
+    { id: 'cancelled-later', date: '2026-09-01', time: '08:30', status: 'Cancelado', client: 'Cancelado posterior' },
+    { id: 'monday-early', date: '2026-08-31', time: '08:30', status: 'Pendiente', client: 'Lunes temprano' },
+    { id: 'friday-late', date: '2026-08-28', time: '13:00', status: 'Pendiente', client: 'Viernes tarde' },
+    { id: 'friday-early', date: '2026-08-28', time: '08:30', status: 'Pendiente', client: 'Viernes temprano' },
+    { id: 'review', date: '2026-08-28', time: '10:00', status: 'Requiere revisión', client: 'Revisión' },
+    { id: 'friday-no-time', date: '2026-08-28', status: 'Pendiente', client: 'Sin horario' }
   ]
-  assert.deepEqual(records.sort(sortOperationalHistory).map(record => record.id), ['pending-early', 'review', 'pending-late', 'pending-no-time', 'completed-early', 'older-pending'])
+  assert.deepEqual(records.sort(sortOperationalHistory).map(record => record.id), ['friday-early', 'review', 'friday-late', 'friday-no-time', 'monday-early', 'completed-monday', 'completed-friday', 'cancelled-later'])
 })
 
 test('el historial muestra la hora asignada como una columna propia', () => {
@@ -155,6 +157,7 @@ test('el historial muestra la hora asignada como una columna propia', () => {
   assert.match(source, /Hora asignada:/)
   assert.match(source, /sort\(sortOperationalHistory\)/)
   assert.match(styles, /\.history-bulk \.history-time/)
+  assert.match(styles, /\.history-bulk \.role-chip \{[\s\S]*display: inline-block;[\s\S]*width: fit-content;/)
 })
 
 test('el técnico usa el mismo menú móvil desplegable que los demás roles', () => {
