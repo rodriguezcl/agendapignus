@@ -2,8 +2,8 @@ const retryableStatuses = new Set([503, 504])
 
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 
-export async function submitTechnicianStatus({ recordId, type, observation, fetcher = fetch, retryDelay = 700 }) {
-  if (!String(observation || '').trim()) throw new Error('La observación es obligatoria para informar el servicio.')
+export async function submitTechnicianStatus({ recordId, type, observation, vehicleMileage, vehiclePhoto, vehicleControl = false, fetcher = fetch, retryDelay = 700 }) {
+  if (!vehicleControl && !String(observation || '').trim()) throw new Error('La observación es obligatoria para informar el servicio.')
   let lastError
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -12,7 +12,7 @@ export async function submitTechnicianStatus({ recordId, type, observation, fetc
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ recordId, type, observation })
+        body: JSON.stringify({ recordId, type, observation, vehicleMileage, vehiclePhoto })
       })
       const data = await response.json().catch(() => ({}))
       if (response.ok && data.record) return data.record

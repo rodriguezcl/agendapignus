@@ -44,3 +44,16 @@ export function technicianTeamLabel(record) {
   if (!technicians.length) return team || 'Sin técnicos asignados'
   return [team, technicians.join(' / ')].filter(Boolean).join(' · ')
 }
+
+export function technicianRecordResolved(record) {
+  if (record?.vehicleControl) return record?.technicalStatus === 'Completado' || record?.status === 'Completado'
+  return Boolean(record?.technicalStatus || record?.status === 'Completado' || record?.status === 'Cancelado' || record?.status === 'Reprogramado')
+}
+
+export function overdueVehicleControls(records, today) {
+  return (records || []).filter(record => record?.vehicleControl && record.date < today && !technicianRecordResolved(record))
+}
+
+export function blockingOverdueVehicleControl(records, index, today) {
+  return (records || []).slice(0, index).find(record => record?.vehicleControl && record.date < today && !technicianRecordResolved(record)) || null
+}

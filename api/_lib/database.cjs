@@ -78,6 +78,10 @@ async function replaceCollections(sql, state) {
 
   await sql`delete from pignus_work_history`
   if (state.history.length) await sql`insert into pignus_work_history ${sql(state.history.map(record => ({ id: String(record.id), work_date: record.date || null, status: record.status || 'Pendiente', service_id: record.serviceId == null ? null : String(record.serviceId), customer_id: record.customerId == null ? null : String(record.customerId), data: sql.json(record) })))}`
+  await sql`create table if not exists pignus_vehicle_control_photos (record_id text primary key, vehicle_id text not null, mime_type text not null, photo_data bytea not null, created_at timestamptz not null default now())`
+  await sql`alter table pignus_vehicle_control_photos enable row level security`
+  await sql`revoke all on table pignus_vehicle_control_photos from anon, authenticated`
+  await sql`delete from pignus_vehicle_control_photos where not exists (select 1 from pignus_work_history where pignus_work_history.id = pignus_vehicle_control_photos.record_id)`
 
   await sql`delete from pignus_reviews`
   if (state.reviews.length) await sql`insert into pignus_reviews ${sql(state.reviews.map(record => ({ id: String(record.id), data: sql.json(record) })))}`

@@ -34,6 +34,26 @@ function send(res, status, data) {
   return res.status(status).json(data)
 }
 
+async function handleVehicleControlPhoto(req, res, sql, user, recordId) {
+  await sql`create table if not exists pignus_vehicle_control_photos (record_id text primary key, vehicle_id text not null, mime_type text not null, photo_data bytea not null, created_at timestamptz not null default now())`
+  await sql`alter table pignus_vehicle_control_photos enable row level security`
+  await sql`revoke all on table pignus_vehicle_control_photos from anon, authenticated`
+  const rows = await sql`
+    select photo.mime_type, photo.photo_data, history.data as record
+    from pignus_vehicle_control_photos photo
+    join pignus_work_history history on history.id = photo.record_id
+    where photo.record_id = ${String(recordId)}
+  `
+  const row = rows[0]
+  if (!row) return send(res, 404, { error: 'La foto no existe.' })
+  const allowed = user.roleCode === 'administrator' || userCan(user, 'history') || row.record?.technicianIds?.some(id => String(id) === String(user.id))
+  if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
+  securityHeaders(res)
+  res.setHeader('Content-Type', row.mime_type)
+  res.setHeader('Content-Length', row.photo_data.length)
+  return res.status(200).send(row.photo_data)
+}
+
 function cookies(header = '') {
   return Object.fromEntries(header.split(';').map(part => part.trim().split('=').map(decodeURIComponent)).filter(([key]) => key))
 }
@@ -302,7 +322,7 @@ async function handleExport(req, res, sql, user) {
 
 async function handleTechnicianStatus(req, res, sql, user) {
   if (user.roleCode !== 'technician') return send(res, 403, { error: 'Esta acción es exclusiva del rol técnico.' })
-  const { recordId, type, observation } = requestBody(req)
+  const { recordId, type, observation, vehicleMileage, vehiclePhoto } = requestBody(req)
   const allowed = ['Completado', 'Cancelado', 'Reprogramación solicitada']
   if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
   try {
@@ -317,17 +337,43 @@ async function handleTechnicianStatus(req, res, sql, user) {
       const record = rows[0]?.data
       if (!record) { const error = new Error('El servicio no existe.'); error.statusCode = 404; throw error }
       if (!record.technicianIds?.some(id => String(id) === String(user.id))) { const error = new Error('El servicio no está asignado al técnico autenticado.'); error.statusCode = 403; throw error }
+      if (record.vehicleControl && type !== 'Completado') { const error = new Error('El control vehicular debe completarse con foto y kilometraje; no admite cancelación ni reprogramación.'); error.statusCode = 400; throw error }
       // Si el primer envío se guardó pero el teléfono perdió la respuesta, el
       // reintento devuelve el mismo resultado sin duplicar auditoría ni cambios.
       if (record.technicalStatus) {
         if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return record
         const error = new Error('Este servicio ya fue informado desde otra sesión.'); error.statusCode = 409; throw error
       }
-      if (!String(observation || '').trim()) throw new Error('La observación es obligatoria para informar el servicio.')
+      const completingVehicleControl = Boolean(record.vehicleControl && type === 'Completado')
+      let vehicleChange = null
+      if (completingVehicleControl) {
+        const mileage = Number(vehicleMileage)
+        if (!Number.isInteger(mileage) || mileage < 1 || mileage > 99999999) throw new Error('Ingresá un kilometraje válido.')
+        const photoMatch = String(vehiclePhoto || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([a-z0-9+/=]+)$/i)
+        const photoBuffer = photoMatch ? Buffer.from(photoMatch[2], 'base64') : null
+        if (!photoBuffer?.length || photoBuffer.length > 1_000_000) throw new Error('Cargá una foto válida del interior del vehículo.')
+        const vehicleRows = await transaction`select value from pignus_preferences where key = 'vehicles' for update`
+        let vehicles
+        try { vehicles = JSON.parse(vehicleRows[0]?.value || '[]') } catch { vehicles = [] }
+        const vehicleIndex = vehicles.findIndex(vehicle => String(vehicle.id) === String(record.vehicleId))
+        if (vehicleIndex < 0) { const error = new Error('El vehículo asignado ya no existe.'); error.statusCode = 409; throw error }
+        const previousVehicle = vehicles[vehicleIndex]
+        const currentMileage = Number(previousVehicle.mileage || 0)
+        if (mileage <= currentMileage) { const error = new Error(`El kilometraje debe ser superior a ${currentMileage.toLocaleString('es-AR')} km.`); error.statusCode = 409; throw error }
+        const nextVehicle = { ...previousVehicle, mileage, mileageUpdatedAt: new Date().toISOString(), mileageUpdatedById: user.id, mileageUpdatedByName: user.name || user.email || 'Técnico' }
+        vehicles[vehicleIndex] = nextVehicle
+        await transaction`update pignus_preferences set value = ${JSON.stringify(vehicles)}, updated_at = now() where key = 'vehicles'`
+        await transaction`create table if not exists pignus_vehicle_control_photos (record_id text primary key, vehicle_id text not null, mime_type text not null, photo_data bytea not null, created_at timestamptz not null default now())`
+        await transaction`alter table pignus_vehicle_control_photos enable row level security`
+        await transaction`revoke all on table pignus_vehicle_control_photos from anon, authenticated`
+        await transaction`insert into pignus_vehicle_control_photos (record_id, vehicle_id, mime_type, photo_data, created_at) values (${String(record.id)}, ${String(record.vehicleId)}, ${photoMatch[1].toLowerCase()}, ${photoBuffer}, now()) on conflict (record_id) do update set vehicle_id = excluded.vehicle_id, mime_type = excluded.mime_type, photo_data = excluded.photo_data, created_at = excluded.created_at`
+        vehicleChange = { before: previousVehicle, after: nextVehicle, mileage }
+      } else if (!String(observation || '').trim()) throw new Error('La observación es obligatoria para informar el servicio.')
       const now = new Date().toISOString()
-      const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim(), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type }
+      const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
       await transaction`update pignus_work_history set status = ${next.status}, data = ${transaction.json(next)} where id = ${String(record.id)}`
       const entries = [auditEntry(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, next)]
+      if (vehicleChange) entries.push(auditEntry(user, 'Actualizó kilometraje por control semanal', 'Vehículo', String(record.vehicleId), vehicleChange.before, vehicleChange.after))
       if (next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo')) {
         const state = await readState(transaction)
         state.history = state.history.map(item => String(item.id) === String(next.id) ? next : item)
@@ -417,6 +463,7 @@ module.exports = async function handler(req, res) {
       return rows[0] ? send(res, 200, { record: rows[0].data }) : send(res, 404, { error: 'El registro de auditoría no existe.' })
     }
     if (req.method === 'POST' && route === '/technician/status') return await handleTechnicianStatus(req, res, sql, session.user)
+    if (req.method === 'GET' && route.startsWith('/vehicle-control/photo/')) return await handleVehicleControlPhoto(req, res, sql, session.user, decodeURIComponent(route.slice('/vehicle-control/photo/'.length)))
     if (req.method === 'POST' && route === '/agenda/daily/clear') return await handleClearAgenda(req, res, sql, session.user)
     return send(res, 404, { error: 'Ruta no encontrada.' })
   } catch (error) {

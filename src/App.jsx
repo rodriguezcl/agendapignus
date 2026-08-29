@@ -3,7 +3,7 @@ import Icon from './components/ui/Icon.jsx'
 import { HelpShell } from './HelpCenter.jsx'
 import { visibleAnnualMonthLabels } from './annual-chart.mjs'
 import { reportDownloadName, triggerBrowserDownload } from './browser-download.mjs'
-import { filterTechnicianHistory, technicianTeamLabel } from './technician-history.mjs'
+import { blockingOverdueVehicleControl, filterTechnicianHistory, overdueVehicleControls, technicianRecordResolved, technicianTeamLabel } from './technician-history.mjs'
 import { AUTH_LOGIN_TIMEOUT_MS, fetchAuthWithRetry, fetchWithTimeout } from './fetch-timeout.mjs'
 import { sortOperationalHistory } from './history-order.mjs'
 import { submitTechnicianStatus } from './technician-status.mjs'
@@ -12,6 +12,8 @@ import { advancedSaturdayGuardMessage, findAdvancedSaturdayGuard, suppressAdvanc
 import { annualGuardForDate, DEFAULT_2026_GUARD_ROTATION, firstSaturdayOfYear } from './annual-guards.mjs'
 import { monthlyTeamRotation } from './monthly-team-rotation.mjs'
 import { holidayDecisionForDate, holidayDecisionLabel, holidayForDate, holidayIsBlocked } from './holidays.mjs'
+import { buildVehicleControlRecords, suggestedVehicleAssignments, vehicleControlTask, vehicleLabel } from './vehicle-controls.mjs'
+import { compactVehiclePhoto } from './image-upload.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -869,6 +871,7 @@ export default function App() {
   globalThis.__pignusCurrentUser = authUser
   globalThis.__pignusHistory = history
   globalThis.__pignusSetHistory = setHistory
+  globalThis.__pignusVehicles = vehicles
   const [authLoading, setAuthLoading] = useState(true)
   const [databaseError, setDatabaseError] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
@@ -1560,6 +1563,19 @@ export default function App() {
 
 function Agenda({ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady, authUser }) {
   const SERVICES = services.filter(service => service.status === 'Activo').map(service => service.name)
+  useEffect(() => {
+    const tasks = teams.flatMap(team => team.tasks || [])
+    const rows = document.querySelectorAll('.team-card .task-row')
+    rows.forEach((row, index) => {
+      const task = tasks[index]
+      if (!task?.vehicleControl) return
+      row.classList.add('vehicle-control-task')
+      const serviceSelect = row.querySelector('.daily-field-service select')
+      if (serviceSelect?.options?.[0]) { serviceSelect.options[0].textContent = task.service; serviceSelect.disabled = true }
+      const customerInput = row.querySelector('.customer-autocomplete input')
+      if (customerInput) customerInput.readOnly = true
+    })
+  }, [teams])
   const [preview, setPreview] = useState(false); const [techOpen, setTechOpen] = useState(null); const [techFilter, setTechFilter] = useState('')
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -2297,8 +2313,10 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
  * Planificador semanal: es el espacio de preparación previa. Sus tarjetas no
  * impactan en el Historial hasta que el operador abre y guarda la agenda diaria.
  */
-function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, history, setHistory, setNotice, openDaily, authUser }) {
+function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, history, setHistory, setNotice, openDaily, authUser, vehicles }) {
   authUser = authUser || globalThis.__pignusCurrentUser || null
+  vehicles = vehicles || globalThis.__pignusVehicles || []
+  setHistory = setHistory || globalThis.__pignusSetHistory
   const isAdministrator = authUser?.roleCode === 'administrator'
   const operationalHistory = history || globalThis.__pignusHistory || []
   const localToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
@@ -2306,6 +2324,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
   const [anchor, setAnchor] = useState(today)
   const [monthlySetup, setMonthlySetup] = useState(null)
   const [monthlyTimesSetup, setMonthlyTimesSetup] = useState(null)
+  const [monthlyVehicleSetup, setMonthlyVehicleSetup] = useState(null)
   const [annualGuardSetup, setAnnualGuardSetup] = useState(null)
   const [techPicker, setTechPicker] = useState(null)
   const [techFilter, setTechFilter] = useState('')
@@ -2381,7 +2400,14 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     const frame = requestAnimationFrame(() => {
       const records = days.flatMap(day => dayPlan(day).teams.flatMap(team => (team.tasks || []).map(task => ({ day, task }))))
       document.querySelectorAll('.week-task-summary').forEach((node, index) => {
-        appendTraceElement(node, records[index]?.task)
+        const task = records[index]?.task
+        appendTraceElement(node, task)
+        if (task?.vehicleControl) {
+          node.classList.add('weekly-vehicle-control')
+          node.title = 'Control semanal generado desde Vehículos del mes'
+          const select = node.querySelector('.week-task-top select')
+          if (select?.options?.[0]) { select.options[0].textContent = task.service; select.disabled = true }
+        }
       })
       if (taskEditor) {
         const modal = document.querySelector('.weekly-task-modal')
@@ -2738,6 +2764,61 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     setMonthlyTimesSetup(null)
     setNotice(`Los horarios predeterminados de ${new Date(`${monthKey}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} fueron guardados.`)
   }
+  const openMonthlyVehicleSetup = () => {
+    if (!isAdministrator) { setNotice('Solo un administrador puede asignar los vehículos mensuales.'); return }
+    if (!vehicles.length) { setNotice('Primero cargá los vehículos de la flota en el módulo Vehículos.'); return }
+    const teams = monthlyTeams[monthKey]?.teams || suggestedMonthlyTeams()
+    const saved = monthlyTeams[monthKey]?.vehicleAssignments
+    setMonthlyVehicleSetup({ month: monthKey, assignments: saved?.length ? saved.map(item => ({ ...item })) : suggestedVehicleAssignments(vehicles, teams) })
+  }
+  const updateMonthlyVehicleAssignment = (vehicleId, technicianId) => setMonthlyVehicleSetup(previous => ({
+    ...previous,
+    assignments: previous.assignments.map(item => String(item.vehicleId) === String(vehicleId) ? { ...item, technicianId } : item)
+  }))
+  const saveMonthlyVehicleSetup = () => {
+    const assignments = monthlyVehicleSetup?.assignments || []
+    const teams = monthlyTeams[monthlyVehicleSetup?.month]?.teams || suggestedMonthlyTeams()
+    if (assignments.length !== vehicles.length || assignments.some(item => !item.technicianId)) { setNotice('Asigná un técnico responsable a cada vehículo.'); return }
+    if (new Set(assignments.map(item => String(item.technicianId))).size !== assignments.length) { setNotice('Cada vehículo debe tener un técnico responsable diferente.'); return }
+    const soloTechnicianId = teams.find(team => (team.memberIds || []).length === 1)?.memberIds?.[0]
+    const fordKa = vehicles.find(vehicle => String(vehicle.brand || '').toLowerCase().includes('ford') && /(^|\s)ka($|\s)/i.test(String(vehicle.model || '')))
+    const fordAssignment = fordKa && assignments.find(item => String(item.vehicleId) === String(fordKa.id))
+    if (fordKa && soloTechnicianId && String(fordAssignment?.technicianId || '') !== String(soloTechnicianId)) { setNotice('El Ford Ka debe quedar asignado al técnico que trabaja solo durante el mes.'); return }
+    const records = buildVehicleControlRecords({ month: monthlyVehicleSetup.month, assignments, vehicles, technicians: activeTechs, teams, fromDate: today })
+    setHistory(previous => {
+      const generatedIds = new Set(records.map(record => String(record.id)))
+      const preserved = previous.filter(record => !generatedIds.has(String(record.id)) || record.technicalStatus)
+      const preservedIds = new Set(preserved.map(record => String(record.id)))
+      return [...preserved, ...records.filter(record => !preservedIds.has(String(record.id)))]
+    })
+    setWeekly(previous => {
+      let next = { ...previous }
+      Object.entries(next).forEach(([day, plan]) => {
+        if (!day.startsWith(`${monthlyVehicleSetup.month}-`) || day.startsWith('_') || !plan?.teams) return
+        next[day] = { ...plan, teams: plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !task.vehicleControl) })) }
+      })
+      records.forEach(record => {
+        const plan = next[record.date] || createDay(record.date, next)
+        let teamIndex = plan.teams.findIndex(team => (team.memberIds || []).some(id => String(id) === String(record.technicianIds[0])))
+        if (teamIndex < 0) teamIndex = 0
+        next[record.date] = {
+          ...plan,
+          teams: plan.teams.map((team, index) => index === teamIndex
+            ? { ...team, tasks: sortTasksByTime([...(team.tasks || []).filter(task => String(task.historyId || '') !== String(record.id)), vehicleControlTask(record)]) }
+            : team)
+        }
+      })
+      return {
+        ...next,
+        _monthlyTeams: {
+          ...(next._monthlyTeams || {}),
+          [monthlyVehicleSetup.month]: { ...(next._monthlyTeams?.[monthlyVehicleSetup.month] || {}), teams, vehicleAssignments: assignments }
+        }
+      }
+    })
+    setMonthlyVehicleSetup(null)
+    setNotice('Se guardaron los responsables y se generaron los controles de los viernes a las 15:30 hs.')
+  }
   const annualGuardDraft = year => ({ year: String(year), rotation: /^\d{4}$/.test(String(year)) ? suggestedAnnualGuardRotation(String(year)) : [] })
   const openAnnualGuardSetup = () => {
     if (!isAdministrator) { setNotice('Solo un administrador puede definir las guardias anuales.'); return }
@@ -2789,8 +2870,12 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     }
     if (config?.teams?.length && !validDefaultServiceTimes(config.defaultTimes) && !monthlySetup && monthlyTimesSetup?.month !== monthKey) {
       setMonthlyTimesSetup({ month: monthKey, times: [...suggestedMonthlyTimes()] })
+      return
     }
-  }, [isAdministrator, monthKey, monthlyTeams[monthKey], monthlySetup, monthlyTimesSetup])
+    if (config?.teams?.length && validDefaultServiceTimes(config.defaultTimes) && vehicles.length && !config.vehicleAssignments?.length && !monthlySetup && !monthlyTimesSetup && monthlyVehicleSetup?.month !== monthKey) {
+      setMonthlyVehicleSetup({ month: monthKey, assignments: suggestedVehicleAssignments(vehicles, config.teams) })
+    }
+  }, [isAdministrator, monthKey, monthlyTeams[monthKey], monthlySetup, monthlyTimesSetup, monthlyVehicleSetup, vehicles])
   const openDay = day => {
     const hours = hoursForDay(day)
     if (!hours) { setNotice('Los domingos no están habilitados para programar servicios.'); return }
@@ -2801,7 +2886,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     const invalidTime = dayPlan(day).teams.flatMap(team => team.tasks).find(task => task.time && (task.time < hours.min || task.time > hours.max))
     if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
     const scheduledTasks = dayPlan(day).teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, teamIndex, taskIndex }))).filter(({ task }) => [task.service, task.client, task.address, task.detail, task.phone, task.paymentMethod, task.amount, task.monthlyFee, task.form].some(value => String(value || '').trim()))
-    const incompleteTask = scheduledTasks.find(({ task }) => !task.time || !task.service || !task.customerId || !task.address || !task.phone || !task.detail || (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) || requiresPaymentAmount(task, serviceForWeeklyTask(task)))
+    const incompleteTask = scheduledTasks.find(({ task }) => !task.vehicleControl && (!task.time || !task.service || !task.customerId || !task.address || !task.phone || !task.detail || (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) || requiresPaymentAmount(task, serviceForWeeklyTask(task))))
     if (incompleteTask) {
       const { task, teamIndex, taskIndex } = incompleteTask
       const missing = [['hora', task.time], ['tipo de servicio', task.service], ['cliente', task.client], ['dirección', task.address], ['contacto', task.phone], ['detalle', task.detail]].filter(([, value]) => !String(value || '').trim()).map(([label]) => label)
@@ -2902,6 +2987,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       const sourceTeam = plan.teams[taskMove.sourceTeamIndex]
       return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskMove(null)}><section className="modal task-move-modal weekly-move-modal" role="dialog" aria-modal="true" aria-labelledby="weekly-move-title" onMouseDown={event => event.stopPropagation()}><button className="modal-close" onClick={() => setTaskMove(null)}><Icon name="close" /></button><p className="eyebrow">REASIGNAR SERVICIO</p><h2 id="weekly-move-title">Mover a otro equipo</h2><p>El servicio conservará horario, cliente, tipo de servicio y observaciones. También se actualizarán Agenda del día e Historial si ya fueron registrados.</p><label>Equipo actual<input value={sourceTeam?.label || `Equipo ${taskMove.sourceTeamIndex + 1}`} readOnly /></label><label>Nuevo equipo<select value={taskMove.destinationTeamIndex} onChange={event => setTaskMove(previous => ({ ...previous, destinationTeamIndex: Number(event.target.value) }))}>{plan.teams.map((team, index) => index !== taskMove.sourceTeamIndex && <option key={team.teamId || index} value={index}>{team.label || `Equipo ${index + 1}`} · {team.members?.join(' / ') || 'Sin técnicos'}</option>)}</select></label><div className="modal-actions"><button className="secondary" onClick={() => setTaskMove(null)}>Cancelar</button><button className="primary" onClick={confirmWeeklyTaskMove}><span aria-hidden="true">⇄</span>Reasignar servicio</button></div></section></div>
     })()}
+    {monthlyVehicleSetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal monthly-vehicles-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-vehicles-title"><button className="modal-close" onClick={() => setMonthlyVehicleSetup(null)}><Icon name="close" /></button><p className="eyebrow">RESPONSABLES DE FLOTA</p><h2 id="monthly-vehicles-title">Vehículos de {new Date(`${monthlyVehicleSetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Asigná un responsable diferente a cada vehículo. Todos los viernes se creará un control a las 15:30 hs para cargar la foto interior y el kilometraje. El Ford Ka se reserva al técnico que trabaja solo ese mes.</p><div className="monthly-vehicle-list">{vehicles.map(vehicle => { const assignment = monthlyVehicleSetup.assignments.find(item => String(item.vehicleId) === String(vehicle.id)); return <label key={vehicle.id}><span><b>{vehicleLabel(vehicle)}</b><small>Kilometraje actual: {Number(vehicle.mileage || 0).toLocaleString('es-AR')} km</small></span><select value={assignment?.technicianId || ''} onChange={event => updateMonthlyVehicleAssignment(vehicle.id, event.target.value)}><option value="">Seleccionar responsable</option>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></label> })}</div><div className="modal-actions"><button className="secondary" onClick={() => setMonthlyVehicleSetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlyVehicleSetup}>Guardar responsables</button></div></section></div>}
     {monthlySetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setMonthlySetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de {new Date(`${monthlySetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Con cinco técnicos activos, el sistema propone dos duplas y una salida individual, rotando mensualmente todas las combinaciones. Podés modificar la sugerencia antes de guardarla. Las agendas ya cargadas no se alteran.</p><div className="monthly-team-list">{monthlySetup.teams.map((team, index) => <label key={team.teamId || index}><b>{team.label || `Equipo ${index + 1}`}</b><select multiple value={team.memberIds || []} onChange={event => updateMonthlyTeam(index, [...event.target.selectedOptions].map(option => option.value))}>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName || tech.name.split(' ')[0]}</option>)}</select><small>Mantené presionada la tecla Ctrl para seleccionar más de un técnico.</small></label>)}</div><button className="secondary monthly-add-team" onClick={addMonthlyTeam}><Icon name="plus" size={15} />Agregar equipo</button><div className="modal-actions"><button className="secondary" onClick={() => setMonthlySetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlySetup}>Guardar equipos del mes</button></div></section></div>}
     {monthlyTimesSetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-times-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-times-title"><button className="modal-close" onClick={() => setMonthlyTimesSetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2 id="monthly-times-title">Horarios de {new Date(`${monthlyTimesSetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Definí los dos horarios que se aplicarán por defecto a los servicios nuevos del mes. Los servicios ya cargados conservarán su hora.</p><div className="monthly-time-grid">{monthlyTimesSetup.times.map((time, index) => <label key={index}><b>Turno {index + 1}</b><input type="time" required value={time} onChange={event => setMonthlyTimesSetup(previous => ({ ...previous, times: previous.times.map((item, timeIndex) => timeIndex === index ? event.target.value : item) }))} /></label>)}</div>{monthlyTimesSetup.times[0] === monthlyTimesSetup.times[1] && <p className="field-error">Los dos horarios deben ser diferentes.</p>}<div className="modal-actions"><button className="secondary" onClick={() => setMonthlyTimesSetup(null)}>Cancelar</button><button className="primary" disabled={!validDefaultServiceTimes(monthlyTimesSetup.times)} onClick={saveMonthlyTimesSetup}>Guardar horarios del mes</button></div></section></div>}
     {annualGuardSetup && (() => {
@@ -2912,7 +2998,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
         return <div className="annual-guard-row" key={`${guard.technicianId || guard.name}-${index}`}><span>{index + 1}</span><select aria-label={`Técnico ${index + 1} de la rotación`} value={guard.technicianId || ''} onChange={event => updateAnnualGuardTechnician(index, event.target.value)}>{legacyGuard && <option value={guard.technicianId || ''}>{guard.name} (no activo)</option>}{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select><button type="button" className="secondary" title="Subir" aria-label={`Subir a ${guard.name}`} disabled={index === 0} onClick={() => moveAnnualGuardTechnician(index, -1)}>↑</button><button type="button" className="secondary" title="Bajar" aria-label={`Bajar a ${guard.name}`} disabled={index === annualGuardSetup.rotation.length - 1} onClick={() => moveAnnualGuardTechnician(index, 1)}>↓</button><button type="button" className="icon-btn delete" title="Quitar de la rotación" aria-label={`Quitar a ${guard.name}`} onClick={() => removeAnnualGuardTechnician(index)}><Icon name="trash" size={15} /></button></div>
       })}</div><button type="button" className="secondary annual-guard-add" disabled={!activeTechs.length || !validYear} onClick={addAnnualGuardTechnician}><Icon name="plus" size={15} />Agregar técnico</button>{!validYear && <p className="field-error">Ingresá un año válido.</p>}{duplicated && <p className="field-error">Cada técnico puede aparecer una sola vez en la rotación.</p>}{validYear && !annualGuardSetup.rotation.length && <p className="field-error">Agregá al menos un técnico para generar el cronograma.</p>}<p className="annual-guard-help">Los cambios manuales realizados en un sábado específico se conservan como excepción.</p><div className="modal-actions"><button className="secondary" onClick={() => setAnnualGuardSetup(null)}>Cancelar</button><button className="primary" disabled={!validYear || !annualGuardSetup.rotation.length || duplicated} onClick={saveAnnualGuardSetup}>Guardar guardias del año</button></div></section></div>
     })()}
-    <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Prepará las visitas de cada equipo y luego abrí el día para terminar de validar y guardar la agenda del día.</p></div><div className="weekly-actions"><button className="secondary" onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button><button className="secondary" onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button><button className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button><label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
+    <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Prepará las visitas de cada equipo y luego abrí el día para terminar de validar y guardar la agenda del día.</p></div><div className="weekly-actions"><button className="secondary" onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button><button className="secondary" onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button><button className="secondary" onClick={openMonthlyVehicleSetup}><Icon name="vehicle" size={16} />Vehículos del mes</button><button className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button><label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
     {taskEditor && (() => {
       const { day, teamIndex, taskIndex } = taskEditor
       const task = taskEditor.draft
@@ -3123,18 +3209,63 @@ function AuditPage({ user, onBack, onOpenMenu, logout }) {
 function TechnicianPortal({ user, history, setHistory, logout }) {
   const [draft, setDraft] = useState(null)
   const [observation, setObservation] = useState('')
+  const vehicleMileageRef = useRef('')
+  const vehiclePhotoRef = useRef('')
   const [confirm, setConfirm] = useState(null)
   const [view, setView] = useState('agenda')
   const [menuOpen, setMenuOpen] = useState(false)
   const [historySearch, setHistorySearch] = useState('')
   const [customerHistoryRecord, setCustomerHistoryRecord] = useState(null)
-  const today = new Date().toISOString().slice(0, 10)
-  const resolved = record => Boolean(record.technicalStatus || record.status === 'Completado' || record.status === 'Cancelado' || record.status === 'Reprogramado')
+  const today = currentLocalDate()
+  const resolved = technicianRecordResolved
   const assignedServices = history.filter(record => record.technicianIds?.some(id => String(id) === String(user.id))).sort((a, b) => `${a.date}-${a.time || ''}`.localeCompare(`${b.date}-${b.time || ''}`))
   const completedServices = assignedServices.filter(resolved).reverse()
   const services = view === 'agenda'
-    ? assignedServices.filter(record => record.date >= today && !resolved(record))
+    ? assignedServices.filter(record => (record.date >= today || record.vehicleControl) && !resolved(record))
     : filterTechnicianHistory(completedServices, historySearch)
+  useEffect(() => {
+    vehicleMileageRef.current = ''
+    vehiclePhotoRef.current = ''
+  }, [draft?.record?.id, draft?.type])
+  useEffect(() => {
+    const modal = document.querySelector('.technician-status-modal')
+    if (!modal || !draft?.record?.vehicleControl || draft.type !== 'Completado') return undefined
+    const observationLabel = modal.querySelector('textarea')?.closest('label')
+    const actions = modal.querySelector('.modal-actions')
+    const continueButton = actions?.querySelector('.primary')
+    const fields = document.createElement('div')
+    fields.className = 'vehicle-control-report-fields'
+    const mileageLabel = document.createElement('label')
+    mileageLabel.innerHTML = '<span class="field-label-text">Kilometraje actualizado<span class="required-mark">*</span></span>'
+    const mileageInput = document.createElement('input')
+    mileageInput.type = 'number'; mileageInput.min = String(Number(draft.record.vehicleMileageAtScheduling || 0) + 1); mileageInput.step = '1'; mileageInput.inputMode = 'numeric'; mileageInput.placeholder = `Mayor a ${Number(draft.record.vehicleMileageAtScheduling || 0).toLocaleString('es-AR')} km`; mileageInput.value = ''
+    mileageLabel.append(mileageInput)
+    const photoLabel = document.createElement('label')
+    photoLabel.innerHTML = '<span class="field-label-text">Foto del interior<span class="required-mark">*</span></span>'
+    const photoInput = document.createElement('input')
+    photoInput.type = 'file'; photoInput.accept = 'image/jpeg,image/png,image/webp'; photoInput.setAttribute('capture', 'environment')
+    let photoReady = false
+    const refreshDisabled = () => { if (continueButton) continueButton.disabled = !photoReady || !Number.isInteger(Number(mileageInput.value)) || Number(mileageInput.value) <= Number(draft.record.vehicleMileageAtScheduling || 0) }
+    mileageInput.oninput = event => { vehicleMileageRef.current = event.target.value; refreshDisabled() }
+    photoInput.onchange = async event => {
+      fields.querySelector('.vehicle-control-photo-preview, .field-error')?.remove()
+      try {
+        const compact = await compactVehiclePhoto(event.target.files?.[0]); vehiclePhotoRef.current = compact; photoReady = true
+        const preview = document.createElement('img'); preview.className = 'vehicle-control-photo-preview'; preview.src = compact; preview.alt = 'Vista previa del interior del vehículo'; fields.append(preview)
+      } catch (error) {
+        vehiclePhotoRef.current = ''; photoReady = false
+        const message = document.createElement('p'); message.className = 'field-error'; message.textContent = error.message; fields.append(message)
+      }
+      refreshDisabled()
+    }
+    photoLabel.append(photoInput)
+    fields.append(mileageLabel, photoLabel)
+    observationLabel?.before(fields)
+    const textarea = observationLabel?.querySelector('textarea')
+    if (textarea) { textarea.required = false; textarea.placeholder = 'Observación adicional (opcional).' }
+    refreshDisabled()
+    return () => fields.remove()
+  }, [draft?.record?.id, draft?.type])
   useEffect(() => {
     // Todos los integrantes de un equipo consultan el mismo registro compartido.
     // Así, al informar un estado un compañero, se retira o actualiza para los demás.
@@ -3183,7 +3314,22 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
   }, [view])
   useEffect(() => {
     const cards = document.querySelectorAll('.technician-service')
+    document.querySelector('.vehicle-control-blocker-banner')?.remove()
+    const overdueControls = view === 'agenda' ? overdueVehicleControls(services, today) : []
+    if (overdueControls.length) {
+      const banner = document.createElement('div')
+      banner.className = 'vehicle-control-blocker-banner'
+      banner.setAttribute('role', 'alert')
+      const first = overdueControls[0]
+      const title = document.createElement('b')
+      title.textContent = 'Control vehicular vencido'
+      const detail = document.createElement('span')
+      detail.textContent = `Completá el control de ${vehicleLabel(first.vehicle || first)} antes de continuar. Podés consultar los demás servicios, pero sus domicilios y contactos permanecerán ocultos.`
+      banner.append(title, detail)
+      document.querySelector('.technician-help')?.after(banner)
+    }
     cards.forEach((card, index) => {
+      card.classList.toggle('vehicle-control-card', Boolean(services[index]?.vehicleControl))
       const badge = card.querySelector('.work-status')
       if (!badge) return
       badge.classList.remove('tech-status-completado', 'tech-status-cancelado', 'tech-status-reprogramacion')
@@ -3198,15 +3344,25 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
         const title = document.createElement('b'); title.textContent = 'Equipo de trabajo: '
         team.append(title, document.createTextNode(technicianTeamLabel(services[index])))
         card.querySelector(':scope > .tech-client')?.after(team)
+      } else {
+        const blockingControl = blockingOverdueVehicleControl(services, index, today)
+        const lockedInfo = card.querySelector('.locked-info')
+        if (blockingControl && lockedInfo) {
+          card.classList.add('blocked-by-vehicle-control')
+          lockedInfo.textContent = `Completá primero el control vencido de ${vehicleLabel(blockingControl.vehicle || blockingControl)}. El domicilio y el contacto permanecerán ocultos hasta informarlo.`
+        }
       }
     })
-    return () => cards.forEach(card => card.querySelector(':scope > .technician-team')?.remove())
-  }, [services, view])
+    return () => {
+      document.querySelector('.vehicle-control-blocker-banner')?.remove()
+      cards.forEach(card => { card.querySelector(':scope > .technician-team')?.remove(); card.classList.remove('blocked-by-vehicle-control', 'vehicle-control-card') })
+    }
+  }, [services, view, today])
   const saveStatus = async () => {
     const { record, type } = confirm
-    const updated = await submitTechnicianStatus({ recordId: record.id, type, observation })
+    const updated = await submitTechnicianStatus({ recordId: record.id, type, observation, vehicleMileage: vehicleMileageRef.current, vehiclePhoto: vehiclePhotoRef.current, vehicleControl: Boolean(record.vehicleControl && type === 'Completado') })
     setHistory(previous => previous.map(item => item.id === record.id ? updated : item))
-    setDraft(null); setObservation('')
+    setDraft(null); setObservation(''); vehicleMileageRef.current = ''; vehiclePhotoRef.current = ''
   }
   const requestStatus = (record, type) => {
     if ((type === 'Cancelado' || type === 'Reprogramación solicitada') && !observation.trim()) return
@@ -3614,6 +3770,19 @@ function HistoryManagementDetail({ record, setHistory, close, customers, service
     return () => report.remove()
   }, [record, editing])
   useEffect(() => {
+    if (editing || !record.vehicleControl) return undefined
+    const grid = document.querySelector('.history-detail .history-detail-grid')
+    if (!grid || grid.querySelector('.vehicle-control-detail')) return undefined
+    const detail = document.createElement('div')
+    detail.className = 'detail-notes vehicle-control-detail'
+    const title = document.createElement('b'); title.textContent = 'Control del vehículo'
+    const mileage = document.createElement('span'); mileage.textContent = record.vehicleMileage != null ? `Kilometraje informado: ${Number(record.vehicleMileage).toLocaleString('es-AR')} km` : `Kilometraje al programar: ${Number(record.vehicleMileageAtScheduling || 0).toLocaleString('es-AR')} km`
+    detail.append(title, mileage)
+    if (record.vehiclePhotoUrl) { const photo = document.createElement('img'); photo.src = record.vehiclePhotoUrl; photo.alt = `Estado interior de ${record.client}`; photo.className = 'vehicle-control-history-photo'; detail.append(photo) }
+    grid.append(detail)
+    return () => detail.remove()
+  }, [record, editing])
+  useEffect(() => {
     if (editing) return undefined
     const actions = document.querySelector('.history-detail .history-actions')
     const dateInput = actions?.querySelector('input[type="date"]')
@@ -3635,6 +3804,14 @@ function HistoryManagementDetail({ record, setHistory, close, customers, service
     trigger.addEventListener('click', reveal, true)
     return () => trigger.removeEventListener('click', reveal, true)
   }, [editing])
+  useEffect(() => {
+    if (editing || !record.vehicleControl || record.status !== 'Pendiente') return undefined
+    const button = [...document.querySelectorAll('.history-detail .history-actions button')].find(item => item.textContent.includes('Marcar completado'))
+    if (!button) return undefined
+    button.disabled = true
+    button.title = 'Este control debe completarlo el técnico asignado con foto y kilometraje.'
+    return () => { button.disabled = false; button.removeAttribute('title') }
+  }, [record, editing])
   useEffect(() => {
     if (!pendingAction) return undefined
     const layer = document.createElement('div')
