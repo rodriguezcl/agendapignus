@@ -24,6 +24,52 @@ test('asigna el Ford Ka al técnico que trabaja solo', async () => {
   assert.equal(new Set(assignments.map(item => item.technicianId)).size, vehicles.length)
 })
 
+test('coordina cada mes el Ford Ka con la salida individual sugerida', async () => {
+  const { monthlyTeamRotation } = await import('../src/monthly-team-rotation.mjs')
+  const { suggestedVehicleAssignments } = await import('../src/vehicle-controls.mjs')
+  const history = []
+  const fordResponsibles = []
+  for (let monthNumber = 1; monthNumber <= 5; monthNumber += 1) {
+    const month = `2026-${String(monthNumber).padStart(2, '0')}`
+    const groups = monthlyTeamRotation(technicians, month, '2026-01', vehicles.length)
+    const monthlyTeams = groups.map((members, index) => ({ teamId: `team-${index}`, memberIds: members.map(technician => technician.id), members: members.map(technician => technician.name) }))
+    const assignments = suggestedVehicleAssignments(vehicles, monthlyTeams, { month, assignmentHistory: history })
+    const soloId = groups.find(group => group.length === 1)[0].id
+    const fordResponsible = assignments.find(assignment => assignment.vehicleId === 'ka').technicianId
+    assert.equal(fordResponsible, soloId)
+    assert.equal(new Set(assignments.map(assignment => assignment.technicianId)).size, vehicles.length)
+    fordResponsibles.push(fordResponsible)
+    history.push(assignments)
+  }
+  assert.equal(new Set(fordResponsibles).size, 5)
+})
+
+test('escala responsables al agregar un técnico y un vehículo', async () => {
+  const { monthlyTeamRotation } = await import('../src/monthly-team-rotation.mjs')
+  const { suggestedVehicleAssignments } = await import('../src/vehicle-controls.mjs')
+  const expandedTechnicians = [...technicians, { id: 'nuevo', name: 'Nuevo Técnico' }]
+  const expandedVehicles = [...vehicles, { id: 'pickup', brand: 'Volkswagen', model: 'Saveiro', plate: 'AD444AD', mileage: 1000 }]
+  const history = []
+  const allResponsibles = new Set()
+  const fordResponsibles = new Set()
+  for (let monthNumber = 1; monthNumber <= 6; monthNumber += 1) {
+    const month = `2026-${String(monthNumber).padStart(2, '0')}`
+    const groups = monthlyTeamRotation(expandedTechnicians, month, '2026-01', expandedVehicles.length)
+    const monthlyTeams = groups.map(members => ({ memberIds: members.map(technician => technician.id), members: members.map(technician => technician.name) }))
+    const assignments = suggestedVehicleAssignments(expandedVehicles, monthlyTeams, { month, assignmentHistory: history })
+    assert.equal(assignments.length, 4)
+    assert.equal(new Set(assignments.map(assignment => assignment.technicianId)).size, 4)
+    const soloIds = groups.filter(group => group.length === 1).map(group => group[0].id)
+    const fordResponsible = assignments.find(assignment => assignment.vehicleId === 'ka').technicianId
+    assert.ok(soloIds.includes(fordResponsible))
+    fordResponsibles.add(fordResponsible)
+    assignments.forEach(assignment => allResponsibles.add(assignment.technicianId))
+    history.push(assignments)
+  }
+  assert.equal(allResponsibles.size, expandedTechnicians.length)
+  assert.equal(fordResponsibles.size, expandedTechnicians.length)
+})
+
 test('genera controles determinísticos para los viernes futuros a las 15:30', async () => {
   const { buildVehicleControlRecords } = await import('../src/vehicle-controls.mjs')
   const assignments = [{ vehicleId: 'ka', technicianId: 'leonardo' }]
