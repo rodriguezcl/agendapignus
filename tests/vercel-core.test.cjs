@@ -21,6 +21,12 @@ test('declara los hooks usados por la alerta de recuperación de contraseña', (
   assert.match(source, /function PasswordResetReminder/)
 })
 
+test('el acceso explica las credenciales sin mencionar módulos restringidos', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  assert.match(source, /Usá el correo y la contraseña definidos por el administrador\./)
+  assert.doesNotMatch(source, /Usá el correo y la contraseña definidos en el módulo Empleados\./)
+})
+
 test('el buscador del historial técnico contempla todos los datos útiles', async () => {
   const { filterTechnicianHistory, technicianTeamLabel } = await import('../src/technician-history.mjs')
   const records = [
@@ -379,6 +385,14 @@ test('la agenda diaria renderiza sus acciones inmediatamente y separa hora de se
   assert.match(styles, /grid-template-columns: 132px minmax\(220px, 1fr\) minmax\(220px, 1fr\)/)
   assert.match(styles, /\.daily-field-time input\[type='time'\] \{[\s\S]*?max-width: 100%;/)
   assert.match(styles, /label\.daily-field-time,[\s\S]*?label\.daily-field-service \{\s*grid-column: 1 \/ -1 !important;/)
+})
+
+test('la agenda diaria respeta espacios quitados y no copia servicios vacíos', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  assert.match(source, /const visibleWeeklyTeams = applyRemovedWeeklySlots\(weeklyDay\?\.teams \|\| \[\], weeklyDay\?\.removedSlots \|\| \[\]\)/)
+  assert.match(source, /const agendaTeamsWithRealServices = \(agendaTeams = teams\) => agendaTeams\.map\(team => \(\{[\s\S]*?tasks: \(team\.tasks \|\| \[\]\)\.filter\(taskHasContent\)/)
+  assert.match(source, /const messageSections = teams\.flatMap\(\(team, index\) => team\.tasks\.some\(taskHasContent\)/)
+  assert.match(source, /agendaTeams = agendaTeamsWithRealServices\(agendaTeams\)/)
 })
 
 test('las agendas diaria y semanal renderizan directamente el estado de cada servicio', () => {
