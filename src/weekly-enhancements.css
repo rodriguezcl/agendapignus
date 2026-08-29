@@ -1406,6 +1406,105 @@ body.dark .week-selector input[type='date'] {
   margin-top: 12px;
 }
 
+.configuration-history {
+  margin-top: 16px;
+  border: 1px solid #d8e3d7;
+  border-radius: 10px;
+  background: #f8faf7;
+  overflow: hidden;
+}
+
+.configuration-history > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 14px;
+  color: #254936;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+.configuration-history > summary::-webkit-details-marker {
+  display: none;
+}
+
+.configuration-history > summary span {
+  display: inline-grid;
+  min-width: 24px;
+  height: 24px;
+  margin-left: auto;
+  padding-inline: 6px;
+  place-items: center;
+  border-radius: 999px;
+  background: #e3eee5;
+  font-size: .75rem;
+}
+
+.configuration-history-list {
+  display: grid;
+  gap: 10px;
+  max-height: 310px;
+  padding: 0 12px 12px;
+  overflow-y: auto;
+}
+
+.configuration-history-list article {
+  padding: 12px;
+  border: 1px solid #dce7dc;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.configuration-history-list article > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid #e1e9e2;
+  font-size: .78rem;
+}
+
+.configuration-history-list article > header span {
+  color: #6a7d6e;
+  text-align: right;
+}
+
+.configuration-history-list article > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.configuration-history-list section {
+  min-width: 0;
+  padding: 9px;
+  border-radius: 7px;
+  background: #f3f7f3;
+}
+
+.configuration-history-list strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #43604d;
+  font-size: .7rem;
+  text-transform: uppercase;
+}
+
+.configuration-history-list p,
+.configuration-history-empty {
+  margin: 3px 0 !important;
+  color: #314c3b !important;
+  font-size: .78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.configuration-history-empty {
+  padding: 0 14px 14px;
+}
+
 body.dark .monthly-teams-modal > p:not(.eyebrow),
 body.dark .monthly-times-modal > p:not(.eyebrow),
 body.dark .annual-guards-modal > p:not(.eyebrow),
@@ -1435,6 +1534,39 @@ body.dark .monthly-time-grid input {
 body.dark .monthly-team-list label {
   border-color: #405a48;
   background: #1d3025;
+}
+
+body.dark .configuration-history,
+body.dark .configuration-history-list section {
+  border-color: #405a48;
+  background: #1b3024;
+}
+
+body.dark .configuration-history-list article {
+  border-color: #405a48;
+  background: #172b20;
+}
+
+body.dark .configuration-history > summary,
+body.dark .configuration-history-list p,
+body.dark .configuration-history-empty {
+  color: #dce9df !important;
+}
+
+body.dark .configuration-history > summary span {
+  background: #294837;
+}
+
+@media (max-width: 640px) {
+  .configuration-history-list article > header,
+  .configuration-history-list article > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .configuration-history-list article > header span {
+    text-align: left;
+  }
 }
 
 /* Estado libre: se declara al final para conservar el verde sobre los estados hover. */
