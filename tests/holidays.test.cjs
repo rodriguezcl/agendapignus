@@ -16,6 +16,24 @@ test('el respaldo internacional conserva solamente feriados nacionales', () => {
   ]), [{ date: '2026-07-09', name: 'Independence Day', type: 'Public', source: 'Nager.Holidays' }])
 })
 
+test('el respaldo local 2026 incluye feriados móviles y puentes oficiales', () => {
+  const { localHolidayFallback } = require('../api/_lib/holidays.cjs')
+  const holidays = localHolidayFallback(2026)
+  assert.ok(holidays.some(record => record.date === '2026-02-16' && record.name === 'Carnaval'))
+  assert.ok(holidays.some(record => record.date === '2026-04-03' && record.name === 'Viernes Santo'))
+  assert.ok(holidays.some(record => record.date === '2026-07-10' && record.type === 'puente'))
+  assert.ok(holidays.every(record => record.source === 'Respaldo legal local'))
+})
+
+test('la agenda recibe el respaldo local cuando fallan todos los proveedores externos', async () => {
+  const { fetchNationalHolidays } = require('../api/_lib/holidays.cjs')
+  const failingFetch = async () => { throw new Error('Proveedor no disponible') }
+  const holidays = await fetchNationalHolidays(2027, failingFetch)
+  assert.ok(holidays.length >= 16)
+  assert.ok(holidays.some(record => record.date === '2027-01-01'))
+  assert.ok(holidays.some(record => record.name === 'Viernes Santo'))
+})
+
 test('un feriado queda bloqueado hasta la decisión administrativa', async () => {
   const { holidayDecisionForDate, holidayForDate, holidayIsBlocked, holidayDecisionLabel } = await import('../src/holidays.mjs')
   const holiday = holidayForDate([{ date: '2026-12-08', name: 'Inmaculada Concepción' }], '2026-12-08')
@@ -45,6 +63,7 @@ test('la API de feriados exige sesión y dispone de fuente de respaldo', () => {
   assert.ok(apiSource.indexOf('requireSession') < apiSource.indexOf("route === '/holidays'"))
   assert.match(holidaySource, /api\.argentinadatos\.com/)
   assert.match(holidaySource, /nagerholidays\.com\/api\/v4/)
+  assert.match(holidaySource, /localHolidayFallback/)
 })
 
 test('el servidor conserva configuraciones administrativas frente a escrituras no administrativas', () => {
