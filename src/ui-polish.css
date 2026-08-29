@@ -317,7 +317,7 @@ span.field-label-text > span.required-mark,
   .history-bulk .history-row > div:last-child {
     box-sizing: border-box;
     width: 100%;
-    padding-right: 8px;
+    padding-right: 14px;
     justify-self: stretch;
   }
 
