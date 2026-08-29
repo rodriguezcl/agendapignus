@@ -476,7 +476,7 @@ test('el historial reduce Fecha y reserva ancho suficiente para Gestionar', () =
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(styles, /grid-template-columns: 42px minmax\(128px, \.75fr\)[^;]+128px 125px !important;/)
   assert.match(styles, /@media \(min-width: 1200px\)[\s\S]*?grid-template-columns: 42px minmax\(130px, \.7fr\)[^;]+128px 132px !important;/)
-  assert.match(styles, /\.history-bulk \.history-row > div:last-child \{[\s\S]*?padding-right: 8px;[\s\S]*?justify-self: stretch;/)
+  assert.match(styles, /\.history-bulk \.history-row > div:last-child \{[\s\S]*?padding-right: 14px;[\s\S]*?justify-self: stretch;/)
   assert.match(styles, /\.history-bulk \.history-row > div:last-child > \.detail-button \{[\s\S]*?width: 100%;[\s\S]*?min-inline-size: 0 !important;[\s\S]*?padding-inline: 8px !important;/)
 })
 
