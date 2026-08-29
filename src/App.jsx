@@ -2356,6 +2356,10 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
   const monthKey = anchor.slice(0, 7)
   const anchorYear = anchor.slice(0, 4)
   const monthlyTeams = weekly._monthlyTeams || {}
+  const priorVehicleAssignmentHistory = useMemo(() => Object.entries(monthlyTeams)
+    .filter(([configuredMonth, config]) => configuredMonth < monthKey && config?.vehicleAssignments?.length)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, config]) => config.vehicleAssignments), [monthlyTeams, monthKey])
   const suggestedAnnualGuardRotation = (year, source = weekly) => {
     const configured = source?._annualGuards?.[year]?.rotation
     if (configured?.length) return configured.map(item => ({ ...item }))
@@ -2720,8 +2724,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     setNotice('El servicio fue eliminado de la planificación semanal.')
   }
   const suggestedMonthlyTeams = () => {
-    const rotation = monthlyTeamRotation(activeTechs, monthKey)
-    if (rotation.length === 3) return rotation.map((members, index) => ({ teamId: createTeamId(), label: `Equipo ${index + 1}`, memberIds: members.map(tech => tech.id), members: members.map(tech => tech.name) }))
+    const rotation = monthlyTeamRotation(activeTechs, monthKey, '2026-01', vehicles.length || 3)
+    if (rotation.length) return rotation.map((members, index) => ({ teamId: createTeamId(), label: `Equipo ${index + 1}`, memberIds: members.map(tech => tech.id), members: members.map(tech => tech.name) }))
     return (monthlyTeams[previousMonthKey]?.teams || [null, null, null]).map((team, index) => ({ teamId: team?.teamId || createTeamId(), label: team?.label || `Equipo ${index + 1}`, memberIds: team?.memberIds || [], members: team?.members || [] }))
   }
   const suggestedMonthlyTimes = () => {
@@ -2741,7 +2745,12 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
   const updateMonthlyTeam = (index, memberIds) => { const selected = activeTechs.filter(tech => memberIds.some(id => String(id) === String(tech.id))); setMonthlySetup(previous => ({ ...previous, teams: previous.teams.map((team, teamIndex) => teamIndex === index ? { ...team, memberIds: selected.map(tech => tech.id), members: selected.map(tech => tech.name) } : team) })) }
   const addMonthlyTeam = () => setMonthlySetup(previous => ({ ...previous, teams: [...previous.teams, { teamId: createTeamId(), label: `Equipo ${previous.teams.length + 1}`, memberIds: [], members: [] }] }))
   const saveMonthlySetup = () => {
-    setWeekly(previous => ({ ...previous, _monthlyTeams: { ...(previous._monthlyTeams || {}), [monthlySetup.month]: { ...(previous._monthlyTeams?.[monthlySetup.month] || {}), teams: monthlySetup.teams } } }))
+    setWeekly(previous => {
+      const current = previous._monthlyTeams?.[monthlySetup.month] || {}
+      const teamSignature = teams => JSON.stringify((teams || []).map(team => (team.memberIds || []).map(String).sort()))
+      const changed = teamSignature(current.teams) !== teamSignature(monthlySetup.teams)
+      return { ...previous, _monthlyTeams: { ...(previous._monthlyTeams || {}), [monthlySetup.month]: { ...current, teams: monthlySetup.teams, vehicleAssignments: changed ? [] : current.vehicleAssignments } } }
+    })
     setMonthlySetup(null)
     setNotice(`Los equipos predeterminados de ${new Date(`${monthKey}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} fueron guardados.`)
   }
@@ -2769,7 +2778,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     if (!vehicles.length) { setNotice('Primero cargá los vehículos de la flota en el módulo Vehículos.'); return }
     const teams = monthlyTeams[monthKey]?.teams || suggestedMonthlyTeams()
     const saved = monthlyTeams[monthKey]?.vehicleAssignments
-    setMonthlyVehicleSetup({ month: monthKey, assignments: saved?.length ? saved.map(item => ({ ...item })) : suggestedVehicleAssignments(vehicles, teams) })
+    const savedMatchesFleet = saved?.length === vehicles.length && vehicles.every(vehicle => saved.some(item => String(item.vehicleId) === String(vehicle.id)))
+    setMonthlyVehicleSetup({ month: monthKey, assignments: savedMatchesFleet ? saved.map(item => ({ ...item })) : suggestedVehicleAssignments(vehicles, teams, { month: monthKey, assignmentHistory: priorVehicleAssignmentHistory }) })
   }
   const updateMonthlyVehicleAssignment = (vehicleId, technicianId) => setMonthlyVehicleSetup(previous => ({
     ...previous,
@@ -2778,16 +2788,15 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
   const saveMonthlyVehicleSetup = () => {
     const assignments = monthlyVehicleSetup?.assignments || []
     const teams = monthlyTeams[monthlyVehicleSetup?.month]?.teams || suggestedMonthlyTeams()
-    if (assignments.length !== vehicles.length || assignments.some(item => !item.technicianId)) { setNotice('Asigná un técnico responsable a cada vehículo.'); return }
-    if (new Set(assignments.map(item => String(item.technicianId))).size !== assignments.length) { setNotice('Cada vehículo debe tener un técnico responsable diferente.'); return }
-    const soloTechnicianId = teams.find(team => (team.memberIds || []).length === 1)?.memberIds?.[0]
+    if (assignments.length !== vehicles.length || vehicles.some(vehicle => !assignments.some(item => String(item.vehicleId) === String(vehicle.id) && item.technicianId))) { setNotice('Asigná un técnico responsable a cada vehículo.'); return }
+    if (activeTechs.length >= vehicles.length && new Set(assignments.map(item => String(item.technicianId))).size !== assignments.length) { setNotice('Cada vehículo debe tener un técnico responsable diferente.'); return }
+    const soloTechnicianIds = teams.filter(team => (team.memberIds || []).length === 1).map(team => String(team.memberIds[0]))
     const fordKa = vehicles.find(vehicle => String(vehicle.brand || '').toLowerCase().includes('ford') && /(^|\s)ka($|\s)/i.test(String(vehicle.model || '')))
     const fordAssignment = fordKa && assignments.find(item => String(item.vehicleId) === String(fordKa.id))
-    if (fordKa && soloTechnicianId && String(fordAssignment?.technicianId || '') !== String(soloTechnicianId)) { setNotice('El Ford Ka debe quedar asignado al técnico que trabaja solo durante el mes.'); return }
+    if (fordKa && soloTechnicianIds.length && !soloTechnicianIds.includes(String(fordAssignment?.technicianId || ''))) { setNotice('El Ford Ka debe quedar asignado a uno de los técnicos que trabaja solo durante el mes.'); return }
     const records = buildVehicleControlRecords({ month: monthlyVehicleSetup.month, assignments, vehicles, technicians: activeTechs, teams, fromDate: today })
     setHistory(previous => {
-      const generatedIds = new Set(records.map(record => String(record.id)))
-      const preserved = previous.filter(record => !generatedIds.has(String(record.id)) || record.technicalStatus)
+      const preserved = previous.filter(record => !(record.vehicleControl && record.monthlyVehicleAssignment === monthlyVehicleSetup.month && !record.technicalStatus))
       const preservedIds = new Set(preserved.map(record => String(record.id)))
       return [...preserved, ...records.filter(record => !preservedIds.has(String(record.id)))]
     })
@@ -2863,7 +2872,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     // los dos turnos que se usarán como horarios predeterminados.
     if (!isAdministrator) return
     const config = monthlyTeams[monthKey]
-    if (!config?.teams?.length && monthlySetup?.month !== monthKey) {
+    const expectedTeamCount = Math.min(activeTechs.length, vehicles.length || 3)
+    if ((!config?.teams?.length || config.teams.length !== expectedTeamCount) && monthlySetup?.month !== monthKey) {
       setMonthlyTimesSetup(null)
       setMonthlySetup({ month: monthKey, teams: suggestedMonthlyTeams() })
       return
@@ -2872,10 +2882,11 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       setMonthlyTimesSetup({ month: monthKey, times: [...suggestedMonthlyTimes()] })
       return
     }
-    if (config?.teams?.length && validDefaultServiceTimes(config.defaultTimes) && vehicles.length && !config.vehicleAssignments?.length && !monthlySetup && !monthlyTimesSetup && monthlyVehicleSetup?.month !== monthKey) {
-      setMonthlyVehicleSetup({ month: monthKey, assignments: suggestedVehicleAssignments(vehicles, config.teams) })
+    const assignmentsMatchFleet = config?.vehicleAssignments?.length === vehicles.length && vehicles.every(vehicle => config.vehicleAssignments.some(item => String(item.vehicleId) === String(vehicle.id)))
+    if (config?.teams?.length && validDefaultServiceTimes(config.defaultTimes) && vehicles.length && !assignmentsMatchFleet && !monthlySetup && !monthlyTimesSetup && monthlyVehicleSetup?.month !== monthKey) {
+      setMonthlyVehicleSetup({ month: monthKey, assignments: suggestedVehicleAssignments(vehicles, config.teams, { month: monthKey, assignmentHistory: priorVehicleAssignmentHistory }) })
     }
-  }, [isAdministrator, monthKey, monthlyTeams[monthKey], monthlySetup, monthlyTimesSetup, monthlyVehicleSetup, vehicles])
+  }, [isAdministrator, monthKey, monthlyTeams[monthKey], monthlySetup, monthlyTimesSetup, monthlyVehicleSetup, vehicles, activeTechs.length, priorVehicleAssignmentHistory])
   const openDay = day => {
     const hours = hoursForDay(day)
     if (!hours) { setNotice('Los domingos no están habilitados para programar servicios.'); return }

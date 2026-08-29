@@ -24,17 +24,43 @@ export const monthFridays = month => {
 
 export const isFordKa = vehicle => normalize(vehicle?.brand).includes('ford') && /(^|\s)ka($|\s)/.test(normalize(vehicle?.model))
 
-export function suggestedVehicleAssignments(vehicles, teams) {
+const monthOffset = month => {
+  const [year, monthNumber] = String(month || '').split('-').map(Number)
+  return Number.isFinite(year) && Number.isFinite(monthNumber) ? year * 12 + monthNumber - 1 : 0
+}
+
+export function suggestedVehicleAssignments(vehicles, teams, { month = '', assignmentHistory = [] } = {}) {
   const configuredVehicles = vehicles || []
   const configuredTeams = teams || []
-  const soloTechnicianId = configuredTeams.find(team => (team.memberIds || []).length === 1)?.memberIds?.[0]
+  const soloTechnicianIds = configuredTeams.filter(team => (team.memberIds || []).length === 1).map(team => team.memberIds[0])
   const availableTechnicianIds = configuredTeams.flatMap(team => team.memberIds || []).filter((id, index, all) => all.findIndex(value => String(value) === String(id)) === index)
+  const history = (assignmentHistory || []).flat().filter(Boolean)
+  const totalCounts = new Map()
+  const vehicleCounts = new Map()
+  history.forEach(assignment => {
+    const technicianId = String(assignment.technicianId || '')
+    const vehicleId = String(assignment.vehicleId || '')
+    if (!technicianId || !vehicleId) return
+    totalCounts.set(technicianId, (totalCounts.get(technicianId) || 0) + 1)
+    vehicleCounts.set(`${vehicleId}:${technicianId}`, (vehicleCounts.get(`${vehicleId}:${technicianId}`) || 0) + 1)
+  })
   const used = new Set()
   const fordKa = configuredVehicles.find(isFordKa)
   const orderedVehicles = fordKa ? [fordKa, ...configuredVehicles.filter(vehicle => vehicle !== fordKa)] : configuredVehicles
-  const assignments = orderedVehicles.map(vehicle => {
-    let technicianId = isFordKa(vehicle) && soloTechnicianId ? soloTechnicianId : availableTechnicianIds.find(id => !used.has(String(id)) && String(id) !== String(soloTechnicianId || ''))
-    if (!technicianId) technicianId = availableTechnicianIds.find(id => !used.has(String(id))) || ''
+  const offset = monthOffset(month)
+  const assignments = orderedVehicles.map((vehicle, vehicleIndex) => {
+    const candidateIds = isFordKa(vehicle) && soloTechnicianIds.length ? soloTechnicianIds : availableTechnicianIds
+    const candidates = candidateIds.map(id => {
+      const index = availableTechnicianIds.findIndex(candidate => String(candidate) === String(id))
+      return {
+        id,
+        used: used.has(String(id)) ? 1 : 0,
+        sameVehicle: vehicleCounts.get(`${String(vehicle.id)}:${String(id)}`) || 0,
+        total: totalCounts.get(String(id)) || 0,
+        rotation: (index - offset - vehicleIndex + availableTechnicianIds.length * 100) % Math.max(1, availableTechnicianIds.length)
+      }
+    }).sort((a, b) => a.used - b.used || a.sameVehicle - b.sameVehicle || a.total - b.total || a.rotation - b.rotation)
+    const technicianId = candidates[0]?.id || ''
     if (technicianId) used.add(String(technicianId))
     return { vehicleId: vehicle.id, technicianId }
   })

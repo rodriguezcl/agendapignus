@@ -29,7 +29,33 @@ test('el ciclo continúa entre años sin reiniciarse en enero', async () => {
   )
 })
 
-test('no inventa dos duplas y una salida individual si no hay cinco técnicos activos', async () => {
+test('adapta la cantidad de equipos cuando cambia la dotación', async () => {
   const { monthlyTeamRotation } = await import('../src/monthly-team-rotation.mjs')
-  assert.deepEqual(monthlyTeamRotation(technicians.slice(0, 4), '2026-01'), [])
+  const groups = monthlyTeamRotation(technicians.slice(0, 4), '2026-01', '2026-01', 3)
+  assert.deepEqual(groups.map(group => group.length).sort(), [1, 1, 2])
+  assert.deepEqual(new Set(groups.flat().map(technician => technician.id)).size, 4)
+})
+
+test('seis técnicos y cuatro vehículos forman dos duplas y dos salidas individuales rotativas', async () => {
+  const { monthlyTeamRotation } = await import('../src/monthly-team-rotation.mjs')
+  const expanded = [...technicians, { id: 'n', name: 'Nuevo Técnico' }]
+  const soloCounts = new Map(expanded.map(technician => [technician.id, 0]))
+  const pairings = new Set()
+  for (let month = 1; month <= 6; month += 1) {
+    const groups = monthlyTeamRotation(expanded, `2026-${String(month).padStart(2, '0')}`, '2026-01', 4)
+    assert.deepEqual(groups.map(group => group.length).sort(), [1, 1, 2, 2])
+    assert.equal(new Set(groups.flat().map(technician => technician.id)).size, 6)
+    groups.filter(group => group.length === 1).forEach(group => soloCounts.set(group[0].id, soloCounts.get(group[0].id) + 1))
+    groups.filter(group => group.length === 2).forEach(group => pairings.add(group.map(technician => technician.id).sort().join(':')))
+  }
+  assert.deepEqual([...soloCounts.values()], [2, 2, 2, 2, 2, 2])
+  assert.ok(pairings.size >= 8)
+})
+
+test('distribuye grupos mayores de forma equilibrada si hay menos vehículos que equipos ideales', async () => {
+  const { monthlyTeamRotation } = await import('../src/monthly-team-rotation.mjs')
+  const expanded = [...technicians, { id: 'n1', name: 'Nuevo Uno' }, { id: 'n2', name: 'Nuevo Dos' }]
+  const groups = monthlyTeamRotation(expanded, '2026-08', '2026-01', 2)
+  assert.deepEqual(groups.map(group => group.length).sort(), [3, 4])
+  assert.equal(new Set(groups.flat().map(technician => technician.id)).size, 7)
 })
