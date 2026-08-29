@@ -190,6 +190,34 @@ span.field-label-text > span.required-mark,
 .monthly-vehicle-list b { color: #193829; }
 .monthly-vehicle-list small { color: #718277; }
 .monthly-vehicle-list select { width: 100%; }
+
+.vehicle-control-early-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 14px !important;
+  padding: 11px 12px;
+  border: 1px solid #e5cf8d;
+  border-radius: 9px;
+  background: #fff8df;
+  color: #715400;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.vehicle-control-early-notice svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.vehicle-control-early .technician-actions .primary:disabled {
+  border-color: #cdd8cf;
+  background: #e8ede9;
+  color: #6f7d73;
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 1;
+}
 .weekly-vehicle-control { background: #f1f7fb; border-left-color: #497b98; }
 .weekly-vehicle-control .week-task-client { color: #315f79; }
 .vehicle-control-task { background: #f7fbfd; }
@@ -202,6 +230,8 @@ span.field-label-text > span.required-mark,
 .vehicle-control-detail { display: flex; flex-direction: column; gap: 5px; }
 .app-shell[data-theme='dark'] .monthly-vehicle-list label { background: #23352a; border-color: #3b5645; }
 .app-shell[data-theme='dark'] .monthly-vehicle-list b { color: #edf5ef; }
+.app-shell[data-theme='dark'] .vehicle-control-early-notice,
+body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #342f1d; color: #f2dda0; }
 
 @media (max-width: 900px) {
   .vehicle-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }

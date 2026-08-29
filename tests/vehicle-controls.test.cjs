@@ -79,6 +79,61 @@ test('genera controles determinísticos para los viernes futuros a las 15:30', a
   assert.equal(records[0].id, 'vehicle-control-2026-09-18-ka')
 })
 
+test('adelanta el control al último día operativo cuando el viernes es feriado cerrado', async () => {
+  const { buildVehicleControlRecords } = await import('../src/vehicle-controls.mjs')
+  const assignments = [{ vehicleId: 'ka', technicianId: 'leonardo' }]
+  const holidays = [
+    { date: '2026-09-18', name: 'Feriado del viernes' },
+    { date: '2026-09-17', name: 'Feriado puente' }
+  ]
+  const fridayClosed = buildVehicleControlRecords({
+    month: '2026-09', assignments, vehicles, technicians, teams, fromDate: '2026-09-14', holidays,
+    holidayOverrides: { '2026-09-18': { status: 'closed' }, '2026-09-17': { status: 'working' } }
+  })
+  assert.equal(fridayClosed[0].date, '2026-09-17')
+  assert.equal(fridayClosed[0].vehicleControlScheduledFriday, '2026-09-18')
+  assert.equal(fridayClosed[0].id, 'vehicle-control-2026-09-18-ka')
+
+  const persistedDecision = buildVehicleControlRecords({
+    month: '2026-09', assignments, vehicles, technicians, teams, fromDate: '2026-09-14',
+    holidayOverrides: { '2026-09-18': { status: 'closed' } }
+  })
+  assert.equal(persistedDecision[0].date, '2026-09-17')
+
+  const bridgeClosed = buildVehicleControlRecords({
+    month: '2026-09', assignments, vehicles, technicians, teams, fromDate: '2026-09-14', holidays,
+    holidayOverrides: { '2026-09-18': { status: 'closed' }, '2026-09-17': { status: 'closed' } }
+  })
+  assert.equal(bridgeClosed[0].date, '2026-09-16')
+  assert.equal(bridgeClosed[0].id, 'vehicle-control-2026-09-18-ka')
+})
+
+test('reubica controles pendientes ya creados y conserva los completados', async () => {
+  const { rescheduleVehicleControlRecords } = await import('../src/vehicle-controls.mjs')
+  const holidays = [{ date: '2026-09-18' }, { date: '2026-09-17' }]
+  const records = [
+    { id: 'vehicle-control-2026-09-18-ka', date: '2026-09-18', vehicleControl: true, status: 'Pendiente' },
+    { id: 'vehicle-control-2026-09-18-utilitario', date: '2026-09-18', vehicleControl: true, status: 'Completado', technicalStatus: 'Completado' }
+  ]
+  const moved = rescheduleVehicleControlRecords(records, { holidays, holidayOverrides: { '2026-09-18': { status: 'closed' }, '2026-09-17': { status: 'closed' } } })
+  assert.equal(moved[0].date, '2026-09-16')
+  assert.equal(moved[0].vehicleControlScheduledFriday, '2026-09-18')
+  assert.strictEqual(moved[1], records[1])
+
+  const restored = rescheduleVehicleControlRecords(moved, { holidays, holidayOverrides: { '2026-09-18': { status: 'working' }, '2026-09-17': { status: 'closed' } } })
+  assert.equal(restored[0].date, '2026-09-18')
+})
+
+test('un control vehicular se habilita recién en su fecha y hora programadas de Argentina', async () => {
+  const { vehicleControlIsOpen, vehicleControlScheduledAt, vehicleControlWindowLabel } = await import('../src/vehicle-control-window.mjs')
+  const record = { date: '2026-09-04', time: '15:30', vehicleControl: true }
+  assert.equal(vehicleControlScheduledAt(record).toISOString(), '2026-09-04T18:30:00.000Z')
+  assert.equal(vehicleControlIsOpen(record, '2026-09-04T18:29:59.999Z'), false)
+  assert.equal(vehicleControlIsOpen(record, '2026-09-04T18:30:00.000Z'), true)
+  assert.match(vehicleControlWindowLabel(record), /viernes.*4.*septiembre.*2026.*15:30/i)
+  assert.equal(vehicleControlIsOpen({ date: '2026-09-04', time: '15:30' }, '2026-09-01T00:00:00Z'), true)
+})
+
 test('un control vehicular vencido bloquea domicilio y contacto de servicios posteriores', async () => {
   const { blockingOverdueVehicleControl, overdueVehicleControls } = await import('../src/technician-history.mjs')
   const records = [
@@ -107,5 +162,17 @@ test('el servidor no permite omitir un control cancelándolo o reprogramándolo'
   for (const file of ['api/index.js', 'server.cjs']) {
     const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
     assert.match(source, /record\.vehicleControl && type !== 'Completado'/)
+    assert.match(source, /record\.vehicleControl && !vehicleControlIsOpen\(record\)/)
   }
+})
+
+test('el portal técnico deshabilita el control anticipado y muestra cuándo se habilita', () => {
+  const fs = require('node:fs')
+  const path = require('node:path')
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui-polish.css'), 'utf8')
+  assert.match(source, /const earlyVehicleControl = record\.vehicleControl && !vehicleControlIsOpen\(record, clock\)/)
+  assert.match(source, /disabled=\{earlyVehicleControl\}/)
+  assert.match(source, /Este control se habilita el \{vehicleControlWindowLabel\(record\)\}/)
+  assert.match(styles, /\.vehicle-control-early-notice/)
 })
