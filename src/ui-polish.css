@@ -312,6 +312,23 @@ span.field-label-text > span.required-mark,
   white-space: nowrap;
 }
 
+/* La acción conserva un margen propio para no quedar cortada por el borde de la tarjeta. */
+@media (min-width: 901px) {
+  .history-bulk .history-row > div:last-child {
+    box-sizing: border-box;
+    width: 100%;
+    padding-right: 8px;
+    justify-self: stretch;
+  }
+
+  .history-bulk .history-row > div:last-child > .detail-button {
+    width: 100%;
+    min-inline-size: 0 !important;
+    max-width: 100%;
+    padding-inline: 8px !important;
+  }
+}
+
 .weekly-day-actions {
   display: flex;
   align-items: center;
