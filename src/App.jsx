@@ -861,7 +861,7 @@ function Login({ onLogin }) {
     } catch (requestError) { setError(requestError.message) }
     finally { setRequestingReset(false) }
   }
-  return <main className="login-page"><form className="login-card" onSubmit={submit}><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">ACCESO SEGURO</p><h1>Ingresá a Agenda técnica</h1><p>Usá el correo y la contraseña definidos en el módulo Empleados.</p><label htmlFor="login-email"><RequiredLabel>Correo electrónico</RequiredLabel><input id="login-email" name="email" required autoCapitalize="none" autoCorrect="off" autoComplete="username" type="email" value={email} onChange={event => setEmail(event.target.value)} /></label><label htmlFor="login-password"><RequiredLabel>Contraseña</RequiredLabel></label><div className="password-field"><input id="login-password" name="password" aria-label="Contraseña" required autoComplete="current-password" minLength="8" type={showPassword ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} /><button type="button" className="password-visibility" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}><Icon name="eye" size={17} /><span>{showPassword ? 'Ocultar' : 'Mostrar'}</span></button></div><button type="button" className="forgot-password" disabled={requestingReset || submitting} onClick={requestPasswordReset}>{requestingReset ? 'Enviando solicitud...' : 'Olvidé mi contraseña'}</button>{error && <p className="login-error" role="alert">{error}</p>}{message && <p className="login-success" role="status">{message}</p>}<button className="primary" disabled={submitting || requestingReset}>{submitting ? 'Verificando acceso...' : 'Iniciar sesión'}</button><small>El acceso se cierra automáticamente al finalizar la sesión.</small></form></main>
+  return <main className="login-page"><form className="login-card" onSubmit={submit}><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">ACCESO SEGURO</p><h1>Ingresá a Agenda técnica</h1><p>Usá el correo y la contraseña definidos por el administrador.</p><label htmlFor="login-email"><RequiredLabel>Correo electrónico</RequiredLabel><input id="login-email" name="email" required autoCapitalize="none" autoCorrect="off" autoComplete="username" type="email" value={email} onChange={event => setEmail(event.target.value)} /></label><label htmlFor="login-password"><RequiredLabel>Contraseña</RequiredLabel></label><div className="password-field"><input id="login-password" name="password" aria-label="Contraseña" required autoComplete="current-password" minLength="8" type={showPassword ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} /><button type="button" className="password-visibility" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}><Icon name="eye" size={17} /><span>{showPassword ? 'Ocultar' : 'Mostrar'}</span></button></div><button type="button" className="forgot-password" disabled={requestingReset || submitting} onClick={requestPasswordReset}>{requestingReset ? 'Enviando solicitud...' : 'Olvidé mi contraseña'}</button>{error && <p className="login-error" role="alert">{error}</p>}{message && <p className="login-success" role="status">{message}</p>}<button className="primary" disabled={submitting || requestingReset}>{submitting ? 'Verificando acceso...' : 'Iniciar sesión'}</button><small>El acceso se cierra automáticamente al finalizar la sesión.</small></form></main>
 }
 
 export default function App() {
@@ -1986,7 +1986,8 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       return
     }
     const byTeam = new Map()
-    ;(weeklyDay?.teams || []).forEach((team, index) => {
+    const visibleWeeklyTeams = applyRemovedWeeklySlots(weeklyDay?.teams || [], weeklyDay?.removedSlots || [])
+    ;visibleWeeklyTeams.forEach((team, index) => {
       const position = Number(String(team.label || '').match(/\d+/)?.[0]) || index + 1
       const teamKey = team.teamId || `legacy-team-${position}`
       const targetTimes = defaultServiceTimesForDate(nextDate, weekly)
@@ -2058,9 +2059,13 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       : { ...currentTask, serviceId: '', service: '', installationZone: '' }
     updateTask(teamIndex, taskIndex, { ...nextTask, ...applicableServiceExtras(nextTask, selected) })
   }
+  const agendaTeamsWithRealServices = (agendaTeams = teams) => agendaTeams.map(team => ({
+    ...team,
+    tasks: (team.tasks || []).filter(taskHasContent)
+  }))
   const validateAgenda = (agendaTeams = teams) => {
     const missing = []
-    agendaTeams.forEach((team, teamIndex) => team.tasks.forEach((task, taskIndex) => {
+    agendaTeamsWithRealServices(agendaTeams).forEach((team, teamIndex) => team.tasks.forEach((task, taskIndex) => {
       const fields = []
       if (!task.time) fields.push('hora')
       if (!task.service) fields.push('tipo de servicio')
@@ -2091,9 +2096,10 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     return `\n📝 *Detalle:*\n${lines.join('\n')}`
   }
   const taskMessage = task => `🕒 ${task.time || '--:--'} Hs\n🛠️ *${task.service || 'Servicio'}*\n👤 *${task.client || 'Cliente'}*${previewDetails(task)}${task.address ? `\n📍 *Dirección:* ${task.address}` : ''}${task.phone ? `\n📞 *Contacto:* ${task.phone}` : ''}`
-  const teamMessage = (team, index) => `👥 *Equipo ${index + 1}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${team.tasks.map(taskMessage).join('\n\n')}`
+  const teamMessage = (team, index) => `👥 *Equipo ${index + 1}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${team.tasks.filter(taskHasContent).map(taskMessage).join('\n\n')}`
   const individualTaskMessage = (task, team, teamIndex) => `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n👥 *Equipo ${teamIndex + 1}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${taskMessage(task)}`
-  const message = `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n${teams.map(teamMessage).join('\n\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n')}`
+  const messageSections = teams.flatMap((team, index) => team.tasks.some(taskHasContent) ? [teamMessage(team, index)] : [])
+  const message = `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n${messageSections.join('\n\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n')}`
   const copySingleTask = async (task, team, teamIndex, taskIndex) => {
     const copied = await copyTextToClipboard(individualTaskMessage(task, team, teamIndex))
     setNotice(copied
@@ -2101,6 +2107,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       : 'No se pudo acceder al portapapeles. Revisá los permisos del navegador e intentá nuevamente.')
   }
   const registerHistory = (agendaTeams = teams) => {
+    agendaTeams = agendaTeamsWithRealServices(agendaTeams)
     if (sundayBlocked) {
       setNotice('Los domingos son días no operativos y no admiten servicios.')
       return false
@@ -2158,6 +2165,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     setNotice(action === 'copy' ? 'La agenda fue copiada al portapapeles y registrada en el historial.' : 'La agenda fue guardada en el historial.')
   }
   const requestAgendaAction = (action, allowWithoutTechnicians = false, agendaTeams = teams, skipCustomerProposal = false) => {
+    agendaTeams = agendaTeamsWithRealServices(agendaTeams)
     if (advancedGuard) {
       setNotice(advancedSaturdayGuardMessage(advancedGuard))
       return
@@ -2194,7 +2202,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       return
     }
     if (!validateAgenda(agendaTeams)) return
-    const missingTeams = agendaTeams.map((team, index) => !team.members.length ? `Equipo ${index + 1}` : '').filter(Boolean)
+    const missingTeams = agendaTeams.map((team, index) => team.tasks.length && !team.members.length ? `Equipo ${index + 1}` : '').filter(Boolean)
     if (missingTeams.length && !allowWithoutTechnicians) { showMissingTechniciansModal(missingTeams, () => requestAgendaAction(action, true, agendaTeams, true)); return }
     const conflicts = technicianTimeConflicts(agendaTeams, activeTechs)
     if (conflicts.length) {
