@@ -58,6 +58,14 @@ create table if not exists public.pignus_reviews (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.pignus_vehicle_control_photos (
+  record_id text primary key,
+  vehicle_id text not null,
+  mime_type text not null,
+  photo_data bytea not null,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.pignus_audit_log (
   id uuid primary key,
   occurred_at timestamptz not null,
@@ -97,15 +105,15 @@ alter table public.pignus_work_history enable row level security;
 alter table public.pignus_agendas enable row level security;
 alter table public.pignus_preferences enable row level security;
 alter table public.pignus_reviews enable row level security;
+alter table public.pignus_vehicle_control_photos enable row level security;
 alter table public.pignus_audit_log enable row level security;
 alter table public.pignus_sessions enable row level security;
 alter table public.pignus_login_attempts enable row level security;
 
 revoke all on table public.pignus_roles, public.pignus_employees,
   public.pignus_services, public.pignus_customers, public.pignus_work_history,
-  public.pignus_agendas, public.pignus_preferences, public.pignus_reviews,
+  public.pignus_agendas, public.pignus_preferences, public.pignus_reviews, public.pignus_vehicle_control_photos,
   public.pignus_audit_log, public.pignus_sessions,
   public.pignus_login_attempts from anon, authenticated;
 
 commit;
-

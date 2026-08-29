@@ -123,6 +123,19 @@ test('el técnico no puede informar un servicio sin observación', async () => {
   assert.doesNotMatch(source, /Observación técnica \(opcional\)/)
 })
 
+test('el control vehicular permite enviar foto y kilometraje sin observación', async () => {
+  const { submitTechnicianStatus } = await import('../src/technician-status.mjs')
+  let body
+  const fetcher = async (_url, options) => {
+    body = JSON.parse(options.body)
+    return { ok: true, status: 200, json: async () => ({ record: { id: 'vehicle-control-1', vehicleMileage: 123456 } }) }
+  }
+  const record = await submitTechnicianStatus({ recordId: 'vehicle-control-1', type: 'Completado', observation: '', vehicleMileage: 123456, vehiclePhoto: 'data:image/jpeg;base64,YQ==', vehicleControl: true, fetcher })
+  assert.equal(record.vehicleMileage, 123456)
+  assert.equal(body.vehicleMileage, 123456)
+  assert.match(body.vehiclePhoto, /^data:image\/jpeg/)
+})
+
 test('la confirmación espera el guardado y el servidor admite reintentos idempotentes', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
@@ -269,6 +282,8 @@ test('todos los roles comparten protecciones responsive para controles y modales
   assert.match(styles, /\.weekly-remove-team,[\s\S]*?\.weekly-task-delete,[\s\S]*?min-height: 44px !important;/)
   assert.match(styles, /\.profile-trigger,[\s\S]*?\.logout-button,[\s\S]*?min-width: 44px !important;/)
   assert.match(styles, /\.history-toolbar > label,[\s\S]*?flex: 0 0 auto;/)
+  assert.match(styles, /\.vehicle-control-blocker-banner \{[\s\S]*?width: 100%;[\s\S]*?max-width: 100%;[\s\S]*?overflow-wrap: anywhere;/)
+  assert.match(styles, /\.vehicle-control-report-fields input \{[\s\S]*?min-block-size: 48px !important;/)
 })
 
 test('los controles nativos permanecen contenidos dentro de todos los modales', () => {

@@ -40,6 +40,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, data TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS reviews (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS vehicle_control_photos (record_id TEXT PRIMARY KEY, vehicle_id TEXT NOT NULL, mime_type TEXT NOT NULL, photo_data BLOB NOT NULL, created_at TEXT NOT NULL);
 `)
 
 const historicalImportPath = path.join(dataDir, 'historical-import.json')
@@ -774,12 +775,14 @@ function authorizedIncomingState(state, user) {
   }
   const currentAgenda = current.agenda || {}
   const incomingAgenda = state.agenda || {}
-  const { _holidayOverrides: ignoredHolidayOverrides, ...incomingWeeklyWithoutHolidayOverrides } = incomingAgenda.weekly || {}
+  const { _holidayOverrides: ignoredHolidayOverrides, _annualGuards: ignoredAnnualGuards, _monthlyTeams: ignoredMonthlyTeams, ...incomingWeeklyWithoutHolidayOverrides } = incomingAgenda.weekly || {}
   const protectedWeekly = administrator
     ? incomingAgenda.weekly
     : {
         ...incomingWeeklyWithoutHolidayOverrides,
-        ...(currentAgenda.weekly?._holidayOverrides ? { _holidayOverrides: currentAgenda.weekly._holidayOverrides } : {})
+        ...(currentAgenda.weekly?._holidayOverrides ? { _holidayOverrides: currentAgenda.weekly._holidayOverrides } : {}),
+        ...(currentAgenda.weekly?._annualGuards ? { _annualGuards: currentAgenda.weekly._annualGuards } : {}),
+        ...(currentAgenda.weekly?._monthlyTeams ? { _monthlyTeams: currentAgenda.weekly._monthlyTeams } : {})
       }
   const agenda = {
     ...currentAgenda,
@@ -1459,29 +1462,66 @@ const server = http.createServer((req, res) => {
     const record = auditRow(decodeURIComponent(url.pathname.slice('/api/audit/'.length)))
     return record ? send(res, 200, { record }) : send(res, 404, { error: 'El registro de auditoría no existe.' })
   }
+  if (req.method === 'GET' && url.pathname.startsWith('/api/vehicle-control/photo/')) {
+    const user = requireSession(req, res)
+    if (!user) return
+    const recordId = decodeURIComponent(url.pathname.slice('/api/vehicle-control/photo/'.length))
+    const photo = db.prepare('SELECT mime_type, photo_data FROM vehicle_control_photos WHERE record_id = ?').get(recordId)
+    const record = rows('work_history').find(item => String(item.id) === String(recordId))
+    if (!photo || !record) return send(res, 404, { error: 'La foto no existe.' })
+    const allowed = user.roleCode === 'administrator' || userCan(user, 'history') || record.technicianIds?.some(id => String(id) === String(user.id))
+    if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
+    res.writeHead(200, { 'Content-Type': photo.mime_type, 'Content-Length': photo.photo_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
+    return res.end(photo.photo_data)
+  }
   if (req.method === 'POST' && url.pathname === '/api/technician/status') {
     const user = requireSession(req, res)
     if (!user) return
     if (user.roleCode !== 'technician') return send(res, 403, { error: 'Esta acción es exclusiva del rol técnico.' })
-    return readJson(req).then(({ recordId, type, observation }) => {
+    return readJson(req, 1_600_000).then(({ recordId, type, observation, vehicleMileage, vehiclePhoto }) => {
       const record = rows('work_history').find(item => item.id === recordId)
       const allowed = ['Completado', 'Cancelado', 'Reprogramación solicitada']
       if (!record) return send(res, 404, { error: 'El servicio no existe.' })
       const assigned = record.technicianIds?.some(id => String(id) === String(user.id))
       if (!assigned) return send(res, 403, { error: 'El servicio no está asignado al técnico autenticado.' })
         if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
+        if (record.vehicleControl && type !== 'Completado') return send(res, 400, { error: 'El control vehicular debe completarse con foto y kilometraje; no admite cancelación ni reprogramación.' })
         if (record.technicalStatus) {
           if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record })
           return send(res, 409, { error: 'Este servicio ya fue informado desde otra sesión.' })
         }
-      if (!String(observation || '').trim()) return send(res, 400, { error: 'La observación es obligatoria para informar el servicio.' })
+      const completingVehicleControl = Boolean(record.vehicleControl && type === 'Completado')
+      let vehicleChange = null
+      if (completingVehicleControl) {
+        const mileage = Number(vehicleMileage)
+        const photoMatch = String(vehiclePhoto || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([a-z0-9+/=]+)$/i)
+        const photoBuffer = photoMatch ? Buffer.from(photoMatch[2], 'base64') : null
+        if (!Number.isInteger(mileage) || mileage < 1 || mileage > 99999999) return send(res, 400, { error: 'Ingresá un kilometraje válido.' })
+        if (!photoBuffer?.length || photoBuffer.length > 1_000_000) return send(res, 400, { error: 'Cargá una foto válida del interior del vehículo.' })
+        const stored = db.prepare('SELECT value FROM preferences WHERE key = ?').get('vehicles')
+        let vehicles
+        try { vehicles = JSON.parse(stored?.value || '[]') } catch { vehicles = [] }
+        const vehicleIndex = vehicles.findIndex(vehicle => String(vehicle.id) === String(record.vehicleId))
+        if (vehicleIndex < 0) return send(res, 409, { error: 'El vehículo asignado ya no existe.' })
+        const previousVehicle = vehicles[vehicleIndex]
+        const currentMileage = Number(previousVehicle.mileage || 0)
+        if (mileage <= currentMileage) return send(res, 409, { error: `El kilometraje debe ser superior a ${currentMileage.toLocaleString('es-AR')} km.` })
+        const nextVehicle = { ...previousVehicle, mileage, mileageUpdatedAt: new Date().toISOString(), mileageUpdatedById: user.id, mileageUpdatedByName: user.name || user.email || 'Técnico' }
+        vehicles[vehicleIndex] = nextVehicle
+        vehicleChange = { vehicles, before: previousVehicle, after: nextVehicle, mileage, mimeType: photoMatch[1].toLowerCase(), photoBuffer }
+      } else if (!String(observation || '').trim()) return send(res, 400, { error: 'La observación es obligatoria para informar el servicio.' })
       const now = new Date().toISOString()
-      const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim(), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type }
+      const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
       db.exec('BEGIN')
       try {
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(updated), String(record.id))
+        if (vehicleChange) {
+          db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('vehicles', JSON.stringify(vehicleChange.vehicles))
+          db.prepare('INSERT OR REPLACE INTO vehicle_control_photos (record_id, vehicle_id, mime_type, photo_data, created_at) VALUES (?, ?, ?, ?, ?)').run(String(record.id), String(record.vehicleId), vehicleChange.mimeType, vehicleChange.photoBuffer, now)
+        }
         const convertedCustomer = convertCompletedRetirementSubscriber(updated)
         writeAudit(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, updated)
+        if (vehicleChange) writeAudit(user, 'Actualizó kilometraje por control semanal', 'Vehículo', String(record.vehicleId), vehicleChange.before, vehicleChange.after)
         if (convertedCustomer) writeAudit(user, 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(convertedCustomer.customerId), { account: convertedCustomer.convertedFromAccount, kind: 'subscriber' }, convertedCustomer)
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(currentStateRevision() + 1))
         db.exec('COMMIT')
