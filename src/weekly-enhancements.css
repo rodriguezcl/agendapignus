@@ -1341,6 +1341,26 @@ body.dark .week-selector input[type='date'] {
   color: #667568;
 }
 
+.monthly-times-modal > .monthly-times-scope {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: -6px 0 18px;
+  padding: 11px 12px;
+  border: 1px solid #c9d8ca;
+  border-radius: 9px;
+  background: #f3f8f3;
+  color: #315c3e;
+  font-size: .86rem;
+  line-height: 1.4;
+}
+
+.monthly-times-modal > .monthly-times-scope.is-locked {
+  border-color: #efc4bf;
+  background: #fff3f1;
+  color: #9f3f37;
+}
+
 .monthly-time-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1529,6 +1549,18 @@ body.dark .monthly-time-grid input {
   border-color: #405a48;
   background: #172b20;
   color: #edf8ef;
+}
+
+body.dark .monthly-times-modal > .monthly-times-scope {
+  border-color: #405a48;
+  background: #1d3025;
+  color: #c8d8cb;
+}
+
+body.dark .monthly-times-modal > .monthly-times-scope.is-locked {
+  border-color: #774a45;
+  background: #3a2624;
+  color: #f0b6af;
 }
 
 body.dark .monthly-team-list label {
