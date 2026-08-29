@@ -51,16 +51,20 @@ test('el servidor conserva configuraciones administrativas frente a escrituras n
   const { authorizeIncomingState } = require('../api/_lib/core.cjs')
   const current = {
     roles: [], employees: [], services: [], customers: [], history: [], reviews: [],
-    agenda: { date: '2026-12-08', teams: [], weekly: { _holidayOverrides: { '2026-12-08': { status: 'closed' } }, _annualGuards: { 2026: { rotation: [{ technicianId: 'tech-1', name: 'Técnico 1' }] } } } }
+    agenda: { date: '2026-12-08', teams: [], weekly: { _holidayOverrides: { '2026-12-08': { status: 'closed' } }, _annualGuards: { 2026: { rotation: [{ technicianId: 'tech-1', name: 'Técnico 1' }], configurationHistory: [{ id: 'guard-change-1' }] } }, _monthlyTeams: { '2026-12': { teams: [], configurationHistory: [{ id: 'team-change-1' }] } } } }
   }
   const incoming = structuredClone(current)
   incoming.agenda.weekly._holidayOverrides['2026-12-08'] = { status: 'working' }
   incoming.agenda.weekly._annualGuards[2026].rotation = []
+  incoming.agenda.weekly._annualGuards[2026].configurationHistory = []
+  incoming.agenda.weekly._monthlyTeams['2026-12'].configurationHistory = []
   incoming.agenda.weekly['2026-12-09'] = { teams: [] }
   const user = { roleCode: 'coordinator', permissions: { weekly: true } }
 
   const authorized = authorizeIncomingState(incoming, current, user)
   assert.equal(authorized.agenda.weekly._holidayOverrides['2026-12-08'].status, 'closed')
   assert.equal(authorized.agenda.weekly._annualGuards[2026].rotation[0].technicianId, 'tech-1')
+  assert.equal(authorized.agenda.weekly._annualGuards[2026].configurationHistory[0].id, 'guard-change-1')
+  assert.equal(authorized.agenda.weekly._monthlyTeams['2026-12'].configurationHistory[0].id, 'team-change-1')
   assert.deepEqual(authorized.agenda.weekly['2026-12-09'], { teams: [] })
 })

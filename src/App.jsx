@@ -13,6 +13,7 @@ import { annualGuardForDate, DEFAULT_2026_GUARD_ROTATION, firstSaturdayOfYear } 
 import { monthlyTeamRotation } from './monthly-team-rotation.mjs'
 import { holidayDecisionForDate, holidayDecisionLabel, holidayForDate, holidayIsBlocked } from './holidays.mjs'
 import { buildVehicleControlRecords, suggestedVehicleAssignments, vehicleControlTask, vehicleLabel } from './vehicle-controls.mjs'
+import { appendConfigurationHistory, guardConfigurationSnapshot, teamConfigurationSnapshot, vehicleConfigurationSnapshot } from './configuration-history.mjs'
 import { compactVehiclePhoto } from './image-upload.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
@@ -1852,6 +1853,18 @@ function BufferedInput({ value, onCommit, delay = 500, ...inputProps }) {
   />
 }
 
+const configurationSnapshotLines = (snapshot, type) => {
+  if (!(snapshot || []).length) return ['Sin configuración previa']
+  if (type === 'teams') return snapshot.map(item => `${item.label}: ${(item.technicians || []).join(' / ') || 'Sin técnicos'}`)
+  if (type === 'vehicles') return snapshot.map(item => `${item.vehicle}: ${item.technician}`)
+  return snapshot.map(item => `${item.position}. ${item.technician}`)
+}
+
+function ConfigurationHistoryPanel({ history, type }) {
+  const entries = (history || []).filter(entry => entry.type === type).slice().reverse()
+  return <details className="configuration-history"><summary><Icon name="history" size={17} />Historial de cambios <span>{entries.length}</span></summary>{entries.length ? <div className="configuration-history-list">{entries.map(entry => <article key={entry.id}><header><b>{prettyReportDateTime(entry.at)}</b><span>{entry.user?.name || 'Administrador'}{entry.user?.email ? ` · ${entry.user.email}` : ''}</span></header><div><section><strong>Antes</strong>{configurationSnapshotLines(entry.before, type).map((line, index) => <p key={`before-${index}`}>{line}</p>)}</section><section><strong>Después</strong>{configurationSnapshotLines(entry.after, type).map((line, index) => <p key={`after-${index}`}>{line}</p>)}</section></div></article>)}</div> : <p className="configuration-history-empty">Todavía no se registraron cambios para este período.</p>}</details>
+}
+
 function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }) {
   const authUser = globalThis.__pignusCurrentUser || null
   const holidayCalendar = useNationalHolidays([authUser ? String(date || '').slice(0, 4) : ''])
@@ -2781,7 +2794,24 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       const current = previous._monthlyTeams?.[monthlySetup.month] || {}
       const teamSignature = teams => JSON.stringify((teams || []).map(team => (team.memberIds || []).map(String).sort()))
       const changed = teamSignature(current.teams) !== teamSignature(monthlySetup.teams)
-      return { ...previous, _monthlyTeams: { ...(previous._monthlyTeams || {}), [monthlySetup.month]: { ...current, teams: monthlySetup.teams, vehicleAssignments: changed ? [] : current.vehicleAssignments } } }
+      const changedAt = new Date().toISOString()
+      let configurationHistory = appendConfigurationHistory(current.configurationHistory, {
+        type: 'teams',
+        period: monthlySetup.month,
+        before: teamConfigurationSnapshot(current.teams),
+        after: teamConfigurationSnapshot(monthlySetup.teams),
+        user: authUser,
+        at: changedAt
+      })
+      if (changed && current.vehicleAssignments?.length) configurationHistory = appendConfigurationHistory(configurationHistory, {
+        type: 'vehicles',
+        period: monthlySetup.month,
+        before: vehicleConfigurationSnapshot(current.vehicleAssignments, vehicles, activeTechs),
+        after: [],
+        user: authUser,
+        at: changedAt
+      })
+      return { ...previous, _monthlyTeams: { ...(previous._monthlyTeams || {}), [monthlySetup.month]: { ...current, teams: monthlySetup.teams, vehicleAssignments: changed ? [] : current.vehicleAssignments, configurationHistory } } }
     })
     setMonthlySetup(null)
     setNotice(`Los equipos predeterminados de ${new Date(`${monthKey}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} fueron guardados.`)
@@ -2826,7 +2856,12 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     const fordKa = vehicles.find(vehicle => String(vehicle.brand || '').toLowerCase().includes('ford') && /(^|\s)ka($|\s)/i.test(String(vehicle.model || '')))
     const fordAssignment = fordKa && assignments.find(item => String(item.vehicleId) === String(fordKa.id))
     if (fordKa && soloTechnicianIds.length && !soloTechnicianIds.includes(String(fordAssignment?.technicianId || ''))) { setNotice('El Ford Ka debe quedar asignado a uno de los técnicos que trabaja solo durante el mes.'); return }
-    const records = buildVehicleControlRecords({ month: monthlyVehicleSetup.month, assignments, vehicles, technicians: activeTechs, teams, fromDate: today })
+    const assignmentSnapshot = vehicleConfigurationSnapshot(assignments, vehicles, activeTechs)
+    const persistedAssignments = assignments.map(assignment => {
+      const snapshot = assignmentSnapshot.find(item => String(item.vehicleId) === String(assignment.vehicleId))
+      return { ...assignment, vehicle: snapshot?.vehicle || '', technician: snapshot?.technician || '' }
+    })
+    const records = buildVehicleControlRecords({ month: monthlyVehicleSetup.month, assignments: persistedAssignments, vehicles, technicians: activeTechs, teams, fromDate: today })
     setHistory(previous => {
       const preserved = previous.filter(record => !(record.vehicleControl && record.monthlyVehicleAssignment === monthlyVehicleSetup.month && !record.technicalStatus))
       const preservedIds = new Set(preserved.map(record => String(record.id)))
@@ -2853,7 +2888,17 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
         ...next,
         _monthlyTeams: {
           ...(next._monthlyTeams || {}),
-          [monthlyVehicleSetup.month]: { ...(next._monthlyTeams?.[monthlyVehicleSetup.month] || {}), teams, vehicleAssignments: assignments }
+          [monthlyVehicleSetup.month]: (() => {
+            const current = next._monthlyTeams?.[monthlyVehicleSetup.month] || {}
+            const configurationHistory = appendConfigurationHistory(current.configurationHistory, {
+              type: 'vehicles',
+              period: monthlyVehicleSetup.month,
+              before: vehicleConfigurationSnapshot(current.vehicleAssignments, vehicles, activeTechs),
+              after: assignmentSnapshot,
+              user: authUser
+            })
+            return { ...current, teams, vehicleAssignments: persistedAssignments, configurationHistory }
+          })()
         }
       }
     })
@@ -2889,13 +2934,23 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     const duplicated = new Set(rotation.map(item => String(item.technicianId || item.name))).size !== rotation.length
     if (!/^\d{4}$/.test(annualGuardSetup?.year || '') || !rotation.length || duplicated) return
     const year = annualGuardSetup.year
-    setWeekly(previous => ({
-      ...previous,
-      _annualGuards: {
-        ...(previous._annualGuards || {}),
-        [year]: { startDate: firstSaturdayOfYear(year), rotation }
+    setWeekly(previous => {
+      const current = previous._annualGuards?.[year] || {}
+      const configurationHistory = appendConfigurationHistory(current.configurationHistory, {
+        type: 'guards',
+        period: year,
+        before: guardConfigurationSnapshot(current.rotation),
+        after: guardConfigurationSnapshot(rotation),
+        user: authUser
+      })
+      return {
+        ...previous,
+        _annualGuards: {
+          ...(previous._annualGuards || {}),
+          [year]: { ...current, startDate: firstSaturdayOfYear(year), rotation, configurationHistory }
+        }
       }
-    }))
+    })
     setAnnualGuardSetup(null)
     setNotice(`El cronograma de guardias de ${year} fue guardado y se repetirá automáticamente cada sábado.`)
   }
@@ -3030,8 +3085,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       const sourceTeam = plan.teams[taskMove.sourceTeamIndex]
       return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskMove(null)}><section className="modal task-move-modal weekly-move-modal" role="dialog" aria-modal="true" aria-labelledby="weekly-move-title" onMouseDown={event => event.stopPropagation()}><button className="modal-close" onClick={() => setTaskMove(null)}><Icon name="close" /></button><p className="eyebrow">REASIGNAR SERVICIO</p><h2 id="weekly-move-title">Mover a otro equipo</h2><p>El servicio conservará horario, cliente, tipo de servicio y observaciones. También se actualizarán Agenda del día e Historial si ya fueron registrados.</p><label>Equipo actual<input value={sourceTeam?.label || `Equipo ${taskMove.sourceTeamIndex + 1}`} readOnly /></label><label>Nuevo equipo<select value={taskMove.destinationTeamIndex} onChange={event => setTaskMove(previous => ({ ...previous, destinationTeamIndex: Number(event.target.value) }))}>{plan.teams.map((team, index) => index !== taskMove.sourceTeamIndex && <option key={team.teamId || index} value={index}>{team.label || `Equipo ${index + 1}`} · {team.members?.join(' / ') || 'Sin técnicos'}</option>)}</select></label><div className="modal-actions"><button className="secondary" onClick={() => setTaskMove(null)}>Cancelar</button><button className="primary" onClick={confirmWeeklyTaskMove}><span aria-hidden="true">⇄</span>Reasignar servicio</button></div></section></div>
     })()}
-    {monthlyVehicleSetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal monthly-vehicles-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-vehicles-title"><button className="modal-close" onClick={() => setMonthlyVehicleSetup(null)}><Icon name="close" /></button><p className="eyebrow">RESPONSABLES DE FLOTA</p><h2 id="monthly-vehicles-title">Vehículos de {new Date(`${monthlyVehicleSetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Asigná un responsable diferente a cada vehículo. Todos los viernes se creará un control a las 15:30 hs para cargar la foto interior y el kilometraje. El Ford Ka se reserva al técnico que trabaja solo ese mes.</p><div className="monthly-vehicle-list">{vehicles.map(vehicle => { const assignment = monthlyVehicleSetup.assignments.find(item => String(item.vehicleId) === String(vehicle.id)); return <label key={vehicle.id}><span><b>{vehicleLabel(vehicle)}</b><small>Kilometraje actual: {Number(vehicle.mileage || 0).toLocaleString('es-AR')} km</small></span><select value={assignment?.technicianId || ''} onChange={event => updateMonthlyVehicleAssignment(vehicle.id, event.target.value)}><option value="">Seleccionar responsable</option>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></label> })}</div><div className="modal-actions"><button className="secondary" onClick={() => setMonthlyVehicleSetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlyVehicleSetup}>Guardar responsables</button></div></section></div>}
-    {monthlySetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setMonthlySetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de {new Date(`${monthlySetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Con cinco técnicos activos, el sistema propone dos duplas y una salida individual, rotando mensualmente todas las combinaciones. Podés modificar la sugerencia antes de guardarla. Las agendas ya cargadas no se alteran.</p><div className="monthly-team-list">{monthlySetup.teams.map((team, index) => <label key={team.teamId || index}><b>{team.label || `Equipo ${index + 1}`}</b><select multiple value={team.memberIds || []} onChange={event => updateMonthlyTeam(index, [...event.target.selectedOptions].map(option => option.value))}>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName || tech.name.split(' ')[0]}</option>)}</select><small>Mantené presionada la tecla Ctrl para seleccionar más de un técnico.</small></label>)}</div><button className="secondary monthly-add-team" onClick={addMonthlyTeam}><Icon name="plus" size={15} />Agregar equipo</button><div className="modal-actions"><button className="secondary" onClick={() => setMonthlySetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlySetup}>Guardar equipos del mes</button></div></section></div>}
+    {monthlyVehicleSetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal monthly-vehicles-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-vehicles-title"><button className="modal-close" onClick={() => setMonthlyVehicleSetup(null)}><Icon name="close" /></button><p className="eyebrow">RESPONSABLES DE FLOTA</p><h2 id="monthly-vehicles-title">Vehículos de {new Date(`${monthlyVehicleSetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Asigná un responsable diferente a cada vehículo. Todos los viernes se creará un control a las 15:30 hs para cargar la foto interior y el kilometraje. El Ford Ka se reserva al técnico que trabaja solo ese mes.</p><div className="monthly-vehicle-list">{vehicles.map(vehicle => { const assignment = monthlyVehicleSetup.assignments.find(item => String(item.vehicleId) === String(vehicle.id)); return <label key={vehicle.id}><span><b>{vehicleLabel(vehicle)}</b><small>Kilometraje actual: {Number(vehicle.mileage || 0).toLocaleString('es-AR')} km</small></span><select value={assignment?.technicianId || ''} onChange={event => updateMonthlyVehicleAssignment(vehicle.id, event.target.value)}><option value="">Seleccionar responsable</option>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></label> })}</div><ConfigurationHistoryPanel history={monthlyTeams[monthlyVehicleSetup.month]?.configurationHistory} type="vehicles" /><div className="modal-actions"><button className="secondary" onClick={() => setMonthlyVehicleSetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlyVehicleSetup}>Guardar responsables</button></div></section></div>}
+    {monthlySetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setMonthlySetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de {new Date(`${monthlySetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Con cinco técnicos activos, el sistema propone dos duplas y una salida individual, rotando mensualmente todas las combinaciones. Podés modificar la sugerencia antes de guardarla. Las agendas ya cargadas no se alteran.</p><div className="monthly-team-list">{monthlySetup.teams.map((team, index) => <label key={team.teamId || index}><b>{team.label || `Equipo ${index + 1}`}</b><select multiple value={team.memberIds || []} onChange={event => updateMonthlyTeam(index, [...event.target.selectedOptions].map(option => option.value))}>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName || tech.name.split(' ')[0]}</option>)}</select><small>Mantené presionada la tecla Ctrl para seleccionar más de un técnico.</small></label>)}</div><button className="secondary monthly-add-team" onClick={addMonthlyTeam}><Icon name="plus" size={15} />Agregar equipo</button><ConfigurationHistoryPanel history={monthlyTeams[monthlySetup.month]?.configurationHistory} type="teams" /><div className="modal-actions"><button className="secondary" onClick={() => setMonthlySetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlySetup}>Guardar equipos del mes</button></div></section></div>}
     {monthlyTimesSetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-times-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-times-title"><button className="modal-close" onClick={() => setMonthlyTimesSetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2 id="monthly-times-title">Horarios de {new Date(`${monthlyTimesSetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Definí los dos horarios que se aplicarán por defecto a los servicios nuevos del mes. Los servicios ya cargados conservarán su hora.</p><div className="monthly-time-grid">{monthlyTimesSetup.times.map((time, index) => <label key={index}><b>Turno {index + 1}</b><input type="time" required value={time} onChange={event => setMonthlyTimesSetup(previous => ({ ...previous, times: previous.times.map((item, timeIndex) => timeIndex === index ? event.target.value : item) }))} /></label>)}</div>{monthlyTimesSetup.times[0] === monthlyTimesSetup.times[1] && <p className="field-error">Los dos horarios deben ser diferentes.</p>}<div className="modal-actions"><button className="secondary" onClick={() => setMonthlyTimesSetup(null)}>Cancelar</button><button className="primary" disabled={!validDefaultServiceTimes(monthlyTimesSetup.times)} onClick={saveMonthlyTimesSetup}>Guardar horarios del mes</button></div></section></div>}
     {annualGuardSetup && (() => {
       const duplicated = new Set(annualGuardSetup.rotation.map(item => String(item.technicianId || item.name))).size !== annualGuardSetup.rotation.length
@@ -3039,7 +3094,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       return <div className="modal-backdrop monthly-backdrop"><section className="modal annual-guards-modal" role="dialog" aria-modal="true" aria-labelledby="annual-guards-title"><button className="modal-close" onClick={() => setAnnualGuardSetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN ANUAL</p><h2 id="annual-guards-title">Guardias de fin de semana</h2><p>Definí el orden de rotación. El primer técnico cubrirá el primer sábado del año y luego el ciclo se repetirá durante todos los sábados.</p><label className="annual-guard-year">Año<input type="number" min="2026" max="2100" value={annualGuardSetup.year} onChange={event => changeAnnualGuardYear(event.target.value)} /></label><div className="annual-guard-list">{annualGuardSetup.rotation.map((guard, index) => {
         const legacyGuard = guard.name && !activeTechs.some(tech => String(tech.id) === String(guard.technicianId))
         return <div className="annual-guard-row" key={`${guard.technicianId || guard.name}-${index}`}><span>{index + 1}</span><select aria-label={`Técnico ${index + 1} de la rotación`} value={guard.technicianId || ''} onChange={event => updateAnnualGuardTechnician(index, event.target.value)}>{legacyGuard && <option value={guard.technicianId || ''}>{guard.name} (no activo)</option>}{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select><button type="button" className="secondary" title="Subir" aria-label={`Subir a ${guard.name}`} disabled={index === 0} onClick={() => moveAnnualGuardTechnician(index, -1)}>↑</button><button type="button" className="secondary" title="Bajar" aria-label={`Bajar a ${guard.name}`} disabled={index === annualGuardSetup.rotation.length - 1} onClick={() => moveAnnualGuardTechnician(index, 1)}>↓</button><button type="button" className="icon-btn delete" title="Quitar de la rotación" aria-label={`Quitar a ${guard.name}`} onClick={() => removeAnnualGuardTechnician(index)}><Icon name="trash" size={15} /></button></div>
-      })}</div><button type="button" className="secondary annual-guard-add" disabled={!activeTechs.length || !validYear} onClick={addAnnualGuardTechnician}><Icon name="plus" size={15} />Agregar técnico</button>{!validYear && <p className="field-error">Ingresá un año válido.</p>}{duplicated && <p className="field-error">Cada técnico puede aparecer una sola vez en la rotación.</p>}{validYear && !annualGuardSetup.rotation.length && <p className="field-error">Agregá al menos un técnico para generar el cronograma.</p>}<p className="annual-guard-help">Los cambios manuales realizados en un sábado específico se conservan como excepción.</p><div className="modal-actions"><button className="secondary" onClick={() => setAnnualGuardSetup(null)}>Cancelar</button><button className="primary" disabled={!validYear || !annualGuardSetup.rotation.length || duplicated} onClick={saveAnnualGuardSetup}>Guardar guardias del año</button></div></section></div>
+      })}</div><button type="button" className="secondary annual-guard-add" disabled={!activeTechs.length || !validYear} onClick={addAnnualGuardTechnician}><Icon name="plus" size={15} />Agregar técnico</button>{!validYear && <p className="field-error">Ingresá un año válido.</p>}{duplicated && <p className="field-error">Cada técnico puede aparecer una sola vez en la rotación.</p>}{validYear && !annualGuardSetup.rotation.length && <p className="field-error">Agregá al menos un técnico para generar el cronograma.</p>}<p className="annual-guard-help">Los cambios manuales realizados en un sábado específico se conservan como excepción.</p><ConfigurationHistoryPanel history={weekly._annualGuards?.[annualGuardSetup.year]?.configurationHistory} type="guards" /><div className="modal-actions"><button className="secondary" onClick={() => setAnnualGuardSetup(null)}>Cancelar</button><button className="primary" disabled={!validYear || !annualGuardSetup.rotation.length || duplicated} onClick={saveAnnualGuardSetup}>Guardar guardias del año</button></div></section></div>
     })()}
     <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Prepará las visitas de cada equipo y luego abrí el día para terminar de validar y guardar la agenda del día.</p></div><div className="weekly-actions"><button className="secondary" onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button><button className="secondary" onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button><button className="secondary" onClick={openMonthlyVehicleSetup}><Icon name="vehicle" size={16} />Vehículos del mes</button><button className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button><label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
     {taskEditor && (() => {
