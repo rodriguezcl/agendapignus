@@ -191,8 +191,22 @@ const fallbackDefaultServiceTimesForDate = date => String(date || '') >= DEFAULT
   ? ['09:00', '14:00']
   : ['08:30', '13:00']
 const validDefaultServiceTimes = times => Array.isArray(times) && times.length === 2 && times.every(time => /^\d{2}:\d{2}$/.test(String(time || ''))) && times[0] !== times[1]
+const monthlyDefaultTimePeriods = (config = {}, month = '') => {
+  const savedPeriods = Array.isArray(config?.defaultTimePeriods)
+    ? config.defaultTimePeriods
+      .filter(period => String(period?.from || '').startsWith(`${month}-`) && validDefaultServiceTimes(period?.times))
+      .map(period => ({ from: period.from, times: [...period.times] }))
+      .sort((first, second) => first.from.localeCompare(second.from))
+    : []
+  if (savedPeriods.length) return savedPeriods
+  return validDefaultServiceTimes(config?.defaultTimes)
+    ? [{ from: `${month}-01`, times: [...config.defaultTimes] }]
+    : []
+}
 const defaultServiceTimesForDate = (date, weekly = {}) => {
-  const configured = weekly?._monthlyTeams?.[String(date || '').slice(0, 7)]?.defaultTimes
+  const month = String(date || '').slice(0, 7)
+  const periods = monthlyDefaultTimePeriods(weekly?._monthlyTeams?.[month], month)
+  const configured = periods.filter(period => period.from <= date).at(-1)?.times
   return validDefaultServiceTimes(configured) ? configured : fallbackDefaultServiceTimesForDate(date)
 }
 const defaultServiceTasksForDate = (date, weekly) => defaultServiceTimesForDate(date, weekly).map(time => ({ ...blankTask(), time }))
@@ -206,8 +220,9 @@ const alignDefaultServiceTimes = (teams = [], date = '', targetTimes = fallbackD
       : task)
   }))
 }
-const applyMonthlyDefaultTimes = (weekly = {}, month = '', sourceTimes, targetTimes) => Object.fromEntries(Object.entries(weekly || {}).map(([key, value]) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || !key.startsWith(`${month}-`)) return [key, value]
+const applyMonthlyDefaultTimes = (weekly = {}, month = '', effectiveFrom = '', targetTimes) => Object.fromEntries(Object.entries(weekly || {}).map(([key, value]) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || !key.startsWith(`${month}-`) || key < effectiveFrom) return [key, value]
+  const sourceTimes = defaultServiceTimesForDate(key, weekly)
   const replacements = Object.fromEntries(sourceTimes.map((time, index) => [time, targetTimes[index]]))
   return [key, {
     ...value,
@@ -2410,6 +2425,18 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
   const monthKey = anchor.slice(0, 7)
   const anchorYear = anchor.slice(0, 4)
   const monthlyTeams = weekly._monthlyTeams || {}
+  const monthlyTimesWindow = month => {
+    const currentMonth = today.slice(0, 7)
+    if (month < currentMonth) return { effectiveFrom: '', lockedReason: 'Este mes ya terminó. Sus horarios quedan bloqueados para proteger el historial y las agendas guardadas.' }
+    if (month > currentMonth) return { effectiveFrom: `${month}-01`, scopeLabel: 'Los cambios se aplicarán durante todo el mes.' }
+    const candidate = new Date(`${today}T12:00:00`)
+    while (true) {
+      candidate.setDate(candidate.getDate() + 1)
+      const key = candidate.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+      if (!key.startsWith(`${month}-`)) return { effectiveFrom: '', lockedReason: 'No quedan jornadas operativas futuras en este mes. Seleccioná una semana del mes siguiente para definir sus horarios.' }
+      if (candidate.getDay() !== 0) return { effectiveFrom: key, scopeLabel: `Los cambios regirán desde ${prettyDate(key)}. Los días anteriores y todos los servicios ya cargados conservarán su horario.` }
+    }
+  }
   const priorVehicleAssignmentHistory = useMemo(() => Object.entries(monthlyTeams)
     .filter(([configuredMonth, config]) => configuredMonth < monthKey && config?.vehicleAssignments?.length)
     .sort(([left], [right]) => left.localeCompare(right))
@@ -2783,7 +2810,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     return (monthlyTeams[previousMonthKey]?.teams || [null, null, null]).map((team, index) => ({ teamId: team?.teamId || createTeamId(), label: team?.label || `Equipo ${index + 1}`, memberIds: team?.memberIds || [], members: team?.members || [] }))
   }
   const suggestedMonthlyTimes = () => {
-    const current = monthlyTeams[monthKey]?.defaultTimes
+    const currentConfig = monthlyTeams[monthKey]
+    const current = monthlyDefaultTimePeriods(currentConfig, monthKey).at(-1)?.times || currentConfig?.defaultTimes
     if (validDefaultServiceTimes(current)) return current
     const previous = monthlyTeams[previousMonthKey]?.defaultTimes
     return validDefaultServiceTimes(previous) ? previous : fallbackDefaultServiceTimesForDate(`${monthKey}-01`)
@@ -2794,7 +2822,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
   }
   const openMonthlyTimesSetup = () => {
     if (!isAdministrator) { setNotice('Solo un administrador puede definir los horarios mensuales.'); return }
-    setMonthlyTimesSetup({ month: monthKey, times: [...suggestedMonthlyTimes()] })
+    setMonthlyTimesSetup({ month: monthKey, times: [...suggestedMonthlyTimes()], ...monthlyTimesWindow(monthKey) })
   }
   const updateMonthlyTeam = (index, memberIds) => { const selected = activeTechs.filter(tech => memberIds.some(id => String(id) === String(tech.id))); setMonthlySetup(previous => ({ ...previous, teams: previous.teams.map((team, teamIndex) => teamIndex === index ? { ...team, memberIds: selected.map(tech => tech.id), members: selected.map(tech => tech.name) } : team) })) }
   const addMonthlyTeam = () => setMonthlySetup(previous => ({ ...previous, teams: [...previous.teams, { teamId: createTeamId(), label: `Equipo ${previous.teams.length + 1}`, memberIds: [], members: [] }] }))
@@ -2826,23 +2854,25 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     setNotice(`Los equipos predeterminados de ${new Date(`${monthKey}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} fueron guardados.`)
   }
   const saveMonthlyTimesSetup = () => {
-    if (!validDefaultServiceTimes(monthlyTimesSetup?.times)) return
+    if (!validDefaultServiceTimes(monthlyTimesSetup?.times) || !monthlyTimesSetup?.effectiveFrom || monthlyTimesSetup?.lockedReason) return
     setWeekly(previous => {
       const currentConfig = previous._monthlyTeams?.[monthlyTimesSetup.month] || {}
-      const sourceTimes = validDefaultServiceTimes(currentConfig.defaultTimes)
-        ? currentConfig.defaultTimes
-        : fallbackDefaultServiceTimesForDate(`${monthlyTimesSetup.month}-01`)
-      const migrated = applyMonthlyDefaultTimes(previous, monthlyTimesSetup.month, sourceTimes, monthlyTimesSetup.times)
+      const migrated = applyMonthlyDefaultTimes(previous, monthlyTimesSetup.month, monthlyTimesSetup.effectiveFrom, monthlyTimesSetup.times)
+      const defaultTimePeriods = [
+        ...monthlyDefaultTimePeriods(currentConfig, monthlyTimesSetup.month).filter(period => period.from !== monthlyTimesSetup.effectiveFrom),
+        { from: monthlyTimesSetup.effectiveFrom, times: [...monthlyTimesSetup.times] }
+      ].sort((first, second) => first.from.localeCompare(second.from))
       return {
         ...migrated,
         _monthlyTeams: {
           ...(migrated._monthlyTeams || {}),
-          [monthlyTimesSetup.month]: { ...currentConfig, defaultTimes: monthlyTimesSetup.times }
+          [monthlyTimesSetup.month]: { ...currentConfig, defaultTimes: monthlyTimesSetup.times, defaultTimePeriods }
         }
       }
     })
+    const effectiveFrom = monthlyTimesSetup.effectiveFrom
     setMonthlyTimesSetup(null)
-    setNotice(`Los horarios predeterminados de ${new Date(`${monthKey}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} fueron guardados.`)
+    setNotice(`Los horarios predeterminados fueron guardados con vigencia desde ${prettyDate(effectiveFrom)}. Las agendas anteriores no se modificaron.`)
   }
   const openMonthlyVehicleSetup = () => {
     if (!isAdministrator) { setNotice('Solo un administrador puede asignar los vehículos mensuales.'); return }
@@ -2984,7 +3014,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       return
     }
     if (config?.teams?.length && !validDefaultServiceTimes(config.defaultTimes) && !monthlySetup && monthlyTimesSetup?.month !== monthKey) {
-      setMonthlyTimesSetup({ month: monthKey, times: [...suggestedMonthlyTimes()] })
+      setMonthlyTimesSetup({ month: monthKey, times: [...suggestedMonthlyTimes()], ...monthlyTimesWindow(monthKey) })
       return
     }
     const assignmentsMatchFleet = config?.vehicleAssignments?.length === vehicles.length && vehicles.every(vehicle => config.vehicleAssignments.some(item => String(item.vehicleId) === String(vehicle.id)))
@@ -3105,7 +3135,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     })()}
     {monthlyVehicleSetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal monthly-vehicles-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-vehicles-title"><button className="modal-close" onClick={() => setMonthlyVehicleSetup(null)}><Icon name="close" /></button><p className="eyebrow">RESPONSABLES DE FLOTA</p><h2 id="monthly-vehicles-title">Vehículos de {new Date(`${monthlyVehicleSetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Asigná un responsable diferente a cada vehículo. Cada viernes se creará un control a las 15:30 hs para cargar la foto interior y el kilometraje. Si ese día es un feriado no operativo, el control pasa al último día operativo anterior. El Ford Ka se reserva al técnico que trabaja solo ese mes.</p><div className="monthly-vehicle-list">{vehicles.map(vehicle => { const assignment = monthlyVehicleSetup.assignments.find(item => String(item.vehicleId) === String(vehicle.id)); return <label key={vehicle.id}><span><b>{vehicleLabel(vehicle)}</b><small>Kilometraje actual: {Number(vehicle.mileage || 0).toLocaleString('es-AR')} km</small></span><select value={assignment?.technicianId || ''} onChange={event => updateMonthlyVehicleAssignment(vehicle.id, event.target.value)}><option value="">Seleccionar responsable</option>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></label> })}</div><ConfigurationHistoryPanel history={monthlyTeams[monthlyVehicleSetup.month]?.configurationHistory} type="vehicles" /><div className="modal-actions"><button className="secondary" onClick={() => setMonthlyVehicleSetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlyVehicleSetup}>Guardar responsables</button></div></section></div>}
     {monthlySetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setMonthlySetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de {new Date(`${monthlySetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Con cinco técnicos activos, el sistema propone dos duplas y una salida individual, rotando mensualmente todas las combinaciones. Podés modificar la sugerencia antes de guardarla. Las agendas ya cargadas no se alteran.</p><div className="monthly-team-list">{monthlySetup.teams.map((team, index) => <label key={team.teamId || index}><b>{team.label || `Equipo ${index + 1}`}</b><select multiple value={team.memberIds || []} onChange={event => updateMonthlyTeam(index, [...event.target.selectedOptions].map(option => option.value))}>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName || tech.name.split(' ')[0]}</option>)}</select><small>Mantené presionada la tecla Ctrl para seleccionar más de un técnico.</small></label>)}</div><button className="secondary monthly-add-team" onClick={addMonthlyTeam}><Icon name="plus" size={15} />Agregar equipo</button><ConfigurationHistoryPanel history={monthlyTeams[monthlySetup.month]?.configurationHistory} type="teams" /><div className="modal-actions"><button className="secondary" onClick={() => setMonthlySetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlySetup}>Guardar equipos del mes</button></div></section></div>}
-    {monthlyTimesSetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-times-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-times-title"><button className="modal-close" onClick={() => setMonthlyTimesSetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2 id="monthly-times-title">Horarios de {new Date(`${monthlyTimesSetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Definí los dos horarios que se aplicarán por defecto a los servicios nuevos del mes. Los servicios ya cargados conservarán su hora.</p><div className="monthly-time-grid">{monthlyTimesSetup.times.map((time, index) => <label key={index}><b>Turno {index + 1}</b><input type="time" required value={time} onChange={event => setMonthlyTimesSetup(previous => ({ ...previous, times: previous.times.map((item, timeIndex) => timeIndex === index ? event.target.value : item) }))} /></label>)}</div>{monthlyTimesSetup.times[0] === monthlyTimesSetup.times[1] && <p className="field-error">Los dos horarios deben ser diferentes.</p>}<div className="modal-actions"><button className="secondary" onClick={() => setMonthlyTimesSetup(null)}>Cancelar</button><button className="primary" disabled={!validDefaultServiceTimes(monthlyTimesSetup.times)} onClick={saveMonthlyTimesSetup}>Guardar horarios del mes</button></div></section></div>}
+    {monthlyTimesSetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-times-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-times-title"><button className="modal-close" onClick={() => setMonthlyTimesSetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2 id="monthly-times-title">Horarios de {new Date(`${monthlyTimesSetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Definí los dos horarios que se aplicarán por defecto a los servicios nuevos del mes. Los servicios ya cargados conservarán su hora.</p>{monthlyTimesSetup.lockedReason ? <p className="monthly-times-scope is-locked"><Icon name="alert" size={16} />{monthlyTimesSetup.lockedReason}</p> : <p className="monthly-times-scope"><Icon name="calendar" size={16} />{monthlyTimesSetup.scopeLabel}</p>}<div className="monthly-time-grid">{monthlyTimesSetup.times.map((time, index) => <label key={index}><b>Turno {index + 1}</b><input type="time" required disabled={Boolean(monthlyTimesSetup.lockedReason)} value={time} onChange={event => setMonthlyTimesSetup(previous => ({ ...previous, times: previous.times.map((item, timeIndex) => timeIndex === index ? event.target.value : item) }))} /></label>)}</div>{monthlyTimesSetup.times[0] === monthlyTimesSetup.times[1] && <p className="field-error">Los dos horarios deben ser diferentes.</p>}<div className="modal-actions"><button className="secondary" onClick={() => setMonthlyTimesSetup(null)}>{monthlyTimesSetup.lockedReason ? 'Cerrar' : 'Cancelar'}</button><button className="primary" disabled={Boolean(monthlyTimesSetup.lockedReason) || !validDefaultServiceTimes(monthlyTimesSetup.times)} onClick={saveMonthlyTimesSetup}>Guardar horarios del mes</button></div></section></div>}
     {annualGuardSetup && (() => {
       const duplicated = new Set(annualGuardSetup.rotation.map(item => String(item.technicianId || item.name))).size !== annualGuardSetup.rotation.length
       const validYear = /^\d{4}$/.test(annualGuardSetup.year)
