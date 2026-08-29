@@ -186,6 +186,31 @@ const taskHasContent = task => Boolean(task && (
   task.historyId || task.customerId || task.serviceId ||
   ['client', 'service', 'address', 'phone', 'detail'].some(key => String(task[key] || '').trim())
 ))
+const MINIMUM_SERVICE_GAP_MINUTES = 60
+const serviceTimeInMinutes = time => {
+  const match = String(time || '').match(/^(\d{2}):(\d{2})$/)
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null
+}
+const minimumServiceGapConflicts = (teams = []) => teams.flatMap((team, teamIndex) => {
+  const scheduled = (team.tasks || [])
+    .filter(task => taskHasContent(task) && serviceTimeInMinutes(task.time) !== null)
+    .slice()
+    .sort((first, second) => serviceTimeInMinutes(first.time) - serviceTimeInMinutes(second.time))
+  return scheduled.slice(1).flatMap((task, index) => {
+    const previous = scheduled[index]
+    return serviceTimeInMinutes(task.time) - serviceTimeInMinutes(previous.time) < MINIMUM_SERVICE_GAP_MINUTES
+      ? [{ teamIndex, firstTime: previous.time, secondTime: task.time }]
+      : []
+  })
+})
+const removeUnavailableDefaultSlots = (tasks = []) => {
+  const scheduledTimes = tasks.filter(taskHasContent).map(task => serviceTimeInMinutes(task.time)).filter(Number.isFinite)
+  return tasks.filter(task => {
+    if (taskHasContent(task) || task?.manualSlot) return true
+    const slotTime = serviceTimeInMinutes(task?.time)
+    return slotTime === null || !scheduledTimes.some(time => Math.abs(time - slotTime) < MINIMUM_SERVICE_GAP_MINUTES)
+  })
+}
 const DEFAULT_SERVICE_TIME_CHANGE_DATE = '2026-09-01'
 const fallbackDefaultServiceTimesForDate = date => String(date || '') >= DEFAULT_SERVICE_TIME_CHANGE_DATE
   ? ['09:00', '14:00']
@@ -1481,7 +1506,8 @@ export default function App() {
     setTeams(previous => previous.map((currentTeam, teamIndex) => {
       if (teamIndex !== team) return currentTeam
       const tasks = currentTeam.tasks.map((currentTask, taskIndex) => taskIndex !== task ? currentTask : stampServiceRecord({ ...currentTask, ...patch }, authUser))
-      return { ...currentTeam, tasks: changesTime && !timeInput ? sortTasksByTime(tasks) : tasks }
+      const availableTasks = removeUnavailableDefaultSlots(tasks)
+      return { ...currentTeam, tasks: changesTime && !timeInput ? sortTasksByTime(availableTasks) : availableTasks }
     }))
   }
   const employeeRole = employee => roles.find(role => String(role.id) === String(employee.roleId)) || roles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role))
@@ -1987,6 +2013,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     }
     const byTeam = new Map()
     const visibleWeeklyTeams = applyRemovedWeeklySlots(weeklyDay?.teams || [], weeklyDay?.removedSlots || [])
+      .map(team => ({ ...team, tasks: removeUnavailableDefaultSlots(team.tasks || []) }))
     ;visibleWeeklyTeams.forEach((team, index) => {
       const position = Number(String(team.label || '').match(/\d+/)?.[0]) || index + 1
       const teamKey = team.teamId || `legacy-team-${position}`
@@ -2015,7 +2042,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       else current.tasks.push(recoveredTask)
       byTeam.set(teamKey, current)
     })
-    const recoveredTeams = [...byTeam.values()].sort((a, b) => a.position - b.position).map(({ position, ...team }) => ({ ...team, tasks: sortTasksByTime(team.tasks.length ? team.tasks : [blankTask()]) }))
+    const recoveredTeams = [...byTeam.values()].sort((a, b) => a.position - b.position).map(({ position, ...team }) => ({ ...team, tasks: sortTasksByTime(removeUnavailableDefaultSlots(team.tasks.length ? team.tasks : [blankTask()])) }))
     const targetTimes = defaultServiceTimesForDate(nextDate, weekly)
     setTeams(isSaturday(nextDate) ? assignGuardToEmptySaturday(normalizeSaturdayTeams(recoveredTeams, nextDate, weekly), nextDate, weekly, activeTechs) : alignDefaultServiceTimes(recoveredTeams, nextDate, targetTimes, fallbackDefaultServiceTimesForDate(nextDate)))
     const reprogrammedCount = saved.filter(record => record.rescheduledFrom).length
@@ -2065,7 +2092,8 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   }))
   const validateAgenda = (agendaTeams = teams) => {
     const missing = []
-    agendaTeamsWithRealServices(agendaTeams).forEach((team, teamIndex) => team.tasks.forEach((task, taskIndex) => {
+    const realServiceTeams = agendaTeamsWithRealServices(agendaTeams)
+    realServiceTeams.forEach((team, teamIndex) => team.tasks.forEach((task, taskIndex) => {
       const fields = []
       if (!task.time) fields.push('hora')
       if (!task.service) fields.push('tipo de servicio')
@@ -2076,6 +2104,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       if (requiresPaymentAmount(task, serviceForTask(task))) fields.push('monto')
       if (fields.length) missing.push(`Equipo ${teamIndex + 1}, servicio ${taskIndex + 1}: ${fields.join(', ')}`)
     }))
+    minimumServiceGapConflicts(realServiceTeams).forEach(conflict => missing.push(`Equipo ${conflict.teamIndex + 1}: debe haber al menos una hora entre ${conflict.firstTime} y ${conflict.secondTime}`))
     if (!missing.length) return true
     showAgendaValidationModal(missing)
     return false
@@ -2304,9 +2333,14 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       setNotice('No se pudo reasignar el servicio. Revisá los equipos e intentá nuevamente.')
       return
     }
+    const destinationGap = minimumServiceGapConflicts([{ tasks: [...(destinationTeam.tasks || []), movedTask] }])[0]
+    if (destinationGap) {
+      setNotice(`No se puede reasignar: debe haber al menos una hora entre ${destinationGap.firstTime} y ${destinationGap.secondTime}.`)
+      return
+    }
     setTeams(previous => previous.map((team, index) => {
       if (index === sourceIndex) return { ...team, tasks: (team.tasks || []).filter(task => String(task.taskId || '') !== String(movedTask.taskId || '')) }
-      if (index === destinationIndex) return { ...team, tasks: sortTasksByTime([...(team.tasks || []), movedTask]) }
+      if (index === destinationIndex) return { ...team, tasks: sortTasksByTime(removeUnavailableDefaultSlots([...(team.tasks || []), movedTask])) }
       return team
     }))
     const historyId = movedTask.historyId || `work-${movedTask.taskId}`
@@ -2560,7 +2594,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       : defaults
     const visiblePlan = { ...plan, teams: applyRemovedWeeklySlots(plan.teams, plan.removedSlots || []) }
     const normalized = isSaturday(day) ? { ...visiblePlan, teams: assignGuardToEmptySaturday(normalizeSaturdayTeams(visiblePlan.teams, day, weekly), day, weekly, activeTechs) } : visiblePlan
-    return sortPlanTasksByTime(normalized)
+    const availablePlan = { ...normalized, teams: normalized.teams.map(team => ({ ...team, tasks: removeUnavailableDefaultSlots(team.tasks || []) })) }
+    return sortPlanTasksByTime(availablePlan)
   }
   const advancedGuardForDay = day => {
     if (!isSaturday(day)) return null
@@ -2618,6 +2653,14 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     if (requiresPaymentAmount(draft, serviceForWeeklyTask(draft))) missing.push('monto')
     if (missing.length) {
       setNotice(`Completá ${missing.join(', ')} antes de guardar el servicio.`)
+      return
+    }
+    const editedPlan = dayPlan(day)
+    const editedTeam = editedPlan.teams.find(team => teamId && String(team.teamId || '') === String(teamId)) || editedPlan.teams[teamIndex]
+    const peerTasks = (editedTeam?.tasks || []).filter((task, index) => !((taskId && String(task.taskId || '') === String(taskId)) || (!taskId && index === taskIndex)))
+    const gapConflict = minimumServiceGapConflicts([{ tasks: [...peerTasks, draft] }])[0]
+    if (gapConflict) {
+      setNotice(`Debe haber al menos una hora entre los servicios de ${gapConflict.firstTime} y ${gapConflict.secondTime}.`)
       return
     }
     const tracedDraft = stampServiceRecord({ ...draft, ...applicableServiceExtras(draft, serviceForWeeklyTask(draft)) }, authUser)
@@ -2717,6 +2760,11 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       setNotice(advancedSaturdayGuardMessage(advance))
       return
     }
+    const destinationGap = minimumServiceGapConflicts([{ tasks: [...(destinationTeam.tasks || []), movedTask] }])[0]
+    if (destinationGap) {
+      setNotice(`No se puede reasignar: debe haber al menos una hora entre ${destinationGap.firstTime} y ${destinationGap.secondTime}.`)
+      return
+    }
     technician = typeof technician === 'string' ? activeTechs.find(item => item.name === technician) : technician
     if (!technician) return
     updateDay(day, plan => {
@@ -2766,6 +2814,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
   const conflictsForDay = day => {
     return technicianTimeConflicts(dayPlan(day).teams, activeTechs)
   }
+  const gapConflictsForDay = day => minimumServiceGapConflicts(dayPlan(day).teams)
   const commitWeeklyCustomerText = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, { customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
   const selectWeeklyCustomerResult = (day, teamIndex, taskIndex, customer) => updateTask(day, teamIndex, taskIndex, { customerId: customer.customerId, client: `${customer.account} ${customer.name}`, clientAccount: customer.account, clientNameAtService: customer.name, address: customer.address, phone: customer.phone })
   const addTask = (day, teamIndex) => {
@@ -3049,6 +3098,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       setNotice(`Completá los campos obligatorios de Equipo ${teamIndex + 1}, tarjeta ${taskIndex + 1}: ${missing.join(', ')}.`)
       return
     }
+    const gapConflicts = gapConflictsForDay(day)
+    if (gapConflicts.length) { const conflict = gapConflicts[0]; setNotice(`Equipo ${conflict.teamIndex + 1}: debe haber al menos una hora entre ${conflict.firstTime} y ${conflict.secondTime}.`); return }
     const conflicts = conflictsForDay(day)
     if (conflicts.length) { setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`); return }
     const teams = dayPlan(day).teams.map(({ teamId, memberIds, members, tasks }) => ({ teamId, memberIds, members, tasks }))
@@ -3111,6 +3162,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     const invalidTime = readyTasks.find(({ task }) => task.time < hours.min || task.time > hours.max)
     if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
     const readyTaskSet = new Set(readyTasks.map(({ task }) => task))
+    const gapConflicts = minimumServiceGapConflicts(plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => readyTaskSet.has(task)) })))
+    if (gapConflicts.length) { const conflict = gapConflicts[0]; setNotice(`Equipo ${conflict.teamIndex + 1}: debe haber al menos una hora entre ${conflict.firstTime} y ${conflict.secondTime}.`); return }
     const conflicts = technicianTimeConflicts(plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => readyTaskSet.has(task)) })), activeTechs)
     if (conflicts.length) { setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`); return }
     const records = readyTasks.map(({ task, team, teamIndex, taskIndex }) => weeklyHistoryRecord(day, team, teamIndex, task, taskIndex))
@@ -3172,6 +3225,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
         const plan = calendarUnavailable || holidayState.blocked ? { ...storedPlan, teams: [] } : suppressAdvancedSaturdayAvailability(storedPlan, advancedGuard)
         const hours = hoursForDay(day)
         const conflicts = conflictsForDay(day)
+        const gapConflicts = gapConflictsForDay(day)
         return <section className={`week-day ${!hours || holidayState.decision?.status === 'closed' ? 'closed-day' : ''}`} data-day={day} key={day}>
           <header><div><b>{displayDate(day)}</b><small>{!hours ? 'No operativo' : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : day === today ? 'Hoy' : prettyDate(day)}</small></div><div className="weekly-day-actions">{hours && !advancedGuard && !calendarUnavailable && !holidayState.blocked && dayNeedsSave(day) && <button className="primary small weekly-save-day" title="Guardado pendiente: guardar agenda" onClick={() => saveWeeklyDay(day)}><Icon name="check" size={15} />Guardar</button>}<button className="secondary small" disabled={!hours || Boolean(advancedGuard) || calendarUnavailable || holidayState.blocked} title={advancedGuard ? advancedSaturdayGuardMessage(advancedGuard) : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : ''} onClick={() => openDay(day)}>Abrir día</button></div></header>
           {!hours ? <p className="closed-day-note">Domingo · sin programación</p> : <>
@@ -3179,6 +3233,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
             {calendarUnavailable ? <div className={`weekly-calendar-state ${holidayCalendar.error ? 'error' : ''}`}>{holidayCalendar.error ? 'No se pudo verificar el calendario de feriados.' : 'Verificando feriados nacionales…'}</div> : holidayState.holiday && <HolidayDecisionPanel compact holiday={holidayState.holiday} decision={holidayState.decision} canDecide={authUser?.roleCode === 'administrator'} onDecision={status => recordHolidayDecision(setWeekly, setNotice, day, holidayState.holiday, status, { weekly, history: operationalHistory, setHistory, holidays: holidayCalendar.records })} />}
             {!holidayState.blocked && advancedGuard && <p className={`weekly-guard-advanced ${advancedGuard.hasSaturdayConflict ? 'has-conflict' : ''}`}><Icon name={advancedGuard.hasSaturdayConflict ? 'alert' : 'check'} size={16} /><span>{advancedSaturdayGuardMessage(advancedGuard)}</span></p>}
             {conflicts.length > 0 && <p className="weekly-conflict">Conflicto: {conflicts.map(item => `${item.name} ${item.time}`).join(', ')}</p>}
+            {gapConflicts.length > 0 && <p className="weekly-conflict">Conflicto: debe haber al menos una hora entre servicios del mismo equipo.</p>}
             <div className="week-teams">{plan.teams.map((team, teamIndex) => {
               const pickerKey = `${day}-${teamIndex}`
               return <article className="week-team" key={team.teamId || teamIndex}>
