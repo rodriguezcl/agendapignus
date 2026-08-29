@@ -78,6 +78,13 @@ test('el acceso cancela solicitudes bloqueadas y permite reintentar', async () =
   assert.equal(attempts, 1)
 })
 
+test('un fallo del recordatorio de contraseñas no se muestra como pérdida general de conexión', () => {
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const reminder = source.slice(source.indexOf('function PasswordResetReminder'), source.indexOf('function DashboardStatusView'))
+  assert.match(reminder, /console\.warn\('No se pudieron actualizar las solicitudes de contraseña\.'/)
+  assert.doesNotMatch(reminder, /catch \(loadError\) \{ setError\(loadError\.message\) \}/)
+})
+
 test('el estado técnico reintenta una indisponibilidad temporal sin duplicar el contenido', async () => {
   const { submitTechnicianStatus } = await import('../src/technician-status.mjs')
   const requests = []

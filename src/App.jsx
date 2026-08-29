@@ -3177,7 +3177,11 @@ function PasswordResetReminder() {
       if (response.status === 403) { setRequests([]); setError(''); return }
       if (!response.ok) throw new Error(data.error || 'No se pudieron consultar las solicitudes.')
       setRequests(data.requests || []); setError('')
-    } catch (loadError) { setError(loadError.message) }
+    } catch (loadError) {
+      // Es una consulta auxiliar del tablero: un fallo transitorio no debe
+      // presentarse como si la aplicación completa hubiera perdido conexión.
+      console.warn('No se pudieron actualizar las solicitudes de contraseña.', loadError)
+    }
   }, [])
   useEffect(() => {
     load()
