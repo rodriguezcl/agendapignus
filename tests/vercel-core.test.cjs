@@ -441,6 +441,17 @@ test('los horarios predeterminados cambian desde septiembre sin alterar servicio
   assert.match(source, /const createTeam = \(index, source, day\)[\s\S]*?tasks: defaultServiceTasksForDate\(day, weekly\)/)
 })
 
+test('cada equipo reserva una hora mínima y oculta turnos vacíos incompatibles', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
+  assert.match(source, /MINIMUM_SERVICE_GAP_MINUTES = 60/)
+  assert.match(source, /Math\.abs\(time - slotTime\) < MINIMUM_SERVICE_GAP_MINUTES/)
+  assert.match(source, /tasks: removeUnavailableDefaultSlots\(team\.tasks \|\| \[\]\)/)
+  assert.match(source, /minimumServiceGapConflicts\(realServiceTeams\)/)
+  assert.match(source, /No se puede reasignar: debe haber al menos una hora/)
+  assert.match(help, /menos de 60 minutos de un turno predeterminado todavía vacío/)
+})
+
 test('el administrador configura dos horarios predeterminados para cada mes', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/weekly-enhancements.css'), 'utf8')
