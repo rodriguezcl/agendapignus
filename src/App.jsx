@@ -136,6 +136,7 @@ const sortPlanTasksByTime = plan => ({
   teams: (plan?.teams || []).map(team => ({ ...team, tasks: sortTasksByTime(team.tasks) }))
 })
 const isSaturday = date => Boolean(date) && new Date(`${date}T12:00:00`).getDay() === 6
+const isSunday = date => Boolean(date) && new Date(`${date}T12:00:00`).getDay() === 0
 const default2026GuardRotationFor = activeTechs => {
   const rotation = DEFAULT_2026_GUARD_ROTATION.map(tokens => activeTechs.find(tech => {
     const normalized = normalizeServiceName(tech.name)
@@ -1856,6 +1857,9 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   const holidayCalendar = useNationalHolidays([authUser ? String(date || '').slice(0, 4) : ''])
   const holiday = holidayForDate(holidayCalendar.records, date)
   const holidayDecision = holidayDecisionForDate(weekly, date)
+  const sundayBlocked = isSunday(date)
+  const holidayBlocked = holidayIsBlocked(holiday, holidayDecision)
+  const holidayCalendarUnavailable = holidayCalendar.loading || Boolean(holidayCalendar.error)
   const advancedGuard = useMemo(() => advancedGuardForSaturdayDate(date, weekly, teams), [date, weekly, teams])
   const saveAgenda = () => requestAgendaAction('save')
   const [preview, setPreview] = useState(false)
@@ -1879,7 +1883,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   useEffect(() => {
     // Ambos módulos escriben sobre el mismo día: los cambios de la agenda del día
     // se reflejan inmediatamente en la agenda semanal, conservando campos extra.
-    if (advancedGuard) return
+    if (advancedGuard || sundayBlocked || holidayBlocked || holidayCalendarUnavailable) return
     const hasContent = teams.some(team => team.members?.length || team.tasks.some(task => Object.entries(task).some(([key, value]) => !['time', 'taskId', 'historyId'].includes(key) && String(value || '').trim())))
     if (!hasContent) return
     setWeekly(previous => {
@@ -1914,7 +1918,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       const nextDay = { ...savedDay, teams: nextTeams }
       return JSON.stringify(savedDay) === JSON.stringify(nextDay) ? previous : { ...previous, [date]: nextDay }
     })
-  }, [date, teams, setWeekly, advancedGuard])
+  }, [date, teams, setWeekly, advancedGuard, sundayBlocked, holidayBlocked, holidayCalendarUnavailable])
   useEffect(() => {
     // Migra agendas creadas antes del identificador estable sin alterar sus datos.
     setTeams(previous => {
@@ -1930,8 +1934,12 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   // Reconstruye la agenda desde los registros ya guardados para la fecha elegida.
   const loadAgendaForDate = (nextDate, { announce = true } = {}) => {
     loadedAgendaDate.current = nextDate
-    const saved = history.filter(record => record.date === nextDate && ['Pendiente', 'Reprogramado', 'Requiere revisión'].includes(record.status || 'Pendiente'))
     setDate(nextDate)
+    if (isSunday(nextDate)) {
+      if (announce) setNotice('Los domingos son días no operativos y no admiten servicios.')
+      return
+    }
+    const saved = history.filter(record => record.date === nextDate && ['Pendiente', 'Reprogramado', 'Requiere revisión'].includes(record.status || 'Pendiente'))
     const weeklyDay = weekly?.[nextDate]
     if (!saved.length && !weeklyDay?.teams?.length) {
       const tasks = isSaturday(nextDate) ? defaultServiceTasksForDate(nextDate, weekly).slice(0, 1) : defaultServiceTasksForDate(nextDate, weekly)
@@ -2056,6 +2064,18 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       : 'No se pudo acceder al portapapeles. Revisá los permisos del navegador e intentá nuevamente.')
   }
   const registerHistory = (agendaTeams = teams) => {
+    if (sundayBlocked) {
+      setNotice('Los domingos son días no operativos y no admiten servicios.')
+      return false
+    }
+    if (holidayBlocked) {
+      setNotice(holidayDecision?.status === 'closed' ? 'La fecha fue definida como día no operativo.' : 'Primero definí si el feriado será laboral o no operativo.')
+      return false
+    }
+    if (holidayCalendarUnavailable) {
+      setNotice('No se puede guardar hasta verificar el calendario de feriados nacionales.')
+      return false
+    }
     if (!validateAgenda(agendaTeams)) return false
     setHistory(previous => {
       const records = agendaTeams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({
@@ -2105,8 +2125,16 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       setNotice(advancedSaturdayGuardMessage(advancedGuard))
       return
     }
-    if (holidayIsBlocked(holiday, holidayDecision)) {
+    if (sundayBlocked) {
+      setNotice('Los domingos son días no operativos y no admiten servicios.')
+      return
+    }
+    if (holidayBlocked) {
       setNotice(holidayDecision?.status === 'closed' ? 'La fecha fue definida como día no operativo.' : 'Primero definí si el feriado será laboral o no operativo.')
+      return
+    }
+    if (holidayCalendarUnavailable) {
+      setNotice('No se puede guardar hasta verificar el calendario de feriados nacionales.')
       return
     }
     const meaningful = value => String(value || '').trim() && String(value || '').trim() !== '-'
@@ -2297,8 +2325,12 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     return () => layer.remove()
   }, [taskMove, teams])
   const dailyCustomerField = (task, teamIndex, taskIndex) => <DailyCustomerField task={task} customers={customers} teamIndex={teamIndex} taskIndex={taskIndex} onTextCommit={commitCustomerText} onCustomerSelect={selectCustomerResult} />
-  if (holidayCalendar.loading || holidayCalendar.error || holidayIsBlocked(holiday, holidayDecision)) {
-    return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>La disponibilidad se habilita después de verificar el calendario laboral.</p></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{holidayCalendar.loading ? <div className="holiday-calendar-state"><span className="loading-spinner" />Verificando feriados nacionales…</div> : holidayCalendar.error ? <div className="holiday-calendar-state error"><Icon name="alert" /><div><b>No se pudo verificar el calendario nacional</b><p>{holidayCalendar.error}</p></div><button className="secondary" onClick={() => window.location.reload()}>Reintentar</button></div> : <HolidayDecisionPanel holiday={holiday} decision={holidayDecision} canDecide={authUser?.roleCode === 'administrator'} onDecision={status => recordHolidayDecision(setWeekly, setNotice, date, holiday, status)} />}</>
+  if (sundayBlocked) {
+    return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Agenda del domingo bloqueada</h1><p>Los domingos son días no operativos y no admiten equipos, técnicos ni servicios.</p></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div><p className="weekly-guard-advanced"><Icon name="lock" size={16} /><span>Domingo sin programación. Seleccioná otro día para organizar servicios.</span></p></>
+  }
+  if (holidayCalendarUnavailable || holidayBlocked) {
+    const closedHoliday = holiday && holidayDecision?.status === 'closed'
+    return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>{closedHoliday ? 'Agenda del feriado bloqueada' : 'Organizá los trabajos del día'}</h1><p>{closedHoliday ? `${holiday.name} fue definido como día no operativo y no admite servicios.` : 'La disponibilidad se habilita después de verificar el calendario laboral.'}</p></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{holidayCalendar.loading ? <div className="holiday-calendar-state"><span className="loading-spinner" />Verificando feriados nacionales…</div> : holidayCalendar.error ? <div className="holiday-calendar-state error"><Icon name="alert" /><div><b>No se pudo verificar el calendario nacional</b><p>{holidayCalendar.error}</p></div><button className="secondary" onClick={() => window.location.reload()}>Reintentar</button></div> : <HolidayDecisionPanel holiday={holiday} decision={holidayDecision} canDecide={authUser?.roleCode === 'administrator'} onDecision={status => recordHolidayDecision(setWeekly, setNotice, date, holiday, status)} />}</>
   }
   if (advancedGuard) {
     return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Agenda del sábado bloqueada</h1><p>La guardia de fin de semana ya fue cubierta el viernes y no admite nuevos equipos, técnicos ni servicios.</p></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div><p className={`weekly-guard-advanced ${advancedGuard.hasSaturdayConflict ? 'has-conflict' : ''}`}><Icon name={advancedGuard.hasSaturdayConflict ? 'alert' : 'check'} size={16} /><span>{advancedSaturdayGuardMessage(advancedGuard)}</span></p></>
