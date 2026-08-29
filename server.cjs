@@ -7,6 +7,7 @@ const { normalizeScheduling } = require('./scripts/normalize-scheduling.cjs')
 const { rebuildWeeklyFromHistory, dedupeAgendaTeams } = require('./scripts/rebuild-weekly-from-history.cjs')
 const { writeProfessionalPdf } = require('./scripts/professional-pdf.cjs')
 const { fetchNationalHolidays, validHolidayYear } = require('./api/_lib/holidays.cjs')
+const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./api/_lib/vehicle-control-window.cjs')
 
 // API local: Vite reenvía las rutas /api a este proceso durante el desarrollo.
 const port = Number(process.env.PIGNUS_PORT || 3001)
@@ -1486,6 +1487,7 @@ const server = http.createServer((req, res) => {
       if (!assigned) return send(res, 403, { error: 'El servicio no está asignado al técnico autenticado.' })
         if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
         if (record.vehicleControl && type !== 'Completado') return send(res, 400, { error: 'El control vehicular debe completarse con foto y kilometraje; no admite cancelación ni reprogramación.' })
+        if (record.vehicleControl && !vehicleControlIsOpen(record)) return send(res, 409, { error: `El control vehicular se habilita el ${vehicleControlWindowLabel(record)}.` })
         if (record.technicalStatus) {
           if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record })
           return send(res, 409, { error: 'Este servicio ya fue informado desde otra sesión.' })

@@ -69,15 +69,56 @@ export function suggestedVehicleAssignments(vehicles, teams, { month = '', assig
 
 export const vehicleControlId = (date, vehicleId) => `vehicle-control-${date}-${vehicleId}`
 
-export function buildVehicleControlRecords({ month, assignments, vehicles, technicians, teams, fromDate = '' }) {
+const previousDate = date => {
+  const value = new Date(`${date}T12:00:00Z`)
+  value.setUTCDate(value.getUTCDate() - 1)
+  return value.toISOString().slice(0, 10)
+}
+
+const weekday = date => new Date(`${date}T12:00:00Z`).getUTCDay()
+
+export const vehicleControlFriday = record => {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(record?.vehicleControlScheduledFriday || ''))) return record.vehicleControlScheduledFriday
+  return String(record?.id || '').match(/^vehicle-control-(\d{4}-\d{2}-\d{2})-/)?.[1] || record?.date || ''
+}
+
+export function vehicleControlOperationalDate(friday, holidays = [], holidayOverrides = {}) {
+  const holidayDates = new Set((holidays || []).map(item => String(item?.date || '')).filter(Boolean))
+  let candidate = friday
+  // Los controles se realizan en una jornada ordinaria de lunes a viernes. Un
+  // feriado solamente se salta cuando Administración ya lo definió como cerrado.
+  for (let attempts = 0; attempts < 14; attempts += 1) {
+    const day = weekday(candidate)
+    const configuredHoliday = holidayDates.has(candidate) || Object.prototype.hasOwnProperty.call(holidayOverrides || {}, candidate)
+    const closedHoliday = configuredHoliday && holidayOverrides?.[candidate]?.status === 'closed'
+    if (day >= 1 && day <= 5 && !closedHoliday) return candidate
+    candidate = previousDate(candidate)
+  }
+  return friday
+}
+
+export function rescheduleVehicleControlRecords(records, { holidays = [], holidayOverrides = {} } = {}) {
+  return (records || []).map(record => {
+    if (!record?.vehicleControl || record.technicalStatus || record.status === 'Completado') return record
+    const friday = vehicleControlFriday(record)
+    const date = vehicleControlOperationalDate(friday, holidays, holidayOverrides)
+    return date === record.date && record.vehicleControlScheduledFriday === friday
+      ? record
+      : { ...record, date, vehicleControlScheduledFriday: friday }
+  })
+}
+
+export function buildVehicleControlRecords({ month, assignments, vehicles, technicians, teams, fromDate = '', holidays = [], holidayOverrides = {} }) {
   const byVehicle = new Map((vehicles || []).map(vehicle => [String(vehicle.id), vehicle]))
   const byTechnician = new Map((technicians || []).map(technician => [String(technician.id), technician]))
-  return monthFridays(month).filter(date => !fromDate || date >= fromDate).flatMap(date => (assignments || []).map(assignment => {
+  return monthFridays(month).flatMap(friday => (assignments || []).map(assignment => {
+    const date = vehicleControlOperationalDate(friday, holidays, holidayOverrides)
+    if (fromDate && date < fromDate) return null
     const vehicle = byVehicle.get(String(assignment.vehicleId))
     const technician = byTechnician.get(String(assignment.technicianId))
     if (!vehicle || !technician) return null
     const teamIndex = (teams || []).findIndex(team => (team.memberIds || []).some(id => String(id) === String(technician.id)))
-    const id = vehicleControlId(date, vehicle.id)
+    const id = vehicleControlId(friday, vehicle.id)
     return {
       id,
       sourceTaskId: id,
@@ -99,6 +140,7 @@ export function buildVehicleControlRecords({ month, assignments, vehicles, techn
       vehicleModel: vehicle.model,
       vehiclePlate: vehicle.plate,
       vehicleMileageAtScheduling: vehicle.mileage == null ? null : Number(vehicle.mileage),
+      vehicleControlScheduledFriday: friday,
       monthlyVehicleAssignment: month
     }
   }).filter(Boolean))
@@ -116,6 +158,7 @@ export function vehicleControlTask(record) {
     detail: record.detail,
     vehicleControl: true,
     vehicleId: record.vehicleId,
+    vehicleControlScheduledFriday: vehicleControlFriday(record),
     monthlyVehicleAssignment: record.monthlyVehicleAssignment
   }
 }

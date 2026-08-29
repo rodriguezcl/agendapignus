@@ -2,6 +2,7 @@ const crypto = require('node:crypto')
 const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
 const { appendAudit, database, readExportState, readRevision, readState, replaceCollections } = require('./_lib/database.cjs')
 const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
+const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
 const {
   auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
@@ -338,6 +339,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
       if (!record) { const error = new Error('El servicio no existe.'); error.statusCode = 404; throw error }
       if (!record.technicianIds?.some(id => String(id) === String(user.id))) { const error = new Error('El servicio no está asignado al técnico autenticado.'); error.statusCode = 403; throw error }
       if (record.vehicleControl && type !== 'Completado') { const error = new Error('El control vehicular debe completarse con foto y kilometraje; no admite cancelación ni reprogramación.'); error.statusCode = 400; throw error }
+      if (record.vehicleControl && !vehicleControlIsOpen(record)) { const error = new Error(`El control vehicular se habilita el ${vehicleControlWindowLabel(record)}.`); error.statusCode = 409; throw error }
       // Si el primer envío se guardó pero el teléfono perdió la respuesta, el
       // reintento devuelve el mismo resultado sin duplicar auditoría ni cambios.
       if (record.technicalStatus) {

@@ -292,6 +292,20 @@ test('el historial contextual del técnico es de solo lectura y registra quién 
   assert.equal(visible.history.some(record => record.id === 'qa-tech-private'), false)
   assert.deepEqual(visible.customers, [])
 
+  const futureVehicleControl = { id: 'qa-tech-future-vehicle-control', date: '2999-08-29', time: '15:30', client: 'Ford Ka · QA123AA', service: 'Control semanal de vehículo', status: 'Pendiente', technicianIds: ['qa-tech'], technicians: ['QA Técnico'], vehicleControl: true, vehicleId: 'qa-vehicle' }
+  const vehicleControlDb = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  upsertJson(vehicleControlDb, 'work_history', 'id', futureVehicleControl)
+  vehicleControlDb.close()
+  try {
+    const earlyVehicleControl = await api('/api/technician/status', cookie, { method: 'POST', body: JSON.stringify({ recordId: futureVehicleControl.id, type: 'Completado', observation: '', vehicleMileage: 1, vehiclePhoto: 'data:image/jpeg;base64,YQ==' }) })
+    assert.equal(earlyVehicleControl.status, 409)
+    assert.match((await earlyVehicleControl.json()).error, /se habilita el/i)
+  } finally {
+    const cleanupDb = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+    cleanupDb.prepare('DELETE FROM work_history WHERE id = ?').run(futureVehicleControl.id)
+    cleanupDb.close()
+  }
+
   const withoutObservation = await api('/api/technician/status', cookie, { method: 'POST', body: JSON.stringify({ recordId: 'qa-tech-empty-observation', type: 'Completado', observation: '   ' }) })
   assert.equal(withoutObservation.status, 400)
   assert.match((await withoutObservation.json()).error, /observación es obligatoria/i)
