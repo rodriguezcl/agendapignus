@@ -249,7 +249,7 @@ async function handleSaveState(req, res, sql, user) {
       let next = authorizeIncomingState(incoming, current, user)
       next = normalizeStateForSave(next, current)
       next.employees = secureEmployees(next.employees, current.employees)
-      validateState(next)
+      validateState(next, current)
       // Un estado idéntico no es una nueva versión. Esto permite que dos
       // sesiones se hidraten simultáneamente sin generarse conflictos entre sí.
       if (!statePersistenceChanged(current, next)) return currentRevision

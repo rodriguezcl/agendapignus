@@ -1,4 +1,5 @@
 const crypto = require('node:crypto')
+const { validateChangedAgendaSchedules } = require('./scheduling-validation.cjs')
 
 const normalizedText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 const normalizedRoleName = normalizedText
@@ -238,7 +239,7 @@ function secureEmployees(employees, previousEmployees) {
   })
 }
 
-function validateState(state) {
+function validateState(state, previousState = null) {
   if (!state || typeof state !== 'object') throw new Error('El estado recibido no es válido.')
   for (const name of ['roles', 'employees', 'services', 'vehicles', 'customers', 'history']) if (!Array.isArray(state[name])) throw new Error(`La colección ${name} no es válida.`)
   const unique = (items, key, label) => {
@@ -293,16 +294,8 @@ function validateState(state) {
     ;(team.tasks || []).forEach((task, taskIndex) => {
       if (task.serviceId != null && (!Number.isInteger(Number(task.estimatedMinutes)) || Number(task.estimatedMinutes) < 15 || Number(task.estimatedMinutes) > 720)) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} debe tener un tiempo estimado de entre 15 minutos y 12 horas.`)
     })
-    const scheduled = (team.tasks || []).filter(task => task.serviceId && /^\d{1,2}:\d{2}$/.test(String(task.time || ''))).map(task => {
-      const [hours, minutes] = task.time.split(':').map(Number)
-      const start = hours * 60 + minutes
-      return { task, start, end: start + Math.max(60, Number(task.estimatedMinutes)) }
-    }).sort((first, second) => first.start - second.start)
-    scheduled.forEach((current, index) => {
-      const conflict = scheduled.slice(0, index).find(previous => current.start < previous.end)
-      if (conflict) throw new Error(`Agenda: las franjas de ${conflict.task.time} y ${current.task.time} se superponen en el equipo ${teamIndex + 1}.`)
-    })
   })
+  validateChangedAgendaSchedules(state, previousState)
 }
 
 function auditChanges(previousRecords, nextRecords, key, entity, user) {
