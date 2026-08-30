@@ -44,6 +44,15 @@ test('el ABM permite administrar y mostrar el tiempo estimado', () => {
   assert.match(source, /formatServiceEstimatedTime\(service\.estimatedMinutes\)/)
 })
 
+test('el tiempo estimado queda compacto y alineado con los demás campos', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
+  const form = source.slice(source.indexOf('function ServiceTypes'), source.indexOf('const blankVehicle'))
+  assert.match(form, /className="service-duration-inputs"/)
+  assert.doesNotMatch(form, /<small>\{formatServiceEstimatedTime\(form\.estimatedMinutes\)\}<\/small>/)
+  assert.match(styles, /\.service-duration-inputs :is\(input,select\)\{height:40px;min-height:40px\}/)
+})
+
 test('el buscador del historial técnico contempla todos los datos útiles', async () => {
   const { filterTechnicianHistory, technicianTeamLabel } = await import('../src/technician-history.mjs')
   const records = [
