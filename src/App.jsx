@@ -284,7 +284,10 @@ const taskStatus = (task, date, history) => {
   const record = historyRecordForTask(task, date, history)
   return record?.status || record?.technicalStatus || 'Pendiente'
 }
-const taskIsCompleted = (task, date, history) => taskStatus(task, date, history) === 'Completado'
+const taskIsResolvedForPlanning = (task, date, history) => {
+  const status = taskStatus(task, date, history)
+  return status === 'Completado' || (status === 'Cancelado' && String(date || '') < currentLocalDate())
+}
 const statusClassName = status => String(status || 'Pendiente').toLowerCase().replace(/\s/g, '-')
 function TaskStatusBadge({ task, date, history, weekly = false }) {
   const status = taskStatus(task, date, history)
@@ -2099,19 +2102,19 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     const team = teams[teamIndex]
     if (!team) return null
     const target = team.tasks?.[taskIndex]
-    if (!target || taskIsCompleted(target, date, history)) return null
+    if (!target || taskIsResolvedForPlanning(target, date, history)) return null
     const activeTasks = (team.tasks || []).map((task, index) => ({ ...taskWithServiceEstimate(task, serviceForTask(task)), _scheduleTaskIndex: index }))
-      .filter(task => !taskIsCompleted(task, date, history))
+      .filter(task => !taskIsResolvedForPlanning(task, date, history))
     return minimumServiceGapConflicts([{ ...team, tasks: activeTasks }])
       .find(conflict => conflict.firstTask._scheduleTaskIndex === taskIndex || conflict.secondTask._scheduleTaskIndex === taskIndex) || null
   }
   const agendaTeamsWithRealServices = (agendaTeams = teams) => agendaTeams.map(team => ({
     ...team,
-    tasks: (team.tasks || []).filter(task => taskHasContent(task) && !taskIsCompleted(task, date, history))
+    tasks: (team.tasks || []).filter(task => taskHasContent(task) && !taskIsResolvedForPlanning(task, date, history))
   }))
-  const hasPendingAgendaServices = teams.some(team => (team.tasks || []).some(task => taskHasContent(task) && !taskIsCompleted(task, date, history)))
-  const hasCompletedAgendaServices = teams.some(team => (team.tasks || []).some(task => taskHasContent(task) && taskIsCompleted(task, date, history)))
-  const showSaveAgenda = hasPendingAgendaServices || !hasCompletedAgendaServices
+  const hasPendingAgendaServices = teams.some(team => (team.tasks || []).some(task => taskHasContent(task) && !taskIsResolvedForPlanning(task, date, history)))
+  const hasResolvedAgendaServices = teams.some(team => (team.tasks || []).some(task => taskHasContent(task) && taskIsResolvedForPlanning(task, date, history)))
+  const showSaveAgenda = hasPendingAgendaServices || !hasResolvedAgendaServices
   const validateAgenda = (agendaTeams = teams) => {
     const missing = []
     const realServiceTeams = agendaTeamsWithRealServices(agendaTeams)
@@ -2843,18 +2846,18 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     return { min: '08:00', max: weekDay === 5 ? '20:00' : weekDay === 6 ? '12:00' : '17:00', label: weekDay === 5 ? '08:00 a 20:00' : weekDay === 6 ? '08:00 a 12:00' : '08:00 a 17:00' }
   }
   const conflictsForDay = day => {
-    return technicianTimeConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !taskIsCompleted(task, day, operationalHistory)) })), activeTechs)
+    return technicianTimeConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !taskIsResolvedForPlanning(task, day, operationalHistory)) })), activeTechs)
   }
-  const gapConflictsForDay = day => minimumServiceGapConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !taskIsCompleted(task, day, operationalHistory)).map(task => taskWithServiceEstimate(task, serviceForWeeklyTask(task))) })))
+  const gapConflictsForDay = day => minimumServiceGapConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !taskIsResolvedForPlanning(task, day, operationalHistory)).map(task => taskWithServiceEstimate(task, serviceForWeeklyTask(task))) })))
   const conflictForWeeklyTask = (day, teamIndex, taskIndex, overrideTask = null) => {
     const team = dayPlan(day).teams[teamIndex]
     if (!team) return null
     const target = overrideTask || team.tasks?.[taskIndex]
-    if (!target || taskIsCompleted(target, day, operationalHistory)) return null
+    if (!target || taskIsResolvedForPlanning(target, day, operationalHistory)) return null
     const tasks = (team.tasks || []).map((task, index) => {
       const candidate = index === taskIndex && overrideTask ? overrideTask : task
       return { ...taskWithServiceEstimate(candidate, serviceForWeeklyTask(candidate)), _scheduleTaskIndex: index }
-    }).filter(task => !taskIsCompleted(task, day, operationalHistory))
+    }).filter(task => !taskIsResolvedForPlanning(task, day, operationalHistory))
     return minimumServiceGapConflicts([{ ...team, tasks }]).find(conflict => conflict.firstTask._scheduleTaskIndex === taskIndex || conflict.secondTask._scheduleTaskIndex === taskIndex) || null
   }
   const commitWeeklyCustomerText = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, { customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
@@ -3128,15 +3131,15 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     if (holidayState.blocked) { setNotice(holidayState.decision?.status === 'closed' ? 'La fecha fue definida como día no operativo.' : 'Primero definí si el feriado será laboral o no operativo.'); return }
     const advance = advancedGuardForDay(day)
     if (advance) { setNotice(advancedSaturdayGuardMessage(advance)); return }
-    const invalidTime = dayPlan(day).teams.flatMap(team => team.tasks).find(task => !taskIsCompleted(task, day, operationalHistory) && task.time && (task.time < hours.min || task.time > hours.max))
+    const invalidTime = dayPlan(day).teams.flatMap(team => team.tasks).find(task => !taskIsResolvedForPlanning(task, day, operationalHistory) && task.time && (task.time < hours.min || task.time > hours.max))
     if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
     const taskOutsideHours = dayPlan(day).teams.flatMap(team => team.tasks).find(task => {
-      if (!taskHasContent(task) || taskIsCompleted(task, day, operationalHistory)) return false
+      if (!taskHasContent(task) || taskIsResolvedForPlanning(task, day, operationalHistory)) return false
       const interval = taskOccupiedInterval(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))
       return interval && interval.serviceEnd > serviceTimeInMinutes(hours.max)
     })
     if (taskOutsideHours) { const interval = taskOccupiedInterval(taskWithServiceEstimate(taskOutsideHours, serviceForWeeklyTask(taskOutsideHours))); setNotice(`Hay una franja que termina a las ${interval.serviceEndTime}, fuera del horario habilitado (${hours.label}).`); return }
-    const scheduledTasks = dayPlan(day).teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, teamIndex, taskIndex }))).filter(({ task }) => !taskIsCompleted(task, day, operationalHistory) && [task.service, task.client, task.address, task.detail, task.phone, task.paymentMethod, task.amount, task.monthlyFee, task.form].some(value => String(value || '').trim()))
+    const scheduledTasks = dayPlan(day).teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, teamIndex, taskIndex }))).filter(({ task }) => !taskIsResolvedForPlanning(task, day, operationalHistory) && [task.service, task.client, task.address, task.detail, task.phone, task.paymentMethod, task.amount, task.monthlyFee, task.form].some(value => String(value || '').trim()))
     const incompleteTask = scheduledTasks.find(({ task }) => !task.vehicleControl && (!task.time || !task.service || !task.customerId || !task.address || !task.phone || !task.detail || (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) || requiresPaymentAmount(task, serviceForWeeklyTask(task))))
     if (incompleteTask) {
       const { task, teamIndex, taskIndex } = incompleteTask
@@ -3186,7 +3189,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       sameList(record.technicianIds, expected.technicianIds) && sameList(record.technicians, expected.technicians)
   }
   const dayNeedsSave = day => dayPlan(day).teams.some((team, teamIndex) => (team.tasks || []).some((task, taskIndex) => {
-    if (taskIsCompleted(task, day, operationalHistory)) return false
+    if (taskIsResolvedForPlanning(task, day, operationalHistory)) return false
     if (!weeklyTaskReadyToSave(task, team, serviceForWeeklyTask(task))) return false
     return !recordMatchesWeeklyTask(historyRecordForTask(task, day, operationalHistory), weeklyHistoryRecord(day, team, teamIndex, task, taskIndex))
   }))
@@ -3198,7 +3201,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     const advance = advancedGuardForDay(day)
     if (advance) { setNotice(advancedSaturdayGuardMessage(advance)); return }
     const plan = dayPlan(day)
-    const scheduledTasks = plan.teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, team, teamIndex, taskIndex }))).filter(({ task }) => taskHasContent(task) && !taskIsCompleted(task, day, operationalHistory))
+    const scheduledTasks = plan.teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, team, teamIndex, taskIndex }))).filter(({ task }) => taskHasContent(task) && !taskIsResolvedForPlanning(task, day, operationalHistory))
     if (!scheduledTasks.length) { setNotice('No hay servicios pendientes para guardar en este día.'); return }
     const readyTasks = scheduledTasks.filter(({ task, team }) => weeklyTaskReadyToSave(task, team, serviceForWeeklyTask(task)))
     if (!readyTasks.length) {

@@ -416,7 +416,7 @@ test('la agenda diaria renderiza sus acciones inmediatamente y separa hora de se
 test('la agenda diaria respeta espacios quitados y no copia servicios vacíos', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /const visibleWeeklyTeams = applyRemovedWeeklySlots\(weeklyDay\?\.teams \|\| \[\], weeklyDay\?\.removedSlots \|\| \[\]\)/)
-  assert.match(source, /const agendaTeamsWithRealServices = \(agendaTeams = teams\) => agendaTeams\.map\(team => \(\{[\s\S]*?tasks: \(team\.tasks \|\| \[\]\)\.filter\(task => taskHasContent\(task\) && !taskIsCompleted\(task, date, history\)\)/)
+  assert.match(source, /const agendaTeamsWithRealServices = \(agendaTeams = teams\) => agendaTeams\.map\(team => \(\{[\s\S]*?tasks: \(team\.tasks \|\| \[\]\)\.filter\(task => taskHasContent\(task\) && !taskIsResolvedForPlanning\(task, date, history\)\)/)
   assert.match(source, /const messageSections = teams\.flatMap\(\(team, index\) => team\.tasks\.some\(taskHasContent\)/)
   assert.match(source, /agendaTeams = agendaTeamsWithRealServices\(agendaTeams\)/)
 })
@@ -433,13 +433,13 @@ test('las agendas diaria y semanal renderizan directamente el estado de cada ser
   assert.match(weeklyStyles, /:not\(\.agenda-task-status\)/)
 })
 
-test('los servicios completados no ofrecen guardado pendiente ni generan conflictos visuales', () => {
+test('los servicios completados y cancelados pasados no ofrecen guardado pendiente ni generan conflictos visuales', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
-  assert.match(source, /const taskIsCompleted = \(task, date, history\) => taskStatus\(task, date, history\) === 'Completado'/)
-  assert.match(source, /const showSaveAgenda = hasPendingAgendaServices \|\| !hasCompletedAgendaServices/)
+  assert.match(source, /const taskIsResolvedForPlanning = \(task, date, history\) => \{[\s\S]*?status === 'Completado' \|\| \(status === 'Cancelado' && String\(date \|\| ''\) < currentLocalDate\(\)\)/)
+  assert.match(source, /const showSaveAgenda = hasPendingAgendaServices \|\| !hasResolvedAgendaServices/)
   assert.match(source, /\{showSaveAgenda && <button type="button" className="secondary save-agenda-button"/)
-  assert.match(source, /if \(taskIsCompleted\(task, day, operationalHistory\)\) return false[\s\S]*?weeklyTaskReadyToSave/)
-  assert.match(source, /conflictsForDay = day =>[\s\S]*?filter\(task => !taskIsCompleted\(task, day, operationalHistory\)\)/)
+  assert.match(source, /if \(taskIsResolvedForPlanning\(task, day, operationalHistory\)\) return false[\s\S]*?weeklyTaskReadyToSave/)
+  assert.match(source, /conflictsForDay = day =>[\s\S]*?filter\(task => !taskIsResolvedForPlanning\(task, day, operationalHistory\)\)/)
 })
 
 test('la agenda semanal muestra el tipo de servicio junto al estado y la diaria muestra solo el estado', () => {

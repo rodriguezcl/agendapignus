@@ -1,6 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { normalizeStateForSave, validateState } = require('../api/_lib/core.cjs')
+const { agendaTaskIsResolvedForPlanning } = require('../api/_lib/scheduling-validation.cjs')
 
 test('usa la duración real y conserva la reserva operativa mínima', async () => {
   const { serviceScheduleConflicts, taskOccupiedInterval } = await import('../src/service-scheduling.mjs')
@@ -58,20 +59,26 @@ test('la API rechaza duraciones inválidas y solapamientos por equipo', () => {
   ] }], weekly: {} } }), /se superponen/)
 })
 
-test('los servicios completados no participan en conflictos de agenda', () => {
+test('los servicios completados y los cancelados de fechas pasadas no participan en conflictos de agenda', () => {
   const service = { id: 's1', code: 's1', name: 'Servicio', description: '', estimatedMinutes: 120, status: 'Activo' }
-  const completed = { id: 'h1', sourceTaskId: 'done', date: '2026-08-27', serviceId: 's1', customerId: 'c1', time: '09:00', status: 'Completado', estimatedMinutes: 120 }
+  const completed = { id: 'h1', sourceTaskId: 'done', date: '2000-01-01', serviceId: 's1', customerId: 'c1', time: '09:00', status: 'Completado', estimatedMinutes: 120 }
+  const cancelled = { id: 'h2', sourceTaskId: 'cancelled', date: '2000-01-01', serviceId: 's1', customerId: 'c3', time: '09:15', status: 'Cancelado', estimatedMinutes: 120 }
   const state = {
     roles: [], employees: [], services: [service], vehicles: [], customers: [
       { customerId: 'c1', account: 'CLI-001' },
-      { customerId: 'c2', account: 'CLI-002' }
-    ], history: [completed],
-    agenda: { date: '2026-08-27', teams: [{ teamId: 'team-1', tasks: [
+      { customerId: 'c2', account: 'CLI-002' },
+      { customerId: 'c3', account: 'CLI-003' }
+    ], history: [completed, cancelled],
+    agenda: { date: '2000-01-01', teams: [{ teamId: 'team-1', tasks: [
       { taskId: 'done', historyId: 'h1', serviceId: 's1', customerId: 'c1', time: '09:00', estimatedMinutes: 120 },
+      { taskId: 'cancelled', historyId: 'h2', serviceId: 's1', customerId: 'c3', time: '09:15', estimatedMinutes: 120 },
       { taskId: 'pending', serviceId: 's1', customerId: 'c2', time: '09:30', estimatedMinutes: 60 }
     ] }], weekly: {} }
   }
   assert.doesNotThrow(() => validateState(state))
+  assert.equal(agendaTaskIsResolvedForPlanning({ taskId: 'cancelled' }, '2026-08-28', [{ ...cancelled, date: '2026-08-28' }], '2026-08-30'), true)
+  assert.equal(agendaTaskIsResolvedForPlanning({ taskId: 'cancelled' }, '2026-08-30', [{ ...cancelled, date: '2026-08-30' }], '2026-08-30'), false)
+  assert.equal(agendaTaskIsResolvedForPlanning({ taskId: 'cancelled' }, '2026-08-28', [{ ...cancelled, date: '2026-08-28', status: 'Pendiente' }], '2026-08-30'), false)
 })
 
 test('los solapamientos históricos sin cambios no bloquean otro día y el mensaje usa fecha y equipo reales', () => {
