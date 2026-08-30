@@ -194,3 +194,15 @@ test('la captura vehicular admite imágenes del teléfono y solicita la cámara 
   assert.match(source, /photoInput\.accept = 'image\/\*'/)
   assert.match(source, /photoInput\.setAttribute\('capture', 'environment'\)/)
 })
+
+test('el portal técnico evita selectores incompatibles y muestra una recuperación ante errores', () => {
+  const fs = require('node:fs')
+  const path = require('node:path')
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const portal = source.slice(source.indexOf('function TechnicianPortal('), source.indexOf('function DashboardStatusView('))
+  assert.doesNotMatch(portal, /:scope/)
+  assert.match(source, /class TechnicianPortalErrorBoundary extends React\.Component/)
+  assert.match(source, /No pudimos mostrar tus servicios/)
+  assert.match(source, /authUser\.roleCode === 'technician'/)
+  assert.match(source, /else media\.addListener\(syncSidebarMode\)/)
+})

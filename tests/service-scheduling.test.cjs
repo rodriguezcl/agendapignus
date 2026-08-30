@@ -3,6 +3,16 @@ const assert = require('node:assert/strict')
 const { assertServiceCanBeCompleted, normalizeHistoryCompletionTimes, normalizeStateForSave, validateState } = require('../api/_lib/core.cjs')
 const { agendaTaskIsResolvedForPlanning, completedReleaseMinute } = require('../api/_lib/scheduling-validation.cjs')
 
+test('el portal técnico acepta el reloj numérico usado para habilitar servicios', async () => {
+  const { serviceHasStarted } = await import('../src/service-start.mjs')
+  const clock = new Date('2026-08-30T15:00:00.000Z').getTime()
+  assert.equal(serviceHasStarted({ date: '2026-08-30', time: '11:59' }, clock), true)
+  assert.equal(serviceHasStarted({ date: '2026-08-30', time: '12:01' }, clock), false)
+  assert.equal(serviceHasStarted({ date: '2026-08-31', time: '08:00' }, clock), false)
+  assert.equal(serviceHasStarted({ date: '2026-08-29', time: '18:00' }, clock), true)
+  assert.equal(serviceHasStarted({ date: '2026-08-30', time: '08:00' }, 'fecha-inválida'), false)
+})
+
 test('usa la duración real y conserva la reserva operativa mínima', async () => {
   const { serviceScheduleConflicts, taskOccupiedInterval } = await import('../src/service-scheduling.mjs')
   const team = tasks => [{ tasks }]

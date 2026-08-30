@@ -21,6 +21,16 @@ test('declara los hooks usados por la alerta de recuperación de contraseña', (
   assert.match(source, /function PasswordResetReminder/)
 })
 
+test('todos los roles muestran una recuperación en lugar de una pantalla blanca', () => {
+  const main = fs.readFileSync(path.resolve(__dirname, '../src/main.jsx'), 'utf8')
+  const boundary = fs.readFileSync(path.resolve(__dirname, '../src/components/AppErrorBoundary.jsx'), 'utf8')
+  assert.match(main, /<AppErrorBoundary>[\s\S]*?<App \/>[\s\S]*?<\/AppErrorBoundary>/)
+  assert.match(boundary, /static getDerivedStateFromError\(\)/)
+  assert.match(boundary, /No pudimos mostrar esta pantalla/)
+  assert.match(boundary, /Actualizar página/)
+  assert.match(boundary, /Cerrar sesión/)
+})
+
 test('el acceso explica las credenciales sin mencionar módulos restringidos', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /Usá el correo y la contraseña definidos por el administrador\./)
