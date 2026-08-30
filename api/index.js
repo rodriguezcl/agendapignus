@@ -4,7 +4,7 @@ const { appendAudit, database, readExportState, readRevision, readState, replace
 const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
 const {
-  auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
+  assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
   reportDate, secureEmployees, statePersistenceChanged, userCan, userForEmployee, validateState, verifyPassword,
   visibleStateForUser
@@ -371,6 +371,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
         await transaction`insert into pignus_vehicle_control_photos (record_id, vehicle_id, mime_type, photo_data, created_at) values (${String(record.id)}, ${String(record.vehicleId)}, ${photoMatch[1].toLowerCase()}, ${photoBuffer}, now()) on conflict (record_id) do update set vehicle_id = excluded.vehicle_id, mime_type = excluded.mime_type, photo_data = excluded.photo_data, created_at = excluded.created_at`
         vehicleChange = { before: previousVehicle, after: nextVehicle, mileage }
       } else if (!String(observation || '').trim()) throw new Error('La observación es obligatoria para informar el servicio.')
+      if (type === 'Completado') assertServiceCanBeCompleted(record)
       const now = new Date().toISOString()
       const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
       await transaction`update pignus_work_history set status = ${next.status}, data = ${transaction.json(next)} where id = ${String(record.id)}`

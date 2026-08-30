@@ -172,7 +172,7 @@ test('el portal técnico deshabilita el control anticipado y muestra cuándo se 
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui-polish.css'), 'utf8')
   assert.match(source, /const earlyVehicleControl = record\.vehicleControl && !vehicleControlIsOpen\(record, clock\)/)
-  assert.match(source, /disabled=\{earlyVehicleControl\}/)
+  assert.match(source, /disabled=\{earlyVehicleControl \|\| !canComplete\}/)
   assert.match(source, /Este control se habilita el \{vehicleControlWindowLabel\(record\)\}/)
   assert.match(styles, /\.vehicle-control-early-notice/)
 })

@@ -433,13 +433,14 @@ test('las agendas diaria y semanal renderizan directamente el estado de cada ser
   assert.match(weeklyStyles, /:not\(\.agenda-task-status\)/)
 })
 
-test('los servicios completados y cancelados pasados no ofrecen guardado pendiente ni generan conflictos visuales', () => {
+test('los servicios cerrados no ofrecen guardado y sólo los completados de hoy conservan su ocupación real', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /const taskIsResolvedForPlanning = \(task, date, history\) => \{[\s\S]*?status === 'Completado' \|\| \(status === 'Cancelado' && String\(date \|\| ''\) < currentLocalDate\(\)\)/)
   assert.match(source, /const showSaveAgenda = hasPendingAgendaServices \|\| !hasResolvedAgendaServices/)
   assert.match(source, /\{showSaveAgenda && <button type="button" className="secondary save-agenda-button"/)
   assert.match(source, /if \(taskIsResolvedForPlanning\(task, day, operationalHistory\)\) return false[\s\S]*?weeklyTaskReadyToSave/)
-  assert.match(source, /conflictsForDay = day =>[\s\S]*?filter\(task => !taskIsResolvedForPlanning\(task, day, operationalHistory\)\)/)
+  assert.match(source, /conflictsForDay = day =>[\s\S]*?taskForScheduleOccupancy\(task, day, operationalHistory\)/)
+  assert.match(source, /status === 'Completado' && String\(date \|\| ''\) !== currentLocalDate\(\)/)
 })
 
 test('los conflictos de agenda identifican fecha, integrantes y servicios afectados', () => {
@@ -494,7 +495,7 @@ test('cada equipo reserva una hora mínima y oculta turnos vacíos incompatibles
   assert.match(scheduling, /MINIMUM_SERVICE_RESERVATION_MINUTES = 60/)
   assert.match(scheduling, /Math\.max\([\s\S]*MINIMUM_SERVICE_RESERVATION_MINUTES/)
   assert.match(source, /removeUnavailableDefaultSlots\(\(team\.tasks \|\| \[\]\)\.map/)
-  assert.match(source, /minimumServiceGapConflicts\(realServiceTeams\.map/)
+  assert.match(source, /minimumServiceGapConflicts\(occupancyTeams\)/)
   assert.match(source, /No se puede reasignar porque/)
   assert.match(source, /className="task-schedule-alert" role="alert"/)
   assert.match(source, /separación operativa mínima/)

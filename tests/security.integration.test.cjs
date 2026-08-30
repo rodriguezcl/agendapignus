@@ -277,9 +277,10 @@ test('la exportación técnica contiene solamente trabajos asignados', async () 
 test('el historial contextual del técnico es de solo lectura y registra quién informó', async () => {
   const cookie = await login('qa-tech@pignus.test')
   const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const records = [
-    { id: 'qa-tech-current', date: '2999-08-27', time: '10:00', customerId: 'qa-customer-a', clientAccount: 'PIG-9001', client: 'PIG-9001 CLIENTE INCLUIDO QA', service: 'Service técnico', status: 'Pendiente', technicianIds: ['qa-tech'], technicians: ['QA Técnico'] },
-    { id: 'qa-tech-empty-observation', date: '2999-08-28', time: '11:00', customerId: 'qa-customer-a', clientAccount: 'PIG-9001', client: 'PIG-9001 CLIENTE INCLUIDO QA', service: 'Service técnico', status: 'Pendiente', technicianIds: ['qa-tech'], technicians: ['QA Técnico'] },
+    { id: 'qa-tech-current', date: today, time: '00:00', customerId: 'qa-customer-a', clientAccount: 'PIG-9001', client: 'PIG-9001 CLIENTE INCLUIDO QA', service: 'Service técnico', status: 'Pendiente', technicianIds: ['qa-tech'], technicians: ['QA Técnico'] },
+    { id: 'qa-tech-empty-observation', date: today, time: '00:00', customerId: 'qa-customer-a', clientAccount: 'PIG-9001', client: 'PIG-9001 CLIENTE INCLUIDO QA', service: 'Service técnico', status: 'Pendiente', technicianIds: ['qa-tech'], technicians: ['QA Técnico'] },
     { id: 'qa-tech-context', date: '2095-01-10', customerId: 'qa-customer-a', clientAccount: 'PIG-9001', client: 'PIG-9001 CLIENTE INCLUIDO QA', service: 'Service técnico', status: 'Completado', technicianIds: ['otro-tecnico'], technicians: ['Otro Técnico'], technicalObservation: 'Revisar magnético.' },
     { id: 'qa-tech-private', date: '2095-01-10', customerId: 'qa-customer-b', clientAccount: 'PIG-9002', client: 'PIG-9002 CLIENTE EXCLUIDO QA', service: 'Service técnico', status: 'Completado', technicianIds: ['otro-tecnico'], technicians: ['Otro Técnico'] }
   ]
@@ -509,8 +510,8 @@ test('mantiene vinculados los históricos cuando una baja convierte PIG en CLI',
   assert.ok(retirement)
   current.customers.push({ customerId, kind: 'subscriber', account: originalAccount, name: 'CLIENTE CONVERTIDO QA', street: 'Calle QA 123', address: 'Calle QA 123', locality: '', province: '', phone: '3515550101', type: 'Residencial', fields: {} })
   current.history.push(
-    { ...base, id: 'qa-before-conversion', customerId, clientAccount: originalAccount, client: `${originalAccount} CLIENTE CONVERTIDO QA`, status: 'Completado' },
-    { ...base, id: 'qa-retirement-conversion', customerId, clientAccount: originalAccount, client: `${originalAccount} CLIENTE CONVERTIDO QA`, serviceId: retirement.id, service: retirement.name, status: 'Completado' }
+    { ...base, id: 'qa-before-conversion', date: '2020-01-01', time: '10:00', customerId, clientAccount: originalAccount, client: `${originalAccount} CLIENTE CONVERTIDO QA`, status: 'Completado' },
+    { ...base, id: 'qa-retirement-conversion', date: '2020-01-01', time: '10:00', customerId, clientAccount: originalAccount, client: `${originalAccount} CLIENTE CONVERTIDO QA`, serviceId: retirement.id, service: retirement.name, status: 'Completado' }
   )
   let response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
   assert.equal(response.status, 200)

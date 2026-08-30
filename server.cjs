@@ -967,6 +967,41 @@ function stampStateServiceTrace(state, previousAgenda, previousHistory, user) {
   return { ...state, agenda: { ...agenda, teams: stampTeams(agenda.teams), weekly }, history: (state.history || []).map(stamp) }
 }
 
+const serviceIsCompleted = record => record?.status === 'Completado' || record?.technicalStatus === 'Completado'
+function assertServiceCanBeCompleted(record, now = new Date().toISOString()) {
+  const instant = new Date(now)
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(instant).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
+  const today = `${parts.year}-${parts.month}-${parts.day}`
+  const serviceDate = String(record?.date || '')
+  if (serviceDate > today) { const error = new Error('No se puede completar un servicio antes de su fecha y hora programadas.'); error.statusCode = 409; throw error }
+  if (serviceDate !== today) return
+  const match = String(record?.time || record?.scheduledTime || '').match(/^(\d{1,2}):(\d{2})$/)
+  if (!match) return
+  const scheduled = Number(match[1]) * 60 + Number(match[2])
+  const current = Number(parts.hour) * 60 + Number(parts.minute)
+  if (scheduled > current) { const error = new Error('No se puede completar un servicio antes de su fecha y hora programadas.'); error.statusCode = 409; throw error }
+}
+function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now = new Date().toISOString()) {
+  const previousById = new Map((previousHistory || []).map(record => [String(record.id), record]))
+  return (history || []).map(record => {
+    const previous = previousById.get(String(record.id))
+    const wasCompleted = serviceIsCompleted(previous)
+    const isCompleted = serviceIsCompleted(record)
+    if (!isCompleted) {
+      if (!wasCompleted && !record.completedAt) return record
+      const { completedAt: _discardedCompletedAt, ...withoutCompletion } = record
+      return withoutCompletion
+    }
+    if (!previous || !wasCompleted) {
+      assertServiceCanBeCompleted(record, now)
+      return { ...record, completedAt: now }
+    }
+    if (previous.completedAt) return { ...record, completedAt: previous.completedAt }
+    const { completedAt: _discardedLegacyCompletion, ...legacyRecord } = record
+    return legacyRecord
+  })
+}
+
 function saveState(state, user) {
   const expectedRevision = Number(state.revision)
   const actualRevision = currentStateRevision()
@@ -1048,10 +1083,12 @@ function saveState(state, user) {
     const teamIndex = Number(String(base.team || '').match(/\d+/)?.[0]) - 1
     return { ...base, status: base.status || 'Pendiente', teamId: base.teamId ?? (teamIndex >= 0 ? stableTeamId(String(base.date || '').slice(0, 7), teamIndex) : null), technicianIds: technicians.map(employee => employee.id), technicians: technicians.map(employee => employee.name) }
   }
-  state = { ...state, roles: normalizedRoles, employees: normalizedEmployees, services: normalizedServices, vehicles: normalizedVehicles, customers: normalizedCustomers, history: (state.history || []).map(normalizeHistoryRecord), agenda: { ...incomingAgenda, teams: normalizeTeams(incomingAgenda.teams, String(incomingAgenda.date || '').slice(0, 7)), weekly: normalizedWeekly } }
+  const previousHistory = rows('work_history')
+  const normalizedIncomingHistory = normalizeHistoryCompletionTimes((state.history || []).map(normalizeHistoryRecord), previousHistory)
+  state = { ...state, roles: normalizedRoles, employees: normalizedEmployees, services: normalizedServices, vehicles: normalizedVehicles, customers: normalizedCustomers, history: normalizedIncomingHistory, agenda: { ...incomingAgenda, teams: normalizeTeams(incomingAgenda.teams, String(incomingAgenda.date || '').slice(0, 7)), weekly: normalizedWeekly } }
   const storedAgenda = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
   const previousAgenda = storedAgenda ? JSON.parse(storedAgenda.data) : {}
-  state = stampStateServiceTrace(state, previousAgenda, rows('work_history'), user)
+  state = stampStateServiceTrace(state, previousAgenda, previousHistory, user)
   validateState(state, { agenda: previousAgenda })
   const previousEmployees = new Map(rows('employees').map(employee => [String(employee.id), employee]))
   const nextAgenda = state.agenda || {}
@@ -1523,6 +1560,7 @@ const server = http.createServer((req, res) => {
         vehicles[vehicleIndex] = nextVehicle
         vehicleChange = { vehicles, before: previousVehicle, after: nextVehicle, mileage, mimeType: photoMatch[1].toLowerCase(), photoBuffer }
       } else if (!String(observation || '').trim()) return send(res, 400, { error: 'La observación es obligatoria para informar el servicio.' })
+      if (type === 'Completado') assertServiceCanBeCompleted(record)
       const now = new Date().toISOString()
       const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
       db.exec('BEGIN')
