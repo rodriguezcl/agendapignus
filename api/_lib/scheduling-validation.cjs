@@ -1,5 +1,27 @@
 const normalizedName = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 
+const agendaTaskIsCompleted = (task, date, history = []) => {
+  if (task?.status === 'Completado' || task?.technicalStatus === 'Completado') return true
+  const completed = (history || []).filter(record => record?.status === 'Completado' || record?.technicalStatus === 'Completado')
+  const taskHistoryIds = [task?.historyId, task?.sourceHistoryId].filter(Boolean).map(String)
+  const taskSourceIds = [task?.taskId, task?.sourceTaskId].filter(Boolean).map(String)
+  const directMatch = completed.some(record => (
+    taskHistoryIds.includes(String(record?.id || '')) ||
+    [record?.taskId, record?.sourceTaskId].filter(Boolean).map(String).some(id => taskSourceIds.includes(id))
+  ))
+  if (directMatch) return true
+  const customer = normalizedName(task?.customerId || task?.clientAccount || task?.account || task?.client)
+  const service = normalizedName(task?.serviceId || task?.service)
+  const time = normalizedName(task?.time || task?.scheduledTime)
+  if (!customer || !service || !time) return false
+  return completed.some(record => (
+    String(record?.date || '') === String(date || '') &&
+    normalizedName(record?.customerId || record?.clientAccount || record?.account || record?.client) === customer &&
+    normalizedName(record?.serviceId || record?.service) === service &&
+    normalizedName(record?.time || record?.scheduledTime) === time
+  ))
+}
+
 const serviceMapFor = services => ({
   byId: new Map((services || []).map(service => [String(service.id), service])),
   byName: new Map((services || []).map(service => [normalizedName(service.name), service]))
@@ -12,9 +34,9 @@ const estimatedMinutesFor = (task, serviceMap) => {
   return Number.isInteger(minutes) && minutes >= 15 && minutes <= 720 ? minutes : 60
 }
 
-const scheduleSignature = (teams, serviceMap) => JSON.stringify((teams || []).map(team => ({
+const scheduleSignature = (teams, serviceMap, date, history) => JSON.stringify((teams || []).map(team => ({
   teamId: String(team.teamId || ''),
-  tasks: (team.tasks || []).filter(task => task.serviceId || task.service).map((task, taskIndex) => ({
+  tasks: (team.tasks || []).filter(task => (task.serviceId || task.service) && !agendaTaskIsCompleted(task, date, history)).map((task, taskIndex) => ({
     id: String(task.taskId || task.historyId || task.id || taskIndex),
     time: String(task.time || task.scheduledTime || ''),
     serviceId: String(task.serviceId || task.service || ''),
@@ -42,9 +64,9 @@ function validateChangedAgendaSchedules(state, previousState = null) {
   const previousPlans = agendaPlans(previousState?.agenda)
   nextPlans.forEach((plan, key) => {
     const previous = previousPlans.get(key)
-    if (previous && scheduleSignature(previous.teams, serviceMap) === scheduleSignature(plan.teams, serviceMap)) return
+    if (previous && scheduleSignature(previous.teams, serviceMap, previous.date, previousState?.history) === scheduleSignature(plan.teams, serviceMap, plan.date, state?.history)) return
     ;(plan.teams || []).forEach((team, teamIndex) => {
-      const scheduled = (team.tasks || []).filter(task => (task.serviceId || task.service) && /^\d{1,2}:\d{2}$/.test(String(task.time || ''))).map(task => {
+      const scheduled = (team.tasks || []).filter(task => (task.serviceId || task.service) && !agendaTaskIsCompleted(task, plan.date, state?.history) && /^\d{1,2}:\d{2}$/.test(String(task.time || ''))).map(task => {
         const [hours, minutes] = task.time.split(':').map(Number)
         const start = hours * 60 + minutes
         return { task, start, end: start + Math.max(60, estimatedMinutesFor(task, serviceMap)) }
@@ -59,4 +81,4 @@ function validateChangedAgendaSchedules(state, previousState = null) {
   })
 }
 
-module.exports = { validateChangedAgendaSchedules }
+module.exports = { agendaTaskIsCompleted, validateChangedAgendaSchedules }

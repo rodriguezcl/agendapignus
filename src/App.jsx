@@ -284,6 +284,7 @@ const taskStatus = (task, date, history) => {
   const record = historyRecordForTask(task, date, history)
   return record?.status || record?.technicalStatus || 'Pendiente'
 }
+const taskIsCompleted = (task, date, history) => taskStatus(task, date, history) === 'Completado'
 const statusClassName = status => String(status || 'Pendiente').toLowerCase().replace(/\s/g, '-')
 function TaskStatusBadge({ task, date, history, weekly = false }) {
   const status = taskStatus(task, date, history)
@@ -2097,13 +2098,20 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   const conflictForDailyTask = (teamIndex, taskIndex) => {
     const team = teams[teamIndex]
     if (!team) return null
-    return minimumServiceGapConflicts([{ ...team, tasks: (team.tasks || []).map(task => taskWithServiceEstimate(task, serviceForTask(task))) }])
-      .find(conflict => conflict.firstTaskIndex === taskIndex || conflict.secondTaskIndex === taskIndex) || null
+    const target = team.tasks?.[taskIndex]
+    if (!target || taskIsCompleted(target, date, history)) return null
+    const activeTasks = (team.tasks || []).map((task, index) => ({ ...taskWithServiceEstimate(task, serviceForTask(task)), _scheduleTaskIndex: index }))
+      .filter(task => !taskIsCompleted(task, date, history))
+    return minimumServiceGapConflicts([{ ...team, tasks: activeTasks }])
+      .find(conflict => conflict.firstTask._scheduleTaskIndex === taskIndex || conflict.secondTask._scheduleTaskIndex === taskIndex) || null
   }
   const agendaTeamsWithRealServices = (agendaTeams = teams) => agendaTeams.map(team => ({
     ...team,
-    tasks: (team.tasks || []).filter(taskHasContent)
+    tasks: (team.tasks || []).filter(task => taskHasContent(task) && !taskIsCompleted(task, date, history))
   }))
+  const hasPendingAgendaServices = teams.some(team => (team.tasks || []).some(task => taskHasContent(task) && !taskIsCompleted(task, date, history)))
+  const hasCompletedAgendaServices = teams.some(team => (team.tasks || []).some(task => taskHasContent(task) && taskIsCompleted(task, date, history)))
+  const showSaveAgenda = hasPendingAgendaServices || !hasCompletedAgendaServices
   const validateAgenda = (agendaTeams = teams) => {
     const missing = []
     const realServiceTeams = agendaTeamsWithRealServices(agendaTeams)
@@ -2247,7 +2255,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     if (!validateAgenda(agendaTeams)) return
     const missingTeams = agendaTeams.map((team, index) => team.tasks.length && !team.members.length ? `Equipo ${index + 1}` : '').filter(Boolean)
     if (missingTeams.length && !allowWithoutTechnicians) { showMissingTechniciansModal(missingTeams, () => requestAgendaAction(action, true, agendaTeams, true)); return }
-    const conflicts = technicianTimeConflicts(agendaTeams, activeTechs)
+    const conflicts = technicianTimeConflicts(agendaTeamsWithRealServices(agendaTeams), activeTechs)
     if (conflicts.length) {
       setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`)
       return
@@ -2428,7 +2436,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   if (advancedGuard) {
     return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Agenda del sábado bloqueada</h1><p>La guardia de fin de semana ya fue cubierta el viernes y no admite nuevos equipos, técnicos ni servicios.</p></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div><p className={`weekly-guard-advanced ${advancedGuard.hasSaturdayConflict ? 'has-conflict' : ''}`}><Icon name={advancedGuard.hasSaturdayConflict ? 'alert' : 'check'} size={16} /><span>{advancedSaturdayGuardMessage(advancedGuard)}</span></p></>
   }
-  return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setConfirmation('clear')}><Icon name="trash" />Limpiar agenda</button><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button><button type="button" className="secondary save-agenda-button" onClick={saveAgenda}><Icon name="check" />Guardar agenda</button><button className="primary" onClick={() => { navigator.clipboard?.writeText(message); clearAgenda() }}><Icon name="copy" />Copiar agenda</button></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, teamIndex) => <article className="team-card" key={team.teamId || teamIndex}><div className="team-header"><div className="daily-team-heading"><span className="team-number">{teamIndex + 1}</span><div className="daily-team-identity"><strong>Equipo {teamIndex + 1}</strong><span className="daily-team-member-names" title={team.members.join(' · ') || 'Sin técnicos'}>{team.members.length ? team.members.map(name => String(name).trim().split(/\s+/)[0]).join(' · ') : 'Sin técnicos'}</span></div>{teams.length > 1 && <button className="team-delete" onClick={() => setConfirmation({ type: 'team', index: teamIndex })}><Icon name="trash" size={16} />Eliminar equipo</button>}</div><div className="technicians-picker"><span className="technician-assignment-label"><RequiredLabel>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</RequiredLabel></span><button className="secondary small" onClick={() => { setTechOpen(techOpen === teamIndex ? null : teamIndex); setFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === teamIndex && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={filter} onChange={event => setFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(filter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={(team.memberIds || []).some(id => String(id) === String(tech.id))} onChange={() => toggleTech(teamIndex, tech)} />{tech.name}</label>)}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, taskIndex) => <div className="task-row" key={task.taskId || task.historyId || `${team.teamId || teamIndex}-${taskIndex}`}><div className="task-title"><span>{taskIndex + 1}</span><b>Servicio</b></div><label className="daily-field-time"><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" value={task.time} onChange={event => updateTask(teamIndex, taskIndex, { time: event.target.value })} /></label><label className="daily-field-service"><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForTask(task)?.id || ''} onChange={event => selectTaskService(teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
+  return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setConfirmation('clear')}><Icon name="trash" />Limpiar agenda</button><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button>{showSaveAgenda && <button type="button" className="secondary save-agenda-button" onClick={saveAgenda}><Icon name="check" />Guardar agenda</button>}<button className="primary" onClick={() => { navigator.clipboard?.writeText(message); clearAgenda() }}><Icon name="copy" />Copiar agenda</button></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, teamIndex) => <article className="team-card" key={team.teamId || teamIndex}><div className="team-header"><div className="daily-team-heading"><span className="team-number">{teamIndex + 1}</span><div className="daily-team-identity"><strong>Equipo {teamIndex + 1}</strong><span className="daily-team-member-names" title={team.members.join(' · ') || 'Sin técnicos'}>{team.members.length ? team.members.map(name => String(name).trim().split(/\s+/)[0]).join(' · ') : 'Sin técnicos'}</span></div>{teams.length > 1 && <button className="team-delete" onClick={() => setConfirmation({ type: 'team', index: teamIndex })}><Icon name="trash" size={16} />Eliminar equipo</button>}</div><div className="technicians-picker"><span className="technician-assignment-label"><RequiredLabel>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</RequiredLabel></span><button className="secondary small" onClick={() => { setTechOpen(techOpen === teamIndex ? null : teamIndex); setFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === teamIndex && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={filter} onChange={event => setFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(filter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={(team.memberIds || []).some(id => String(id) === String(tech.id))} onChange={() => toggleTech(teamIndex, tech)} />{tech.name}</label>)}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, taskIndex) => <div className="task-row" key={task.taskId || task.historyId || `${team.teamId || teamIndex}-${taskIndex}`}><div className="task-title"><span>{taskIndex + 1}</span><b>Servicio</b></div><label className="daily-field-time"><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" value={task.time} onChange={event => updateTask(teamIndex, taskIndex, { time: event.target.value })} /></label><label className="daily-field-service"><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForTask(task)?.id || ''} onChange={event => selectTaskService(teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
 <ServiceEstimatedDurationField className="daily-field-duration" value={serviceEstimateForTask(task, serviceForTask(task))} onChange={estimatedMinutes => updateTask(teamIndex, taskIndex, { estimatedMinutes })} />
 {task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForTask(task)))}</small>}
 {(() => { const conflict = conflictForDailyTask(teamIndex, taskIndex); return conflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>No se puede agendar en este horario porque {scheduleConflictMessage(conflict)}.</span></p> })()}
@@ -2835,14 +2843,19 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     return { min: '08:00', max: weekDay === 5 ? '20:00' : weekDay === 6 ? '12:00' : '17:00', label: weekDay === 5 ? '08:00 a 20:00' : weekDay === 6 ? '08:00 a 12:00' : '08:00 a 17:00' }
   }
   const conflictsForDay = day => {
-    return technicianTimeConflicts(dayPlan(day).teams, activeTechs)
+    return technicianTimeConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !taskIsCompleted(task, day, operationalHistory)) })), activeTechs)
   }
-  const gapConflictsForDay = day => minimumServiceGapConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).map(task => taskWithServiceEstimate(task, serviceForWeeklyTask(task))) })))
+  const gapConflictsForDay = day => minimumServiceGapConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !taskIsCompleted(task, day, operationalHistory)).map(task => taskWithServiceEstimate(task, serviceForWeeklyTask(task))) })))
   const conflictForWeeklyTask = (day, teamIndex, taskIndex, overrideTask = null) => {
     const team = dayPlan(day).teams[teamIndex]
     if (!team) return null
-    const tasks = (team.tasks || []).map((task, index) => taskWithServiceEstimate(index === taskIndex && overrideTask ? overrideTask : task, serviceForWeeklyTask(index === taskIndex && overrideTask ? overrideTask : task)))
-    return minimumServiceGapConflicts([{ ...team, tasks }]).find(conflict => conflict.firstTaskIndex === taskIndex || conflict.secondTaskIndex === taskIndex) || null
+    const target = overrideTask || team.tasks?.[taskIndex]
+    if (!target || taskIsCompleted(target, day, operationalHistory)) return null
+    const tasks = (team.tasks || []).map((task, index) => {
+      const candidate = index === taskIndex && overrideTask ? overrideTask : task
+      return { ...taskWithServiceEstimate(candidate, serviceForWeeklyTask(candidate)), _scheduleTaskIndex: index }
+    }).filter(task => !taskIsCompleted(task, day, operationalHistory))
+    return minimumServiceGapConflicts([{ ...team, tasks }]).find(conflict => conflict.firstTask._scheduleTaskIndex === taskIndex || conflict.secondTask._scheduleTaskIndex === taskIndex) || null
   }
   const commitWeeklyCustomerText = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, { customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
   const selectWeeklyCustomerResult = (day, teamIndex, taskIndex, customer) => updateTask(day, teamIndex, taskIndex, { customerId: customer.customerId, client: `${customer.account} ${customer.name}`, clientAccount: customer.account, clientNameAtService: customer.name, address: customer.address, phone: customer.phone })
@@ -3115,15 +3128,15 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     if (holidayState.blocked) { setNotice(holidayState.decision?.status === 'closed' ? 'La fecha fue definida como día no operativo.' : 'Primero definí si el feriado será laboral o no operativo.'); return }
     const advance = advancedGuardForDay(day)
     if (advance) { setNotice(advancedSaturdayGuardMessage(advance)); return }
-    const invalidTime = dayPlan(day).teams.flatMap(team => team.tasks).find(task => task.time && (task.time < hours.min || task.time > hours.max))
+    const invalidTime = dayPlan(day).teams.flatMap(team => team.tasks).find(task => !taskIsCompleted(task, day, operationalHistory) && task.time && (task.time < hours.min || task.time > hours.max))
     if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
     const taskOutsideHours = dayPlan(day).teams.flatMap(team => team.tasks).find(task => {
-      if (!taskHasContent(task)) return false
+      if (!taskHasContent(task) || taskIsCompleted(task, day, operationalHistory)) return false
       const interval = taskOccupiedInterval(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))
       return interval && interval.serviceEnd > serviceTimeInMinutes(hours.max)
     })
     if (taskOutsideHours) { const interval = taskOccupiedInterval(taskWithServiceEstimate(taskOutsideHours, serviceForWeeklyTask(taskOutsideHours))); setNotice(`Hay una franja que termina a las ${interval.serviceEndTime}, fuera del horario habilitado (${hours.label}).`); return }
-    const scheduledTasks = dayPlan(day).teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, teamIndex, taskIndex }))).filter(({ task }) => [task.service, task.client, task.address, task.detail, task.phone, task.paymentMethod, task.amount, task.monthlyFee, task.form].some(value => String(value || '').trim()))
+    const scheduledTasks = dayPlan(day).teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, teamIndex, taskIndex }))).filter(({ task }) => !taskIsCompleted(task, day, operationalHistory) && [task.service, task.client, task.address, task.detail, task.phone, task.paymentMethod, task.amount, task.monthlyFee, task.form].some(value => String(value || '').trim()))
     const incompleteTask = scheduledTasks.find(({ task }) => !task.vehicleControl && (!task.time || !task.service || !task.customerId || !task.address || !task.phone || !task.detail || (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) || requiresPaymentAmount(task, serviceForWeeklyTask(task))))
     if (incompleteTask) {
       const { task, teamIndex, taskIndex } = incompleteTask
@@ -3173,6 +3186,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       sameList(record.technicianIds, expected.technicianIds) && sameList(record.technicians, expected.technicians)
   }
   const dayNeedsSave = day => dayPlan(day).teams.some((team, teamIndex) => (team.tasks || []).some((task, taskIndex) => {
+    if (taskIsCompleted(task, day, operationalHistory)) return false
     if (!weeklyTaskReadyToSave(task, team, serviceForWeeklyTask(task))) return false
     return !recordMatchesWeeklyTask(historyRecordForTask(task, day, operationalHistory), weeklyHistoryRecord(day, team, teamIndex, task, taskIndex))
   }))
@@ -3184,8 +3198,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     const advance = advancedGuardForDay(day)
     if (advance) { setNotice(advancedSaturdayGuardMessage(advance)); return }
     const plan = dayPlan(day)
-    const scheduledTasks = plan.teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, team, teamIndex, taskIndex }))).filter(({ task }) => taskHasContent(task))
-    if (!scheduledTasks.length) { setNotice('No hay servicios cargados para guardar en este día.'); return }
+    const scheduledTasks = plan.teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, team, teamIndex, taskIndex }))).filter(({ task }) => taskHasContent(task) && !taskIsCompleted(task, day, operationalHistory))
+    if (!scheduledTasks.length) { setNotice('No hay servicios pendientes para guardar en este día.'); return }
     const readyTasks = scheduledTasks.filter(({ task, team }) => weeklyTaskReadyToSave(task, team, serviceForWeeklyTask(task)))
     if (!readyTasks.length) {
       const incompleteTask = scheduledTasks[0]

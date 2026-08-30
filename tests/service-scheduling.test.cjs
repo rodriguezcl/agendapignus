@@ -58,6 +58,22 @@ test('la API rechaza duraciones inválidas y solapamientos por equipo', () => {
   ] }], weekly: {} } }), /se superponen/)
 })
 
+test('los servicios completados no participan en conflictos de agenda', () => {
+  const service = { id: 's1', code: 's1', name: 'Servicio', description: '', estimatedMinutes: 120, status: 'Activo' }
+  const completed = { id: 'h1', sourceTaskId: 'done', date: '2026-08-27', serviceId: 's1', customerId: 'c1', time: '09:00', status: 'Completado', estimatedMinutes: 120 }
+  const state = {
+    roles: [], employees: [], services: [service], vehicles: [], customers: [
+      { customerId: 'c1', account: 'CLI-001' },
+      { customerId: 'c2', account: 'CLI-002' }
+    ], history: [completed],
+    agenda: { date: '2026-08-27', teams: [{ teamId: 'team-1', tasks: [
+      { taskId: 'done', historyId: 'h1', serviceId: 's1', customerId: 'c1', time: '09:00', estimatedMinutes: 120 },
+      { taskId: 'pending', serviceId: 's1', customerId: 'c2', time: '09:30', estimatedMinutes: 60 }
+    ] }], weekly: {} }
+  }
+  assert.doesNotThrow(() => validateState(state))
+})
+
 test('los solapamientos históricos sin cambios no bloquean otro día y el mensaje usa fecha y equipo reales', () => {
   const service = { id: 's1', code: 's1', name: 'Servicio', description: '', estimatedMinutes: 60, status: 'Activo' }
   const legacyPlan = { teams: [{ teamId: 'legacy-team', label: 'Equipo 1', memberIds: [], tasks: [
