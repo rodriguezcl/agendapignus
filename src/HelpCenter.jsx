@@ -110,6 +110,7 @@ const MODULES = [
     articles: [
       { title: 'Crear o editar un tipo', body: 'Definí un nombre claro y una descripción breve. Los cambios de nombre se reflejan en las opciones del sistema sin perder la identidad del servicio.' },
       { title: 'Desactivar o eliminar', body: 'Si un servicio dejó de ofrecerse, es preferible marcarlo inactivo. Los servicios usados en agendas o historial no deben eliminarse porque forman parte de registros anteriores.' },
+      { title: 'Tiempo estimado por servicio', body: 'Cada tipo de servicio posee una duración estimada expresada en horas y minutos. Este dato se administra desde Tipo de servicio y permite preparar una planificación realista; los registros existentes parten de una hora hasta que el administrador ajuste su duración.' },
       { title: 'Instalación de alarma', body: 'Este tipo posee requisitos especiales. Al programarlo debe indicarse la ubicación de la instalación para que las estadísticas gerenciales puedan clasificarla correctamente.' }
     ]
   },

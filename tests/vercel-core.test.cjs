@@ -27,6 +27,23 @@ test('el acceso explica las credenciales sin mencionar módulos restringidos', (
   assert.doesNotMatch(source, /Usá el correo y la contraseña definidos en el módulo Empleados\./)
 })
 
+test('normaliza el tiempo estimado de los tipos de servicio existentes', () => {
+  const base = { roles, employees: [], vehicles: [], customers: [], history: [], reviews: [], agenda: {} }
+  const normalized = normalizeStateForSave({ ...base, services: [
+    { id: 'legacy', code: 'legacy', name: 'Servicio existente', description: '', status: 'Activo' },
+    { id: 'installation', code: 'installation', name: 'Instalación de alarma', description: '', estimatedMinutes: '150', status: 'Activo' }
+  ] }, { reviews: [] })
+  assert.equal(normalized.services[0].estimatedMinutes, 60)
+  assert.equal(normalized.services[1].estimatedMinutes, 150)
+})
+
+test('el ABM permite administrar y mostrar el tiempo estimado', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  assert.match(source, /<RequiredLabel>Tiempo estimado<\/RequiredLabel>/)
+  assert.match(source, /<span>Tiempo estimado<\/span>/)
+  assert.match(source, /formatServiceEstimatedTime\(service\.estimatedMinutes\)/)
+})
+
 test('el buscador del historial técnico contempla todos los datos útiles', async () => {
   const { filterTechnicianHistory, technicianTeamLabel } = await import('../src/technician-history.mjs')
   const records = [

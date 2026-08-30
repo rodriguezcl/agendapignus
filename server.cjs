@@ -203,11 +203,16 @@ function legacyServiceCode(service) {
   return normalizedServiceName(service.name) === 'instalacion de alarma' ? 'alarm-installation' : `service-${service.id}`
 }
 
+const normalizeServiceEstimatedMinutes = value => {
+  const minutes = Number(value)
+  return Number.isInteger(minutes) && minutes >= 15 && minutes <= 720 ? minutes : 60
+}
+
 function migrateServiceReferences() {
   const services = rows('services')
   const updateService = db.prepare('UPDATE services SET data = ? WHERE id = ?')
   const normalizedServices = services.map(service => {
-    const next = { ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') }
+    const next = { ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) }
     if (JSON.stringify(next) !== JSON.stringify(service)) updateService.run(JSON.stringify(next), String(service.id))
     return next
   })
@@ -875,6 +880,7 @@ function validateState(state) {
   state.services.forEach((service, index) => {
     if (!String(service.name ?? '').trim() || !text(service.name, 120) || !String(service.code ?? '').trim() || !text(service.code, 120)) throw new Error(`Tipo de servicio ${index + 1}: nombre o código inválido.`)
     if (!text(service.description, 500)) throw new Error(`Tipo de servicio ${index + 1}: la descripción es demasiado extensa.`)
+    if (!Number.isInteger(Number(service.estimatedMinutes)) || Number(service.estimatedMinutes) < 15 || Number(service.estimatedMinutes) > 720) throw new Error(`Tipo de servicio ${index + 1}: el tiempo estimado debe estar entre 15 minutos y 12 horas.`)
     if (!['Activo', 'Inactivo'].includes(service.status)) throw new Error(`Tipo de servicio ${index + 1}: el estado no es válido.`)
   })
   const maximumVehicleYear = new Date().getFullYear() + 1
@@ -976,7 +982,7 @@ function saveState(state, user) {
   })
   const employeeById = new Map(normalizedEmployees.map(employee => [String(employee.id), employee]))
   const employeeByName = new Map(normalizedEmployees.map(employee => [normalizedCustomerValue(employee.name), employee]))
-  const normalizedServices = (state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') }))
+  const normalizedServices = (state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) }))
   const normalizedVehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), mileage: vehicle.mileage == null || vehicle.mileage === '' ? null : Number(vehicle.mileage), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
   const serviceById = new Map(normalizedServices.map(service => [String(service.id), service]))
   const serviceByName = new Map(normalizedServices.map(service => [normalizedServiceName(service.name), service]))
