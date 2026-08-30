@@ -1,6 +1,7 @@
 const http = require('node:http')
 const path = require('node:path')
 const fs = require('node:fs')
+const { validateChangedAgendaSchedules } = require('./api/_lib/scheduling-validation.cjs')
 const crypto = require('node:crypto')
 const { DatabaseSync } = require('node:sqlite')
 const { normalizeScheduling } = require('./scripts/normalize-scheduling.cjs')
@@ -826,7 +827,7 @@ function replaceRows(table, records, key) {
 }
 
 /** Guarda todas las entidades dentro de una transacción para evitar estados parciales. */
-function validateState(state) {
+function validateState(state, previousState = null) {
   if (!state || typeof state !== 'object') throw new Error('El estado recibido no es válido.')
 
   const collections = ['roles', 'employees', 'services', 'vehicles', 'customers', 'history']
@@ -927,16 +928,8 @@ function validateState(state) {
       if (task.customerId && !customerIds.has(String(task.customerId))) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} tiene un cliente inexistente.`)
       if (task.serviceId && (!Number.isInteger(Number(task.estimatedMinutes)) || Number(task.estimatedMinutes) < 15 || Number(task.estimatedMinutes) > 720)) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} debe tener un tiempo estimado de entre 15 minutos y 12 horas.`)
     })
-    const scheduled = (team.tasks || []).filter(task => task.serviceId && /^\d{1,2}:\d{2}$/.test(String(task.time || ''))).map(task => {
-      const [hours, minutes] = task.time.split(':').map(Number)
-      const start = hours * 60 + minutes
-      return { task, start, end: start + Math.max(60, Number(task.estimatedMinutes)) }
-    }).sort((first, second) => first.start - second.start)
-    scheduled.forEach((current, index) => {
-      const conflict = scheduled.slice(0, index).find(previous => current.start < previous.end)
-      if (conflict) throw new Error(`Agenda: las franjas de ${conflict.task.time} y ${current.task.time} se superponen en el equipo ${teamIndex + 1}.`)
-    })
   })
+  validateChangedAgendaSchedules(state, previousState)
 }
 
 const traceActor = user => ({ id: user.id, name: user.name || user.email || 'Usuario', role: user.role || '', at: new Date().toISOString() })
@@ -1060,7 +1053,7 @@ function saveState(state, user) {
   const storedAgenda = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
   const previousAgenda = storedAgenda ? JSON.parse(storedAgenda.data) : {}
   state = stampStateServiceTrace(state, previousAgenda, rows('work_history'), user)
-  validateState(state)
+  validateState(state, { agenda: previousAgenda })
   const previousEmployees = new Map(rows('employees').map(employee => [String(employee.id), employee]))
   const nextAgenda = state.agenda || {}
   // Evita que un cliente con datos anteriores vuelva a guardar abreviaturas históricas.

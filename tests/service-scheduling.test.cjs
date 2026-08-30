@@ -57,3 +57,18 @@ test('la API rechaza duraciones inválidas y solapamientos por equipo', () => {
     { serviceId: 's1', time: '10:30', estimatedMinutes: 60 }
   ] }], weekly: {} } }), /se superponen/)
 })
+
+test('los solapamientos históricos sin cambios no bloquean otro día y el mensaje usa fecha y equipo reales', () => {
+  const service = { id: 's1', code: 's1', name: 'Servicio', description: '', estimatedMinutes: 60, status: 'Activo' }
+  const legacyPlan = { teams: [{ teamId: 'legacy-team', label: 'Equipo 1', memberIds: [], tasks: [
+    { taskId: 'old-a', serviceId: 's1', service: 'Servicio', time: '08:30', estimatedMinutes: 60 },
+    { taskId: 'old-b', serviceId: 's1', service: 'Servicio', time: '08:30', estimatedMinutes: 60 }
+  ] }] }
+  const previous = { roles: [], employees: [], services: [service], vehicles: [], customers: [], history: [], agenda: { date: '2026-08-27', teams: [], weekly: { '2026-02-03': legacyPlan } } }
+  const next = structuredClone(previous)
+  next.agenda.teams = [{ teamId: 'current-team', label: 'Equipo 1', memberIds: [], tasks: [{ taskId: 'new', serviceId: 's1', service: 'Servicio', time: '10:00', estimatedMinutes: 60 }] }]
+  assert.doesNotThrow(() => validateState(next, previous))
+
+  next.agenda.weekly['2026-02-03'].teams[0].tasks[1].estimatedMinutes = 120
+  assert.throws(() => validateState(next, previous), /Agenda semanal 03\/02\/2026, Equipo 1: las franjas de 08:30 y 08:30 se superponen/)
+})
