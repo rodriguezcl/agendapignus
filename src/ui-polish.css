@@ -115,8 +115,52 @@ span.field-label-text > span.required-mark,
 }
 
 .service-form {
-  grid-template-columns: minmax(200px, 300px) minmax(280px, 1fr) minmax(210px, 250px) auto auto;
+  grid-template-columns: minmax(220px, 300px) minmax(280px, 1fr) max-content auto auto;
   justify-content: start;
+}
+
+/* La duración contiene valores muy cortos: evitamos que sus controles se
+   estiren como campos de texto y le damos una huella visual más compacta. */
+.service-duration-field {
+  grid-template-columns: 78px 92px;
+  column-gap: 10px;
+  width: max-content;
+}
+
+.service-duration-field label {
+  min-width: 0;
+}
+
+.service-duration-field :is(input, select) {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.service-duration-field small {
+  min-height: 15px;
+  line-height: 15px;
+}
+
+@media (max-width: 1350px) and (min-width: 951px) {
+  .service-form {
+    grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.35fr) max-content;
+  }
+
+  .service-form > button {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 950px) and (min-width: 641px) {
+  .service-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .service-form > button {
+    justify-self: start;
+  }
 }
 
 .vehicle-form {
