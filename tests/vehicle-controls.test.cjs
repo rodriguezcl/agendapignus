@@ -176,3 +176,21 @@ test('el portal técnico deshabilita el control anticipado y muestra cuándo se 
   assert.match(source, /Este control se habilita el \{vehicleControlWindowLabel\(record\)\}/)
   assert.match(styles, /\.vehicle-control-early-notice/)
 })
+
+test('el control vehicular es autónomo y no muestra dirección, contacto ni avisos de desbloqueo', () => {
+  const fs = require('node:fs')
+  const path = require('node:path')
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  assert.match(source, /const unlocked = record\.vehicleControl \|\| view === 'history'/)
+  assert.match(source, /\{record\.vehicleControl \? null : unlocked \? <>/)
+  assert.match(source, /\{unlocked && !done && <>/)
+  assert.match(source, /Los controles vehiculares son tareas autónomas/)
+})
+
+test('la captura vehicular admite imágenes del teléfono y solicita la cámara trasera', () => {
+  const fs = require('node:fs')
+  const path = require('node:path')
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  assert.match(source, /photoInput\.accept = 'image\/\*'/)
+  assert.match(source, /photoInput\.setAttribute\('capture', 'environment'\)/)
+})

@@ -9,7 +9,7 @@ export async function compactVehiclePhoto(file, { maximumDimension = 1280, quali
   const image = await new Promise((resolve, reject) => {
     const element = new Image()
     element.onload = () => resolve(element)
-    element.onerror = () => reject(new Error('La imagen seleccionada no es válida.'))
+    element.onerror = () => reject(new Error('No se pudo procesar esta imagen. Probá tomar una foto nueva con la cámara.'))
     element.src = source
   })
   const scale = Math.min(1, maximumDimension / Math.max(image.naturalWidth, image.naturalHeight))
