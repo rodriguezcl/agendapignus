@@ -447,6 +447,10 @@ test('los conflictos de agenda identifican fecha, integrantes y servicios afecta
   assert.match(source, /const planningTeamDescription = \(team, teamIndex\) =>/)
   assert.match(source, /El equipo conformado por \$\{memberList\}/)
   assert.match(source, /const planningConflictMessage = \(date, team, teamIndex, conflict\) =>[\s\S]*?del \$\{prettyDate\(date\)[\s\S]*?tiene un conflicto de horarios/)
+  assert.match(source, /return `Servicio \$\{conflictTaskIndex\(task, index\) \+ 1\}\$\{details\.length/)
+  assert.match(source, /El \$\{currentName\} no puede comenzar a las \$\{currentInterval\.startTime\} porque se superpone con el \$\{otherName\}/)
+  assert.match(source, /scheduleConflictForTaskMessage\(taskConflict, taskIndex\)/)
+  assert.doesNotMatch(source, /No se puede agendar en este horario porque \{scheduleConflictMessage\(taskConflict\)\}/)
 })
 
 test('la agenda semanal muestra el tipo de servicio junto al estado y la diaria muestra solo el estado', () => {
