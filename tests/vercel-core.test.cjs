@@ -442,6 +442,13 @@ test('los servicios completados y cancelados pasados no ofrecen guardado pendien
   assert.match(source, /conflictsForDay = day =>[\s\S]*?filter\(task => !taskIsResolvedForPlanning\(task, day, operationalHistory\)\)/)
 })
 
+test('los conflictos de agenda identifican fecha, integrantes y servicios afectados', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  assert.match(source, /const planningTeamDescription = \(team, teamIndex\) =>/)
+  assert.match(source, /El equipo conformado por \$\{memberList\}/)
+  assert.match(source, /const planningConflictMessage = \(date, team, teamIndex, conflict\) =>[\s\S]*?del \$\{prettyDate\(date\)[\s\S]*?tiene un conflicto de horarios/)
+})
+
 test('la agenda semanal muestra el tipo de servicio junto al estado y la diaria muestra solo el estado', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const polishStyles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')

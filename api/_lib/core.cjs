@@ -285,16 +285,6 @@ function validateState(state, previousState = null) {
     if ((record.technicianIds || []).some(id => !employeeIds.has(String(id)))) throw new Error(`Historial ${index + 1}: contiene un técnico inexistente.`)
     if (record.serviceId != null && (!Number.isInteger(Number(record.estimatedMinutes)) || Number(record.estimatedMinutes) < 15 || Number(record.estimatedMinutes) > 720)) throw new Error(`Historial ${index + 1}: el tiempo estimado debe estar entre 15 minutos y 12 horas.`)
   })
-  const agendaTeams = [...(state.agenda?.teams || [])]
-  Object.entries(state.agenda?.weekly || {}).forEach(([key, value]) => {
-    if (key === '_monthlyTeams') Object.values(value || {}).forEach(config => agendaTeams.push(...(config?.teams || [])))
-    else if (!key.startsWith('_')) agendaTeams.push(...(value?.teams || []))
-  })
-  agendaTeams.forEach((team, teamIndex) => {
-    ;(team.tasks || []).forEach((task, taskIndex) => {
-      if (task.serviceId != null && (!Number.isInteger(Number(task.estimatedMinutes)) || Number(task.estimatedMinutes) < 15 || Number(task.estimatedMinutes) > 720)) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} debe tener un tiempo estimado de entre 15 minutos y 12 horas.`)
-    })
-  })
   validateChangedAgendaSchedules(state, previousState)
 }
 

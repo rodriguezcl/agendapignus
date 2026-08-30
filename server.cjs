@@ -926,7 +926,6 @@ function validateState(state, previousState = null) {
       if (!time(task.time) || !text(task.service, 160) || !text(task.client, 200) || !text(task.address, 320) || !text(task.phone, 50) || !text(task.detail, 4000)) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} contiene datos inválidos.`)
       if (task.serviceId && !serviceIds.has(String(task.serviceId))) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} tiene un tipo inexistente.`)
       if (task.customerId && !customerIds.has(String(task.customerId))) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} tiene un cliente inexistente.`)
-      if (task.serviceId && (!Number.isInteger(Number(task.estimatedMinutes)) || Number(task.estimatedMinutes) < 15 || Number(task.estimatedMinutes) > 720)) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} debe tener un tiempo estimado de entre 15 minutos y 12 horas.`)
     })
   })
   validateChangedAgendaSchedules(state, previousState)
