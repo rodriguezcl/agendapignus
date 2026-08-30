@@ -115,7 +115,7 @@ span.field-label-text > span.required-mark,
 }
 
 .service-form {
-  grid-template-columns: minmax(220px, 320px) minmax(300px, 520px) auto auto;
+  grid-template-columns: minmax(200px, 300px) minmax(280px, 1fr) minmax(210px, 250px) auto auto;
   justify-content: start;
 }
 

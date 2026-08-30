@@ -671,6 +671,18 @@ function CustomerAutocomplete({ value = '', customerId = '', customers = [], onT
   </div>
 }
 
+const DEFAULT_SERVICE_ESTIMATED_MINUTES = 60
+const MAX_SERVICE_ESTIMATED_MINUTES = 12 * 60
+const normalizeServiceEstimatedMinutes = value => {
+  const minutes = Number(value)
+  return Number.isInteger(minutes) && minutes >= 15 && minutes <= MAX_SERVICE_ESTIMATED_MINUTES ? minutes : DEFAULT_SERVICE_ESTIMATED_MINUTES
+}
+const formatServiceEstimatedTime = value => {
+  const minutes = normalizeServiceEstimatedMinutes(value)
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+  return [hours ? `${hours} h` : '', remainingMinutes ? `${remainingMinutes} min` : ''].filter(Boolean).join(' ')
+}
 const serviceCode = service => service?.code || (normalizeServiceName(service?.name) === 'instalacion de alarma' ? 'alarm-installation' : `service-${service?.id}`)
 const PAYMENT_SERVICE_NAMES = new Set([
   'instalacion de camara',
@@ -1364,7 +1376,7 @@ export default function App() {
     const loadedRoles = Array.isArray(data.roles) ? data.roles.map(role => { const code = roleCode(role); return { ...role, code, permissions: { ...DEFAULT_MODULE_PERMISSIONS, dashboard: true, weekly: role.permissions?.weekly ?? ['administrator', 'user', 'coordinator'].includes(code), ...role.permissions, ...(code === 'administrator' ? Object.fromEntries(MODULE_PERMISSIONS.map(([key]) => [key, true])) : {}) } } }) : []
     setRoles(loadedRoles)
     setEmployees(Array.isArray(data.employees) ? data.employees.map(employee => { const assignedRole = loadedRoles.find(role => String(role.id) === String(employee.roleId)) || loadedRoles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role)); return assignedRole ? { ...employee, roleId: assignedRole.id, role: assignedRole.name } : employee }) : [])
-    setServices(Array.isArray(data.services) ? data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') })) : [])
+    setServices(Array.isArray(data.services) ? data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) })) : [])
     setVehicles(Array.isArray(data.vehicles) ? data.vehicles : [])
     setHistory(Array.isArray(data.history) ? data.history : [])
     setCustomers(Array.isArray(data.customers) ? data.customers.map(customer => ({ ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer), name: normalizeCustomerName(customer.name) })) : [])
@@ -4113,13 +4125,23 @@ function CustomerForm({ form, setForm, editing, customers, save, cancel }) {
 }
 
 function ServiceTypes({ services, setServices, setNotice, ask, history, teams, weekly }) {
-  const [form, setForm] = useState({ name: '', description: '', status: 'Activo' })
+  const blankService = () => ({ name: '', description: '', estimatedMinutes: DEFAULT_SERVICE_ESTIMATED_MINUTES, status: 'Activo' })
+  const [form, setForm] = useState(blankService)
   const [editing, setEditing] = useState(null)
   const [open, setOpen] = useState(false)
+  const duration = normalizeServiceEstimatedMinutes(form.estimatedMinutes)
+  const durationHours = Math.floor(duration / 60)
+  const durationMinutes = duration % 60
+  const updateDuration = (hours, minutes) => {
+    const total = Math.min(MAX_SERVICE_ESTIMATED_MINUTES, Math.max(15, Number(hours) * 60 + Number(minutes)))
+    setForm(previous => ({ ...previous, estimatedMinutes: total }))
+  }
   const save = event => {
     event.preventDefault()
+    const estimatedMinutes = Number(form.estimatedMinutes)
+    if (!Number.isInteger(estimatedMinutes) || estimatedMinutes < 15 || estimatedMinutes > MAX_SERVICE_ESTIMATED_MINUTES) return setNotice('Definí un tiempo estimado de entre 15 minutos y 12 horas.')
     const nextId = editing || Date.now()
-    const record = { ...form, id: nextId, code: editing ? serviceCode(form) : `service-${nextId}`, category: editing ? (form.category || 'service') : (normalizeServiceName(form.name).startsWith('instalacion') ? 'installation' : 'service') }
+    const record = { ...form, estimatedMinutes, id: nextId, code: editing ? serviceCode(form) : `service-${nextId}`, category: editing ? (form.category || 'service') : (normalizeServiceName(form.name).startsWith('instalacion') ? 'installation' : 'service') }
     ask(editing ? 'Confirmar edición' : 'Confirmar alta', `¿Querés guardar el tipo de servicio ${record.name}?`, () => {
       setServices(previous => editing ? previous.map(service => service.id === editing ? record : service) : [...previous, record])
       setOpen(false); setEditing(null); setNotice('El tipo de servicio fue guardado correctamente.')
@@ -4131,7 +4153,7 @@ function ServiceTypes({ services, setServices, setNotice, ask, history, teams, w
     if (referenced) { setServices(previous => previous.map(item => item.id === service.id ? { ...item, status: 'Inactivo' } : item)); setNotice('El servicio tiene registros vinculados: se marcó como inactivo en lugar de eliminarlo.'); return }
     setServices(previous => previous.filter(item => item.id !== service.id)); setNotice('El tipo de servicio fue eliminado.')
   }
-  return <><div className="module-intro"><div><p className="eyebrow">CATÁLOGO OPERATIVO</p><h1>Tipo de servicio</h1><p>Administrá los servicios disponibles para planificar en la agenda técnica.</p></div><button className="primary" onClick={() => { setForm({ name: '', description: '', status: 'Activo' }); setEditing(null); setOpen(true) }}><Icon name="plus" />Nuevo servicio</button></div>{open && <form className="service-form" onSubmit={save}><label><RequiredLabel>Nombre del servicio</RequiredLabel><input required value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /></label><label>Descripción<input value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} /></label><button className="primary"><Icon name="check" />{editing ? 'Guardar cambios' : 'Guardar servicio'}</button><button type="button" className="secondary" onClick={() => setOpen(false)}>Cancelar</button></form>}<div className="data-card services-table"><div className="table-head"><span>Servicio</span><span>Descripción</span><span>Estado</span><span>Acciones</span></div>{services.map(service => <div className="service-row" key={service.id}><b>{service.name}</b><span>{service.description || 'Sin descripción'}</span><div><button className={`status ${service.status === 'Activo' ? 'on' : ''}`} onClick={() => ask('Cambiar estado', `¿Querés marcar ${service.name} como ${service.status === 'Activo' ? 'inactivo' : 'activo'}?`, () => setServices(previous => previous.map(item => item.id === service.id ? { ...item, status: item.status === 'Activo' ? 'Inactivo' : 'Activo' } : item)))}>{service.status}</button></div><div className="row-actions"><button title="Editar servicio" onClick={() => { setForm(service); setEditing(service.id); setOpen(true) }}><Icon name="edit" size={16} /></button><button className="delete" title="Eliminar servicio" onClick={() => ask('Eliminar servicio', `¿Querés eliminar ${service.name}?`, () => removeService(service), true)}><Icon name="trash" size={16} /></button></div></div>)}</div></>
+  return <><div className="module-intro"><div><p className="eyebrow">CATÁLOGO OPERATIVO</p><h1>Tipo de servicio</h1><p>Administrá los servicios disponibles para planificar en la agenda técnica.</p></div><button className="primary" onClick={() => { setForm(blankService()); setEditing(null); setOpen(true) }}><Icon name="plus" />Nuevo servicio</button></div>{open && <form className="service-form" onSubmit={save}><label><RequiredLabel>Nombre del servicio</RequiredLabel><input required value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /></label><label>Descripción<input value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} /></label><fieldset className="service-duration-field"><legend><RequiredLabel>Tiempo estimado</RequiredLabel></legend><label>Horas<input aria-label="Horas estimadas" required type="number" inputMode="numeric" min="0" max="12" step="1" value={durationHours} onChange={event => updateDuration(event.target.value, durationMinutes)} /></label><label>Minutos<select aria-label="Minutos estimados" value={durationMinutes} onChange={event => updateDuration(durationHours, event.target.value)}><option value="0">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option></select></label><small>{formatServiceEstimatedTime(form.estimatedMinutes)}</small></fieldset><button className="primary"><Icon name="check" />{editing ? 'Guardar cambios' : 'Guardar servicio'}</button><button type="button" className="secondary" onClick={() => setOpen(false)}>Cancelar</button></form>}<div className="data-card services-table"><div className="table-head"><span>Servicio</span><span>Descripción</span><span>Tiempo estimado</span><span>Estado</span><span>Acciones</span></div>{services.map(service => <div className="service-row" key={service.id}><b>{service.name}</b><span>{service.description || 'Sin descripción'}</span><strong className="service-duration-value">{formatServiceEstimatedTime(service.estimatedMinutes)}</strong><div><button className={`status ${service.status === 'Activo' ? 'on' : ''}`} onClick={() => ask('Cambiar estado', `¿Querés marcar ${service.name} como ${service.status === 'Activo' ? 'inactivo' : 'activo'}?`, () => setServices(previous => previous.map(item => item.id === service.id ? { ...item, status: item.status === 'Activo' ? 'Inactivo' : 'Activo' } : item)))}>{service.status}</button></div><div className="row-actions"><button title="Editar servicio" onClick={() => { setForm({ ...service, estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) }); setEditing(service.id); setOpen(true) }}><Icon name="edit" size={16} /></button><button className="delete" title="Eliminar servicio" onClick={() => ask('Eliminar servicio', `¿Querés eliminar ${service.name}?`, () => removeService(service), true)}><Icon name="trash" size={16} /></button></div></div>)}</div></>
 }
 
 const blankVehicle = () => ({ brand: '', model: '', year: String(new Date().getFullYear()), mileage: '', plate: '' })

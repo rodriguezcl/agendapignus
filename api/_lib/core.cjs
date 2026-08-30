@@ -17,6 +17,11 @@ function legacyServiceCode(service = {}) {
   return normalizedServiceName(service.name) === 'instalacion de alarma' ? 'alarm-installation' : `service-${service.id}`
 }
 
+const normalizeServiceEstimatedMinutes = value => {
+  const minutes = Number(value)
+  return Number.isInteger(minutes) && minutes >= 15 && minutes <= 720 ? minutes : 60
+}
+
 function userCan(user, permission) {
   return user?.roleCode === 'administrator' || Boolean(user?.permissions?.[permission])
 }
@@ -156,7 +161,7 @@ function normalizeStateForSave(state, current) {
     const role = roleById.get(String(employee.roleId))
     return { ...employee, name: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(), ...(role ? { roleId: role.id, role: role.name } : {}) }
   })
-  const services = (state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service') }))
+  const services = (state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) }))
   const vehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), mileage: vehicle.mileage == null || vehicle.mileage === '' ? null : Number(vehicle.mileage), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
   const customers = (state.customers || []).map(customer => ({ ...customer, kind: customerKind(customer), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }))
   const history = (state.history || []).map(record => ({ ...record, status: record.status || 'Pendiente' }))
@@ -244,6 +249,12 @@ function validateState(state) {
   const employeeIds = new Set(state.employees.map(item => String(item.id)))
   state.employees.forEach((employee, index) => {
     if (!employee.firstName || !employee.lastName || !/^\S+@\S+\.\S+$/.test(String(employee.email || '')) || !roleIds.has(String(employee.roleId))) throw new Error(`Empleado ${index + 1}: datos incompletos.`)
+  })
+  state.services.forEach((service, index) => {
+    if (!String(service.name || '').trim() || String(service.name).trim().length > 120) throw new Error(`Tipo de servicio ${index + 1}: el nombre es obligatorio o demasiado extenso.`)
+    if (String(service.description || '').length > 500) throw new Error(`Tipo de servicio ${index + 1}: la descripción es demasiado extensa.`)
+    if (!Number.isInteger(Number(service.estimatedMinutes)) || Number(service.estimatedMinutes) < 15 || Number(service.estimatedMinutes) > 720) throw new Error(`Tipo de servicio ${index + 1}: el tiempo estimado debe estar entre 15 minutos y 12 horas.`)
+    if (!['Activo', 'Inactivo'].includes(service.status)) throw new Error(`Tipo de servicio ${index + 1}: el estado no es válido.`)
   })
   const maximumVehicleYear = new Date().getFullYear() + 1
   state.vehicles.forEach((vehicle, index) => {
