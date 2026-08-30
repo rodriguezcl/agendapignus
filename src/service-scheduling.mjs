@@ -1,6 +1,8 @@
 export const DEFAULT_SERVICE_ESTIMATED_MINUTES = 60
 export const MINIMUM_SERVICE_RESERVATION_MINUTES = 60
 export const MAX_SERVICE_ESTIMATED_MINUTES = 12 * 60
+export const LIVE_SCHEDULE_STEP_MINUTES = 15
+export const SCHEDULE_TIME_ZONE = 'America/Argentina/Buenos_Aires'
 
 export const validServiceEstimatedMinutes = value => {
   const minutes = Number(value)
@@ -26,6 +28,39 @@ export const minutesAsTime = value => {
   return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`
 }
 
+const zonedDateTime = value => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: SCHEDULE_TIME_ZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  }).formatToParts(date).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    minutes: Number(parts.hour) * 60 + Number(parts.minute),
+    seconds: Number(parts.second)
+  }
+}
+
+export const completedServiceRelease = task => {
+  const completed = task?.status === 'Completado' || task?.technicalStatus === 'Completado'
+  const completedAt = task?.completedAt || task?.technicalReportedAt
+  const completion = completed && completedAt ? zonedDateTime(completedAt) : null
+  const taskDate = String(task?.date || '')
+  const start = timeInMinutes(task?.time || task?.scheduledTime)
+  if (!completion || !taskDate || completion.date !== taskDate || start === null || completion.minutes < start) return null
+  const elapsedMinutes = completion.minutes + (completion.seconds > 0 ? 1 : 0)
+  const release = Math.ceil(elapsedMinutes / LIVE_SCHEDULE_STEP_MINUTES) * LIVE_SCHEDULE_STEP_MINUTES
+  return {
+    completedAt,
+    completedMinutes: completion.minutes,
+    completedTime: minutesAsTime(completion.minutes),
+    release,
+    releaseTime: minutesAsTime(release)
+  }
+}
+
 export const taskReservationMinutes = task => Math.max(
   MINIMUM_SERVICE_RESERVATION_MINUTES,
   normalizeServiceEstimatedMinutes(task?.estimatedMinutes)
@@ -35,16 +70,24 @@ export const taskOccupiedInterval = task => {
   const start = timeInMinutes(task?.time || task?.scheduledTime)
   if (start === null) return null
   const estimatedMinutes = normalizeServiceEstimatedMinutes(task?.estimatedMinutes)
-  const occupiedMinutes = taskReservationMinutes(task)
+  const completion = completedServiceRelease(task)
+  const estimatedOccupiedMinutes = taskReservationMinutes(task)
+  const occupiedMinutes = completion ? completion.release - start : estimatedOccupiedMinutes
+  const serviceEnd = completion ? completion.completedMinutes : start + estimatedMinutes
+  const end = completion ? completion.release : start + estimatedOccupiedMinutes
   return {
     start,
-    serviceEnd: start + estimatedMinutes,
-    end: start + occupiedMinutes,
+    serviceEnd,
+    end,
     estimatedMinutes,
     occupiedMinutes,
+    actualCompletion: Boolean(completion),
+    completedAt: completion?.completedAt || '',
+    completedTime: completion?.completedTime || '',
+    releaseTime: completion?.releaseTime || '',
     startTime: minutesAsTime(start),
-    serviceEndTime: minutesAsTime(start + estimatedMinutes),
-    endTime: minutesAsTime(start + occupiedMinutes)
+    serviceEndTime: minutesAsTime(serviceEnd),
+    endTime: minutesAsTime(end)
   }
 }
 

@@ -41,5 +41,5 @@ test('la búsqueda incluye módulos y preguntas frecuentes', () => {
 })
 
 test('la fecha visible de actualización corresponde a esta revisión', () => {
-  assert.match(helpSource, /Actualizado · 28 de agosto de 2026/)
+  assert.match(helpSource, /Actualizado · 30 de agosto de 2026/)
 })

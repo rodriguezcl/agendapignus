@@ -155,6 +155,43 @@ function customerKind(customer) {
   return String(customer.account || '').toUpperCase().startsWith('PIG-') ? 'subscriber' : 'client'
 }
 
+const serviceIsCompleted = record => record?.status === 'Completado' || record?.technicalStatus === 'Completado'
+
+function assertServiceCanBeCompleted(record, now = new Date().toISOString()) {
+  const instant = new Date(now)
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(instant).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
+  const today = `${parts.year}-${parts.month}-${parts.day}`
+  const serviceDate = String(record?.date || '')
+  if (serviceDate > today) { const error = new Error('No se puede completar un servicio antes de su fecha y hora programadas.'); error.statusCode = 409; throw error }
+  if (serviceDate !== today) return
+  const match = String(record?.time || record?.scheduledTime || '').match(/^(\d{1,2}):(\d{2})$/)
+  if (!match) return
+  const scheduled = Number(match[1]) * 60 + Number(match[2])
+  const current = Number(parts.hour) * 60 + Number(parts.minute)
+  if (scheduled > current) { const error = new Error('No se puede completar un servicio antes de su fecha y hora programadas.'); error.statusCode = 409; throw error }
+}
+
+function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now = new Date().toISOString()) {
+  const previousById = new Map((previousHistory || []).map(record => [String(record.id), record]))
+  return (history || []).map(record => {
+    const previous = previousById.get(String(record.id))
+    const wasCompleted = serviceIsCompleted(previous)
+    const isCompleted = serviceIsCompleted(record)
+    if (!isCompleted) {
+      if (!wasCompleted && !record.completedAt) return record
+      const { completedAt: _discardedCompletedAt, ...withoutCompletion } = record
+      return withoutCompletion
+    }
+    if (!previous || !wasCompleted) {
+      assertServiceCanBeCompleted(record, now)
+      return { ...record, completedAt: now }
+    }
+    if (previous.completedAt) return { ...record, completedAt: previous.completedAt }
+    const { completedAt: _discardedLegacyCompletion, ...legacyRecord } = record
+    return legacyRecord
+  })
+}
+
 function normalizeStateForSave(state, current) {
   const roles = (state.roles || []).map(role => ({ ...role, code: role.code || legacyRoleCode(role) }))
   const roleById = new Map(roles.map(role => [String(role.id), role]))
@@ -173,7 +210,10 @@ function normalizeStateForSave(state, current) {
   const normalizeTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(normalizeScheduledService) }))
   const vehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), mileage: vehicle.mileage == null || vehicle.mileage === '' ? null : Number(vehicle.mileage), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
   const customers = (state.customers || []).map(customer => ({ ...customer, kind: customerKind(customer), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }))
-  const history = (state.history || []).map(record => ({ ...normalizeScheduledService(record), status: record.status || 'Pendiente' }))
+  const history = normalizeHistoryCompletionTimes(
+    (state.history || []).map(record => ({ ...normalizeScheduledService(record), status: record.status || 'Pendiente' })),
+    current.history
+  )
   const incomingAgenda = state.agenda || {}
   const weekly = Object.fromEntries(Object.entries(incomingAgenda.weekly || {}).map(([key, value]) => key === '_monthlyTeams'
     ? [key, Object.fromEntries(Object.entries(value || {}).map(([month, config]) => [month, { ...config, teams: normalizeTeams(config?.teams) }]))]
@@ -320,4 +360,4 @@ function professionalExcelHtml({ title, description, month, headers, rows, width
   return `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>@page{size:landscape;margin:.45in}body{font-family:Aptos,Calibri,Arial,sans-serif;color:#173626;background:#fff;margin:0}.report{border-collapse:collapse;width:100%;table-layout:fixed}.brand td{height:26px;padding:8px 12px;background:#123122;color:#d8a016;font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase}.title td{padding:16px 12px 4px;background:#123122;color:#fff;font-size:24px;font-weight:700}.description td{padding:2px 12px 16px;background:#123122;color:#d5e2d9;font-size:11px}.meta td{padding:11px 12px;background:#f4ecd3;color:#405748;font-size:11px;border-bottom:2px solid #c99311}.meta b{color:#173626}.spacer td{height:10px}.headers th{padding:10px 9px;background:#c99311;color:#fff;font-size:11px;font-weight:700;text-align:left;border-bottom:2px solid #8d6505}.report tbody td{padding:9px;border-bottom:1px solid #d9e4da;vertical-align:top;font-size:10px;white-space:normal}.report tbody tr.alternate td{background:#f5f8f5}.date-value{white-space:nowrap!important;text-align:center;mso-number-format:"dd/mm/yyyy"}.contact{white-space:nowrap!important;mso-number-format:"\\@"}.footer td{padding:13px 12px;color:#6b7d70;font-size:9px;border-top:2px solid #c99311}.count{font-size:15px;font-weight:700;color:#173626}.confidential{float:right;font-weight:700;color:#6b5220}</style></head><body><table class="report"><colgroup>${widths.map(width => `<col style="width:${width}">`).join('')}</colgroup><thead><tr class="brand"><td colspan="${headers.length}">PIGNUS · Gestión operativa</td></tr><tr class="title"><td colspan="${headers.length}">${escapeHtml(title)}</td></tr><tr class="description"><td colspan="${headers.length}">${escapeHtml(description)}</td></tr><tr class="meta"><td colspan="${headers.length}"><b>Período:</b> ${escapeHtml(monthLabel)} &nbsp;·&nbsp; <b>Total:</b> <span class="count">${rows.length}</span> &nbsp;·&nbsp; <b>Generado:</b> ${escapeHtml(generatedAt)}</td></tr><tr class="spacer"><td colspan="${headers.length}"></td></tr><tr class="headers">${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${body || `<tr><td colspan="${headers.length}">No existen registros para el período seleccionado.</td></tr>`}</tbody><tfoot><tr class="footer"><td colspan="${headers.length}">Agenda técnica PIGNUS <span class="confidential">Documento de uso interno</span></td></tr></tfoot></table></body></html>`
 }
 
-module.exports = { auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword, legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml, publicEmployee, reportDate, secureEmployees, statePersistenceChanged, userCan, userForEmployee, validateState, verifyPassword, visibleStateForUser }
+module.exports = { assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword, legacyRoleCode, normalizedServiceName, normalizeHistoryCompletionTimes, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml, publicEmployee, reportDate, secureEmployees, statePersistenceChanged, userCan, userForEmployee, validateState, verifyPassword, visibleStateForUser }

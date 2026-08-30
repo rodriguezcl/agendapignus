@@ -21,6 +21,21 @@ import './weekly.css'
 import './weekly-enhancements.css'
 
 const currentLocalDate = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+const serviceHasStarted = (record, now = new Date()) => {
+  const today = now.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const date = String(record?.date || '')
+  if (date < today) return true
+  if (date > today) return false
+  const scheduled = serviceTimeInMinutes(record?.time || record?.scheduledTime)
+  if (scheduled === null) return true
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
+  return scheduled <= Number(parts.hour) * 60 + Number(parts.minute)
+}
+const nextLiveScheduleMinute = (now = new Date()) => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(now).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
+  const elapsed = Number(parts.hour) * 60 + Number(parts.minute) + (Number(parts.second) > 0 ? 1 : 0)
+  return Math.ceil(elapsed / 15) * 15
+}
 import './ui-polish.css'
 import './login.css'
 
@@ -198,9 +213,11 @@ const conflictTaskName = (task, index) => {
   const details = [task?.service, task?.client || task?.clientAccount].map(value => String(value || '').trim()).filter(Boolean)
   return `Servicio ${conflictTaskIndex(task, index) + 1}${details.length ? ` (${details.join(' · ')})` : ''}`
 }
-const conflictIntervalDescription = (task, interval) => interval.estimatedMinutes < 60
-  ? `ocupa de ${interval.startTime} a ${interval.serviceEndTime} y reserva el equipo hasta las ${interval.endTime} por la separación operativa mínima`
-  : `ocupa de ${interval.startTime} a ${interval.serviceEndTime}`
+const conflictIntervalDescription = (task, interval) => interval.actualCompletion
+  ? `ocupó de ${interval.startTime} a ${interval.completedTime} y liberó el equipo a las ${interval.releaseTime}`
+  : interval.estimatedMinutes < 60
+    ? `ocupa de ${interval.startTime} a ${interval.serviceEndTime} y reserva el equipo hasta las ${interval.endTime} por la separación operativa mínima`
+    : `ocupa de ${interval.startTime} a ${interval.serviceEndTime}`
 const scheduleConflictMessage = conflict => `${conflictTaskName(conflict.firstTask, conflict.firstTaskIndex)} ${conflictIntervalDescription(conflict.firstTask, conflict.first)}; ${conflictTaskName(conflict.secondTask, conflict.secondTaskIndex)} ${conflictIntervalDescription(conflict.secondTask, conflict.second)}`
 const scheduleConflictForTaskMessage = (conflict, taskIndex) => {
   const firstIndex = conflictTaskIndex(conflict.firstTask, conflict.firstTaskIndex)
@@ -315,12 +332,30 @@ const taskIsResolvedForPlanning = (task, date, history) => {
   const status = taskStatus(task, date, history)
   return status === 'Completado' || (status === 'Cancelado' && String(date || '') < currentLocalDate())
 }
+const taskForScheduleOccupancy = (task, date, history) => {
+  if (!taskHasContent(task)) return null
+  const record = historyRecordForTask(task, date, history)
+  const status = record?.status || record?.technicalStatus || task?.status || task?.technicalStatus || 'Pendiente'
+  if (status === 'Completado' && String(date || '') !== currentLocalDate()) return null
+  if (status === 'Cancelado' && String(date || '') < currentLocalDate()) return null
+  return {
+    ...task,
+    date,
+    status,
+    technicalStatus: record?.technicalStatus || task?.technicalStatus || '',
+    completedAt: record?.completedAt || task?.completedAt || '',
+    technicalReportedAt: record?.technicalReportedAt || task?.technicalReportedAt || ''
+  }
+}
 const statusClassName = status => String(status || 'Pendiente').toLowerCase().replace(/\s/g, '-')
 function TaskStatusBadge({ task, date, history, weekly = false }) {
   const status = taskStatus(task, date, history)
   if (!status) return null
   const service = String(task?.service || 'Sin tipo de servicio').trim()
-  return <div className={`agenda-task-status ${weekly ? 'weekly-agenda-task-status' : 'daily-agenda-task-status'}`}><em className={`work-status ${statusClassName(status)}`}>{status}</em>{weekly && <em className={`role-chip agenda-service-chip ${serviceColorClass(service)}`} title={service}>{service}</em>}</div>
+  const occupancyTask = taskForScheduleOccupancy(task, date, history)
+  const interval = occupancyTask ? taskOccupiedInterval(occupancyTask) : null
+  const releaseLabel = interval?.actualCompletion ? `Finalizó ${interval.completedTime} · equipo disponible ${interval.releaseTime}` : ''
+  return <div className={`agenda-task-status ${weekly ? 'weekly-agenda-task-status' : 'daily-agenda-task-status'}`}><em className={`work-status ${statusClassName(status)}`}>{status}</em>{weekly && <em className={`role-chip agenda-service-chip ${serviceColorClass(service)}`} title={service}>{service}</em>}{releaseLabel && <small title="La disponibilidad se redondea al siguiente bloque de 15 minutos.">{releaseLabel}</small>}</div>
 }
 const serviceActor = user => {
   const current = user || globalThis.__pignusCurrentUser
@@ -2130,8 +2165,10 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     if (!team) return null
     const target = team.tasks?.[taskIndex]
     if (!target || taskIsResolvedForPlanning(target, date, history)) return null
-    const activeTasks = (team.tasks || []).map((task, index) => ({ ...taskWithServiceEstimate(task, serviceForTask(task)), _scheduleTaskIndex: index }))
-      .filter(task => !taskIsResolvedForPlanning(task, date, history))
+    const activeTasks = (team.tasks || []).map((task, index) => {
+      const occupancyTask = taskForScheduleOccupancy(task, date, history)
+      return occupancyTask ? { ...taskWithServiceEstimate(occupancyTask, serviceForTask(task)), _scheduleTaskIndex: index } : null
+    }).filter(Boolean)
     return minimumServiceGapConflicts([{ ...team, tasks: activeTasks }])
       .find(conflict => conflict.firstTask._scheduleTaskIndex === taskIndex || conflict.secondTask._scheduleTaskIndex === taskIndex) || null
   }
@@ -2155,8 +2192,17 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       if (serviceCode(serviceForTask(task)) === 'alarm-installation' && !task.installationZone) fields.push('ubicación de la instalación')
       if (requiresPaymentAmount(task, serviceForTask(task))) fields.push('monto')
       if (fields.length) missing.push(`Equipo ${teamIndex + 1}, servicio ${taskIndex + 1}: ${fields.join(', ')}`)
+      const taskStart = serviceTimeInMinutes(task.time)
+      if (date === currentLocalDate() && !historyRecordForTask(task, date, history) && taskStart !== null && taskStart < nextLiveScheduleMinute()) missing.push(`Equipo ${teamIndex + 1}, servicio ${taskIndex + 1}: elegí un horario futuro desde el próximo cuarto de hora disponible.`)
     }))
-    minimumServiceGapConflicts(realServiceTeams.map(team => ({ ...team, tasks: team.tasks.map(task => taskWithServiceEstimate(task, serviceForTask(task))) }))).forEach(conflict => missing.push(planningConflictMessage(date, realServiceTeams[conflict.teamIndex], conflict.teamIndex, conflict)))
+    const occupancyTeams = agendaTeams.map(team => ({
+      ...team,
+      tasks: (team.tasks || []).map(task => {
+        const occupancyTask = taskForScheduleOccupancy(task, date, history)
+        return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForTask(task)) : null
+      }).filter(Boolean)
+    }))
+    minimumServiceGapConflicts(occupancyTeams).forEach(conflict => missing.push(planningConflictMessage(date, occupancyTeams[conflict.teamIndex], conflict.teamIndex, conflict)))
     if (!missing.length) return true
     showAgendaValidationModal(missing)
     return false
@@ -2385,7 +2431,10 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       setNotice('No se pudo reasignar el servicio. Revisá los equipos e intentá nuevamente.')
       return
     }
-    const destinationGap = minimumServiceGapConflicts([{ tasks: [...(destinationTeam.tasks || []), movedTask].map(task => taskWithServiceEstimate(task, serviceForTask(task))) }])[0]
+    const destinationGap = minimumServiceGapConflicts([{ tasks: [...(destinationTeam.tasks || []), movedTask].map(task => {
+      const occupancyTask = taskForScheduleOccupancy(task, date, history)
+      return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForTask(task)) : null
+    }).filter(Boolean) }])[0]
     if (destinationGap) {
       setNotice(`No se puede reasignar porque ${scheduleConflictMessage(destinationGap)}.`)
       return
@@ -2710,6 +2759,11 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       setNotice(`Completá ${missing.join(', ')} antes de guardar el servicio.`)
       return
     }
+    const draftStart = serviceTimeInMinutes(draft.time)
+    if (day === currentLocalDate() && !historyRecordForTask(draft, day, operationalHistory) && draftStart !== null && draftStart < nextLiveScheduleMinute()) {
+      setNotice('Elegí un horario futuro desde el próximo cuarto de hora disponible.')
+      return
+    }
     const editorHours = hoursForDay(day)
     const editorInterval = taskOccupiedInterval(taskWithServiceEstimate(draft, serviceForWeeklyTask(draft)))
     if (editorHours && editorInterval?.serviceEnd > serviceTimeInMinutes(editorHours.max)) {
@@ -2719,7 +2773,10 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     const editedPlan = dayPlan(day)
     const editedTeam = editedPlan.teams.find(team => teamId && String(team.teamId || '') === String(teamId)) || editedPlan.teams[teamIndex]
     const peerTasks = (editedTeam?.tasks || []).filter((task, index) => !((taskId && String(task.taskId || '') === String(taskId)) || (!taskId && index === taskIndex)))
-    const gapConflict = minimumServiceGapConflicts([{ tasks: [...peerTasks, draft].map(task => taskWithServiceEstimate(task, serviceForWeeklyTask(task))) }])[0]
+    const gapConflict = minimumServiceGapConflicts([{ tasks: [...peerTasks, draft].map(task => {
+      const occupancyTask = taskForScheduleOccupancy(task, day, operationalHistory)
+      return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(task)) : null
+    }).filter(Boolean) }])[0]
     if (gapConflict) {
       setNotice(planningConflictMessage(day, editedTeam, teamIndex, gapConflict))
       return
@@ -2821,7 +2878,10 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       setNotice(advancedSaturdayGuardMessage(advance))
       return
     }
-    const destinationGap = minimumServiceGapConflicts([{ tasks: [...(destinationTeam.tasks || []), movedTask].map(task => taskWithServiceEstimate(task, serviceForWeeklyTask(task))) }])[0]
+    const destinationGap = minimumServiceGapConflicts([{ tasks: [...(destinationTeam.tasks || []), movedTask].map(task => {
+      const occupancyTask = taskForScheduleOccupancy(task, day, operationalHistory)
+      return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(task)) : null
+    }).filter(Boolean) }])[0]
     if (destinationGap) {
       setNotice(`No se puede reasignar porque ${scheduleConflictMessage(destinationGap)}.`)
       return
@@ -2873,9 +2933,12 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     return { min: '08:00', max: weekDay === 5 ? '20:00' : weekDay === 6 ? '12:00' : '17:00', label: weekDay === 5 ? '08:00 a 20:00' : weekDay === 6 ? '08:00 a 12:00' : '08:00 a 17:00' }
   }
   const conflictsForDay = day => {
-    return technicianTimeConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !taskIsResolvedForPlanning(task, day, operationalHistory)) })), activeTechs)
+    return technicianTimeConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).map(task => taskForScheduleOccupancy(task, day, operationalHistory)).filter(Boolean) })), activeTechs)
   }
-  const gapConflictsForDay = day => minimumServiceGapConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !taskIsResolvedForPlanning(task, day, operationalHistory)).map(task => taskWithServiceEstimate(task, serviceForWeeklyTask(task))) })))
+  const gapConflictsForDay = day => minimumServiceGapConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).map(task => {
+    const occupancyTask = taskForScheduleOccupancy(task, day, operationalHistory)
+    return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(task)) : null
+  }).filter(Boolean) })))
   const conflictForWeeklyTask = (day, teamIndex, taskIndex, overrideTask = null) => {
     const team = dayPlan(day).teams[teamIndex]
     if (!team) return null
@@ -2883,8 +2946,9 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     if (!target || taskIsResolvedForPlanning(target, day, operationalHistory)) return null
     const tasks = (team.tasks || []).map((task, index) => {
       const candidate = index === taskIndex && overrideTask ? overrideTask : task
-      return { ...taskWithServiceEstimate(candidate, serviceForWeeklyTask(candidate)), _scheduleTaskIndex: index }
-    }).filter(task => !taskIsResolvedForPlanning(task, day, operationalHistory))
+      const occupancyTask = taskForScheduleOccupancy(candidate, day, operationalHistory)
+      return occupancyTask ? { ...taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(candidate)), _scheduleTaskIndex: index } : null
+    }).filter(Boolean)
     return minimumServiceGapConflicts([{ ...team, tasks }]).find(conflict => conflict.firstTask._scheduleTaskIndex === taskIndex || conflict.secondTask._scheduleTaskIndex === taskIndex) || null
   }
   const commitWeeklyCustomerText = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, { customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
@@ -3244,7 +3308,11 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     const taskOutsideHours = readyTasks.find(({ task }) => taskOccupiedInterval(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))?.serviceEnd > serviceTimeInMinutes(hours.max))
     if (taskOutsideHours) { const interval = taskOccupiedInterval(taskWithServiceEstimate(taskOutsideHours.task, serviceForWeeklyTask(taskOutsideHours.task))); setNotice(`Hay una franja que termina a las ${interval.serviceEndTime}, fuera del horario habilitado (${hours.label}).`); return }
     const readyTaskSet = new Set(readyTasks.map(({ task }) => task))
-    const gapConflicts = minimumServiceGapConflicts(plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => readyTaskSet.has(task)).map(task => taskWithServiceEstimate(task, serviceForWeeklyTask(task))) })))
+    const gapConflicts = minimumServiceGapConflicts(plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).map(task => {
+      if (!readyTaskSet.has(task) && !taskIsResolvedForPlanning(task, day, operationalHistory)) return null
+      const occupancyTask = taskForScheduleOccupancy(task, day, operationalHistory)
+      return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(task)) : null
+    }).filter(Boolean) })))
     if (gapConflicts.length) { const conflict = gapConflicts[0]; setNotice(planningConflictMessage(day, plan.teams[conflict.teamIndex], conflict.teamIndex, conflict)); return }
     const conflicts = technicianTimeConflicts(plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => readyTaskSet.has(task)) })), activeTechs)
     if (conflicts.length) { setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`); return }
@@ -3676,7 +3744,7 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
     if ((type === 'Cancelado' || type === 'Reprogramación solicitada') && !observation.trim()) return
     setConfirm({ record, type })
   }
-  return <main className="technician-page"><header className="technician-header"><img src="/logo-pignus.png" alt="Pignus" /><div><b>{user.name}</b><span>{user.email}</span></div><button className="logout-button" onClick={() => setConfirm({ logout: true })}><Icon name="logout" size={17} />Cerrar sesión</button></header><section className="technician-content"><p className="eyebrow">MI AGENDA</p><h1>Servicios asignados</h1><p className="technician-help">Completá cada servicio en el orden indicado. La dirección y el contacto del siguiente se habilitan al informar el estado del actual.</p>{view === 'history' && <div className="technician-history-search"><label htmlFor="technician-history-query">Buscar en mi historial</label><div><Icon name="search" size={18} /><input id="technician-history-query" type="search" value={historySearch} onChange={event => setHistorySearch(event.target.value)} placeholder="Cliente, código, servicio, fecha o detalle..." autoComplete="off" /></div><small>{services.length} de {completedServices.length} servicio(s)</small></div>}{services.length ? services.map((record, index) => { const unlocked = view === 'history' || index === 0 || resolved(services[index - 1]); const done = resolved(record); const earlyVehicleControl = record.vehicleControl && !vehicleControlIsOpen(record, clock); return <article className={`technician-service ${unlocked ? '' : 'locked'} ${earlyVehicleControl ? 'vehicle-control-early' : ''}`} key={record.id}><div className="technician-service-head"><span>{index + 1}</span><div><b>{record.time ? `${record.time} Hs` : 'Horario a confirmar'}</b><small>{prettyDate(record.date)}</small></div><em className={`work-status ${done ? 'completado' : 'pendiente'}`}>{record.technicalStatus || record.status || 'Pendiente'}</em></div><h2>{record.service}</h2><p className="tech-client">{record.client}</p><p><b>Detalle:</b> {record.detail || 'Sin observaciones'}</p>{unlocked ? <><p><b>Dirección:</b> {record.address || 'Sin dirección'}</p><p><b>Contacto:</b> {record.phone || 'Sin contacto'}</p><button className="secondary technician-customer-history" onClick={() => setCustomerHistoryRecord(record)}><Icon name="history" size={17} />Ver historial del cliente</button></> : <p className="locked-info">La dirección y el contacto se habilitarán al informar el estado del servicio anterior.</p>}{unlocked && !done && <>{earlyVehicleControl && <p className="vehicle-control-early-notice"><Icon name="lock" size={16} />Este control se habilita el {vehicleControlWindowLabel(record)}.</p>}<div className="technician-actions"><button className="primary" disabled={earlyVehicleControl} onClick={() => { setDraft({ record, type: 'Completado' }); setObservation('') }}><Icon name={earlyVehicleControl ? 'lock' : 'check'} />{earlyVehicleControl ? 'Todavía no disponible' : 'Marcar completado'}</button>{!record.vehicleControl && <><button className="secondary" onClick={() => { setDraft({ record, type: 'Reprogramación solicitada' }); setObservation('') }}>Solicitar reprogramación</button><button className="secondary" onClick={() => { setDraft({ record, type: 'Cancelado' }); setObservation('') }}>Informar cancelación</button></>}</div></>}{done && record.technicalReportedAt && <small className="reported-at">Informado: {prettyReportDateTime(record.technicalReportedAt)}</small>}</article> }) : <div className="empty-state">{view === 'history' && historySearch.trim() ? 'No hay servicios que coincidan con la búsqueda.' : view === 'history' ? 'Todavía no informaste servicios.' : 'No tenés servicios asignados pendientes para hoy o fechas futuras.'}</div>}</section>{draft && <div className="modal-layer"><div className="modal technician-status-modal"><button className="close-modal" onClick={() => setDraft(null)}><Icon name="close" /></button><p className="eyebrow">ACTUALIZAR SERVICIO</p><h2>{draft.type}</h2><p>{draft.record.client} · {draft.record.service}</p><label><RequiredLabel>Observación</RequiredLabel><textarea required value={observation} onChange={event => setObservation(event.target.value)} placeholder="Detallá el trabajo realizado, el resultado y cualquier recomendación para futuras visitas." /></label><div className="modal-actions"><button className="secondary" onClick={() => setDraft(null)}>Cancelar</button><button className="primary" disabled={!observation.trim()} onClick={() => setConfirm({ record: draft.record, type: draft.type })}>Continuar</button></div></div></div>}{customerHistoryRecord && <CustomerServiceHistory customer={customerHistoryRecord} history={history} close={() => setCustomerHistoryRecord(null)} technicianView />}{confirm?.record && <Confirm title="Confirmar estado" detail={`¿Confirmás que querés informar “${confirm.type}”? Luego quedará registrado y cualquier cambio deberá ser revisado por Administración.`} action={saveStatus} confirmLabel="Sí, confirmar estado" close={() => setConfirm(null)} />}{confirm?.logout && <Confirm title="Cerrar sesión" detail="¿Querés cerrar sesión?" action={logout} confirmLabel="Sí, cerrar sesión" close={() => setConfirm(null)} />}</main>
+  return <main className="technician-page"><header className="technician-header"><img src="/logo-pignus.png" alt="Pignus" /><div><b>{user.name}</b><span>{user.email}</span></div><button className="logout-button" onClick={() => setConfirm({ logout: true })}><Icon name="logout" size={17} />Cerrar sesión</button></header><section className="technician-content"><p className="eyebrow">MI AGENDA</p><h1>Servicios asignados</h1><p className="technician-help">Completá cada servicio en el orden indicado. La dirección y el contacto del siguiente se habilitan al informar el estado del actual.</p>{view === 'history' && <div className="technician-history-search"><label htmlFor="technician-history-query">Buscar en mi historial</label><div><Icon name="search" size={18} /><input id="technician-history-query" type="search" value={historySearch} onChange={event => setHistorySearch(event.target.value)} placeholder="Cliente, código, servicio, fecha o detalle..." autoComplete="off" /></div><small>{services.length} de {completedServices.length} servicio(s)</small></div>}{services.length ? services.map((record, index) => { const unlocked = view === 'history' || index === 0 || resolved(services[index - 1]); const done = resolved(record); const earlyVehicleControl = record.vehicleControl && !vehicleControlIsOpen(record, clock); const canComplete = serviceHasStarted(record, clock); return <article className={`technician-service ${unlocked ? '' : 'locked'} ${earlyVehicleControl ? 'vehicle-control-early' : ''}`} key={record.id}><div className="technician-service-head"><span>{index + 1}</span><div><b>{record.time ? `${record.time} Hs` : 'Horario a confirmar'}</b><small>{prettyDate(record.date)}</small></div><em className={`work-status ${done ? 'completado' : 'pendiente'}`}>{record.technicalStatus || record.status || 'Pendiente'}</em></div><h2>{record.service}</h2><p className="tech-client">{record.client}</p><p><b>Detalle:</b> {record.detail || 'Sin observaciones'}</p>{unlocked ? <><p><b>Dirección:</b> {record.address || 'Sin dirección'}</p><p><b>Contacto:</b> {record.phone || 'Sin contacto'}</p><button className="secondary technician-customer-history" onClick={() => setCustomerHistoryRecord(record)}><Icon name="history" size={17} />Ver historial del cliente</button></> : <p className="locked-info">La dirección y el contacto se habilitarán al informar el estado del servicio anterior.</p>}{unlocked && !done && <>{earlyVehicleControl && <p className="vehicle-control-early-notice"><Icon name="lock" size={16} />Este control se habilita el {vehicleControlWindowLabel(record)}.</p>}{!canComplete && !earlyVehicleControl && <p className="vehicle-control-early-notice"><Icon name="lock" size={16} />Podrás completarlo cuando llegue su horario programado.</p>}<div className="technician-actions"><button className="primary" disabled={earlyVehicleControl || !canComplete} onClick={() => { setDraft({ record, type: 'Completado' }); setObservation('') }}><Icon name={earlyVehicleControl || !canComplete ? 'lock' : 'check'} />{earlyVehicleControl || !canComplete ? 'Todavía no disponible' : 'Marcar completado'}</button>{!record.vehicleControl && <><button className="secondary" onClick={() => { setDraft({ record, type: 'Reprogramación solicitada' }); setObservation('') }}>Solicitar reprogramación</button><button className="secondary" onClick={() => { setDraft({ record, type: 'Cancelado' }); setObservation('') }}>Informar cancelación</button></>}</div></>}{done && record.technicalReportedAt && <small className="reported-at">Informado: {prettyReportDateTime(record.technicalReportedAt)}</small>}</article> }) : <div className="empty-state">{view === 'history' && historySearch.trim() ? 'No hay servicios que coincidan con la búsqueda.' : view === 'history' ? 'Todavía no informaste servicios.' : 'No tenés servicios asignados pendientes para hoy o fechas futuras.'}</div>}</section>{draft && <div className="modal-layer"><div className="modal technician-status-modal"><button className="close-modal" onClick={() => setDraft(null)}><Icon name="close" /></button><p className="eyebrow">ACTUALIZAR SERVICIO</p><h2>{draft.type}</h2><p>{draft.record.client} · {draft.record.service}</p><label><RequiredLabel>Observación</RequiredLabel><textarea required value={observation} onChange={event => setObservation(event.target.value)} placeholder="Detallá el trabajo realizado, el resultado y cualquier recomendación para futuras visitas." /></label><div className="modal-actions"><button className="secondary" onClick={() => setDraft(null)}>Cancelar</button><button className="primary" disabled={!observation.trim()} onClick={() => setConfirm({ record: draft.record, type: draft.type })}>Continuar</button></div></div></div>}{customerHistoryRecord && <CustomerServiceHistory customer={customerHistoryRecord} history={history} close={() => setCustomerHistoryRecord(null)} technicianView />}{confirm?.record && <Confirm title="Confirmar estado" detail={`¿Confirmás que querés informar “${confirm.type}”? Luego quedará registrado y cualquier cambio deberá ser revisado por Administración.`} action={saveStatus} confirmLabel="Sí, confirmar estado" close={() => setConfirm(null)} />}{confirm?.logout && <Confirm title="Cerrar sesión" detail="¿Querés cerrar sesión?" action={logout} confirmLabel="Sí, cerrar sesión" close={() => setConfirm(null)} />}</main>
 }
 
 function DashboardStatusView({ history, services }) {
@@ -4148,7 +4216,7 @@ function HistoryManagementDetail({ record, setHistory, close, customers, service
       const text = button.textContent.trim().toLowerCase()
       let action = null
       if (text.includes('marcar completado')) action = { title: 'Marcar servicio como completado', detail: '¿Confirmás que el servicio fue realizado?', confirmLabel: 'Sí, marcar completado', icon: '✓', patch: { status: 'Completado', scheduledDate: '' } }
-      if (text.includes('marcar pendiente')) action = { title: 'Volver el servicio a pendiente', detail: '¿Confirmás que este servicio todavía no fue completado? Volverá a incluirse entre los trabajos pendientes.', confirmLabel: 'Sí, marcar pendiente', icon: '↶', patch: { status: 'Pendiente', scheduledDate: '', technicalStatus: '', technicalObservation: '', technicalReportedAt: '' } }
+      if (text.includes('marcar pendiente')) action = { title: 'Volver el servicio a pendiente', detail: '¿Confirmás que este servicio todavía no fue completado? Volverá a incluirse entre los trabajos pendientes.', confirmLabel: 'Sí, marcar pendiente', icon: '↶', patch: { status: 'Pendiente', scheduledDate: '', technicalStatus: '', technicalObservation: '', technicalReportedAt: '', completedAt: '' } }
       if (text.includes('cancelar servicio')) action = { title: 'Cancelar servicio', detail: '¿Confirmás la cancelación de este servicio?', confirmLabel: 'Sí, cancelar servicio', icon: '!', destructive: true, patch: { status: 'Cancelado', scheduledDate: '' } }
       if (text.includes('reprogramar') && rescheduleDate >= minimumRescheduleDate) action = { title: 'Reprogramar servicio', detail: `¿Confirmás reprogramar el servicio para ${prettyDate(rescheduleDate)}?`, confirmLabel: 'Sí, reprogramar', icon: '↻', patch: { status: 'Reprogramado', scheduledDate: rescheduleDate } }
       if (!action) return
@@ -4158,7 +4226,7 @@ function HistoryManagementDetail({ record, setHistory, close, customers, service
     actions.addEventListener('click', intercept, true)
     return () => actions.removeEventListener('click', intercept, true)
   }, [editing, rescheduleDate, minimumRescheduleDate])
-  return <><div className="modal-layer"><div className="modal detail-modal history-detail"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">{prettyDate(record.date)} · {status.toUpperCase()}</p><div className="history-detail-heading"><h2>{editing ? 'Editar servicio' : record.client}</h2><button className="secondary detail-edit" onClick={() => setEditing(!editing)}><Icon name="edit" size={15} />{editing ? 'Cancelar edición' : 'Editar datos'}</button></div>{editing ? <div className="history-edit-grid"><label>Cliente o cuenta<select value={draft.customerId} onChange={setField('customerId')}><option value="">Seleccionar</option>{customers.map(customer => <option key={customer.customerId} value={customer.customerId}>{customer.account} · {customer.name}</option>)}</select></label><label>Tipo de servicio<select value={draft.serviceId} onChange={setField('serviceId')}><option value="">Seleccionar</option>{services.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label><label>Equipo<input readOnly value={draft.team} title="La identidad del equipo se conserva mediante su ID interno" /></label><label>Técnicos asignados<select multiple value={draft.technicianIds} onChange={event => setDraft(previous => ({ ...previous, technicianIds: [...event.target.selectedOptions].map(option => option.value) }))}>{employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label><label>Dirección<input value={draft.address} onChange={setField('address')} /></label><label>Contacto<input value={draft.phone} onChange={setField('phone')} /></label><label className="detail-notes">Detalle / observaciones<textarea value={draft.detail} onChange={setField('detail')} /></label></div> : <div className="history-detail-grid"><div><b>Servicio</b><span>{record.service}</span></div><div><b>Equipo</b><span>{record.team}</span></div><div><b>Técnicos asignados</b><span>{record.technicians?.join(' / ') || 'Sin técnicos asignados'}</span></div><div><b>Hora asignada</b><span>{record.time || record.scheduledTime || 'Sin horario'}</span></div><div><b>Dirección</b><span>{record.address || 'Sin dirección'}</span></div><div><b>Contacto</b><span>{record.phone || 'Sin contacto'}</span></div><div className="detail-notes"><b>Detalle / observaciones</b><span>{record.detail || 'Sin observaciones'}</span></div></div>}{editing ? <div className="history-actions"><button className="primary" onClick={saveChanges}><Icon name="check" />Guardar cambios</button><button className="secondary" onClick={() => setEditing(false)}>Cancelar</button></div> : <div className="history-actions">{status === 'Pendiente' ? <button className="primary" onClick={() => update({ status: 'Completado', scheduledDate: '' })}><Icon name="check" />Marcar completado</button> : <button className="pending-button" onClick={() => update({ status: 'Pendiente', scheduledDate: '', technicalStatus: '', technicalObservation: '', technicalReportedAt: '' })}><Icon name="history" />Marcar pendiente</button>}<button className="secondary" onClick={() => update({ status: 'Cancelado', scheduledDate: '' })}><Icon name="close" />Cancelar servicio</button><label>Reprogramar para<input type="date" min={minimumRescheduleDate} value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} /></label><button className="secondary" disabled={!rescheduleDate || rescheduleDate < minimumRescheduleDate} onClick={() => { if (rescheduleDate >= minimumRescheduleDate) update({ status: 'Reprogramado', scheduledDate: rescheduleDate }) }}><Icon name="calendar" />Reprogramar</button><button className="danger-button delete-history" onClick={() => setConfirmDelete(true)}><Icon name="trash" />Eliminar registro</button></div>}</div></div>{confirmDelete && <Confirm title="Eliminar registro" detail="¿Querés eliminar este servicio del historial? Esta acción no se puede deshacer." destructive action={remove} close={() => setConfirmDelete(false)} />}</> }
+  return <><div className="modal-layer"><div className="modal detail-modal history-detail"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">{prettyDate(record.date)} · {status.toUpperCase()}</p><div className="history-detail-heading"><h2>{editing ? 'Editar servicio' : record.client}</h2><button className="secondary detail-edit" onClick={() => setEditing(!editing)}><Icon name="edit" size={15} />{editing ? 'Cancelar edición' : 'Editar datos'}</button></div>{editing ? <div className="history-edit-grid"><label>Cliente o cuenta<select value={draft.customerId} onChange={setField('customerId')}><option value="">Seleccionar</option>{customers.map(customer => <option key={customer.customerId} value={customer.customerId}>{customer.account} · {customer.name}</option>)}</select></label><label>Tipo de servicio<select value={draft.serviceId} onChange={setField('serviceId')}><option value="">Seleccionar</option>{services.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label><label>Equipo<input readOnly value={draft.team} title="La identidad del equipo se conserva mediante su ID interno" /></label><label>Técnicos asignados<select multiple value={draft.technicianIds} onChange={event => setDraft(previous => ({ ...previous, technicianIds: [...event.target.selectedOptions].map(option => option.value) }))}>{employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label><label>Dirección<input value={draft.address} onChange={setField('address')} /></label><label>Contacto<input value={draft.phone} onChange={setField('phone')} /></label><label className="detail-notes">Detalle / observaciones<textarea value={draft.detail} onChange={setField('detail')} /></label></div> : <div className="history-detail-grid"><div><b>Servicio</b><span>{record.service}</span></div><div><b>Equipo</b><span>{record.team}</span></div><div><b>Técnicos asignados</b><span>{record.technicians?.join(' / ') || 'Sin técnicos asignados'}</span></div><div><b>Hora asignada</b><span>{record.time || record.scheduledTime || 'Sin horario'}</span></div>{record.completedAt && <div><b>Finalización real</b><span>{prettyReportDateTime(record.completedAt)}</span></div>}<div><b>Dirección</b><span>{record.address || 'Sin dirección'}</span></div><div><b>Contacto</b><span>{record.phone || 'Sin contacto'}</span></div><div className="detail-notes"><b>Detalle / observaciones</b><span>{record.detail || 'Sin observaciones'}</span></div></div>}{editing ? <div className="history-actions"><button className="primary" onClick={saveChanges}><Icon name="check" />Guardar cambios</button><button className="secondary" onClick={() => setEditing(false)}>Cancelar</button></div> : <div className="history-actions">{status === 'Pendiente' ? <button className="primary" onClick={() => update({ status: 'Completado', scheduledDate: '', completedAt: new Date().toISOString() })}><Icon name="check" />Marcar completado</button> : <button className="pending-button" onClick={() => update({ status: 'Pendiente', scheduledDate: '', technicalStatus: '', technicalObservation: '', technicalReportedAt: '', completedAt: '' })}><Icon name="history" />Marcar pendiente</button>}<button className="secondary" onClick={() => update({ status: 'Cancelado', scheduledDate: '' })}><Icon name="close" />Cancelar servicio</button><label>Reprogramar para<input type="date" min={minimumRescheduleDate} value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} /></label><button className="secondary" disabled={!rescheduleDate || rescheduleDate < minimumRescheduleDate} onClick={() => { if (rescheduleDate >= minimumRescheduleDate) update({ status: 'Reprogramado', scheduledDate: rescheduleDate }) }}><Icon name="calendar" />Reprogramar</button><button className="danger-button delete-history" onClick={() => setConfirmDelete(true)}><Icon name="trash" />Eliminar registro</button></div>}</div></div>{confirmDelete && <Confirm title="Eliminar registro" detail="¿Querés eliminar este servicio del historial? Esta acción no se puede deshacer." destructive action={remove} close={() => setConfirmDelete(false)} />}</> }
 
 function HistoryDetail({ record, close }) { return <div className="modal-layer"><div className="modal detail-modal history-detail"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">{prettyDate(record.date)}</p><h2>{record.client}</h2><div className="history-detail-grid"><div><b>Servicio</b><span>{record.service}</span></div><div><b>Equipo</b><span>{record.team}</span></div><div><b>Técnicos asignados</b><span>{record.technicians?.join(' / ') || 'Sin técnicos asignados'}</span></div><div><b>Dirección</b><span>{record.address || 'Sin dirección'}</span></div><div><b>Contacto</b><span>{record.phone || 'Sin contacto'}</span></div><div className="detail-notes"><b>Detalle / observaciones</b><span>{record.detail || 'Sin observaciones'}</span></div></div></div></div> }
 

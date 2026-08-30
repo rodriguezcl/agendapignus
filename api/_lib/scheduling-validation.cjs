@@ -1,6 +1,31 @@
 const normalizedName = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 
 const argentinaToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+const nextArgentinaQuarterMinute = (now = new Date()) => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(now).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
+  const elapsed = Number(parts.hour) * 60 + Number(parts.minute) + (Number(parts.second) > 0 ? 1 : 0)
+  return Math.ceil(elapsed / 15) * 15
+}
+
+const historyRecordForAgendaTask = (task, date, history = []) => {
+  const taskHistoryIds = [task?.historyId, task?.sourceHistoryId].filter(Boolean).map(String)
+  const taskSourceIds = [task?.taskId, task?.sourceTaskId].filter(Boolean).map(String)
+  const directMatch = (history || []).find(record => (
+    taskHistoryIds.includes(String(record?.id || '')) ||
+    [record?.taskId, record?.sourceTaskId].filter(Boolean).map(String).some(id => taskSourceIds.includes(id))
+  ))
+  if (directMatch) return directMatch
+  const customer = normalizedName(task?.customerId || task?.clientAccount || task?.account || task?.client)
+  const service = normalizedName(task?.serviceId || task?.service)
+  const time = normalizedName(task?.time || task?.scheduledTime)
+  if (!customer || !service || !time) return null
+  return (history || []).find(record => (
+    String(record?.date || '') === String(date || '') &&
+    normalizedName(record?.customerId || record?.clientAccount || record?.account || record?.client) === customer &&
+    normalizedName(record?.serviceId || record?.service) === service &&
+    normalizedName(record?.time || record?.scheduledTime) === time
+  )) || null
+}
 
 const agendaTaskIsResolvedForPlanning = (task, date, history = [], today = argentinaToday()) => {
   const resolvedStatus = record => record?.status === 'Completado' || record?.technicalStatus === 'Completado' || (String(record?.date || date || '') < String(today || '') && (record?.status === 'Cancelado' || record?.technicalStatus === 'Cancelado'))
@@ -25,6 +50,30 @@ const agendaTaskIsResolvedForPlanning = (task, date, history = [], today = argen
   ))
 }
 
+const agendaTaskForScheduleOccupancy = (task, date, history = [], today = argentinaToday()) => {
+  const record = historyRecordForAgendaTask(task, date, history)
+  const status = record?.status || record?.technicalStatus || task?.status || task?.technicalStatus || 'Pendiente'
+  if (status === 'Completado' && String(date || '') !== String(today || '')) return null
+  if (status === 'Cancelado' && String(date || '') < String(today || '')) return null
+  return { ...task, date, status, technicalStatus: record?.technicalStatus || task?.technicalStatus || '', completedAt: record?.completedAt || task?.completedAt || '', technicalReportedAt: record?.technicalReportedAt || task?.technicalReportedAt || '' }
+}
+
+const completedReleaseMinute = task => {
+  if (task?.status !== 'Completado' && task?.technicalStatus !== 'Completado') return null
+  const value = task?.completedAt || task?.technicalReportedAt
+  const instant = new Date(value)
+  if (!value || Number.isNaN(instant.getTime())) return null
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(instant).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
+  if (`${parts.year}-${parts.month}-${parts.day}` !== String(task.date || '')) return null
+  const startParts = String(task.time || task.scheduledTime || '').match(/^(\d{1,2}):(\d{2})$/)
+  if (!startParts) return null
+  const start = Number(startParts[1]) * 60 + Number(startParts[2])
+  const completed = Number(parts.hour) * 60 + Number(parts.minute)
+  if (completed < start) return null
+  const elapsed = completed + (Number(parts.second) > 0 ? 1 : 0)
+  return Math.ceil(elapsed / 15) * 15
+}
+
 const serviceMapFor = services => ({
   byId: new Map((services || []).map(service => [String(service.id), service])),
   byName: new Map((services || []).map(service => [normalizedName(service.name), service]))
@@ -44,11 +93,10 @@ const rawEstimatedMinutesFor = (task, serviceMap) => {
 
 const scheduleSignature = (teams, serviceMap, date, history) => JSON.stringify((teams || []).map(team => ({
   teamId: String(team.teamId || ''),
-  tasks: (team.tasks || []).filter(task => (task.serviceId || task.service) && !agendaTaskIsResolvedForPlanning(task, date, history)).map((task, taskIndex) => ({
-    id: String(task.taskId || task.historyId || task.id || taskIndex),
-    time: String(task.time || task.scheduledTime || ''),
-    serviceId: String(task.serviceId || task.service || ''),
-    estimatedMinutes: String(rawEstimatedMinutesFor(task, serviceMap) ?? '')
+  tasks: (team.tasks || []).map((task, taskIndex) => ({ task: agendaTaskForScheduleOccupancy(task, date, history), taskIndex })).filter(({ task }) => task && (task.serviceId || task.service)).map(({ task, taskIndex }) => ({
+    id: String(task.taskId || task.historyId || task.id || taskIndex), time: String(task.time || task.scheduledTime || ''),
+    serviceId: String(task.serviceId || task.service || ''), estimatedMinutes: String(rawEstimatedMinutesFor(task, serviceMap) ?? ''),
+    status: String(task.status || task.technicalStatus || ''), completedAt: String(task.completedAt || task.technicalReportedAt || '')
   }))
 })))
 
@@ -86,17 +134,26 @@ function validateChangedAgendaSchedules(state, previousState = null) {
     const previous = previousPlans.get(key)
     if (previous && scheduleSignature(previous.teams, serviceMap, previous.date, previousState?.history) === scheduleSignature(plan.teams, serviceMap, plan.date, state?.history)) return
     ;(plan.teams || []).forEach((team, teamIndex) => {
+      const previousTaskIds = new Set((previous?.teams || []).flatMap(previousTeam => previousTeam.tasks || []).flatMap(task => [task?.taskId, task?.historyId].filter(Boolean).map(String)))
       const activeTasks = (team.tasks || []).map((task, taskIndex) => ({ task, taskIndex })).filter(({ task }) => (task.serviceId || task.service) && !agendaTaskIsResolvedForPlanning(task, plan.date, state?.history))
+      const occupancyTasks = (team.tasks || []).map((task, taskIndex) => ({ task: agendaTaskForScheduleOccupancy(task, plan.date, state?.history), taskIndex })).filter(({ task }) => task && (task.serviceId || task.service))
       activeTasks.forEach(({ task, taskIndex }) => {
         const estimatedMinutes = Number(rawEstimatedMinutesFor(task, serviceMap))
         if (!Number.isInteger(estimatedMinutes) || estimatedMinutes < 15 || estimatedMinutes > 720) {
           throw new Error(`${teamDescription(team, teamIndex)} del ${longDate(plan.date)} tiene un tiempo estimado inválido en el ${taskDescription(task, taskIndex)}. Configurá una duración de entre 15 minutos y 12 horas.`)
         }
+        const taskIds = [task?.taskId, task?.historyId].filter(Boolean).map(String)
+        const startMatch = String(task.time || '').match(/^(\d{1,2}):(\d{2})$/)
+        const start = startMatch ? Number(startMatch[1]) * 60 + Number(startMatch[2]) : null
+        if (plan.date === argentinaToday() && start !== null && !taskIds.some(id => previousTaskIds.has(id)) && start < nextArgentinaQuarterMinute()) {
+          throw new Error(`${teamDescription(team, teamIndex)} del ${longDate(plan.date)} no puede agregar el ${taskDescription(task, taskIndex)} a las ${task.time} porque ese horario ya pasó. Elegí un horario futuro desde el próximo cuarto de hora disponible.`)
+        }
       })
-      const scheduled = activeTasks.filter(({ task }) => /^\d{1,2}:\d{2}$/.test(String(task.time || ''))).map(({ task, taskIndex }) => {
+      const scheduled = occupancyTasks.filter(({ task }) => /^\d{1,2}:\d{2}$/.test(String(task.time || ''))).map(({ task, taskIndex }) => {
         const [hours, minutes] = task.time.split(':').map(Number)
         const start = hours * 60 + minutes
-        return { task, taskIndex, start, end: start + Math.max(60, estimatedMinutesFor(task, serviceMap)) }
+        const actualRelease = completedReleaseMinute(task)
+        return { task, taskIndex, start, end: actualRelease ?? start + Math.max(60, estimatedMinutesFor(task, serviceMap)) }
       }).sort((first, second) => first.start - second.start)
       scheduled.forEach((current, index) => {
         const conflict = scheduled.slice(0, index).find(previousTask => current.start < previousTask.end)
@@ -107,4 +164,4 @@ function validateChangedAgendaSchedules(state, previousState = null) {
   })
 }
 
-module.exports = { agendaTaskIsResolvedForPlanning, validateChangedAgendaSchedules }
+module.exports = { agendaTaskForScheduleOccupancy, agendaTaskIsResolvedForPlanning, completedReleaseMinute, validateChangedAgendaSchedules }
