@@ -16,21 +16,12 @@ import { buildVehicleControlRecords, rescheduleVehicleControlRecords, suggestedV
 import { vehicleControlIsOpen, vehicleControlWindowLabel } from './vehicle-control-window.mjs'
 import { appendConfigurationHistory, guardConfigurationSnapshot, teamConfigurationSnapshot, vehicleConfigurationSnapshot } from './configuration-history.mjs'
 import { compactVehiclePhoto } from './image-upload.mjs'
+import { serviceHasStarted } from './service-start.mjs'
 import { DEFAULT_SERVICE_ESTIMATED_MINUTES, MAX_SERVICE_ESTIMATED_MINUTES, normalizeServiceEstimatedMinutes, removeOverlappingDefaultSlots, serviceScheduleConflicts, taskOccupiedInterval } from './service-scheduling.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
 const currentLocalDate = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
-const serviceHasStarted = (record, now = new Date()) => {
-  const today = now.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
-  const date = String(record?.date || '')
-  if (date < today) return true
-  if (date > today) return false
-  const scheduled = serviceTimeInMinutes(record?.time || record?.scheduledTime)
-  if (scheduled === null) return true
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
-  return scheduled <= Number(parts.hour) * 60 + Number(parts.minute)
-}
 const nextLiveScheduleMinute = (now = new Date()) => {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(now).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
   const elapsed = Number(parts.hour) * 60 + Number(parts.minute) + (Number(parts.second) > 0 ? 1 : 0)
@@ -41,6 +32,26 @@ import './login.css'
 
 function RequiredLabel({ children }) {
   return <span className="field-label-text">{children}<span className="required-mark" aria-hidden="true">*</span></span>
+}
+
+class TechnicianPortalErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { failed: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  componentDidCatch(error, details) {
+    console.error('No se pudo mostrar el portal técnico.', error, details)
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children
+    return <main className="login-page"><div className="login-card technician-recovery"><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">RECUPERAR AGENDA</p><h1>No pudimos mostrar tus servicios</h1><p>Actualizá la página para volver a cargar la agenda. Si el problema continúa, cerrá la sesión e ingresá nuevamente.</p><button className="primary" type="button" onClick={() => window.location.reload()}>Actualizar página</button><button className="secondary" type="button" onClick={this.props.logout}>Cerrar sesión</button></div></main>
+  }
 }
 
 function useNationalHolidays(years) {
@@ -1049,8 +1060,12 @@ export default function App() {
     const media = window.matchMedia('(min-width: 641px)')
     const syncSidebarMode = () => setDesktopSidebar(media.matches)
     syncSidebarMode()
-    media.addEventListener('change', syncSidebarMode)
-    return () => media.removeEventListener('change', syncSidebarMode)
+    if (media.addEventListener) media.addEventListener('change', syncSidebarMode)
+    else media.addListener(syncSidebarMode)
+    return () => {
+      if (media.removeEventListener) media.removeEventListener('change', syncSidebarMode)
+      else media.removeListener(syncSidebarMode)
+    }
   }, [])
   useEffect(clearOperationalStorage, [])
   useEffect(() => {
@@ -1679,7 +1694,7 @@ export default function App() {
   if (authLoading) return <main className="login-page"><div className="login-loading">Verificando sesión segura…</div></main>
   if (!authUser) return <Login onLogin={setAuthUser} />
   if (!databaseReady) return <main className="login-page"><div className="login-card"><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">DATOS PROTEGIDOS</p><h1>{databaseError ? 'No se pudo cargar la agenda' : 'Cargando información autorizada…'}</h1>{databaseError && <><p className="login-error" role="alert">{databaseError}</p><button className="primary" type="button" onClick={() => { setDatabaseError(''); setAuthUser(current => current ? { ...current } : current) }}>Reintentar</button><button className="secondary" type="button" onClick={logout}>Cerrar sesión</button></>}</div></main>
-  if (authUser.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'tecnico') return <TechnicianPortal user={authUser} history={history} setHistory={setHistory} logout={logout} />
+  if (authUser.roleCode === 'technician' || normalizeRoleName(authUser.role) === 'tecnico') return <TechnicianPortalErrorBoundary logout={logout}><TechnicianPortal user={authUser} history={history} setHistory={setHistory} logout={logout} /></TechnicianPortalErrorBoundary>
   if (module === 'help') return <HelpShell user={authUser} onNavigate={setModule} logout={logout} theme={theme} setTheme={setTheme} isAdministrator={isAdministrator} navigation={nav} />
   if (module === 'audit' && isAdministrator) return <AuditShell user={authUser} onNavigate={setModule} logout={logout} theme={theme} setTheme={setTheme} navigation={nav} />
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><div className="profile-menu"><button className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span></button>{profileOpen && <div className="profile-popover"><b>{authUser.name}</b><span>{authUser.email}</span><small>{authUser.role}</small></div>}</div><button className="logout-button" onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrar sesión"><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} services={services} />}{module === 'weekly' && <WeeklyPlanner weekly={weekly} setWeekly={setWeekly} customers={customers} services={services} activeTechs={activeTechs} setNotice={setNotice} openDaily={(nextDate, nextTeams) => { setDate(nextDate); setTeams(nextTeams); setModule('agenda') }} />}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }} />}{module === 'history' && <History history={history} setHistory={setHistory} customers={customers} services={services} employees={employees} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask, history, teams, weekly }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask, history, teams, weekly }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask, history, teams, weekly }} />}{module === 'vehicles' && <Vehicles {...{ vehicles, setVehicles, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask, employees }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
@@ -3586,6 +3601,7 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
   const [clock, setClock] = useState(Date.now())
   const today = currentLocalDate()
   const resolved = technicianRecordResolved
+  const directChildWithClass = (element, className) => Array.from(element?.children || []).find(child => child.classList.contains(className)) || null
   const assignedServices = history.filter(record => record.technicianIds?.some(id => String(id) === String(user.id))).sort((a, b) => `${a.date}-${a.time || ''}`.localeCompare(`${b.date}-${b.time || ''}`))
   const completedServices = assignedServices.filter(resolved).reverse()
   const services = view === 'agenda'
@@ -3675,11 +3691,11 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
     })
     const mobileToggle = document.createElement('button')
     mobileToggle.type = 'button'; mobileToggle.className = 'mobile-menu technician-mobile-menu'; mobileToggle.setAttribute('aria-label', 'Abrir menú'); mobileToggle.textContent = '☰'; mobileToggle.onclick = () => setMenuOpen(true)
-    header.prepend(mobileToggle)
-    document.body.append(desktopNavigation)
+    header.insertBefore(mobileToggle, header.firstChild)
+    document.body.appendChild(desktopNavigation)
     const backdrop = menuOpen ? document.createElement('button') : null
-    if (backdrop) { backdrop.type = 'button'; backdrop.className = 'backdrop technician-menu-backdrop'; backdrop.setAttribute('aria-label', 'Cerrar menú'); backdrop.onclick = () => setMenuOpen(false); document.body.append(backdrop) }
-    return () => { mobileToggle.remove(); desktopNavigation.remove(); backdrop?.remove() }
+    if (backdrop) { backdrop.type = 'button'; backdrop.className = 'backdrop technician-menu-backdrop'; backdrop.setAttribute('aria-label', 'Cerrar menú'); backdrop.onclick = () => setMenuOpen(false); document.body.appendChild(backdrop) }
+    return () => { mobileToggle.parentNode?.removeChild(mobileToggle); desktopNavigation.parentNode?.removeChild(desktopNavigation); backdrop?.parentNode?.removeChild(backdrop) }
   }, [view, menuOpen])
   useEffect(() => {
     const title = document.querySelector('.technician-content h1')
@@ -3700,8 +3716,10 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
       title.textContent = 'Control vehicular vencido'
       const detail = document.createElement('span')
       detail.textContent = `Completá el control de ${vehicleLabel(first.vehicle || first)} antes de continuar. Podés consultar los demás servicios, pero sus domicilios y contactos permanecerán ocultos.`
-      banner.append(title, detail)
-      document.querySelector('.technician-help')?.after(banner)
+      banner.appendChild(title)
+      banner.appendChild(detail)
+      const help = document.querySelector('.technician-help')
+      if (help?.parentNode) help.parentNode.insertBefore(banner, help.nextSibling)
     }
     cards.forEach((card, index) => {
       card.classList.toggle('vehicle-control-card', Boolean(services[index]?.vehicleControl))
@@ -3712,13 +3730,16 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
       if (label.includes('cancel')) badge.classList.add('tech-status-cancelado')
       else if (label.includes('reprogram')) badge.classList.add('tech-status-reprogramacion')
       else if (label.includes('complet')) badge.classList.add('tech-status-completado')
-      card.querySelector(':scope > .technician-team')?.remove()
+      const previousTeam = directChildWithClass(card, 'technician-team')
+      if (previousTeam) card.removeChild(previousTeam)
       if (view === 'history') {
         const team = document.createElement('p')
         team.className = 'technician-team'
         const title = document.createElement('b'); title.textContent = 'Equipo de trabajo: '
-        team.append(title, document.createTextNode(technicianTeamLabel(services[index])))
-        card.querySelector(':scope > .tech-client')?.after(team)
+        team.appendChild(title)
+        team.appendChild(document.createTextNode(technicianTeamLabel(services[index])))
+        const client = directChildWithClass(card, 'tech-client')
+        if (client) card.insertBefore(team, client.nextSibling)
       } else {
         const blockingControl = blockingOverdueVehicleControl(services, index, today)
         const lockedInfo = card.querySelector('.locked-info')
@@ -3730,7 +3751,7 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
     })
     return () => {
       document.querySelector('.vehicle-control-blocker-banner')?.remove()
-      cards.forEach(card => { card.querySelector(':scope > .technician-team')?.remove(); card.classList.remove('blocked-by-vehicle-control', 'vehicle-control-card') })
+      cards.forEach(card => { const team = directChildWithClass(card, 'technician-team'); if (team) card.removeChild(team); card.classList.remove('blocked-by-vehicle-control', 'vehicle-control-card') })
     }
   }, [services, view, today])
   const saveStatus = async () => {
