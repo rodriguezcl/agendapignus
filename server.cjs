@@ -231,7 +231,7 @@ function migrateServiceReferences() {
   }
   const normalizeReference = item => {
     const matched = byId.get(String(item.serviceId ?? '')) || byName.get(normalizedServiceName(item.service)) || legacyService(item.service)
-    return matched ? { ...item, serviceId: matched.id, service: matched.name } : item
+    return matched ? { ...item, serviceId: matched.id, service: matched.name, estimatedMinutes: item.estimatedMinutes == null ? matched.estimatedMinutes : item.estimatedMinutes } : item
   }
   const normalizeTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(normalizeReference) }))
 
@@ -905,6 +905,7 @@ function validateState(state) {
     if (!text(record.client, 200) || !text(record.service, 160) || !text(record.address, 320) || !text(record.phone, 50) || !text(record.detail, 4000)) throw new Error(`Historial ${index + 1}: uno de los campos es demasiado extenso.`)
     if (!['Pendiente', 'Completado', 'Cancelado', 'Reprogramado', 'Requiere revisión'].includes(record.status)) throw new Error(`Historial ${index + 1}: el estado no es válido.`)
     if (!Array.isArray(record.technicianIds || [])) throw new Error(`Historial ${index + 1}: la asignación de técnicos no es válida.`)
+    if (record.serviceId && (!Number.isInteger(Number(record.estimatedMinutes)) || Number(record.estimatedMinutes) < 15 || Number(record.estimatedMinutes) > 720)) throw new Error(`Historial ${index + 1}: el tiempo estimado debe estar entre 15 minutos y 12 horas.`)
   })
   state.history.forEach((record, index) => {
     if (!customerIds.has(String(record.customerId))) throw new Error(`Historial ${index + 1}: el cliente vinculado no existe.`)
@@ -924,6 +925,16 @@ function validateState(state) {
       if (!time(task.time) || !text(task.service, 160) || !text(task.client, 200) || !text(task.address, 320) || !text(task.phone, 50) || !text(task.detail, 4000)) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} contiene datos inválidos.`)
       if (task.serviceId && !serviceIds.has(String(task.serviceId))) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} tiene un tipo inexistente.`)
       if (task.customerId && !customerIds.has(String(task.customerId))) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} tiene un cliente inexistente.`)
+      if (task.serviceId && (!Number.isInteger(Number(task.estimatedMinutes)) || Number(task.estimatedMinutes) < 15 || Number(task.estimatedMinutes) > 720)) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} debe tener un tiempo estimado de entre 15 minutos y 12 horas.`)
+    })
+    const scheduled = (team.tasks || []).filter(task => task.serviceId && /^\d{1,2}:\d{2}$/.test(String(task.time || ''))).map(task => {
+      const [hours, minutes] = task.time.split(':').map(Number)
+      const start = hours * 60 + minutes
+      return { task, start, end: start + Math.max(60, Number(task.estimatedMinutes)) }
+    }).sort((first, second) => first.start - second.start)
+    scheduled.forEach((current, index) => {
+      const conflict = scheduled.slice(0, index).find(previous => current.start < previous.end)
+      if (conflict) throw new Error(`Agenda: las franjas de ${conflict.task.time} y ${current.task.time} se superponen en el equipo ${teamIndex + 1}.`)
     })
   })
 }
@@ -988,7 +999,9 @@ function saveState(state, user) {
   const serviceByName = new Map(normalizedServices.map(service => [normalizedServiceName(service.name), service]))
   const normalizeServiceReference = item => {
     const matched = serviceById.get(String(item.serviceId ?? '')) || serviceByName.get(normalizedServiceName(item.service))
-    return matched ? { ...item, serviceId: matched.id, service: matched.name } : item
+    if (!matched) return item
+    const estimatedMinutes = item.estimatedMinutes == null ? matched.estimatedMinutes : item.estimatedMinutes
+    return { ...item, serviceId: matched.id, service: matched.name, estimatedMinutes }
   }
   const completedRetirementCustomerIds = new Set((state.history || [])
     .filter(record => record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo'))

@@ -162,10 +162,23 @@ function normalizeStateForSave(state, current) {
     return { ...employee, name: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(), ...(role ? { roleId: role.id, role: role.name } : {}) }
   })
   const services = (state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) }))
+  const serviceById = new Map(services.map(service => [String(service.id), service]))
+  const serviceByName = new Map(services.map(service => [normalizedServiceName(service.name), service]))
+  const normalizeScheduledService = item => {
+    const service = serviceById.get(String(item?.serviceId ?? '')) || serviceByName.get(normalizedServiceName(item?.service))
+    if (!service) return item
+    return { ...item, serviceId: service.id, service: service.name, estimatedMinutes: item.estimatedMinutes == null ? service.estimatedMinutes : item.estimatedMinutes }
+  }
+  const normalizeTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(normalizeScheduledService) }))
   const vehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), mileage: vehicle.mileage == null || vehicle.mileage === '' ? null : Number(vehicle.mileage), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
   const customers = (state.customers || []).map(customer => ({ ...customer, kind: customerKind(customer), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }))
-  const history = (state.history || []).map(record => ({ ...record, status: record.status || 'Pendiente' }))
-  return normalizeRetirementCustomers({ ...state, roles, employees, services, vehicles, customers, history, reviews: state.reviews || current.reviews || [] }).state
+  const history = (state.history || []).map(record => ({ ...normalizeScheduledService(record), status: record.status || 'Pendiente' }))
+  const incomingAgenda = state.agenda || {}
+  const weekly = Object.fromEntries(Object.entries(incomingAgenda.weekly || {}).map(([key, value]) => key === '_monthlyTeams'
+    ? [key, Object.fromEntries(Object.entries(value || {}).map(([month, config]) => [month, { ...config, teams: normalizeTeams(config?.teams) }]))]
+    : [key, key.startsWith('_') ? value : { ...value, teams: normalizeTeams(value?.teams) }]))
+  const agenda = { ...incomingAgenda, teams: normalizeTeams(incomingAgenda.teams), weekly }
+  return normalizeRetirementCustomers({ ...state, roles, employees, services, vehicles, customers, history, agenda, reviews: state.reviews || current.reviews || [] }).state
 }
 
 function statePersistenceChanged(current, next) {
@@ -269,6 +282,26 @@ function validateState(state) {
     if (record.serviceId != null && !serviceIds.has(String(record.serviceId))) throw new Error(`Historial ${index + 1}: el tipo de servicio no existe.`)
     if (record.customerId != null && !customerIds.has(String(record.customerId))) throw new Error(`Historial ${index + 1}: el cliente no existe.`)
     if ((record.technicianIds || []).some(id => !employeeIds.has(String(id)))) throw new Error(`Historial ${index + 1}: contiene un técnico inexistente.`)
+    if (record.serviceId != null && (!Number.isInteger(Number(record.estimatedMinutes)) || Number(record.estimatedMinutes) < 15 || Number(record.estimatedMinutes) > 720)) throw new Error(`Historial ${index + 1}: el tiempo estimado debe estar entre 15 minutos y 12 horas.`)
+  })
+  const agendaTeams = [...(state.agenda?.teams || [])]
+  Object.entries(state.agenda?.weekly || {}).forEach(([key, value]) => {
+    if (key === '_monthlyTeams') Object.values(value || {}).forEach(config => agendaTeams.push(...(config?.teams || [])))
+    else if (!key.startsWith('_')) agendaTeams.push(...(value?.teams || []))
+  })
+  agendaTeams.forEach((team, teamIndex) => {
+    ;(team.tasks || []).forEach((task, taskIndex) => {
+      if (task.serviceId != null && (!Number.isInteger(Number(task.estimatedMinutes)) || Number(task.estimatedMinutes) < 15 || Number(task.estimatedMinutes) > 720)) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} debe tener un tiempo estimado de entre 15 minutos y 12 horas.`)
+    })
+    const scheduled = (team.tasks || []).filter(task => task.serviceId && /^\d{1,2}:\d{2}$/.test(String(task.time || ''))).map(task => {
+      const [hours, minutes] = task.time.split(':').map(Number)
+      const start = hours * 60 + minutes
+      return { task, start, end: start + Math.max(60, Number(task.estimatedMinutes)) }
+    }).sort((first, second) => first.start - second.start)
+    scheduled.forEach((current, index) => {
+      const conflict = scheduled.slice(0, index).find(previous => current.start < previous.end)
+      if (conflict) throw new Error(`Agenda: las franjas de ${conflict.task.time} y ${current.task.time} se superponen en el equipo ${teamIndex + 1}.`)
+    })
   })
 }
 

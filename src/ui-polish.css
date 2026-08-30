@@ -2158,7 +2158,8 @@ html.modal-open body {
 .content > .team-card .task-row > .daily-field-time { grid-column: 2; grid-row: 1; }
 .content > .team-card .task-row > .daily-field-service { grid-column: 3; grid-row: 1; }
 .content > .team-card .task-row > .daily-field-customer { grid-column: 4; grid-row: 1; }
-.content > .team-card .task-row > .daily-field-address { grid-column: 2 / 4; grid-row: 2; }
+.content > .team-card .task-row > .daily-field-duration { grid-column: 2; grid-row: 2; }
+.content > .team-card .task-row > .daily-field-address { grid-column: 3; grid-row: 2; }
 .content > .team-card .task-row > .daily-field-contact { grid-column: 4; grid-row: 2; }
 
 .content > .team-card .task-row > .daily-field-observations {
@@ -2182,6 +2183,50 @@ html.modal-open body {
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   padding-top: 2px;
 }
+
+.task-duration-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: #53695b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.task-duration-field > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 7px;
+}
+
+.task-duration-field label {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px !important;
+}
+
+.task-duration-field :is(input, select) { min-width: 0; width: 100%; }
+.task-duration-field small { color: #718174; font-weight: 600; }
+.task-occupied-range { color: #52705d; font-weight: 700; }
+.content > .team-card .task-row > .task-occupied-range { grid-column: 2 / 5; }
+.task-schedule-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid #e6b2ad;
+  border-radius: 8px;
+  background: #fff1ef;
+  color: #963d37;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.task-schedule-alert svg { flex: 0 0 auto; margin-top: 1px; }
+.content > .team-card .task-row > .task-schedule-alert { grid-column: 2 / 5; }
+.app-shell[data-theme='dark'] .task-schedule-alert { border-color: #794942; background: #3c2522; color: #ffc5be; }
 
 .content > .team-card .task-row :is(input, select, .customer-autocomplete-control) {
   min-height: 44px;
@@ -2238,7 +2283,8 @@ html.modal-open body {
     grid-template-columns: 70px minmax(170px, 1fr) minmax(170px, 1fr) minmax(180px, 1fr) !important;
   }
 
-  .content > .team-card .task-row > .daily-field-address { grid-column: 2 / 4; }
+  .content > .team-card .task-row > .daily-field-duration { grid-column: 2; }
+  .content > .team-card .task-row > .daily-field-address { grid-column: 3; }
   .content > .team-card .task-row > .daily-field-contact { grid-column: 4; }
   .content > .team-card .task-row > .daily-field-observations,
   .content > .team-card .task-row > .installation-zone,
@@ -2279,6 +2325,9 @@ html.modal-open body {
     grid-row: auto !important;
   }
   .content > .team-card .task-row > .daily-field-customer,
+  .content > .team-card .task-row > .daily-field-duration,
+  .content > .team-card .task-row > .task-occupied-range,
+  .content > .team-card .task-row > .task-schedule-alert,
   .content > .team-card .task-row > .daily-field-address,
   .content > .team-card .task-row > .daily-field-contact,
   .content > .team-card .task-row > .daily-field-observations,

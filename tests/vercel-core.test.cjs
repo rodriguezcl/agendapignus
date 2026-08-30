@@ -470,12 +470,15 @@ test('los horarios predeterminados cambian desde septiembre sin alterar servicio
 test('cada equipo reserva una hora mínima y oculta turnos vacíos incompatibles', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
-  assert.match(source, /MINIMUM_SERVICE_GAP_MINUTES = 60/)
-  assert.match(source, /Math\.abs\(time - slotTime\) < MINIMUM_SERVICE_GAP_MINUTES/)
-  assert.match(source, /tasks: removeUnavailableDefaultSlots\(team\.tasks \|\| \[\]\)/)
-  assert.match(source, /minimumServiceGapConflicts\(realServiceTeams\)/)
-  assert.match(source, /No se puede reasignar: debe haber al menos una hora/)
-  assert.match(help, /menos de 60 minutos de un turno predeterminado todavía vacío/)
+  const scheduling = fs.readFileSync(path.resolve(__dirname, '../src/service-scheduling.mjs'), 'utf8')
+  assert.match(scheduling, /MINIMUM_SERVICE_RESERVATION_MINUTES = 60/)
+  assert.match(scheduling, /Math\.max\([\s\S]*MINIMUM_SERVICE_RESERVATION_MINUTES/)
+  assert.match(source, /removeUnavailableDefaultSlots\(\(team\.tasks \|\| \[\]\)\.map/)
+  assert.match(source, /minimumServiceGapConflicts\(realServiceTeams\.map/)
+  assert.match(source, /No se puede reasignar porque/)
+  assert.match(source, /className="task-schedule-alert" role="alert"/)
+  assert.match(source, /separación operativa mínima/)
+  assert.match(help, /reserva operativa mínima de 60 minutos/)
 })
 
 test('el administrador configura dos horarios predeterminados para cada mes', () => {
