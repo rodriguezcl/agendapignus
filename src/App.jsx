@@ -16,6 +16,7 @@ import { buildVehicleControlRecords, rescheduleVehicleControlRecords, suggestedV
 import { vehicleControlIsOpen, vehicleControlWindowLabel } from './vehicle-control-window.mjs'
 import { appendConfigurationHistory, guardConfigurationSnapshot, teamConfigurationSnapshot, vehicleConfigurationSnapshot } from './configuration-history.mjs'
 import { compactVehiclePhoto } from './image-upload.mjs'
+import { DEFAULT_SERVICE_ESTIMATED_MINUTES, MAX_SERVICE_ESTIMATED_MINUTES, normalizeServiceEstimatedMinutes, removeOverlappingDefaultSlots, serviceScheduleConflicts, taskOccupiedInterval } from './service-scheduling.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -186,31 +187,17 @@ const taskHasContent = task => Boolean(task && (
   task.historyId || task.customerId || task.serviceId ||
   ['client', 'service', 'address', 'phone', 'detail'].some(key => String(task[key] || '').trim())
 ))
-const MINIMUM_SERVICE_GAP_MINUTES = 60
 const serviceTimeInMinutes = time => {
   const match = String(time || '').match(/^(\d{2}):(\d{2})$/)
   return match ? Number(match[1]) * 60 + Number(match[2]) : null
 }
-const minimumServiceGapConflicts = (teams = []) => teams.flatMap((team, teamIndex) => {
-  const scheduled = (team.tasks || [])
-    .filter(task => taskHasContent(task) && serviceTimeInMinutes(task.time) !== null)
-    .slice()
-    .sort((first, second) => serviceTimeInMinutes(first.time) - serviceTimeInMinutes(second.time))
-  return scheduled.slice(1).flatMap((task, index) => {
-    const previous = scheduled[index]
-    return serviceTimeInMinutes(task.time) - serviceTimeInMinutes(previous.time) < MINIMUM_SERVICE_GAP_MINUTES
-      ? [{ teamIndex, firstTime: previous.time, secondTime: task.time }]
-      : []
-  })
-})
-const removeUnavailableDefaultSlots = (tasks = []) => {
-  const scheduledTimes = tasks.filter(taskHasContent).map(task => serviceTimeInMinutes(task.time)).filter(Number.isFinite)
-  return tasks.filter(task => {
-    if (taskHasContent(task) || task?.manualSlot) return true
-    const slotTime = serviceTimeInMinutes(task?.time)
-    return slotTime === null || !scheduledTimes.some(time => Math.abs(time - slotTime) < MINIMUM_SERVICE_GAP_MINUTES)
-  })
-}
+const minimumServiceGapConflicts = (teams = []) => serviceScheduleConflicts(teams, taskHasContent)
+const removeUnavailableDefaultSlots = (tasks = []) => removeOverlappingDefaultSlots(tasks, taskHasContent)
+const conflictTaskName = (task, index) => String(task?.service || '').trim() || `Servicio ${index + 1}`
+const conflictIntervalDescription = (task, interval) => interval.estimatedMinutes < 60
+  ? `ocupa de ${interval.startTime} a ${interval.serviceEndTime} y reserva el equipo hasta las ${interval.endTime} por la separación operativa mínima`
+  : `ocupa de ${interval.startTime} a ${interval.serviceEndTime}`
+const scheduleConflictMessage = conflict => `${conflictTaskName(conflict.firstTask, conflict.firstTaskIndex)} ${conflictIntervalDescription(conflict.firstTask, conflict.first)}; ${conflictTaskName(conflict.secondTask, conflict.secondTaskIndex)} ${conflictIntervalDescription(conflict.secondTask, conflict.second)}`
 const DEFAULT_SERVICE_TIME_CHANGE_DATE = '2026-09-01'
 const fallbackDefaultServiceTimesForDate = date => String(date || '') >= DEFAULT_SERVICE_TIME_CHANGE_DATE
   ? ['09:00', '14:00']
@@ -497,7 +484,7 @@ const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?
     teamIndex = teams.length
     teams.push({ teamId: record.teamId || createTeamId(), label: record.team || `Equipo ${teamNumber}`, memberIds: record.technicianIds || [], members: record.technicians || [], tasks: [] })
   }
-  const task = { taskId: record.sourceTaskId || record.id, historyId: record.id, time: record.time || record.scheduledTime || '', serviceId: record.serviceId || '', service: record.service || '', customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', vehicleControl: Boolean(record.vehicleControl), vehicleId: record.vehicleId || '', vehicleControlScheduledFriday: record.vehicleControlScheduledFriday || '', monthlyVehicleAssignment: record.monthlyVehicleAssignment || '', ...serviceTrace(record) }
+  const task = { taskId: record.sourceTaskId || record.id, historyId: record.id, time: record.time || record.scheduledTime || '', serviceId: record.serviceId || '', service: record.service || '', estimatedMinutes: record.estimatedMinutes, customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', vehicleControl: Boolean(record.vehicleControl), vehicleId: record.vehicleId || '', vehicleControlScheduledFriday: record.vehicleControlScheduledFriday || '', monthlyVehicleAssignment: record.monthlyVehicleAssignment || '', ...serviceTrace(record) }
   const currentTasks = teams[teamIndex].tasks || []
   const emptyAtSameTime = currentTasks.findIndex(item => item.time === task.time && !item.customerId && !String(item.client || '').trim() && !item.serviceId && !String(item.service || '').trim())
   const sameCustomer = item => {
@@ -671,17 +658,28 @@ function CustomerAutocomplete({ value = '', customerId = '', customers = [], onT
   </div>
 }
 
-const DEFAULT_SERVICE_ESTIMATED_MINUTES = 60
-const MAX_SERVICE_ESTIMATED_MINUTES = 12 * 60
-const normalizeServiceEstimatedMinutes = value => {
-  const minutes = Number(value)
-  return Number.isInteger(minutes) && minutes >= 15 && minutes <= MAX_SERVICE_ESTIMATED_MINUTES ? minutes : DEFAULT_SERVICE_ESTIMATED_MINUTES
-}
 const formatServiceEstimatedTime = value => {
   const minutes = normalizeServiceEstimatedMinutes(value)
   const hours = Math.floor(minutes / 60)
   const remainingMinutes = minutes % 60
   return [hours ? `${hours} h` : '', remainingMinutes ? `${remainingMinutes} min` : ''].filter(Boolean).join(' ')
+}
+const resolveServiceForTask = (task, services = []) => services.find(service => String(service.id) === String(task?.serviceId)) || services.find(service => normalizeServiceName(service.name) === normalizeServiceName(task?.service))
+const serviceEstimateForTask = (task, service) => normalizeServiceEstimatedMinutes(task?.estimatedMinutes, normalizeServiceEstimatedMinutes(service?.estimatedMinutes))
+const taskWithServiceEstimate = (task, service) => ({ ...task, estimatedMinutes: serviceEstimateForTask(task, service) })
+const taskOccupiedTimeLabel = task => {
+  const interval = taskOccupiedInterval(task)
+  return interval ? `${interval.startTime}–${interval.serviceEndTime}` : ''
+}
+function ServiceEstimatedDurationField({ value, onChange, className = '' }) {
+  const duration = normalizeServiceEstimatedMinutes(value)
+  const hours = Math.floor(duration / 60)
+  const minutes = duration % 60
+  const update = (nextHours, nextMinutes) => {
+    const total = Number(nextHours) * 60 + Number(nextMinutes)
+    onChange(Math.min(MAX_SERVICE_ESTIMATED_MINUTES, Math.max(15, total)))
+  }
+  return <div className={`task-duration-field ${className}`.trim()}><span><RequiredLabel>Tiempo estimado</RequiredLabel></span><div><label><input aria-label="Horas estimadas del servicio" type="number" inputMode="numeric" min="0" max="12" step="1" value={hours} onChange={event => update(event.target.value, minutes)} /><small>h</small></label><label><select aria-label="Minutos estimados del servicio" value={minutes} onChange={event => update(hours, event.target.value)}><option value="0">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option></select><small>min</small></label></div></div>
 }
 const serviceCode = service => service?.code || (normalizeServiceName(service?.name) === 'instalacion de alarma' ? 'alarm-installation' : `service-${service?.id}`)
 const PAYMENT_SERVICE_NAMES = new Set([
@@ -2025,7 +2023,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     }
     const byTeam = new Map()
     const visibleWeeklyTeams = applyRemovedWeeklySlots(weeklyDay?.teams || [], weeklyDay?.removedSlots || [])
-      .map(team => ({ ...team, tasks: removeUnavailableDefaultSlots(team.tasks || []) }))
+      .map(team => ({ ...team, tasks: removeUnavailableDefaultSlots((team.tasks || []).map(task => taskWithServiceEstimate(task, resolveServiceForTask(task, services)))) }))
     ;visibleWeeklyTeams.forEach((team, index) => {
       const position = Number(String(team.label || '').match(/\d+/)?.[0]) || index + 1
       const teamKey = team.teamId || `legacy-team-${position}`
@@ -2048,7 +2046,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       current.memberIds = record.technicianIds?.length ? record.technicianIds : current.memberIds
       current.members = record.technicians?.length ? record.technicians : current.members
       // Se aceptan los nombres anteriores del campo para recuperar también agendas ya existentes.
-      const recoveredTask = { taskId: record.sourceTaskId || record.id || createTaskId(), historyId: record.id, time: record.time || record.scheduledTime || record.hora || record.Hora || '', serviceId: record.serviceId || '', service: record.service || '', customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', ...serviceTrace(record) }
+      const recoveredTask = taskWithServiceEstimate({ taskId: record.sourceTaskId || record.id || createTaskId(), historyId: record.id, time: record.time || record.scheduledTime || record.hora || record.Hora || '', serviceId: record.serviceId || '', service: record.service || '', estimatedMinutes: record.estimatedMinutes, customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', ...serviceTrace(record) }, resolveServiceForTask(record, services))
       const sameTask = task => (record.id && String(task.historyId || '') === String(record.id)) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
       if (current.tasks.some(sameTask)) current.tasks = current.tasks.map(task => sameTask(task) ? { ...task, ...recoveredTask } : task)
       else current.tasks.push(recoveredTask)
@@ -2087,16 +2085,20 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     return () => copyButton.removeEventListener('click', intercept, true)
   }, [date, teams, history, activeTechs])
   const activeServices = services.filter(service => service.status === 'Activo')
-  const serviceForTask = task =>
-    services.find(service => String(service.id) === String(task.serviceId)) ||
-    services.find(service => normalizeServiceName(service.name) === normalizeServiceName(task.service))
+  const serviceForTask = task => resolveServiceForTask(task, services)
   const selectTaskService = (teamIndex, taskIndex, selectedId) => {
     const selected = services.find(service => String(service.id) === String(selectedId))
     const currentTask = teams[teamIndex]?.tasks[taskIndex]
     const nextTask = selected
-      ? { ...currentTask, serviceId: selected.id, service: selected.name, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
-      : { ...currentTask, serviceId: '', service: '', installationZone: '' }
+      ? { ...currentTask, serviceId: selected.id, service: selected.name, estimatedMinutes: normalizeServiceEstimatedMinutes(selected.estimatedMinutes), installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
+      : { ...currentTask, serviceId: '', service: '', estimatedMinutes: undefined, installationZone: '' }
     updateTask(teamIndex, taskIndex, { ...nextTask, ...applicableServiceExtras(nextTask, selected) })
+  }
+  const conflictForDailyTask = (teamIndex, taskIndex) => {
+    const team = teams[teamIndex]
+    if (!team) return null
+    return minimumServiceGapConflicts([{ ...team, tasks: (team.tasks || []).map(task => taskWithServiceEstimate(task, serviceForTask(task))) }])
+      .find(conflict => conflict.firstTaskIndex === taskIndex || conflict.secondTaskIndex === taskIndex) || null
   }
   const agendaTeamsWithRealServices = (agendaTeams = teams) => agendaTeams.map(team => ({
     ...team,
@@ -2116,7 +2118,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       if (requiresPaymentAmount(task, serviceForTask(task))) fields.push('monto')
       if (fields.length) missing.push(`Equipo ${teamIndex + 1}, servicio ${taskIndex + 1}: ${fields.join(', ')}`)
     }))
-    minimumServiceGapConflicts(realServiceTeams).forEach(conflict => missing.push(`Equipo ${conflict.teamIndex + 1}: debe haber al menos una hora entre ${conflict.firstTime} y ${conflict.secondTime}`))
+    minimumServiceGapConflicts(realServiceTeams.map(team => ({ ...team, tasks: team.tasks.map(task => taskWithServiceEstimate(task, serviceForTask(task))) }))).forEach(conflict => missing.push(`Equipo ${conflict.teamIndex + 1}: ${scheduleConflictMessage(conflict)}`))
     if (!missing.length) return true
     showAgendaValidationModal(missing)
     return false
@@ -2168,7 +2170,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
         // Para un servicio nuevo se usa el taskId, que permanece aunque cambien sus datos.
         id: task.historyId || `work-${task.taskId || `${date}-${teamIndex}-${taskIndex}`}`,
         sourceTaskId: task.taskId,
-        date, time: task.time, scheduledTime: task.time, team: `Equipo ${teamIndex + 1}`,
+        date, time: task.time, scheduledTime: task.time, estimatedMinutes: serviceEstimateForTask(task, serviceForTask(task)), team: `Equipo ${teamIndex + 1}`,
         // El historial conserva el titular original aunque la cuenta se reasigne después.
         teamId: team.teamId, technicianIds: team.memberIds || [], technicians: team.members, serviceId: serviceForTask(task)?.id || task.serviceId, service: serviceForTask(task)?.name || task.service, client: task.client,
         customerId: task.customerId || '',
@@ -2345,9 +2347,9 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       setNotice('No se pudo reasignar el servicio. Revisá los equipos e intentá nuevamente.')
       return
     }
-    const destinationGap = minimumServiceGapConflicts([{ tasks: [...(destinationTeam.tasks || []), movedTask] }])[0]
+    const destinationGap = minimumServiceGapConflicts([{ tasks: [...(destinationTeam.tasks || []), movedTask].map(task => taskWithServiceEstimate(task, serviceForTask(task))) }])[0]
     if (destinationGap) {
-      setNotice(`No se puede reasignar: debe haber al menos una hora entre ${destinationGap.firstTime} y ${destinationGap.secondTime}.`)
+      setNotice(`No se puede reasignar porque ${scheduleConflictMessage(destinationGap)}.`)
       return
     }
     setTeams(previous => previous.map((team, index) => {
@@ -2427,6 +2429,9 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Agenda del sábado bloqueada</h1><p>La guardia de fin de semana ya fue cubierta el viernes y no admite nuevos equipos, técnicos ni servicios.</p></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div><p className={`weekly-guard-advanced ${advancedGuard.hasSaturdayConflict ? 'has-conflict' : ''}`}><Icon name={advancedGuard.hasSaturdayConflict ? 'alert' : 'check'} size={16} /><span>{advancedSaturdayGuardMessage(advancedGuard)}</span></p></>
   }
   return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setConfirmation('clear')}><Icon name="trash" />Limpiar agenda</button><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button><button type="button" className="secondary save-agenda-button" onClick={saveAgenda}><Icon name="check" />Guardar agenda</button><button className="primary" onClick={() => { navigator.clipboard?.writeText(message); clearAgenda() }}><Icon name="copy" />Copiar agenda</button></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, teamIndex) => <article className="team-card" key={team.teamId || teamIndex}><div className="team-header"><div className="daily-team-heading"><span className="team-number">{teamIndex + 1}</span><div className="daily-team-identity"><strong>Equipo {teamIndex + 1}</strong><span className="daily-team-member-names" title={team.members.join(' · ') || 'Sin técnicos'}>{team.members.length ? team.members.map(name => String(name).trim().split(/\s+/)[0]).join(' · ') : 'Sin técnicos'}</span></div>{teams.length > 1 && <button className="team-delete" onClick={() => setConfirmation({ type: 'team', index: teamIndex })}><Icon name="trash" size={16} />Eliminar equipo</button>}</div><div className="technicians-picker"><span className="technician-assignment-label"><RequiredLabel>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</RequiredLabel></span><button className="secondary small" onClick={() => { setTechOpen(techOpen === teamIndex ? null : teamIndex); setFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === teamIndex && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={filter} onChange={event => setFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(filter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={(team.memberIds || []).some(id => String(id) === String(tech.id))} onChange={() => toggleTech(teamIndex, tech)} />{tech.name}</label>)}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, taskIndex) => <div className="task-row" key={task.taskId || task.historyId || `${team.teamId || teamIndex}-${taskIndex}`}><div className="task-title"><span>{taskIndex + 1}</span><b>Servicio</b></div><label className="daily-field-time"><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" value={task.time} onChange={event => updateTask(teamIndex, taskIndex, { time: event.target.value })} /></label><label className="daily-field-service"><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForTask(task)?.id || ''} onChange={event => selectTaskService(teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
+<ServiceEstimatedDurationField className="daily-field-duration" value={serviceEstimateForTask(task, serviceForTask(task))} onChange={estimatedMinutes => updateTask(teamIndex, taskIndex, { estimatedMinutes })} />
+{task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForTask(task)))}</small>}
+{(() => { const conflict = conflictForDailyTask(teamIndex, taskIndex); return conflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>No se puede agendar en este horario porque {scheduleConflictMessage(conflict)}.</span></p> })()}
 <TaskStatusBadge task={task} date={date} history={history} />
 {dailyCustomerField(task, teamIndex, taskIndex)}
 <label className="daily-field-address"><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label className="daily-field-contact"><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations daily-field-observations">Observaciones<BufferedTextarea value={task.detail} onCommit={value => updateTask(teamIndex, taskIndex, { detail: value })} /></label>{serviceCode(serviceForTask(task)) === 'alarm-installation' && <fieldset className="installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" aria-required="true" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForTask(task)) }) }} />{label}</label>)}</fieldset>}<ServiceExtraFields className="daily-extra-fields" task={task} service={serviceForTask(task)} buffered onChange={patch => updateTask(teamIndex, taskIndex, patch)} /><div className="daily-task-actions"><button type="button" className="icon-btn daily-copy-button" title="Copiar este servicio" aria-label={`Copiar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => copySingleTask(task, team, teamIndex, taskIndex)}><Icon name="copy" size={16} /><span>Copiar</span></button>{teams.length > 1 && <button type="button" className="icon-btn move daily-move-button" title="Reasignar a otro equipo" aria-label={`Reasignar servicio ${taskIndex + 1} a otro equipo`} onClick={() => openTaskMove(teamIndex, taskIndex)}><span aria-hidden="true">⇄</span><span>Reasignar</span></button>}{taskHasContent(task) && <button type="button" className="icon-btn delete daily-delete-button" title="Eliminar servicio" aria-label={`Eliminar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.length > 1 ? item.tasks.filter((_, index) => index !== taskIndex) : [blankTask()] }))}><Icon name="trash" size={16} /><span>Eliminar</span></button>}</div></div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
@@ -2466,13 +2471,13 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     if (Math.abs(target.scrollLeft - nextPosition) > 0.5) target.scrollLeft = nextPosition
   }
   const activeServices = services.filter(service => service.status === 'Activo')
-  const serviceForWeeklyTask = task => services.find(service => String(service.id) === String(task.serviceId)) || services.find(service => normalizeServiceName(service.name) === normalizeServiceName(task.service))
+  const serviceForWeeklyTask = task => resolveServiceForTask(task, services)
   const selectWeeklyService = (day, teamIndex, taskIndex, selectedId) => {
     const selected = services.find(service => String(service.id) === String(selectedId))
     const currentTask = dayPlan(day).teams[teamIndex]?.tasks[taskIndex]
     const nextTask = selected
-      ? { ...currentTask, serviceId: selected.id, service: selected.name, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
-      : { ...currentTask, serviceId: '', service: '', installationZone: '' }
+      ? { ...currentTask, serviceId: selected.id, service: selected.name, estimatedMinutes: normalizeServiceEstimatedMinutes(selected.estimatedMinutes), installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
+      : { ...currentTask, serviceId: '', service: '', estimatedMinutes: undefined, installationZone: '' }
     updateTask(day, teamIndex, taskIndex, { ...nextTask, ...applicableServiceExtras(nextTask, selected) })
   }
   const weeklyTechnicianName = fullName => activeTechs.find(tech => tech.name === fullName)?.firstName || String(fullName || '').split(' ')[0]
@@ -2633,15 +2638,15 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
   const openTaskEditor = (day, teamIndex, taskIndex) => {
     const teamSnapshot = dayPlan(day).teams[teamIndex]
     const task = teamSnapshot?.tasks[taskIndex]
-    if (task) setTaskEditor({ day, teamIndex, taskIndex, teamId: teamSnapshot.teamId, teamSnapshot: { ...teamSnapshot, tasks: [...(teamSnapshot.tasks || [])] }, taskId: task.taskId, draft: { ...task } })
+    if (task) setTaskEditor({ day, teamIndex, taskIndex, teamId: teamSnapshot.teamId, teamSnapshot: { ...teamSnapshot, tasks: [...(teamSnapshot.tasks || [])] }, taskId: task.taskId, draft: taskWithServiceEstimate(task, serviceForWeeklyTask(task)) })
   }
   const updateTaskDraft = patch => setTaskEditor(previous => previous ? { ...previous, draft: { ...previous.draft, ...patch } } : previous)
   const selectDraftService = selectedId => {
     const selected = services.find(service => String(service.id) === String(selectedId))
     const currentTask = taskEditor?.draft || blankTask()
     const nextTask = selected
-      ? { ...currentTask, serviceId: selected.id, service: selected.name, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask.installationZone || '' : '' }
-      : { ...currentTask, serviceId: '', service: '', installationZone: '' }
+      ? { ...currentTask, serviceId: selected.id, service: selected.name, estimatedMinutes: normalizeServiceEstimatedMinutes(selected.estimatedMinutes), installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask.installationZone || '' : '' }
+      : { ...currentTask, serviceId: '', service: '', estimatedMinutes: undefined, installationZone: '' }
     updateTaskDraft({ ...nextTask, ...applicableServiceExtras(nextTask, selected) })
   }
   const commitDraftCustomerText = value => updateTaskDraft({ customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
@@ -2667,12 +2672,18 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       setNotice(`Completá ${missing.join(', ')} antes de guardar el servicio.`)
       return
     }
+    const editorHours = hoursForDay(day)
+    const editorInterval = taskOccupiedInterval(taskWithServiceEstimate(draft, serviceForWeeklyTask(draft)))
+    if (editorHours && editorInterval?.serviceEnd > serviceTimeInMinutes(editorHours.max)) {
+      setNotice(`La franja estimada termina a las ${editorInterval.serviceEndTime}, fuera del horario habilitado (${editorHours.label}).`)
+      return
+    }
     const editedPlan = dayPlan(day)
     const editedTeam = editedPlan.teams.find(team => teamId && String(team.teamId || '') === String(teamId)) || editedPlan.teams[teamIndex]
     const peerTasks = (editedTeam?.tasks || []).filter((task, index) => !((taskId && String(task.taskId || '') === String(taskId)) || (!taskId && index === taskIndex)))
-    const gapConflict = minimumServiceGapConflicts([{ tasks: [...peerTasks, draft] }])[0]
+    const gapConflict = minimumServiceGapConflicts([{ tasks: [...peerTasks, draft].map(task => taskWithServiceEstimate(task, serviceForWeeklyTask(task))) }])[0]
     if (gapConflict) {
-      setNotice(`Debe haber al menos una hora entre los servicios de ${gapConflict.firstTime} y ${gapConflict.secondTime}.`)
+      setNotice(`No se puede guardar porque ${scheduleConflictMessage(gapConflict)}.`)
       return
     }
     const tracedDraft = stampServiceRecord({ ...draft, ...applicableServiceExtras(draft, serviceForWeeklyTask(draft)) }, authUser)
@@ -2772,9 +2783,9 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       setNotice(advancedSaturdayGuardMessage(advance))
       return
     }
-    const destinationGap = minimumServiceGapConflicts([{ tasks: [...(destinationTeam.tasks || []), movedTask] }])[0]
+    const destinationGap = minimumServiceGapConflicts([{ tasks: [...(destinationTeam.tasks || []), movedTask].map(task => taskWithServiceEstimate(task, serviceForWeeklyTask(task))) }])[0]
     if (destinationGap) {
-      setNotice(`No se puede reasignar: debe haber al menos una hora entre ${destinationGap.firstTime} y ${destinationGap.secondTime}.`)
+      setNotice(`No se puede reasignar porque ${scheduleConflictMessage(destinationGap)}.`)
       return
     }
     technician = typeof technician === 'string' ? activeTechs.find(item => item.name === technician) : technician
@@ -2826,7 +2837,13 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
   const conflictsForDay = day => {
     return technicianTimeConflicts(dayPlan(day).teams, activeTechs)
   }
-  const gapConflictsForDay = day => minimumServiceGapConflicts(dayPlan(day).teams)
+  const gapConflictsForDay = day => minimumServiceGapConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).map(task => taskWithServiceEstimate(task, serviceForWeeklyTask(task))) })))
+  const conflictForWeeklyTask = (day, teamIndex, taskIndex, overrideTask = null) => {
+    const team = dayPlan(day).teams[teamIndex]
+    if (!team) return null
+    const tasks = (team.tasks || []).map((task, index) => taskWithServiceEstimate(index === taskIndex && overrideTask ? overrideTask : task, serviceForWeeklyTask(index === taskIndex && overrideTask ? overrideTask : task)))
+    return minimumServiceGapConflicts([{ ...team, tasks }]).find(conflict => conflict.firstTaskIndex === taskIndex || conflict.secondTaskIndex === taskIndex) || null
+  }
   const commitWeeklyCustomerText = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, { customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
   const selectWeeklyCustomerResult = (day, teamIndex, taskIndex, customer) => updateTask(day, teamIndex, taskIndex, { customerId: customer.customerId, client: `${customer.account} ${customer.name}`, clientAccount: customer.account, clientNameAtService: customer.name, address: customer.address, phone: customer.phone })
   const addTask = (day, teamIndex) => {
@@ -3100,6 +3117,12 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     if (advance) { setNotice(advancedSaturdayGuardMessage(advance)); return }
     const invalidTime = dayPlan(day).teams.flatMap(team => team.tasks).find(task => task.time && (task.time < hours.min || task.time > hours.max))
     if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
+    const taskOutsideHours = dayPlan(day).teams.flatMap(team => team.tasks).find(task => {
+      if (!taskHasContent(task)) return false
+      const interval = taskOccupiedInterval(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))
+      return interval && interval.serviceEnd > serviceTimeInMinutes(hours.max)
+    })
+    if (taskOutsideHours) { const interval = taskOccupiedInterval(taskWithServiceEstimate(taskOutsideHours, serviceForWeeklyTask(taskOutsideHours))); setNotice(`Hay una franja que termina a las ${interval.serviceEndTime}, fuera del horario habilitado (${hours.label}).`); return }
     const scheduledTasks = dayPlan(day).teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, teamIndex, taskIndex }))).filter(({ task }) => [task.service, task.client, task.address, task.detail, task.phone, task.paymentMethod, task.amount, task.monthlyFee, task.form].some(value => String(value || '').trim()))
     const incompleteTask = scheduledTasks.find(({ task }) => !task.vehicleControl && (!task.time || !task.service || !task.customerId || !task.address || !task.phone || !task.detail || (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) || requiresPaymentAmount(task, serviceForWeeklyTask(task))))
     if (incompleteTask) {
@@ -3111,7 +3134,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       return
     }
     const gapConflicts = gapConflictsForDay(day)
-    if (gapConflicts.length) { const conflict = gapConflicts[0]; setNotice(`Equipo ${conflict.teamIndex + 1}: debe haber al menos una hora entre ${conflict.firstTime} y ${conflict.secondTime}.`); return }
+    if (gapConflicts.length) { const conflict = gapConflicts[0]; setNotice(`Equipo ${conflict.teamIndex + 1}: no se puede continuar porque ${scheduleConflictMessage(conflict)}.`); return }
     const conflicts = conflictsForDay(day)
     if (conflicts.length) { setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`); return }
     const teams = dayPlan(day).teams.map(({ teamId, memberIds, members, tasks }) => ({ teamId, memberIds, members, tasks }))
@@ -3124,6 +3147,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     date: day,
     time: task.time,
     scheduledTime: task.time,
+    estimatedMinutes: serviceEstimateForTask(task, serviceForWeeklyTask(task)),
     team: team.label || `Equipo ${teamIndex + 1}`,
     teamId: team.teamId,
     technicianIds: team.memberIds || [],
@@ -3145,7 +3169,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     if (!record) return false
     const comparable = value => String(value || '').trim()
     const sameList = (left, right) => JSON.stringify((left || []).map(String)) === JSON.stringify((right || []).map(String))
-    return ['date', 'time', 'teamId', 'serviceId', 'service', 'customerId', 'clientAccount', 'client', 'detail', 'address', 'phone', 'installationZone', 'paymentMethod', 'amount', 'monthlyFee', 'form'].every(key => comparable(record[key]) === comparable(expected[key])) &&
+    return ['date', 'time', 'estimatedMinutes', 'teamId', 'serviceId', 'service', 'customerId', 'clientAccount', 'client', 'detail', 'address', 'phone', 'installationZone', 'paymentMethod', 'amount', 'monthlyFee', 'form'].every(key => comparable(record[key]) === comparable(expected[key])) &&
       sameList(record.technicianIds, expected.technicianIds) && sameList(record.technicians, expected.technicians)
   }
   const dayNeedsSave = day => dayPlan(day).teams.some((team, teamIndex) => (team.tasks || []).some((task, taskIndex) => {
@@ -3173,9 +3197,11 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     }
     const invalidTime = readyTasks.find(({ task }) => task.time < hours.min || task.time > hours.max)
     if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
+    const taskOutsideHours = readyTasks.find(({ task }) => taskOccupiedInterval(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))?.serviceEnd > serviceTimeInMinutes(hours.max))
+    if (taskOutsideHours) { const interval = taskOccupiedInterval(taskWithServiceEstimate(taskOutsideHours.task, serviceForWeeklyTask(taskOutsideHours.task))); setNotice(`Hay una franja que termina a las ${interval.serviceEndTime}, fuera del horario habilitado (${hours.label}).`); return }
     const readyTaskSet = new Set(readyTasks.map(({ task }) => task))
-    const gapConflicts = minimumServiceGapConflicts(plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => readyTaskSet.has(task)) })))
-    if (gapConflicts.length) { const conflict = gapConflicts[0]; setNotice(`Equipo ${conflict.teamIndex + 1}: debe haber al menos una hora entre ${conflict.firstTime} y ${conflict.secondTime}.`); return }
+    const gapConflicts = minimumServiceGapConflicts(plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => readyTaskSet.has(task)).map(task => taskWithServiceEstimate(task, serviceForWeeklyTask(task))) })))
+    if (gapConflicts.length) { const conflict = gapConflicts[0]; setNotice(`Equipo ${conflict.teamIndex + 1}: no se puede guardar porque ${scheduleConflictMessage(conflict)}.`); return }
     const conflicts = technicianTimeConflicts(plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => readyTaskSet.has(task)) })), activeTechs)
     if (conflicts.length) { setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`); return }
     const records = readyTasks.map(({ task, team, teamIndex, taskIndex }) => weeklyHistoryRecord(day, team, teamIndex, task, taskIndex))
@@ -3222,8 +3248,9 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       const { day, teamIndex, taskIndex } = taskEditor
       const task = taskEditor.draft
       const hours = hoursForDay(day)
+      const taskConflict = conflictForWeeklyTask(day, teamIndex, taskIndex, task)
       if (!task || !hours) return null
-      return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskEditor(null)}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button type="button" className="modal-close" aria-label="Cerrar edición del servicio" title="Cerrar" onClick={() => setTaskEditor(null)}><Icon name="close" size={18} /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>Servicio {taskIndex + 1}</h2><p className="weekly-modal-team">{taskEditor.teamSnapshot?.label || `Equipo ${teamIndex + 1}`} · {taskEditor.teamSnapshot?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTaskDraft({ time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectDraftService(event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div>{serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input aria-required="true" type="radio" name={`weekly-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTaskDraft({ installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
+      return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskEditor(null)}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button type="button" className="modal-close" aria-label="Cerrar edición del servicio" title="Cerrar" onClick={() => setTaskEditor(null)}><Icon name="close" size={18} /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>Servicio {taskIndex + 1}</h2><p className="weekly-modal-team">{taskEditor.teamSnapshot?.label || `Equipo ${teamIndex + 1}`} · {taskEditor.teamSnapshot?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTaskDraft({ time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectDraftService(event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div><ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTaskDraft({ estimatedMinutes })} />{task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))}</small>}{taskConflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>No se puede agendar en este horario porque {scheduleConflictMessage(taskConflict)}.</span></p>}{serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input aria-required="true" type="radio" name={`weekly-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTaskDraft({ installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
 <CustomerAutocomplete className="weekly-customer-search" value={task.client} customerId={task.customerId} customers={customers} onTextCommit={commitDraftCustomerText} onCustomerSelect={selectDraftCustomer} />
 <label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" readOnly title="Este dato se modifica desde Abonados y clientes" value={task.address} /></label><label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" readOnly title="Este dato se modifica desde Abonados y clientes" value={task.phone} /></label><p className="weekly-customer-data-note">Dirección y contacto se administran desde el módulo Abonados y clientes.</p><label><RequiredLabel>Detalle</RequiredLabel><textarea aria-required="true" value={task.detail} onChange={event => updateTaskDraft({ detail: event.target.value })} /></label><ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} onChange={updateTaskDraft} /></div><div className="modal-actions"><button className="secondary" onClick={() => setTaskEditor(null)}>Cancelar</button><button className="primary" onClick={saveTaskEditor}><Icon name="check" size={16} />Guardar servicio</button></div></section></div>
     })()}
@@ -3245,7 +3272,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
             {calendarUnavailable ? <div className={`weekly-calendar-state ${holidayCalendar.error ? 'error' : ''}`}>{holidayCalendar.error ? 'No se pudo verificar el calendario de feriados.' : 'Verificando feriados nacionales…'}</div> : holidayState.holiday && <HolidayDecisionPanel compact holiday={holidayState.holiday} decision={holidayState.decision} canDecide={authUser?.roleCode === 'administrator'} onDecision={status => recordHolidayDecision(setWeekly, setNotice, day, holidayState.holiday, status, { weekly, history: operationalHistory, setHistory, holidays: holidayCalendar.records })} />}
             {!holidayState.blocked && advancedGuard && <p className={`weekly-guard-advanced ${advancedGuard.hasSaturdayConflict ? 'has-conflict' : ''}`}><Icon name={advancedGuard.hasSaturdayConflict ? 'alert' : 'check'} size={16} /><span>{advancedSaturdayGuardMessage(advancedGuard)}</span></p>}
             {conflicts.length > 0 && <p className="weekly-conflict">Conflicto: {conflicts.map(item => `${item.name} ${item.time}`).join(', ')}</p>}
-            {gapConflicts.length > 0 && <p className="weekly-conflict">Conflicto: debe haber al menos una hora entre servicios del mismo equipo.</p>}
+            {gapConflicts.length > 0 && <p className="weekly-conflict">Conflicto de franjas ocupadas: {scheduleConflictMessage(gapConflicts[0])}.</p>}
             <div className="week-teams">{plan.teams.map((team, teamIndex) => {
               const pickerKey = `${day}-${teamIndex}`
               return <article className="week-team" key={team.teamId || teamIndex}>
@@ -3254,6 +3281,9 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
                   <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><div className="week-task-title-actions"><small>{task.time || '--:--'} Hs</small>{plan.teams.length > 1 && (task.customerId || task.client || task.service) && <button type="button" className="weekly-task-move" title="Reasignar a otro equipo" aria-label={`Reasignar Servicio ${taskIndex + 1} a otro equipo`} onClick={event => openWeeklyTaskMove(event, day, teamIndex, taskIndex)}><span aria-hidden="true">⇄</span></button>}<button type="button" className="weekly-task-delete" title="Eliminar servicio" aria-label={`Eliminar Servicio ${taskIndex + 1}`} onClick={event => { event.stopPropagation(); setTaskRemoval({ day, teamId: team.teamId, teamIndex, taskIndex, taskId: task.taskId, historyId: task.historyId, time: task.time || task.scheduledTime || '', wasPlaceholder: !taskHasContent(task), label: team.label || `Equipo ${teamIndex + 1}` }) }}><Icon name="trash" size={14} /></button></div></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>
                   <TaskStatusBadge task={task} date={day} history={operationalHistory} weekly />
                   <div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTask(day, teamIndex, taskIndex, { time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectWeeklyService(day, teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div>
+                  <ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTask(day, teamIndex, taskIndex, { estimatedMinutes })} />
+                  {task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))}</small>}
+                  {(() => { const conflict = conflictForWeeklyTask(day, teamIndex, taskIndex); return conflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={15} /><span>No disponible: {scheduleConflictMessage(conflict)}.</span></p> })()}
                   <CustomerAutocomplete value={task.client} customerId={task.customerId} customers={customers} onTextCommit={value => commitWeeklyCustomerText(day, teamIndex, taskIndex, value)} onCustomerSelect={customer => selectWeeklyCustomerResult(day, teamIndex, taskIndex, customer)} />
                   <label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" value={task.address} onChange={event => updateTask(day, teamIndex, taskIndex, { address: event.target.value })} /></label>
                   <label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" value={task.phone} onChange={event => updateTask(day, teamIndex, taskIndex, { phone: event.target.value })} /></label>
