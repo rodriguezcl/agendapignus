@@ -198,6 +198,12 @@ const conflictIntervalDescription = (task, interval) => interval.estimatedMinute
   ? `ocupa de ${interval.startTime} a ${interval.serviceEndTime} y reserva el equipo hasta las ${interval.endTime} por la separación operativa mínima`
   : `ocupa de ${interval.startTime} a ${interval.serviceEndTime}`
 const scheduleConflictMessage = conflict => `${conflictTaskName(conflict.firstTask, conflict.firstTaskIndex)} ${conflictIntervalDescription(conflict.firstTask, conflict.first)}; ${conflictTaskName(conflict.secondTask, conflict.secondTaskIndex)} ${conflictIntervalDescription(conflict.secondTask, conflict.second)}`
+const planningTeamDescription = (team, teamIndex) => {
+  const members = (team?.members || []).map(name => String(name || '').trim()).filter(Boolean)
+  const memberList = members.length < 2 ? members[0] : `${members.slice(0, -1).join(', ')} y ${members.at(-1)}`
+  return memberList ? `El equipo conformado por ${memberList}` : `El ${team?.label || `Equipo ${teamIndex + 1}`}`
+}
+const planningConflictMessage = (date, team, teamIndex, conflict) => `${planningTeamDescription(team, teamIndex)} del ${prettyDate(date).replace(/^./, character => character.toLowerCase())} tiene un conflicto de horarios: ${scheduleConflictMessage(conflict)}.`
 const DEFAULT_SERVICE_TIME_CHANGE_DATE = '2026-09-01'
 const fallbackDefaultServiceTimesForDate = date => String(date || '') >= DEFAULT_SERVICE_TIME_CHANGE_DATE
   ? ['09:00', '14:00']
@@ -2129,7 +2135,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       if (requiresPaymentAmount(task, serviceForTask(task))) fields.push('monto')
       if (fields.length) missing.push(`Equipo ${teamIndex + 1}, servicio ${taskIndex + 1}: ${fields.join(', ')}`)
     }))
-    minimumServiceGapConflicts(realServiceTeams.map(team => ({ ...team, tasks: team.tasks.map(task => taskWithServiceEstimate(task, serviceForTask(task))) }))).forEach(conflict => missing.push(`Equipo ${conflict.teamIndex + 1}: ${scheduleConflictMessage(conflict)}`))
+    minimumServiceGapConflicts(realServiceTeams.map(team => ({ ...team, tasks: team.tasks.map(task => taskWithServiceEstimate(task, serviceForTask(task))) }))).forEach(conflict => missing.push(planningConflictMessage(date, realServiceTeams[conflict.teamIndex], conflict.teamIndex, conflict)))
     if (!missing.length) return true
     showAgendaValidationModal(missing)
     return false
@@ -2694,7 +2700,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     const peerTasks = (editedTeam?.tasks || []).filter((task, index) => !((taskId && String(task.taskId || '') === String(taskId)) || (!taskId && index === taskIndex)))
     const gapConflict = minimumServiceGapConflicts([{ tasks: [...peerTasks, draft].map(task => taskWithServiceEstimate(task, serviceForWeeklyTask(task))) }])[0]
     if (gapConflict) {
-      setNotice(`No se puede guardar porque ${scheduleConflictMessage(gapConflict)}.`)
+      setNotice(planningConflictMessage(day, editedTeam, teamIndex, gapConflict))
       return
     }
     const tracedDraft = stampServiceRecord({ ...draft, ...applicableServiceExtras(draft, serviceForWeeklyTask(draft)) }, authUser)
@@ -3150,7 +3156,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       return
     }
     const gapConflicts = gapConflictsForDay(day)
-    if (gapConflicts.length) { const conflict = gapConflicts[0]; setNotice(`Equipo ${conflict.teamIndex + 1}: no se puede continuar porque ${scheduleConflictMessage(conflict)}.`); return }
+    if (gapConflicts.length) { const conflict = gapConflicts[0]; setNotice(planningConflictMessage(day, dayPlan(day).teams[conflict.teamIndex], conflict.teamIndex, conflict)); return }
     const conflicts = conflictsForDay(day)
     if (conflicts.length) { setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`); return }
     const teams = dayPlan(day).teams.map(({ teamId, memberIds, members, tasks }) => ({ teamId, memberIds, members, tasks }))
@@ -3218,7 +3224,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     if (taskOutsideHours) { const interval = taskOccupiedInterval(taskWithServiceEstimate(taskOutsideHours.task, serviceForWeeklyTask(taskOutsideHours.task))); setNotice(`Hay una franja que termina a las ${interval.serviceEndTime}, fuera del horario habilitado (${hours.label}).`); return }
     const readyTaskSet = new Set(readyTasks.map(({ task }) => task))
     const gapConflicts = minimumServiceGapConflicts(plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => readyTaskSet.has(task)).map(task => taskWithServiceEstimate(task, serviceForWeeklyTask(task))) })))
-    if (gapConflicts.length) { const conflict = gapConflicts[0]; setNotice(`Equipo ${conflict.teamIndex + 1}: no se puede guardar porque ${scheduleConflictMessage(conflict)}.`); return }
+    if (gapConflicts.length) { const conflict = gapConflicts[0]; setNotice(planningConflictMessage(day, plan.teams[conflict.teamIndex], conflict.teamIndex, conflict)); return }
     const conflicts = technicianTimeConflicts(plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => readyTaskSet.has(task)) })), activeTechs)
     if (conflicts.length) { setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`); return }
     const records = readyTasks.map(({ task, team, teamIndex, taskIndex }) => weeklyHistoryRecord(day, team, teamIndex, task, taskIndex))
@@ -3289,7 +3295,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
             {calendarUnavailable ? <div className={`weekly-calendar-state ${holidayCalendar.error ? 'error' : ''}`}>{holidayCalendar.error ? 'No se pudo verificar el calendario de feriados.' : 'Verificando feriados nacionales…'}</div> : holidayState.holiday && <HolidayDecisionPanel compact holiday={holidayState.holiday} decision={holidayState.decision} canDecide={authUser?.roleCode === 'administrator'} onDecision={status => recordHolidayDecision(setWeekly, setNotice, day, holidayState.holiday, status, { weekly, history: operationalHistory, setHistory, holidays: holidayCalendar.records })} />}
             {!holidayState.blocked && advancedGuard && <p className={`weekly-guard-advanced ${advancedGuard.hasSaturdayConflict ? 'has-conflict' : ''}`}><Icon name={advancedGuard.hasSaturdayConflict ? 'alert' : 'check'} size={16} /><span>{advancedSaturdayGuardMessage(advancedGuard)}</span></p>}
             {conflicts.length > 0 && <p className="weekly-conflict">Conflicto: {conflicts.map(item => `${item.name} ${item.time}`).join(', ')}</p>}
-            {gapConflicts.length > 0 && <p className="weekly-conflict">Conflicto de franjas ocupadas: {scheduleConflictMessage(gapConflicts[0])}.</p>}
+            {gapConflicts.length > 0 && <p className="weekly-conflict">{planningConflictMessage(day, plan.teams[gapConflicts[0].teamIndex], gapConflicts[0].teamIndex, gapConflicts[0])}</p>}
             <div className="week-teams">{plan.teams.map((team, teamIndex) => {
               const pickerKey = `${day}-${teamIndex}`
               return <article className="week-team" key={team.teamId || teamIndex}>

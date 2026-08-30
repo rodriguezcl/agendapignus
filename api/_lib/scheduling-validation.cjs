@@ -37,13 +37,18 @@ const estimatedMinutesFor = (task, serviceMap) => {
   return Number.isInteger(minutes) && minutes >= 15 && minutes <= 720 ? minutes : 60
 }
 
+const rawEstimatedMinutesFor = (task, serviceMap) => {
+  const service = serviceMap.byId.get(String(task?.serviceId ?? '')) || serviceMap.byName.get(normalizedName(task?.service))
+  return task?.estimatedMinutes == null ? service?.estimatedMinutes : task.estimatedMinutes
+}
+
 const scheduleSignature = (teams, serviceMap, date, history) => JSON.stringify((teams || []).map(team => ({
   teamId: String(team.teamId || ''),
   tasks: (team.tasks || []).filter(task => (task.serviceId || task.service) && !agendaTaskIsResolvedForPlanning(task, date, history)).map((task, taskIndex) => ({
     id: String(task.taskId || task.historyId || task.id || taskIndex),
     time: String(task.time || task.scheduledTime || ''),
     serviceId: String(task.serviceId || task.service || ''),
-    estimatedMinutes: estimatedMinutesFor(task, serviceMap)
+    estimatedMinutes: String(rawEstimatedMinutesFor(task, serviceMap) ?? '')
   }))
 })))
 
@@ -56,9 +61,21 @@ const agendaPlans = agenda => {
   return plans
 }
 
-const prettyDate = value => {
-  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  return match ? `${match[3]}/${match[2]}/${match[1]}` : value || 'sin fecha'
+const longDate = value => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return String(value || 'una fecha sin identificar')
+  return new Intl.DateTimeFormat('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${value}T12:00:00Z`))
+}
+
+const humanList = values => values.length < 2 ? values[0] || '' : `${values.slice(0, -1).join(', ')} y ${values.at(-1)}`
+
+const teamDescription = (team, teamIndex) => {
+  const members = (team?.members || []).map(name => String(name || '').trim()).filter(Boolean)
+  return members.length ? `El equipo conformado por ${humanList(members)}` : `El ${String(team?.label || '').trim() || `Equipo ${teamIndex + 1}`}`
+}
+
+const taskDescription = (task, taskIndex) => {
+  const details = [task?.service, task?.client || task?.clientAccount].map(value => String(value || '').trim()).filter(Boolean)
+  return `Servicio ${taskIndex + 1}${details.length ? ` (${details.join(' · ')})` : ''}`
 }
 
 function validateChangedAgendaSchedules(state, previousState = null) {
@@ -69,16 +86,22 @@ function validateChangedAgendaSchedules(state, previousState = null) {
     const previous = previousPlans.get(key)
     if (previous && scheduleSignature(previous.teams, serviceMap, previous.date, previousState?.history) === scheduleSignature(plan.teams, serviceMap, plan.date, state?.history)) return
     ;(plan.teams || []).forEach((team, teamIndex) => {
-      const scheduled = (team.tasks || []).filter(task => (task.serviceId || task.service) && !agendaTaskIsResolvedForPlanning(task, plan.date, state?.history) && /^\d{1,2}:\d{2}$/.test(String(task.time || ''))).map(task => {
+      const activeTasks = (team.tasks || []).map((task, taskIndex) => ({ task, taskIndex })).filter(({ task }) => (task.serviceId || task.service) && !agendaTaskIsResolvedForPlanning(task, plan.date, state?.history))
+      activeTasks.forEach(({ task, taskIndex }) => {
+        const estimatedMinutes = Number(rawEstimatedMinutesFor(task, serviceMap))
+        if (!Number.isInteger(estimatedMinutes) || estimatedMinutes < 15 || estimatedMinutes > 720) {
+          throw new Error(`${teamDescription(team, teamIndex)} del ${longDate(plan.date)} tiene un tiempo estimado inválido en el ${taskDescription(task, taskIndex)}. Configurá una duración de entre 15 minutos y 12 horas.`)
+        }
+      })
+      const scheduled = activeTasks.filter(({ task }) => /^\d{1,2}:\d{2}$/.test(String(task.time || ''))).map(({ task, taskIndex }) => {
         const [hours, minutes] = task.time.split(':').map(Number)
         const start = hours * 60 + minutes
-        return { task, start, end: start + Math.max(60, estimatedMinutesFor(task, serviceMap)) }
+        return { task, taskIndex, start, end: start + Math.max(60, estimatedMinutesFor(task, serviceMap)) }
       }).sort((first, second) => first.start - second.start)
       scheduled.forEach((current, index) => {
         const conflict = scheduled.slice(0, index).find(previousTask => current.start < previousTask.end)
         if (!conflict) return
-        const teamLabel = String(team.label || '').trim() || `Equipo ${teamIndex + 1}`
-        throw new Error(`${plan.scope} ${prettyDate(plan.date)}, ${teamLabel}: las franjas de ${conflict.task.time} y ${current.task.time} se superponen.`)
+        throw new Error(`${teamDescription(team, teamIndex)} del ${longDate(plan.date)} tiene un conflicto de horarios entre el ${taskDescription(conflict.task, conflict.taskIndex)} a las ${conflict.task.time} y el ${taskDescription(current.task, current.taskIndex)} a las ${current.task.time}. Ajustá el horario o el tiempo estimado de uno de los servicios.`)
       })
     })
   })

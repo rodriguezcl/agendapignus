@@ -56,7 +56,7 @@ test('la API rechaza duraciones inválidas y solapamientos por equipo', () => {
   assert.throws(() => validateState({ ...base, agenda: { teams: [{ tasks: [
     { serviceId: 's1', time: '09:00', estimatedMinutes: 120 },
     { serviceId: 's1', time: '10:30', estimatedMinutes: 60 }
-  ] }], weekly: {} } }), /se superponen/)
+  ] }], weekly: {} } }), /conflicto de horarios/)
 })
 
 test('los servicios completados y los cancelados de fechas pasadas no participan en conflictos de agenda', () => {
@@ -81,9 +81,9 @@ test('los servicios completados y los cancelados de fechas pasadas no participan
   assert.equal(agendaTaskIsResolvedForPlanning({ taskId: 'cancelled' }, '2026-08-28', [{ ...cancelled, date: '2026-08-28', status: 'Pendiente' }], '2026-08-30'), false)
 })
 
-test('los solapamientos históricos sin cambios no bloquean otro día y el mensaje usa fecha y equipo reales', () => {
+test('los solapamientos históricos sin cambios no bloquean otro día y el mensaje usa fecha, integrantes y servicios reales', () => {
   const service = { id: 's1', code: 's1', name: 'Servicio', description: '', estimatedMinutes: 60, status: 'Activo' }
-  const legacyPlan = { teams: [{ teamId: 'legacy-team', label: 'Equipo 1', memberIds: [], tasks: [
+  const legacyPlan = { teams: [{ teamId: 'legacy-team', label: 'Equipo 1', memberIds: [], members: ['Santos Díaz', 'Mariano Díaz'], tasks: [
     { taskId: 'old-a', serviceId: 's1', service: 'Servicio', time: '08:30', estimatedMinutes: 60 },
     { taskId: 'old-b', serviceId: 's1', service: 'Servicio', time: '08:30', estimatedMinutes: 60 }
   ] }] }
@@ -93,5 +93,20 @@ test('los solapamientos históricos sin cambios no bloquean otro día y el mensa
   assert.doesNotThrow(() => validateState(next, previous))
 
   next.agenda.weekly['2026-02-03'].teams[0].tasks[1].estimatedMinutes = 120
-  assert.throws(() => validateState(next, previous), /Agenda semanal 03\/02\/2026, Equipo 1: las franjas de 08:30 y 08:30 se superponen/)
+  assert.throws(() => validateState(next, previous), /El equipo conformado por Santos Díaz y Mariano Díaz del martes, 3 de febrero de 2026 tiene un conflicto de horarios entre el Servicio 1 \(Servicio\) a las 08:30 y el Servicio 2 \(Servicio\) a las 08:30/)
+})
+
+test('una duración histórica inválida sin cambios no bloquea y al editarla informa día, integrantes y servicio', () => {
+  const service = { id: 's1', code: 's1', name: 'Instalación de alarma', description: '', estimatedMinutes: 60, status: 'Activo' }
+  const legacyPlan = { teams: [{ teamId: 'legacy-team', label: 'Equipo 1', members: ['Santos Díaz', 'Mariano Díaz'], tasks: [
+    { taskId: 'old-a', serviceId: 's1', service: service.name, client: 'PIG-7009 CLIENTE', time: '08:30', estimatedMinutes: 60 },
+    { taskId: 'old-b', serviceId: 's1', service: service.name, client: 'PIG-7006 CLIENTE', time: '14:00', estimatedMinutes: 0 }
+  ] }] }
+  const previous = { roles: [], employees: [], services: [service], vehicles: [], customers: [], history: [], agenda: { date: '2026-09-01', teams: [], weekly: { '2026-08-31': legacyPlan } } }
+  const next = structuredClone(previous)
+  next.agenda.teams = [{ teamId: 'current-team', members: [], tasks: [{ taskId: 'new', serviceId: 's1', service: service.name, time: '10:00', estimatedMinutes: 60 }] }]
+  assert.doesNotThrow(() => validateState(next, previous))
+
+  next.agenda.weekly['2026-08-31'].teams[0].tasks[1].time = '14:15'
+  assert.throws(() => validateState(next, previous), /El equipo conformado por Santos Díaz y Mariano Díaz del lunes, 31 de agosto de 2026 tiene un tiempo estimado inválido en el Servicio 2 \(Instalación de alarma · PIG-7006 CLIENTE\)/)
 })
