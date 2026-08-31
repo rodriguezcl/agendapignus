@@ -193,6 +193,7 @@ function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now
 }
 
 function normalizeStateForSave(state, current) {
+  current ||= { roles: [], employees: [], services: [], vehicles: [], customers: [], history: [], reviews: [], agenda: {} }
   const roles = (state.roles || []).map(role => ({ ...role, code: role.code || legacyRoleCode(role) }))
   const roleById = new Map(roles.map(role => [String(role.id), role]))
   const employees = (state.employees || []).map(employee => {
@@ -202,10 +203,21 @@ function normalizeStateForSave(state, current) {
   const services = (state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) }))
   const serviceById = new Map(services.map(service => [String(service.id), service]))
   const serviceByName = new Map(services.map(service => [normalizedServiceName(service.name), service]))
+  const previousServiceById = new Map((current.services || []).map(service => [String(service.id), service]))
+  const previousServiceByName = new Map((current.services || []).map(service => [normalizedServiceName(service.name), service]))
   const normalizeScheduledService = item => {
     const service = serviceById.get(String(item?.serviceId ?? '')) || serviceByName.get(normalizedServiceName(item?.service))
     if (!service) return item
-    return { ...item, serviceId: service.id, service: service.name, estimatedMinutes: item.estimatedMinutes == null ? service.estimatedMinutes : item.estimatedMinutes }
+    const previousService = previousServiceById.get(String(item?.serviceId ?? '')) || previousServiceByName.get(normalizedServiceName(item?.service))
+    const previousDefault = normalizeServiceEstimatedMinutes(previousService?.estimatedMinutes, service.estimatedMinutes)
+    const closed = ['Completado', 'Cancelado', 'Reprogramado'].includes(item?.status)
+    const customized = item.estimatedMinutesCustomized === true || (
+      item.estimatedMinutesCustomized !== false && item.estimatedMinutes != null && Number(item.estimatedMinutes) !== Number(previousDefault)
+    )
+    const estimatedMinutes = closed || customized
+      ? normalizeServiceEstimatedMinutes(item.estimatedMinutes, service.estimatedMinutes)
+      : service.estimatedMinutes
+    return { ...item, serviceId: service.id, service: service.name, estimatedMinutes, estimatedMinutesCustomized: closed ? (item.estimatedMinutesCustomized ?? true) : customized }
   }
   const normalizeTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(normalizeScheduledService) }))
   const vehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), mileage: vehicle.mileage == null || vehicle.mileage === '' ? null : Number(vehicle.mileage), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))

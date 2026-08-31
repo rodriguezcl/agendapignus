@@ -100,6 +100,13 @@ async function sessionContext(req, sql = database()) {
       coalesce((select jsonb_agg(data) filter (where data is not null) from pignus_roles), '[]'::jsonb) as roles
     from pignus_sessions as active_session
     where active_session.token_hash = ${hash}
+      and active_session.token_hash = (
+        select newest.token_hash
+        from pignus_sessions as newest
+        where newest.employee_id = active_session.employee_id
+        order by newest.created_at desc, newest.token_hash desc
+        limit 1
+      )
   `
   const session = sessions[0]
   if (!session || new Date(session.expires_at).getTime() <= Date.now()) {
@@ -121,7 +128,7 @@ async function sessionContext(req, sql = database()) {
 
 async function requireSession(req, res, sql = database()) {
   const session = await sessionContext(req, sql)
-  if (!session) send(res, 401, { error: 'Sesión requerida.' })
+  if (!session) send(res, 401, { code: 'SESSION_ENDED', error: 'Esta sesión ya no está activa. La cuenta pudo haberse abierto en otro dispositivo o la sesión pudo haber vencido.' })
   return session
 }
 
@@ -157,8 +164,12 @@ async function handleLogin(req, res, sql) {
   await sql.begin(async transaction => {
     await transaction`delete from pignus_login_attempts where fingerprint = ${fingerprint}`
     await transaction`delete from pignus_sessions where expires_at <= now()`
+    await transaction`select id from pignus_employees where id = ${String(user.id)} for update`
+    // Una identidad sólo puede conservar una sesión activa. El último ingreso
+    // invalida los tokens anteriores del mismo empleado en cualquier dispositivo.
+    const revoked = await transaction`delete from pignus_sessions where employee_id = ${String(user.id)} returning token_hash`
     await transaction`insert into pignus_sessions (token_hash, employee_id, expires_at) values (${tokenHash(token)}, ${String(user.id)}, ${expiresAt})`
-    await appendAudit(transaction, [auditEntry(user, 'Inició sesión', 'Sesión', String(user.id), null, { sessionExpiresAt: expiresAt.toISOString() })])
+    await appendAudit(transaction, [auditEntry(user, 'Inició sesión', 'Sesión', String(user.id), null, { sessionExpiresAt: expiresAt.toISOString(), replacedSessions: revoked.length })])
   })
   res.setHeader('Set-Cookie', `pignus_session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE / 1000}`)
   return send(res, 200, { user })
@@ -424,7 +435,12 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST' && route === '/auth/logout') return await handleLogout(req, res, sql)
     if (req.method === 'GET' && route === '/auth/session') {
       const session = await sessionContext(req, sql)
-      return session ? send(res, 200, { user: session.user }) : send(res, 401, { error: 'Sin sesión activa.' })
+      const hadSessionCookie = Boolean(cookies(req.headers.cookie).pignus_session)
+      return session
+        ? send(res, 200, { user: session.user })
+        : send(res, 401, hadSessionCookie
+          ? { code: 'SESSION_ENDED', error: 'Esta sesión ya no está activa. La cuenta pudo haberse abierto en otro dispositivo o la sesión pudo haber vencido.' }
+          : { code: 'SESSION_REQUIRED', error: 'Sin sesión activa.' })
     }
     const session = await requireSession(req, res, sql)
     if (!session) return

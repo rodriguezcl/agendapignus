@@ -72,9 +72,14 @@ export const taskOccupiedInterval = task => {
   const estimatedMinutes = normalizeServiceEstimatedMinutes(task?.estimatedMinutes)
   const completion = completedServiceRelease(task)
   const estimatedOccupiedMinutes = taskReservationMinutes(task)
-  const occupiedMinutes = completion ? completion.release - start : estimatedOccupiedMinutes
-  const serviceEnd = completion ? completion.completedMinutes : start + estimatedMinutes
-  const end = completion ? completion.release : start + estimatedOccupiedMinutes
+  const plannedServiceEnd = start + estimatedMinutes
+  const plannedEnd = start + estimatedOccupiedMinutes
+  // Una finalización anticipada libera agenda. Un atraso es una contingencia
+  // operativa y no debe convertir retroactivamente la planificación en conflicto.
+  const earlyCompletion = Boolean(completion && completion.release < plannedEnd)
+  const serviceEnd = earlyCompletion ? completion.completedMinutes : plannedServiceEnd
+  const end = earlyCompletion ? completion.release : plannedEnd
+  const occupiedMinutes = end - start
   return {
     start,
     serviceEnd,
@@ -82,6 +87,7 @@ export const taskOccupiedInterval = task => {
     estimatedMinutes,
     occupiedMinutes,
     actualCompletion: Boolean(completion),
+    earlyCompletion,
     completedAt: completion?.completedAt || '',
     completedTime: completion?.completedTime || '',
     releaseTime: completion?.releaseTime || '',

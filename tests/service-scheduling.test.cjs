@@ -57,6 +57,17 @@ test('una finalización anticipada libera el equipo en el siguiente cuarto de ho
   assert.equal(serviceScheduleConflicts([{ tasks: [completed, { serviceId: 'b', time: '10:15', estimatedMinutes: 60 }] }]).length, 0)
 })
 
+test('una finalización tardía se informa pero no prolonga el conflicto planificado', async () => {
+  const { serviceScheduleConflicts, taskOccupiedInterval } = await import('../src/service-scheduling.mjs')
+  const completed = { serviceId: 'a', date: '2026-08-31', time: '09:45', estimatedMinutes: 60, status: 'Completado', completedAt: '2026-08-31T14:43:53.330Z' }
+  const interval = taskOccupiedInterval(completed)
+  assert.equal(interval.actualCompletion, true)
+  assert.equal(interval.earlyCompletion, false)
+  assert.equal(interval.completedTime, '11:43')
+  assert.equal(interval.endTime, '10:45')
+  assert.equal(serviceScheduleConflicts([{ tasks: [completed, { serviceId: 'b', time: '11:00', estimatedMinutes: 90 }] }]).length, 0)
+})
+
 test('la ventana liberada sólo admite un nuevo servicio que termine antes del siguiente', async () => {
   const { serviceScheduleConflicts } = await import('../src/service-scheduling.mjs')
   const completed = { serviceId: 'a', date: '2026-08-30', time: '08:30', estimatedMinutes: 150, status: 'Completado', completedAt: '2026-08-30T13:02:10.000Z' }
@@ -87,6 +98,28 @@ test('copia el valor del catálogo a registros antiguos y conserva ajustes parti
   assert.equal(normalized.history[1].estimatedMinutes, 300)
   assert.equal(normalized.agenda.teams[0].tasks[0].estimatedMinutes, 180)
   assert.equal(normalized.agenda.teams[0].tasks[1].estimatedMinutes, 240)
+  assert.equal(normalized.history[0].estimatedMinutesCustomized, false)
+  assert.equal(normalized.history[1].estimatedMinutesCustomized, true)
+})
+
+test('un cambio del catálogo actualiza pendientes heredados y conserva tiempos manuales o cerrados', () => {
+  const previousService = { id: 's1', code: 's1', name: 'Service de alarma', estimatedMinutes: 90, status: 'Activo' }
+  const nextService = { ...previousService, estimatedMinutes: 60 }
+  const records = [
+    { id: 'default', serviceId: 's1', service: previousService.name, status: 'Pendiente', estimatedMinutes: 90 },
+    { id: 'manual', serviceId: 's1', service: previousService.name, status: 'Pendiente', estimatedMinutes: 120 },
+    { id: 'explicit-default', serviceId: 's1', service: previousService.name, status: 'Pendiente', estimatedMinutes: 90, estimatedMinutesCustomized: false },
+    { id: 'completed', serviceId: 's1', service: previousService.name, status: 'Completado', estimatedMinutes: 90 }
+  ]
+  const state = {
+    roles: [], employees: [], services: [nextService], vehicles: [], customers: [], reviews: [], history: records,
+    agenda: { teams: [{ tasks: records.slice(0, 3) }], weekly: {} }
+  }
+  const previous = { ...state, services: [previousService], history: records, agenda: { teams: [{ tasks: records.slice(0, 3) }], weekly: {} } }
+  const normalized = normalizeStateForSave(state, previous)
+  assert.deepEqual(normalized.history.map(record => record.estimatedMinutes), [60, 120, 60, 90])
+  assert.deepEqual(normalized.history.map(record => record.estimatedMinutesCustomized), [false, true, false, true])
+  assert.deepEqual(normalized.agenda.teams[0].tasks.map(task => task.estimatedMinutes), [60, 120, 60])
 })
 
 test('la API rechaza duraciones inválidas y solapamientos por equipo', () => {
@@ -121,7 +154,7 @@ test('los servicios completados y los cancelados de fechas pasadas no participan
   assert.equal(agendaTaskIsResolvedForPlanning({ taskId: 'cancelled' }, '2026-08-28', [{ ...cancelled, date: '2026-08-28', status: 'Pendiente' }], '2026-08-30'), false)
 })
 
-test('la validación del servidor usa la finalización real de un completado de hoy', () => {
+test('la validación del servidor aprovecha la finalización anticipada de un completado de hoy', () => {
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const service = { id: 's1', code: 's1', name: 'Servicio', estimatedMinutes: 60, status: 'Activo' }
   const completed = { id: 'h-live', sourceTaskId: 'done-live', date: today, serviceId: 's1', customerId: 'c1', time: '08:30', status: 'Completado', estimatedMinutes: 150, completedAt: `${today}T13:02:10.000Z` }
@@ -138,6 +171,22 @@ test('la validación del servidor usa la finalización real de un completado de 
   const previous = state('11:45')
   assert.doesNotThrow(() => validateState(state('12:00'), previous))
   assert.throws(() => validateState(state('12:15'), previous), /conflicto de horarios/)
+})
+
+test('la validación del servidor no transforma una demora técnica en conflicto de planificación', () => {
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const service = { id: 's1', code: 's1', name: 'Service de alarma', estimatedMinutes: 60, status: 'Activo' }
+  const completed = { id: 'h1', sourceTaskId: 'done', date: today, serviceId: 's1', customerId: 'c1', time: '09:45', status: 'Completado', estimatedMinutes: 60, completedAt: `${today}T14:43:53.330Z` }
+  const state = {
+    roles: [], employees: [], services: [service], vehicles: [], customers: [{ customerId: 'c1', account: 'CLI-001' }, { customerId: 'c2', account: 'CLI-002' }], history: [completed],
+    agenda: { date: today, teams: [{ teamId: 'team-1', tasks: [
+      { taskId: 'done', historyId: 'h1', serviceId: 's1', customerId: 'c1', time: '09:45', estimatedMinutes: 60 },
+      { taskId: 'next', serviceId: 's1', customerId: 'c2', time: '11:00', estimatedMinutes: 90 }
+    ] }], weekly: {} }
+  }
+  const previous = structuredClone(state)
+  previous.agenda.teams[0].tasks[1].estimatedMinutes = 75
+  assert.doesNotThrow(() => validateState(state, previous))
 })
 
 test('los solapamientos históricos sin cambios no bloquean otro día y el mensaje usa fecha, integrantes y servicios reales', () => {

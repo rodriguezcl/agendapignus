@@ -224,7 +224,7 @@ const conflictTaskName = (task, index) => {
   const details = [task?.service, task?.client || task?.clientAccount].map(value => String(value || '').trim()).filter(Boolean)
   return `Servicio ${conflictTaskIndex(task, index) + 1}${details.length ? ` (${details.join(' · ')})` : ''}`
 }
-const conflictIntervalDescription = (task, interval) => interval.actualCompletion
+const conflictIntervalDescription = (task, interval) => interval.earlyCompletion
   ? `ocupó de ${interval.startTime} a ${interval.completedTime} y liberó el equipo a las ${interval.releaseTime}`
   : interval.estimatedMinutes < 60
     ? `ocupa de ${interval.startTime} a ${interval.serviceEndTime} y reserva el equipo hasta las ${interval.endTime} por la separación operativa mínima`
@@ -561,7 +561,7 @@ const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?
     teamIndex = teams.length
     teams.push({ teamId: record.teamId || createTeamId(), label: record.team || `Equipo ${teamNumber}`, memberIds: record.technicianIds || [], members: record.technicians || [], tasks: [] })
   }
-  const task = { taskId: record.sourceTaskId || record.id, historyId: record.id, time: record.time || record.scheduledTime || '', serviceId: record.serviceId || '', service: record.service || '', estimatedMinutes: record.estimatedMinutes, customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', vehicleControl: Boolean(record.vehicleControl), vehicleId: record.vehicleId || '', vehicleControlScheduledFriday: record.vehicleControlScheduledFriday || '', monthlyVehicleAssignment: record.monthlyVehicleAssignment || '', ...serviceTrace(record) }
+  const task = { taskId: record.sourceTaskId || record.id, historyId: record.id, time: record.time || record.scheduledTime || '', serviceId: record.serviceId || '', service: record.service || '', estimatedMinutes: record.estimatedMinutes, estimatedMinutesCustomized: record.estimatedMinutesCustomized, customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', vehicleControl: Boolean(record.vehicleControl), vehicleId: record.vehicleId || '', vehicleControlScheduledFriday: record.vehicleControlScheduledFriday || '', monthlyVehicleAssignment: record.monthlyVehicleAssignment || '', ...serviceTrace(record) }
   const currentTasks = teams[teamIndex].tasks || []
   const emptyAtSameTime = currentTasks.findIndex(item => item.time === task.time && !item.customerId && !String(item.client || '').trim() && !item.serviceId && !String(item.service || '').trim())
   const sameCustomer = item => {
@@ -742,7 +742,9 @@ const formatServiceEstimatedTime = value => {
   return [hours ? `${hours} h` : '', remainingMinutes ? `${remainingMinutes} min` : ''].filter(Boolean).join(' ')
 }
 const resolveServiceForTask = (task, services = []) => services.find(service => String(service.id) === String(task?.serviceId)) || services.find(service => normalizeServiceName(service.name) === normalizeServiceName(task?.service))
-const serviceEstimateForTask = (task, service) => normalizeServiceEstimatedMinutes(task?.estimatedMinutes, normalizeServiceEstimatedMinutes(service?.estimatedMinutes))
+const serviceEstimateForTask = (task, service) => task?.estimatedMinutesCustomized === false
+  ? normalizeServiceEstimatedMinutes(service?.estimatedMinutes)
+  : normalizeServiceEstimatedMinutes(task?.estimatedMinutes, normalizeServiceEstimatedMinutes(service?.estimatedMinutes))
 const taskWithServiceEstimate = (task, service) => ({ ...task, estimatedMinutes: serviceEstimateForTask(task, service) })
 const taskOccupiedTimeLabel = task => {
   const interval = taskOccupiedInterval(task)
@@ -934,11 +936,11 @@ function technicianTimeConflicts(teams, employees = []) {
 }
 
 /** Pantalla aislada de autenticación; la contraseña sólo viaja al endpoint de acceso. */
-function Login({ onLogin }) {
+function Login({ onLogin, initialError = '' }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(initialError)
   const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [requestingReset, setRequestingReset] = useState(false)
@@ -1005,7 +1007,9 @@ export default function App() {
   const lastPersistedSnapshotRef = useRef(null)
   const currentSnapshotRef = useRef(null)
   const remoteConflictRevisionRef = useRef(null)
+  const serviceDefaultsRef = useRef(new Map())
   const [authUser, setAuthUser] = useState(null)
+  const [sessionEndedMessage, setSessionEndedMessage] = useState('')
   globalThis.__pignusCurrentUser = authUser
   globalThis.__pignusHistory = history
   globalThis.__pignusSetHistory = setHistory
@@ -1020,6 +1024,7 @@ export default function App() {
   useEffect(() => writeLocalValue('pignus-theme', theme), [theme])
   useEffect(() => {
     if (!notice) return undefined
+    if (notice.startsWith('No se guardó') || notice.startsWith('Hay cambios guardados desde otra sesión')) return undefined
     const timer = window.setTimeout(() => setNotice(''), 5000)
     return () => window.clearTimeout(timer)
   }, [notice])
@@ -1070,14 +1075,27 @@ export default function App() {
   useEffect(clearOperationalStorage, [])
   useEffect(() => {
     if (!services.length) return
+    const previousDefaults = serviceDefaultsRef.current
+    const nextDefaults = new Map(services.map(service => [String(service.id), normalizeServiceEstimatedMinutes(service.estimatedMinutes)]))
     const normalizeReference = item => {
       const matched = services.find(service => String(service.id) === String(item.serviceId)) || services.find(service => normalizeServiceName(service.name) === normalizeServiceName(item.service))
-      return matched && (String(item.serviceId) !== String(matched.id) || item.service !== matched.name) ? { ...item, serviceId: matched.id, service: matched.name } : item
+      if (!matched) return item
+      const previousDefault = previousDefaults.get(String(matched.id)) ?? normalizeServiceEstimatedMinutes(matched.estimatedMinutes)
+      const closed = ['Completado', 'Cancelado', 'Reprogramado'].includes(item.status)
+      const customized = item.estimatedMinutesCustomized === true || (
+        item.estimatedMinutesCustomized !== false && item.estimatedMinutes != null && Number(item.estimatedMinutes) !== Number(previousDefault)
+      )
+      const estimatedMinutes = closed || customized
+        ? normalizeServiceEstimatedMinutes(item.estimatedMinutes, matched.estimatedMinutes)
+        : normalizeServiceEstimatedMinutes(matched.estimatedMinutes)
+      const next = { ...item, serviceId: matched.id, service: matched.name, estimatedMinutes, estimatedMinutesCustomized: closed ? (item.estimatedMinutesCustomized ?? true) : customized }
+      return JSON.stringify(next) === JSON.stringify(item) ? item : next
     }
     const normalizeTeams = value => (value || []).map(team => ({ ...team, tasks: (team.tasks || []).map(normalizeReference) }))
     setTeams(previous => { const next = normalizeTeams(previous); return JSON.stringify(next) === JSON.stringify(previous) ? previous : next })
     setWeekly(previous => { const next = Object.fromEntries(Object.entries(previous || {}).map(([key, value]) => [key, key.startsWith('_') ? value : { ...value, teams: normalizeTeams(value?.teams) }])); return JSON.stringify(next) === JSON.stringify(previous) ? previous : next })
     setHistory(previous => { const next = previous.map(normalizeReference); return JSON.stringify(next) === JSON.stringify(previous) ? previous : next })
+    serviceDefaultsRef.current = nextDefaults
   }, [services])
   useEffect(() => {
     if (!customers.length) return
@@ -1132,7 +1150,14 @@ export default function App() {
     setHistory(previous => { const next = previous.map(normalizeAssignments); return JSON.stringify(next) === JSON.stringify(previous) ? previous : next })
   }, [employees])
   useEffect(() => {
-    fetchAuthWithRetry('/api/auth/session', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(data => setAuthUser(data?.user || null)).catch(() => setAuthUser(null)).finally(() => setAuthLoading(false))
+    fetchAuthWithRetry('/api/auth/session', { cache: 'no-store', credentials: 'same-origin' }).then(async response => {
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        if (data.code === 'SESSION_ENDED') setSessionEndedMessage(data.error)
+        return null
+      }
+      return data
+    }).then(data => setAuthUser(data?.user || null)).catch(() => setAuthUser(null)).finally(() => setAuthLoading(false))
   }, [])
   useEffect(() => {
     const brand = document.querySelector('.brand')
@@ -1327,6 +1352,8 @@ export default function App() {
           ...record,
           time: draft.time,
           scheduledTime: draft.time,
+          estimatedMinutes: draft.estimatedMinutes,
+          estimatedMinutesCustomized: Boolean(draft.estimatedMinutesCustomized),
           serviceId: draft.serviceId,
           service: draft.service,
           customerId: draft.customerId,
@@ -1355,6 +1382,8 @@ export default function App() {
           date: day,
           time: draft.time,
           scheduledTime: draft.time,
+          estimatedMinutes: draft.estimatedMinutes,
+          estimatedMinutesCustomized: Boolean(draft.estimatedMinutesCustomized),
           team: teamSnapshot?.label || `Equipo ${teamIndex + 1}`,
           teamId: teamId || teamSnapshot?.teamId || '',
           technicianIds: teamSnapshot?.memberIds || [],
@@ -1449,6 +1478,7 @@ export default function App() {
   }, [weekly, date])
   const applyRemoteState = data => {
     hydratingStateRef.current = true
+    serviceDefaultsRef.current = new Map()
     remoteConflictRevisionRef.current = null
     stateRevisionRef.current = Number(data.revision || 0)
     setStateRevision(stateRevisionRef.current)
@@ -1464,6 +1494,17 @@ export default function App() {
     setWeekly(data.agenda?.weekly && typeof data.agenda.weekly === 'object' ? data.agenda.weekly : {})
     if (data.preferences?.theme) setTheme(data.preferences.theme)
     setDatabaseReady(true)
+  }
+  const endInvalidatedSession = message => {
+    if (loggingOutRef.current) return
+    if (stateSaveTimerRef.current) window.clearTimeout(stateSaveTimerRef.current)
+    stateSaveTimerRef.current = null
+    pendingStateSaves.current = 0
+    hydratingStateRef.current = true
+    clearOperationalStorage()
+    setRoles([]); setEmployees([]); setServices([]); setVehicles([]); setHistory([]); setCustomers([]); setWeekly({})
+    setAuthUser(null); setDatabaseReady(false); setDatabaseError(''); setStateRevision(null); setModule('dashboard')
+    setSessionEndedMessage(message || 'Esta sesión se cerró porque la cuenta fue abierta en otro dispositivo. Iniciá sesión nuevamente para continuar acá.')
   }
   useEffect(() => {
     if (!authUser) return
@@ -1518,14 +1559,36 @@ export default function App() {
         })
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}))
-          throw new Error(payload.error || 'No se pudieron guardar los últimos cambios.')
+          const error = new Error(payload.error || 'No se pudieron guardar los últimos cambios.')
+          error.status = response.status
+          throw error
         }
         const payload = await response.json()
         stateRevisionRef.current = Number(payload.revision)
         lastPersistedSnapshotRef.current = serializedStateSnapshot
         remoteConflictRevisionRef.current = null
         setStateRevision(stateRevisionRef.current)
-      }).catch(error => setNotice(error.message || 'No se pudieron guardar los últimos cambios.'))
+      }).catch(async error => {
+        if (error.status === 401) {
+          endInvalidatedSession(error.message)
+          return
+        }
+        if (error.status === 409) {
+          try {
+            const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' })
+            if (!response.ok) throw new Error('No se pudo recuperar el estado actual.')
+            const remoteState = await response.json()
+            if (!loggingOutRef.current) {
+              applyRemoteState(remoteState)
+              setNotice('No se guardó el último cambio porque otra sesión había actualizado la información. La pantalla ya muestra el estado real; volvé a realizar la acción.')
+            }
+            return
+          } catch {
+            // Se conserva el aviso original si tampoco es posible recuperar el estado.
+          }
+        }
+        setNotice(`No se guardó el último cambio. ${error.message || 'Comprobá la conexión antes de continuar.'}`)
+      })
         .finally(() => { pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1) })
     }, 750)
     stateSaveTimerRef.current = timer
@@ -1536,21 +1599,26 @@ export default function App() {
     }
   }, [databaseReady, authUser, serializedStateSnapshot])
   useEffect(() => {
-    // Sincronización ligera del tablero semanal. Evita recargar la página y no pisa
-    // un campo que el usuario está editando en ese momento.
+    // Sincronización ligera de todos los módulos. Evita que dos sesiones abiertas
+    // muestren indicadores, historial o agenda de revisiones diferentes.
     if (!databaseReady || !authUser) return undefined
     if (authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return undefined
     let refreshing = false
     let stopped = false
-    const refreshWeekly = async () => {
+    const refreshRemoteState = async () => {
       // Un PUT de esta misma pestaña aumenta la revisión del servidor antes de
       // que React alcance a actualizar stateRevision. No debe tratarse como un
       // cambio externo durante esa pequeña ventana.
-      if (loggingOutRef.current || refreshing || pendingStateSaves.current > 0) return
+      if (loggingOutRef.current || refreshing || pendingStateSaves.current > 0 || document.visibilityState === 'hidden') return
       if (document.activeElement?.closest('.weekly-board input, .weekly-board select, .weekly-board textarea, .team-card input, .team-card select, .team-card textarea')) return
       refreshing = true
       try {
-        const response = await fetch('/api/state/revision', { cache: 'no-store' })
+        const response = await fetch('/api/state/revision', { cache: 'no-store', credentials: 'same-origin' })
+        if (response.status === 401) {
+          const data = await response.json().catch(() => ({}))
+          if (!stopped) endInvalidatedSession(data.error)
+          return
+        }
         if (!response.ok) throw new Error('No se pudo consultar la revisión.')
         const data = await response.json()
         const remoteRevision = Number(data.revision)
@@ -1560,7 +1628,7 @@ export default function App() {
             if (remoteConflictRevisionRef.current !== remoteRevision) setNotice('Hay cambios guardados desde otra sesión. Recargá la página para continuar sin sobrescribirlos.')
             remoteConflictRevisionRef.current = remoteRevision
           } else {
-            const stateResponse = await fetch('/api/state', { cache: 'no-store' })
+            const stateResponse = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' })
             if (!stateResponse.ok) throw new Error('No se pudo sincronizar el estado actualizado.')
             const remoteState = await stateResponse.json()
             if (!stopped) {
@@ -1575,9 +1643,23 @@ export default function App() {
         refreshing = false
       }
     }
-    const timer = window.setInterval(refreshWeekly, 15000)
-    window.addEventListener('focus', refreshWeekly)
-    return () => { stopped = true; window.clearInterval(timer); window.removeEventListener('focus', refreshWeekly) }
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== 'hidden') void refreshRemoteState()
+    }
+    void refreshRemoteState()
+    const timer = window.setInterval(refreshWhenVisible, 5000)
+    window.addEventListener('focus', refreshWhenVisible)
+    window.addEventListener('pageshow', refreshWhenVisible)
+    window.addEventListener('online', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      stopped = true
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refreshWhenVisible)
+      window.removeEventListener('pageshow', refreshWhenVisible)
+      window.removeEventListener('online', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
   }, [databaseReady, authUser, stateRevision])
   const ask = (title, detail, action, destructive = false) => setConfirmation({ title, detail, action, destructive })
   const updateTask = (team, task, patch) => {
@@ -1692,9 +1774,9 @@ export default function App() {
   })
   if (loggingOut) return <main className="login-page"><div className="login-loading">Cerrando sesión segura…</div></main>
   if (authLoading) return <main className="login-page"><div className="login-loading">Verificando sesión segura…</div></main>
-  if (!authUser) return <Login onLogin={setAuthUser} />
+  if (!authUser) return <Login initialError={sessionEndedMessage} onLogin={user => { setSessionEndedMessage(''); setAuthUser(user) }} />
   if (!databaseReady) return <main className="login-page"><div className="login-card"><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">DATOS PROTEGIDOS</p><h1>{databaseError ? 'No se pudo cargar la agenda' : 'Cargando información autorizada…'}</h1>{databaseError && <><p className="login-error" role="alert">{databaseError}</p><button className="primary" type="button" onClick={() => { setDatabaseError(''); setAuthUser(current => current ? { ...current } : current) }}>Reintentar</button><button className="secondary" type="button" onClick={logout}>Cerrar sesión</button></>}</div></main>
-  if (authUser.roleCode === 'technician' || normalizeRoleName(authUser.role) === 'tecnico') return <TechnicianPortalErrorBoundary logout={logout}><TechnicianPortal user={authUser} history={history} setHistory={setHistory} logout={logout} /></TechnicianPortalErrorBoundary>
+  if (authUser.roleCode === 'technician' || normalizeRoleName(authUser.role) === 'tecnico') return <TechnicianPortalErrorBoundary logout={logout}><TechnicianPortal user={authUser} history={history} setHistory={setHistory} logout={logout} sessionInvalidated={endInvalidatedSession} /></TechnicianPortalErrorBoundary>
   if (module === 'help') return <HelpShell user={authUser} onNavigate={setModule} logout={logout} theme={theme} setTheme={setTheme} isAdministrator={isAdministrator} navigation={nav} />
   if (module === 'audit' && isAdministrator) return <AuditShell user={authUser} onNavigate={setModule} logout={logout} theme={theme} setTheme={setTheme} navigation={nav} />
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><div className="profile-menu"><button className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span></button>{profileOpen && <div className="profile-popover"><b>{authUser.name}</b><span>{authUser.email}</span><small>{authUser.role}</small></div>}</div><button className="logout-button" onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrar sesión"><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} services={services} />}{module === 'weekly' && <WeeklyPlanner weekly={weekly} setWeekly={setWeekly} customers={customers} services={services} activeTechs={activeTechs} setNotice={setNotice} openDaily={(nextDate, nextTeams) => { setDate(nextDate); setTeams(nextTeams); setModule('agenda') }} />}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }} />}{module === 'history' && <History history={history} setHistory={setHistory} customers={customers} services={services} employees={employees} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask, history, teams, weekly }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask, history, teams, weekly }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask, history, teams, weekly }} />}{module === 'vehicles' && <Vehicles {...{ vehicles, setVehicles, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask, employees }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
@@ -2127,7 +2209,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       current.memberIds = record.technicianIds?.length ? record.technicianIds : current.memberIds
       current.members = record.technicians?.length ? record.technicians : current.members
       // Se aceptan los nombres anteriores del campo para recuperar también agendas ya existentes.
-      const recoveredTask = taskWithServiceEstimate({ taskId: record.sourceTaskId || record.id || createTaskId(), historyId: record.id, time: record.time || record.scheduledTime || record.hora || record.Hora || '', serviceId: record.serviceId || '', service: record.service || '', estimatedMinutes: record.estimatedMinutes, customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', ...serviceTrace(record) }, resolveServiceForTask(record, services))
+      const recoveredTask = taskWithServiceEstimate({ taskId: record.sourceTaskId || record.id || createTaskId(), historyId: record.id, time: record.time || record.scheduledTime || record.hora || record.Hora || '', serviceId: record.serviceId || '', service: record.service || '', estimatedMinutes: record.estimatedMinutes, estimatedMinutesCustomized: record.estimatedMinutesCustomized, customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', ...serviceTrace(record) }, resolveServiceForTask(record, services))
       const sameTask = task => (record.id && String(task.historyId || '') === String(record.id)) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
       if (current.tasks.some(sameTask)) current.tasks = current.tasks.map(task => sameTask(task) ? { ...task, ...recoveredTask } : task)
       else current.tasks.push(recoveredTask)
@@ -2171,8 +2253,8 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     const selected = services.find(service => String(service.id) === String(selectedId))
     const currentTask = teams[teamIndex]?.tasks[taskIndex]
     const nextTask = selected
-      ? { ...currentTask, serviceId: selected.id, service: selected.name, estimatedMinutes: normalizeServiceEstimatedMinutes(selected.estimatedMinutes), installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
-      : { ...currentTask, serviceId: '', service: '', estimatedMinutes: undefined, installationZone: '' }
+      ? { ...currentTask, serviceId: selected.id, service: selected.name, estimatedMinutes: normalizeServiceEstimatedMinutes(selected.estimatedMinutes), estimatedMinutesCustomized: false, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
+      : { ...currentTask, serviceId: '', service: '', estimatedMinutes: undefined, estimatedMinutesCustomized: false, installationZone: '' }
     updateTask(teamIndex, taskIndex, { ...nextTask, ...applicableServiceExtras(nextTask, selected) })
   }
   const conflictForDailyTask = (teamIndex, taskIndex) => {
@@ -2269,7 +2351,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
         // Para un servicio nuevo se usa el taskId, que permanece aunque cambien sus datos.
         id: task.historyId || `work-${task.taskId || `${date}-${teamIndex}-${taskIndex}`}`,
         sourceTaskId: task.taskId,
-        date, time: task.time, scheduledTime: task.time, estimatedMinutes: serviceEstimateForTask(task, serviceForTask(task)), team: `Equipo ${teamIndex + 1}`,
+        date, time: task.time, scheduledTime: task.time, estimatedMinutes: serviceEstimateForTask(task, serviceForTask(task)), estimatedMinutesCustomized: Boolean(task.estimatedMinutesCustomized), team: `Equipo ${teamIndex + 1}`,
         // El historial conserva el titular original aunque la cuenta se reasigne después.
         teamId: team.teamId, technicianIds: team.memberIds || [], technicians: team.members, serviceId: serviceForTask(task)?.id || task.serviceId, service: serviceForTask(task)?.name || task.service, client: task.client,
         customerId: task.customerId || '',
@@ -2531,7 +2613,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Agenda del sábado bloqueada</h1><p>La guardia de fin de semana ya fue cubierta el viernes y no admite nuevos equipos, técnicos ni servicios.</p></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div><p className={`weekly-guard-advanced ${advancedGuard.hasSaturdayConflict ? 'has-conflict' : ''}`}><Icon name={advancedGuard.hasSaturdayConflict ? 'alert' : 'check'} size={16} /><span>{advancedSaturdayGuardMessage(advancedGuard)}</span></p></>
   }
   return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setConfirmation('clear')}><Icon name="trash" />Limpiar agenda</button><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button>{showSaveAgenda && <button type="button" className="secondary save-agenda-button" onClick={saveAgenda}><Icon name="check" />Guardar agenda</button>}<button className="primary" onClick={() => { navigator.clipboard?.writeText(message); clearAgenda() }}><Icon name="copy" />Copiar agenda</button></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, teamIndex) => <article className="team-card" key={team.teamId || teamIndex}><div className="team-header"><div className="daily-team-heading"><span className="team-number">{teamIndex + 1}</span><div className="daily-team-identity"><strong>Equipo {teamIndex + 1}</strong><span className="daily-team-member-names" title={team.members.join(' · ') || 'Sin técnicos'}>{team.members.length ? team.members.map(name => String(name).trim().split(/\s+/)[0]).join(' · ') : 'Sin técnicos'}</span></div>{teams.length > 1 && <button className="team-delete" onClick={() => setConfirmation({ type: 'team', index: teamIndex })}><Icon name="trash" size={16} />Eliminar equipo</button>}</div><div className="technicians-picker"><span className="technician-assignment-label"><RequiredLabel>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</RequiredLabel></span><button className="secondary small" onClick={() => { setTechOpen(techOpen === teamIndex ? null : teamIndex); setFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === teamIndex && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={filter} onChange={event => setFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(filter.toLowerCase())).map(tech => <label key={tech.id}><input type="checkbox" checked={(team.memberIds || []).some(id => String(id) === String(tech.id))} onChange={() => toggleTech(teamIndex, tech)} />{tech.name}</label>)}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, taskIndex) => <div className="task-row" key={task.taskId || task.historyId || `${team.teamId || teamIndex}-${taskIndex}`}><div className="task-title"><span>{taskIndex + 1}</span><b>Servicio</b></div><label className="daily-field-time"><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" value={task.time} onChange={event => updateTask(teamIndex, taskIndex, { time: event.target.value })} /></label><label className="daily-field-service"><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForTask(task)?.id || ''} onChange={event => selectTaskService(teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
-<ServiceEstimatedDurationField className="daily-field-duration" value={serviceEstimateForTask(task, serviceForTask(task))} onChange={estimatedMinutes => updateTask(teamIndex, taskIndex, { estimatedMinutes })} />
+<ServiceEstimatedDurationField className="daily-field-duration" value={serviceEstimateForTask(task, serviceForTask(task))} onChange={estimatedMinutes => updateTask(teamIndex, taskIndex, { estimatedMinutes, estimatedMinutesCustomized: true })} />
 {task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForTask(task)))}</small>}
 {(() => { const conflict = conflictForDailyTask(teamIndex, taskIndex); return conflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>{scheduleConflictForTaskMessage(conflict, taskIndex)}</span></p> })()}
 <TaskStatusBadge task={task} date={date} history={history} />
@@ -2578,8 +2660,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     const selected = services.find(service => String(service.id) === String(selectedId))
     const currentTask = dayPlan(day).teams[teamIndex]?.tasks[taskIndex]
     const nextTask = selected
-      ? { ...currentTask, serviceId: selected.id, service: selected.name, estimatedMinutes: normalizeServiceEstimatedMinutes(selected.estimatedMinutes), installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
-      : { ...currentTask, serviceId: '', service: '', estimatedMinutes: undefined, installationZone: '' }
+      ? { ...currentTask, serviceId: selected.id, service: selected.name, estimatedMinutes: normalizeServiceEstimatedMinutes(selected.estimatedMinutes), estimatedMinutesCustomized: false, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
+      : { ...currentTask, serviceId: '', service: '', estimatedMinutes: undefined, estimatedMinutesCustomized: false, installationZone: '' }
     updateTask(day, teamIndex, taskIndex, { ...nextTask, ...applicableServiceExtras(nextTask, selected) })
   }
   const weeklyTechnicianName = fullName => activeTechs.find(tech => tech.name === fullName)?.firstName || String(fullName || '').split(' ')[0]
@@ -2747,8 +2829,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     const selected = services.find(service => String(service.id) === String(selectedId))
     const currentTask = taskEditor?.draft || blankTask()
     const nextTask = selected
-      ? { ...currentTask, serviceId: selected.id, service: selected.name, estimatedMinutes: normalizeServiceEstimatedMinutes(selected.estimatedMinutes), installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask.installationZone || '' : '' }
-      : { ...currentTask, serviceId: '', service: '', estimatedMinutes: undefined, installationZone: '' }
+      ? { ...currentTask, serviceId: selected.id, service: selected.name, estimatedMinutes: normalizeServiceEstimatedMinutes(selected.estimatedMinutes), estimatedMinutesCustomized: false, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask.installationZone || '' : '' }
+      : { ...currentTask, serviceId: '', service: '', estimatedMinutes: undefined, estimatedMinutesCustomized: false, installationZone: '' }
     updateTaskDraft({ ...nextTask, ...applicableServiceExtras(nextTask, selected) })
   }
   const commitDraftCustomerText = value => updateTaskDraft({ customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
@@ -3270,6 +3352,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     time: task.time,
     scheduledTime: task.time,
     estimatedMinutes: serviceEstimateForTask(task, serviceForWeeklyTask(task)),
+    estimatedMinutesCustomized: Boolean(task.estimatedMinutesCustomized),
     team: team.label || `Equipo ${teamIndex + 1}`,
     teamId: team.teamId,
     technicianIds: team.memberIds || [],
@@ -3291,7 +3374,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
     if (!record) return false
     const comparable = value => String(value || '').trim()
     const sameList = (left, right) => JSON.stringify((left || []).map(String)) === JSON.stringify((right || []).map(String))
-    return ['date', 'time', 'estimatedMinutes', 'teamId', 'serviceId', 'service', 'customerId', 'clientAccount', 'client', 'detail', 'address', 'phone', 'installationZone', 'paymentMethod', 'amount', 'monthlyFee', 'form'].every(key => comparable(record[key]) === comparable(expected[key])) &&
+    return ['date', 'time', 'estimatedMinutes', 'estimatedMinutesCustomized', 'teamId', 'serviceId', 'service', 'customerId', 'clientAccount', 'client', 'detail', 'address', 'phone', 'installationZone', 'paymentMethod', 'amount', 'monthlyFee', 'form'].every(key => comparable(record[key]) === comparable(expected[key])) &&
       sameList(record.technicianIds, expected.technicianIds) && sameList(record.technicians, expected.technicians)
   }
   const dayNeedsSave = day => dayPlan(day).teams.some((team, teamIndex) => (team.tasks || []).some((task, taskIndex) => {
@@ -3377,7 +3460,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
       const hours = hoursForDay(day)
       const taskConflict = conflictForWeeklyTask(day, teamIndex, taskIndex, task)
       if (!task || !hours) return null
-      return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskEditor(null)}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button type="button" className="modal-close" aria-label="Cerrar edición del servicio" title="Cerrar" onClick={() => setTaskEditor(null)}><Icon name="close" size={18} /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>Servicio {taskIndex + 1}</h2><p className="weekly-modal-team">{taskEditor.teamSnapshot?.label || `Equipo ${teamIndex + 1}`} · {taskEditor.teamSnapshot?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTaskDraft({ time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectDraftService(event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div><ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTaskDraft({ estimatedMinutes })} />{task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))}</small>}{taskConflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>{scheduleConflictForTaskMessage(taskConflict, taskIndex)}</span></p>}{serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input aria-required="true" type="radio" name={`weekly-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTaskDraft({ installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
+      return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskEditor(null)}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button type="button" className="modal-close" aria-label="Cerrar edición del servicio" title="Cerrar" onClick={() => setTaskEditor(null)}><Icon name="close" size={18} /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>Servicio {taskIndex + 1}</h2><p className="weekly-modal-team">{taskEditor.teamSnapshot?.label || `Equipo ${teamIndex + 1}`} · {taskEditor.teamSnapshot?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTaskDraft({ time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectDraftService(event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div><ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTaskDraft({ estimatedMinutes, estimatedMinutesCustomized: true })} />{task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))}</small>}{taskConflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>{scheduleConflictForTaskMessage(taskConflict, taskIndex)}</span></p>}{serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input aria-required="true" type="radio" name={`weekly-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTaskDraft({ installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
 <CustomerAutocomplete className="weekly-customer-search" value={task.client} customerId={task.customerId} customers={customers} onTextCommit={commitDraftCustomerText} onCustomerSelect={selectDraftCustomer} />
 <label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" readOnly title="Este dato se modifica desde Abonados y clientes" value={task.address} /></label><label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" readOnly title="Este dato se modifica desde Abonados y clientes" value={task.phone} /></label><p className="weekly-customer-data-note">Dirección y contacto se administran desde el módulo Abonados y clientes.</p><label><RequiredLabel>Detalle</RequiredLabel><textarea aria-required="true" value={task.detail} onChange={event => updateTaskDraft({ detail: event.target.value })} /></label><ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} onChange={updateTaskDraft} /></div><div className="modal-actions"><button className="secondary" onClick={() => setTaskEditor(null)}>Cancelar</button><button className="primary" onClick={saveTaskEditor}><Icon name="check" size={16} />Guardar servicio</button></div></section></div>
     })()}
@@ -3408,7 +3491,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, services, activeTechs, hi
                   <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><div className="week-task-title-actions"><small>{task.time || '--:--'} Hs</small>{plan.teams.length > 1 && (task.customerId || task.client || task.service) && <button type="button" className="weekly-task-move" title="Reasignar a otro equipo" aria-label={`Reasignar Servicio ${taskIndex + 1} a otro equipo`} onClick={event => openWeeklyTaskMove(event, day, teamIndex, taskIndex)}><span aria-hidden="true">⇄</span></button>}<button type="button" className="weekly-task-delete" title="Eliminar servicio" aria-label={`Eliminar Servicio ${taskIndex + 1}`} onClick={event => { event.stopPropagation(); setTaskRemoval({ day, teamId: team.teamId, teamIndex, taskIndex, taskId: task.taskId, historyId: task.historyId, time: task.time || task.scheduledTime || '', wasPlaceholder: !taskHasContent(task), label: team.label || `Equipo ${teamIndex + 1}` }) }}><Icon name="trash" size={14} /></button></div></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>
                   <TaskStatusBadge task={task} date={day} history={operationalHistory} weekly />
                   <div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTask(day, teamIndex, taskIndex, { time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectWeeklyService(day, teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div>
-                  <ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTask(day, teamIndex, taskIndex, { estimatedMinutes })} />
+                  <ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTask(day, teamIndex, taskIndex, { estimatedMinutes, estimatedMinutesCustomized: true })} />
                   {task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))}</small>}
                   {(() => { const conflict = conflictForWeeklyTask(day, teamIndex, taskIndex); return conflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={15} /><span>{scheduleConflictForTaskMessage(conflict, taskIndex)}</span></p> })()}
                   <CustomerAutocomplete value={task.client} customerId={task.customerId} customers={customers} onTextCommit={value => commitWeeklyCustomerText(day, teamIndex, taskIndex, value)} onCustomerSelect={customer => selectWeeklyCustomerResult(day, teamIndex, taskIndex, customer)} />
@@ -3588,7 +3671,7 @@ function AuditPage({ user, onBack, onOpenMenu, logout }) {
   return <main className="audit-page"><header className="audit-topbar"><button className="mobile-menu audit-mobile-menu" onClick={onOpenMenu}><Icon name="menu" /></button><button className="audit-brand" onClick={onBack} title="Volver al menú principal"><img src="/logo-pignus.png" alt="Pignus" /></button><div><b>Auditoría</b><span>Registro de actividad del sistema</span></div><div className="audit-user"><span>{user.name}</span><small>{user.email}</small></div><button className="secondary small" onClick={onBack}>Volver al menú</button><button className="logout-button" onClick={() => setConfirmLogout(true)}><Icon name="logout" size={17} />Cerrar sesión</button></header><section className="audit-content"><div className="module-intro"><div><p className="eyebrow">CONTROL Y TRAZABILIDAD</p><h1>Auditoría del sistema</h1><p>Consultá quién creó, modificó, eliminó o informó cambios, con fecha y detalle de cada acción.</p></div><button className="secondary" onClick={loadAudit}><Icon name="history" />Actualizar</button></div><div className="audit-filters"><label>Acción<select value={action} onChange={event => setAction(event.target.value)}><option value="">Todas las acciones</option>{[...new Set(records.map(record => record.action))].map(item => <option key={item} value={item}>{item}</option>)}</select></label><label className="audit-search">Buscar usuario, entidad o registro<input value={query} onChange={event => setQuery(event.target.value)} placeholder="Ej.: Leonardo, cliente o PIG-6375" /></label><span><b>{visible.length}</b> acciones registradas</span></div>{error && <div className="notice audit-error">{error}</div>}<div className="audit-table"><div className="audit-table-head"><span>Fecha y hora</span><span>Usuario</span><span>Acción</span><span>Información afectada</span><span>Detalle</span></div>{loading ? <div className="empty-state">Cargando registro de auditoría…</div> : visible.map(record => <div className="audit-row" key={record.id}><span>{prettyReportDateTime(record.at)}</span><span><b>{record.user?.name || 'Usuario desconocido'}</b><small>{record.user?.email}</small></span><span><i className={actionClass(record.action)}>{record.action}</i></span><span><b>{record.entity}</b><small>{record.entityId}</small></span><button className="secondary small" onClick={() => openDetail(record)}><Icon name="eye" size={16} />Ver detalle</button></div>)}{!loading && !visible.length && <div className="empty-state">No hay acciones que coincidan con los filtros seleccionados.</div>}</div></section>{selected && <div className="modal-layer"><div className="modal audit-modal"><button className="modal-close" onClick={() => setSelected(null)}><Icon name="close" /></button><p className="eyebrow">DETALLE DE AUDITORÍA</p><h2>{selected.action} · {selected.entity}</h2><div className="audit-detail-meta"><span><b>Usuario</b>{selected.user?.name} · {selected.user?.email}</span><span><b>Fecha y hora</b>{prettyReportDateTime(selected.at)}</span><span><b>Registro</b>{selected.entityId}</span></div><div className="audit-diff"><section><h3>Antes</h3><pre>{selected.before ? JSON.stringify(selected.before, null, 2) : 'No aplica: es un registro nuevo.'}</pre></section><section><h3>Después</h3><pre>{selected.after ? JSON.stringify(selected.after, null, 2) : 'No aplica: el registro fue eliminado.'}</pre></section></div></div></div>}{confirmLogout && <Confirm title="Cerrar sesión" detail="¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema." action={logout} confirmLabel="Sí, cerrar sesión" close={() => setConfirmLogout(false)} />}</main>
 }
 
-function TechnicianPortal({ user, history, setHistory, logout }) {
+function TechnicianPortal({ user, history, setHistory, logout, sessionInvalidated }) {
   const [draft, setDraft] = useState(null)
   const [observation, setObservation] = useState('')
   const vehicleMileageRef = useRef('')
@@ -3667,6 +3750,11 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
       refreshing = true
       try {
         const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' })
+        if (response.status === 401) {
+          const data = await response.json().catch(() => ({}))
+          if (!stopped) sessionInvalidated(data.error)
+          return
+        }
         const data = response.ok ? await response.json() : null
         if (!stopped && Array.isArray(data?.history)) setHistory(data.history)
       } catch {
@@ -3675,9 +3763,26 @@ function TechnicianPortal({ user, history, setHistory, logout }) {
         refreshing = false
       }
     }
-    const interval = window.setInterval(refreshSharedAgenda, 30000)
-    window.addEventListener('focus', refreshSharedAgenda)
-    return () => { stopped = true; window.clearInterval(interval); window.removeEventListener('focus', refreshSharedAgenda) }
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== 'hidden') void refreshSharedAgenda()
+    }
+    // La sesión puede quedar abierta mientras un coordinador agrega otro trabajo.
+    // En móviles, volver desde segundo plano dispara pageshow/visibilitychange pero
+    // no necesariamente focus, por eso sincronizamos en todos esos ciclos.
+    void refreshSharedAgenda()
+    const interval = window.setInterval(refreshWhenVisible, 15000)
+    window.addEventListener('focus', refreshWhenVisible)
+    window.addEventListener('pageshow', refreshWhenVisible)
+    window.addEventListener('online', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      stopped = true
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refreshWhenVisible)
+      window.removeEventListener('pageshow', refreshWhenVisible)
+      window.removeEventListener('online', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
   }, [setHistory])
   useEffect(() => {
     const header = document.querySelector('.technician-header')
