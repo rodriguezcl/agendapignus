@@ -114,3 +114,33 @@
 
 /* Todos los perfiles usan el mismo cajón lateral en pantallas pequeñas. */
 @media(max-width:640px){.technician-sidebar{display:flex;z-index:8}.technician-menu-backdrop{z-index:7}.technician-mobile-menu{flex:0 0 auto;margin-right:2px}.technician-header>div{margin-right:auto}}
+.customer-autocomplete-empty { padding: 10px; display: grid; gap: 8px; }
+.customer-autocomplete-empty p { margin: 0; }
+.customer-autocomplete-actions { display: grid; gap: 7px; padding: 8px; border-top: 1px solid #dce6dd; }
+.customer-add-button, .customer-reservation-button { width: 100%; justify-content: center; }
+.customer-reservation-button { border-color: #d39a12; color: #785600; background: #fff9e9; }
+.subscriber-reservation-note { display: block; margin-top: 6px; color: #785600; font-weight: 650; line-height: 1.35; }
+.subscriber-reservation-chip { color: #785600; background: #fff3c8; border-color: #e8c85c; }
+.daily-unmonitored-zone { grid-column: 2 / -1; display: flex !important; flex-direction: row !important; align-items: center; gap: 7px; padding: 8px 11px; border: 1px solid #d7e3d7; border-radius: 7px; background: #f4f8f3; color: #385843; }
+.daily-unmonitored-zone::before { content: 'Ubicación:'; font-size: 11px; font-weight: 700; color: #526a59; }
+.daily-unmonitored-zone input { width: auto !important; min-height: auto !important; }
+.vehicle-insurance-reminders { display: grid; gap: 10px; margin-bottom: 18px; }
+.vehicle-insurance-reminders article { display: flex; gap: 12px; align-items: center; padding: 14px 16px; border: 1px solid #e4b044; border-radius: 12px; background: #fff4d7; color: #6c4c00; }
+.vehicle-insurance-reminders article div { display: grid; gap: 3px; }
+.vehicle-insurance-reminders span { line-height: 1.35; }
+.subscriber-reservation-reminders { display: grid; gap: 10px; margin-bottom: 18px; }
+.subscriber-reservation-reminders article { display: flex; gap: 12px; align-items: center; padding: 14px 16px; border: 1px solid #e4b044; border-radius: 12px; background: #fff8e5; color: #6c4c00; }
+.subscriber-reservation-reminders article div { display: grid; gap: 3px; }
+.subscriber-reservation-reminders span { line-height: 1.35; }
+.technician-reservation-notice, .history-reservation-notice, .history-reservation-linked { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border: 1px solid #e4b044; border-radius: 10px; background: #fff8e5; color: #6c4c00; line-height: 1.4; }
+.history-reservation-linked { border-color: #a9d3b7; background: #eef8f1; color: #225f39; }
+.vehicles-table .insurance-expired, .insurance-expired { color: #b43f35; font-weight: 700; }
+.vehicles-table .vehicle-row > span:nth-child(5) { display: grid; gap: 3px; }
+.vehicles-table .vehicle-row > span:nth-child(5) a { color: #17643f; font-weight: 700; }
+.vehicle-insurance-current { grid-column: 1 / -1; }
+.technician-vehicles { display: grid; gap: 14px; }
+.technician-vehicles article { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; padding: 18px; border: 1px solid #d1ded4; border-radius: 16px; background: #fff; }
+.technician-vehicles h2, .technician-vehicles p { margin: 0; }
+.technician-vehicles div { display: grid; gap: 5px; }
+.technician-vehicles a.primary { text-decoration: none; display: inline-flex; align-items: center; gap: 7px; }
+@media (max-width: 720px) { .technician-vehicles article { grid-template-columns: auto 1fr; } .technician-vehicles article > a, .technician-vehicles article > span:last-child { grid-column: 1 / -1; } }

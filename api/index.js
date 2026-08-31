@@ -132,6 +132,37 @@ async function requireSession(req, res, sql = database()) {
   return session
 }
 
+async function ensureVehicleInsuranceSchema(sql) {
+  await sql`create table if not exists pignus_vehicle_insurance_documents (vehicle_id text primary key, file_name text not null, pdf_data bytea not null, uploaded_at timestamptz not null default now())`
+  await sql`alter table pignus_vehicle_insurance_documents enable row level security`
+  await sql`revoke all on table pignus_vehicle_insurance_documents from anon, authenticated`
+}
+
+async function handleVehicleInsurance(req, res, sql, user, vehicleId) {
+  await ensureVehicleInsuranceSchema(sql)
+  if (req.method === 'GET') {
+    const state = await readState(sql)
+    if (!(state.vehicles || []).some(vehicle => String(vehicle.id) === String(vehicleId))) return send(res, 404, { error: 'El vehículo no existe.' })
+    if (user.roleCode !== 'technician' && !userCan(user, 'vehicles')) return send(res, 403, { error: 'No tenés permiso para descargar este seguro.' })
+    const rows = await sql`select file_name, pdf_data from pignus_vehicle_insurance_documents where vehicle_id = ${String(vehicleId)}`
+    if (!rows[0]) return send(res, 404, { error: 'El seguro no está cargado.' })
+    securityHeaders(res)
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="${String(rows[0].file_name || 'seguro.pdf').replace(/["\r\n]/g, '')}"`)
+    return res.status(200).send(rows[0].pdf_data)
+  }
+  if (user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede cargar seguros.' })
+  const { fileName, pdf } = requestBody(req)
+  const match = String(pdf || '').match(/^data:application\/pdf;base64,([a-z0-9+/=]+)$/i)
+  const data = match ? Buffer.from(match[1], 'base64') : null
+  if (!data?.length || data.length > 3_000_000 || data.subarray(0, 5).toString() !== '%PDF-') return send(res, 400, { error: 'Seleccioná un PDF válido de hasta 3 MB.' })
+  const safeName = String(fileName || 'seguro.pdf').trim().slice(0, 180)
+  const uploadedAt = new Date().toISOString()
+  await sql`insert into pignus_vehicle_insurance_documents (vehicle_id, file_name, pdf_data, uploaded_at) values (${String(vehicleId)}, ${safeName}, ${data}, ${uploadedAt}) on conflict (vehicle_id) do update set file_name = excluded.file_name, pdf_data = excluded.pdf_data, uploaded_at = excluded.uploaded_at`
+  await appendAudit(sql, [auditEntry(user, 'Cargó seguro', 'Vehículo', String(vehicleId), null, { fileName: safeName, uploadedAt })])
+  return send(res, 200, { fileName: safeName, uploadedAt, documentUrl: `/api/vehicle-insurance/${encodeURIComponent(String(vehicleId))}` })
+}
+
 async function handleLogin(req, res, sql) {
   const fingerprint = requestFingerprint(req)
   const attempts = await sql`select attempts, blocked_until from pignus_login_attempts where fingerprint = ${fingerprint}`
@@ -310,7 +341,8 @@ async function handleExport(req, res, sql, user) {
   const records = state.history.filter(record => {
     if (!record.date?.startsWith(month) || (user.roleCode === 'technician' && !record.technicianIds?.some(id => String(id) === String(user.id)))) return false
     if (isRetirement) return record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo')
-    return (String(record.serviceId) === String(alarmService?.id) || (!record.serviceId && normalizedServiceName(record.service) === 'instalacion de alarma')) && (category === 'all' || alarmCategory(record) === category)
+    const installationCategory = alarmCategory(record)
+    return !record.subscriberReservation && installationCategory !== 'no-monitoreada' && (String(record.serviceId) === String(alarmService?.id) || (!record.serviceId && normalizedServiceName(record.service) === 'instalacion de alarma')) && (category === 'all' || installationCategory === category)
   }).sort(compareReportRecords)
   const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
   const generatedAt = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
@@ -483,6 +515,7 @@ module.exports = async function handler(req, res) {
     }
     if (req.method === 'POST' && route === '/technician/status') return await handleTechnicianStatus(req, res, sql, session.user)
     if (req.method === 'GET' && route.startsWith('/vehicle-control/photo/')) return await handleVehicleControlPhoto(req, res, sql, session.user, decodeURIComponent(route.slice('/vehicle-control/photo/'.length)))
+    if (['GET', 'POST'].includes(req.method) && route.startsWith('/vehicle-insurance/')) return await handleVehicleInsurance(req, res, sql, session.user, decodeURIComponent(route.slice('/vehicle-insurance/'.length)))
     if (req.method === 'POST' && route === '/agenda/daily/clear') return await handleClearAgenda(req, res, sql, session.user)
     return send(res, 404, { error: 'Ruta no encontrada.' })
   } catch (error) {

@@ -487,10 +487,19 @@ test('la agenda diaria renderiza sus acciones inmediatamente y separa hora de se
 
 test('la agenda diaria respeta espacios quitados y no copia servicios vacíos', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
-  assert.match(source, /const visibleWeeklyTeams = applyRemovedWeeklySlots\(weeklyDay\?\.teams \|\| \[\], weeklyDay\?\.removedSlots \|\| \[\]\)/)
+  assert.match(source, /const visibleWeeklyTeams = applyRemovedWeeklySlots\(applyRemovedWeeklyTasks\(weeklyDay\?\.teams \|\| \[\], weeklyDay\?\.removedTaskIds \|\| \[\]\), weeklyDay\?\.removedSlots \|\| \[\]\)/)
   assert.match(source, /const agendaTeamsWithRealServices = \(agendaTeams = teams\) => agendaTeams\.map\(team => \(\{[\s\S]*?tasks: \(team\.tasks \|\| \[\]\)\.filter\(task => taskHasContent\(task\) && !taskIsResolvedForPlanning\(task, date, history\)\)/)
   assert.match(source, /const messageSections = teams\.flatMap\(\(team, index\) => team\.tasks\.some\(taskHasContent\)/)
   assert.match(source, /agendaTeams = agendaTeamsWithRealServices\(agendaTeams\)/)
+})
+
+test('eliminar un servicio semanal deja una baja persistente y limpia su copia diaria', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+
+  assert.match(source, /const applyRemovedWeeklyTasks = \(teams = \[\], removedTaskIds = \[\]\) =>/)
+  assert.match(source, /const removedTaskIds = \[\.\.\.new Set\(\[\.\.\.\(plan\.removedTaskIds \|\| \[\]\), \.\.\.weeklyTaskRemovalAliases\(\{ taskId, historyId \}\)\]\)\]/)
+  assert.match(source, /detail: \{ day, teamId, teamIndex, taskIndex, taskId, historyId \}/)
+  assert.match(source, /currentTaskIndex !== taskIndex/)
 })
 
 test('las agendas diaria y semanal renderizan directamente el estado de cada servicio', () => {
@@ -738,7 +747,18 @@ test('impide que un rol de consulta modifique colecciones sin permiso', () => {
   assert.deepEqual(authorized.agenda, current.agenda)
 })
 
-test('el ABM de vehículos integra estado, permisos, validación y sus cinco campos requeridos', () => {
+test('un planificador puede crear un cliente CLI sin modificar clientes existentes', () => {
+  const planningRole = { id: 'weekly-role', code: 'weekly-role', name: 'Planificador', permissions: { weekly: true } }
+  const planningUser = userForEmployee({ ...employee, roleId: planningRole.id, role: planningRole.name }, [...roles, planningRole])
+  const existing = { customerId: 'customer-1', kind: 'subscriber', account: 'PIG-0001', name: 'EXISTENTE' }
+  const created = { customerId: 'customer-2', kind: 'client', account: 'CLI-0001', name: 'NUEVO', address: 'Calle 1', street: 'Calle 1', phone: '351' }
+  const current = { roles: [...roles, planningRole], employees: [employee], services: [], vehicles: [], customers: [existing], history: [], reviews: [], agenda: { weekly: {} } }
+  const incoming = { ...current, customers: [{ ...existing, name: 'ALTERADO' }, created] }
+  const authorized = authorizeIncomingState(incoming, current, planningUser)
+  assert.deepEqual(authorized.customers, [existing, created])
+})
+
+test('el ABM de vehículos integra estado, permisos, seguro privado y campos requeridos', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const apiCore = fs.readFileSync(path.resolve(__dirname, '../api/_lib/core.cjs'), 'utf8')
   const database = fs.readFileSync(path.resolve(__dirname, '../api/_lib/database.cjs'), 'utf8')
@@ -746,12 +766,18 @@ test('el ABM de vehículos integra estado, permisos, validación y sus cinco cam
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(source, /\['vehicles', 'Vehículos', 'Administrar la flota de la empresa'\]/)
   assert.match(source, /\['vehicles', 'vehicle', 'Vehículos'\]/)
-  assert.match(source, /function Vehicles\(\{ vehicles, setVehicles, setNotice, ask \}\)/)
+  assert.match(source, /function Vehicles\(\{ vehicles, setVehicles, setNotice, ask, isAdministrator \}\)/)
   for (const label of ['Marca', 'Modelo', 'Año', 'Kilometraje', 'Matrícula']) assert.match(source, new RegExp(`<RequiredLabel>${label}<\\/RequiredLabel>`))
   assert.match(source, /Ya existe un vehículo con esa matrícula/)
+  assert.match(source, /Seguro vigente \(PDF\)/)
+  assert.match(source, /\/api\/vehicle-insurance\//)
+  assert.match(source, /Vehículos y seguros/)
   assert.match(apiCore, /unique\(state\.vehicles, 'plate', 'Matrícula'\)/)
   assert.match(apiCore, /el kilometraje no es válido/)
   assert.match(apiCore, /vehicles: userCan\(user, 'vehicles'\)/)
+  assert.match(apiCore, /vehicles: state\.vehicles \|\| \[\]/)
+  assert.match(apiCore, /fecha de vencimiento del seguro no es válida/)
+  assert.match(database, /pignus_vehicle_insurance_documents/)
   assert.match(database, /JSON\.stringify\(state\.vehicles \|\| \[\]\)/)
   assert.match(icon, /vehicle:/)
   assert.match(styles, /\.vehicles-table \.table-head,[\s\S]*?\.vehicle-row/)
@@ -760,6 +786,35 @@ test('el ABM de vehículos integra estado, permisos, validación y sus cinco cam
 test('normaliza matrícula, año y kilometraje de los vehículos antes de persistir', () => {
   const normalized = normalizeStateForSave({ roles, employees: [], services: [], vehicles: [{ id: 'v1', brand: ' Ford ', model: ' Ranger ', year: '2025', mileage: '125000', plate: ' ab 123 cd ' }], customers: [], history: [], reviews: [], agenda: {} }, { reviews: [] })
   assert.deepEqual(normalized.vehicles, [{ id: 'v1', brand: 'Ford', model: 'Ranger', year: 2025, mileage: 125000, plate: 'AB 123 CD' }])
+})
+
+test('las agendas distinguen reservas PIG, clientes CLI y ubicación no monitoreada', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const api = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
+  const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
+  assert.match(source, /\['no-monitoreada', 'No monitoreada'\]/)
+  assert.match(source, />Reservar nuevo abonado<\/button>/)
+  assert.match(source, />Agregar cliente CLI<\/button>/)
+  assert.match(source, /const createQuickClient/)
+  assert.match(source, /const subscriberReservationPatch/)
+  assert.match(source, /const customerLinkPatch/)
+  assert.match(source, /Reserva · PIG pendiente/)
+  assert.match(source, /function SubscriberReservationReminders/)
+  assert.match(source, /customers\.filter\(customer => !record\.subscriberReservation \|\| customerKind\(customer\) === 'subscriber'\)/)
+  assert.match(source, /kind: 'client'/)
+  assert.match(source, /zoneOf\(record\) !== 'no-monitoreada'/)
+  assert.match(api, /!record\.subscriberReservation && installationCategory !== 'no-monitoreada'/)
+  assert.match(help, /La reserva ocupa el turno sin crear un CLI/)
+})
+
+test('hidrata la fecha diaria junto con sus tarjetas para no atribuir servicios futuros a hoy', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const hydration = source.match(/const applyRemoteState = data => \{([\s\S]*?)\n  \}/)?.[1] || ''
+
+  assert.match(hydration, /const persistedAgendaDate = \/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\//)
+  assert.match(hydration, /setTeams\(data\.agenda\?\.teams\?\.length \? data\.agenda\.teams/)
+  assert.match(hydration, /setDate\(persistedAgendaDate\)/)
+  assert.doesNotMatch(hydration, /setDate\(currentLocalDate\(\)\)/)
 })
 
 test('conserva el hash al editar un empleado sin cambiar su contraseña', () => {

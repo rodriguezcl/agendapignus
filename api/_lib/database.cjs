@@ -82,6 +82,9 @@ async function replaceCollections(sql, state) {
   await sql`alter table pignus_vehicle_control_photos enable row level security`
   await sql`revoke all on table pignus_vehicle_control_photos from anon, authenticated`
   await sql`delete from pignus_vehicle_control_photos where not exists (select 1 from pignus_work_history where pignus_work_history.id = pignus_vehicle_control_photos.record_id)`
+  await sql`create table if not exists pignus_vehicle_insurance_documents (vehicle_id text primary key, file_name text not null, pdf_data bytea not null, uploaded_at timestamptz not null default now())`
+  await sql`alter table pignus_vehicle_insurance_documents enable row level security`
+  await sql`revoke all on table pignus_vehicle_insurance_documents from anon, authenticated`
 
   await sql`delete from pignus_reviews`
   if (state.reviews.length) await sql`insert into pignus_reviews ${sql(state.reviews.map(record => ({ id: String(record.id), data: sql.json(record) })))}`
