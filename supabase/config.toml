@@ -1,0 +1,2 @@
+[functions.softguard-sync]
+verify_jwt = false

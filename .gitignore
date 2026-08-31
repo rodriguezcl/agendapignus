@@ -11,3 +11,11 @@ node_modules/
 .env*
 !.env.example
 .vercel/
+
+# Herramientas y artefactos locales de validación; no forman parte del producto.
+.dotnet-install.ps1
+.dotnet-sdk/
+artifacts/
+supabase/.temp/
+workers/**/bin/
+workers/**/obj/

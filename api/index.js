@@ -1,6 +1,6 @@
 const crypto = require('node:crypto')
 const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
-const { appendAudit, database, readExportState, readRevision, readState, replaceCollections } = require('./_lib/database.cjs')
+const { appendAudit, database, readExportState, readRevision, readSoftguardSubscribers, readState, replaceCollections } = require('./_lib/database.cjs')
 const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
 const {
@@ -435,6 +435,15 @@ module.exports = async function handler(req, res) {
     }
     if (req.method === 'GET' && route === '/state/revision') return send(res, 200, { revision: await readRevision(sql) })
     if (req.method === 'GET' && route === '/state') return send(res, 200, visibleStateForUser(await readState(sql), session.user))
+    if (req.method === 'GET' && route === '/softguard/abonados') {
+      const canRead = userCan(session.user, 'accounts') || userCan(session.user, 'agenda') || userCan(session.user, 'weekly') || userCan(session.user, 'history')
+      if (!canRead) return send(res, 403, { error: 'No tenés permiso para consultar datos de abonados.' })
+      return send(res, 200, await readSoftguardSubscribers(sql, {
+        search: req.query.search,
+        limit: req.query.limit,
+        offset: req.query.offset
+      }))
+    }
     if (req.method === 'GET' && route === '/holidays') {
       const year = validHolidayYear(req.query.year)
       if (!year) return send(res, 400, { error: 'El año solicitado no es válido.' })

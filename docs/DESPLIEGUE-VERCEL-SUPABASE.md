@@ -14,7 +14,7 @@ La versión web conserva React/Vite y reemplaza la persistencia de producción p
 
 1. Crear un proyecto en Supabase. Elegir, si está disponible, una región cercana a la función de Vercel.
 2. En **Connect**, copiar la URI de **Transaction pooler**, puerto `6543`. Es la conexión adecuada para funciones serverless.
-3. Después de configurar `.env.local` y recibir autorización explícita para modificar el proyecto remoto, aplicar y verificar el esquema con `npm run schema:supabase -- --confirm`.
+3. Después de configurar `.env.local`, inspeccionar el esquema sin escribir mediante `npm run schema:supabase`. El aplicador clasifica instalación inicial, baseline sin historial, migración incremental, esquema actualizado o estado parcial. La opción genérica `--confirm` está prohibida.
 
 No usar la clave pública de Supabase para estas tablas. La API de PIGNUS utiliza solamente la conexión PostgreSQL del servidor.
 
@@ -45,6 +45,38 @@ Validar la conexión y el estado del esquema en modo exclusivamente de lectura:
 npm run check:supabase
 ```
 
+### Baseline existente y migraciones incrementales
+
+Cuando las 12 tablas `pignus_*` ya existen y coinciden exactamente, pero no existe `supabase_migrations.schema_migrations`, no se debe ejecutar nuevamente `202608250001_pignus_schema.sql`. El procedimiento previsto es:
+
+1. Ejecutar `npm run schema:supabase` en modo de inspección y confirmar que informa `baseline-without-history`.
+2. Solicitar autorización específica para modificar el historial remoto.
+3. Registrar `202608250001` como aplicada mediante el mecanismo oficial de reparación de migraciones de Supabase, sin ejecutar su SQL:
+
+   ```powershell
+   supabase migration repair --status applied 202608250001
+   ```
+
+4. Volver a inspeccionar y confirmar que el estado es `softguard-migration-pending`.
+5. Ejecutar solamente el ensayo oficial:
+
+   ```powershell
+   supabase db push --dry-run
+   ```
+
+6. Comprobar que el dry-run proponga exclusivamente `202608300001_softguard_sync.sql`. Detenerse si muestra otra migración, DDL u operación.
+7. Presentar el resultado y solicitar una autorización distinta antes de ejecutar `supabase db push` sin `--dry-run`.
+
+Los comandos `migration repair` y `db push` modifican el proyecto remoto y nunca quedan autorizados por una comprobación previa. El aplicador local recomienda el historial oficial para migraciones incrementales y bloquea estados parciales, nombres inesperados y la reaplicación del baseline.
+
+En una instalación realmente vacía, la única escritura directa admitida por el runner exige la acción y confirmación específicas siguientes:
+
+```powershell
+npm run schema:supabase -- --action=initial-install --confirm-initial-install=202608250001+202608300001
+```
+
+Antes de escribir, vuelve a comprobar que no existan tablas PIGNUS o SoftGuard. Ejecuta únicamente esas dos migraciones dentro de una sola transacción, elimina sus `BEGIN/COMMIT` externos y verifica los 12 nombres `pignus_*` y los 7 nombres `softguard_*` antes de permitir el commit. Para una instalación administrada normalmente se prefiere `supabase db push`, porque mantiene el historial oficial desde el inicio.
+
 ## 3. Migrar los datos actuales
 
 Detener la aplicación local para que SQLite complete sus escrituras. Conservar una copia de `data/agenda-tecnica.db` antes de comenzar.
@@ -55,14 +87,13 @@ El script `migrate:supabase` carga `.env.local` mediante el soporte nativo de No
 npm run migrate:supabase -- --dry-run
 ```
 
-Después de revisar el conteo y obtener autorización explícita para escribir en la base remota:
+Después de verificar el esquema mediante el historial oficial y obtener autorización explícita para migrar los datos:
 
 ```powershell
-npm run schema:supabase -- --confirm
 npm run migrate:supabase -- --confirm
 ```
 
-El primer comando sólo cuenta y valida el origen. El segundo migra todo dentro de una transacción. Si Supabase ya contiene información, el proceso se detiene para no sobrescribirla.
+El dry-run anterior sólo cuenta y valida el origen. El comando confirmado migra todo dentro de una transacción. Si Supabase ya contiene información, el proceso se detiene para no sobrescribirla.
 
 `--replace` elimina y reemplaza los datos del destino; usarlo únicamente para repetir una migración inicial verificada:
 
@@ -96,6 +127,8 @@ Ejecutar el comando dos veces y guardar cada resultado en una variable diferente
 
 4. Desplegar. El comando de build es `npm run build` y el directorio de salida es `dist`.
 5. En **Settings > Functions**, elegir una región de ejecución cercana a la región del proyecto de Supabase para reducir la latencia.
+
+El repositorio local está vinculado a un proyecto Vercel. Si la integración Git está activa y `main` es la rama de producción, un push a `main` puede iniciar automáticamente un despliegue de producción. `vercel.json` define el build, pero no permite comprobar localmente qué rama está configurada como producción. Antes de cualquier push se debe revisar esa asociación en Vercel y tratar `main` como potencialmente desplegable.
 
 ## 5. Verificación posterior
 

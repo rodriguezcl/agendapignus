@@ -61,6 +61,52 @@ async function readExportState(sql) {
   return { services: state?.services || [], history: state?.history || [] }
 }
 
+async function readSoftguardSubscribers(sql, { search = '', limit = 50, offset = 0 } = {}) {
+  const normalizedSearch = String(search || '').trim().slice(0, 100)
+  const requestedLimit = Number(limit)
+  const requestedOffset = Number(offset)
+  const safeLimit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 50
+  const safeOffset = Number.isInteger(requestedOffset) ? Math.min(Math.max(requestedOffset, 0), 1_000_000) : 0
+  const pattern = `%${normalizedSearch}%`
+  const records = await sql`
+    select
+      subscriber.id_interno as "idInterno",
+      subscriber.numero_abonado as "numeroAbonado",
+      subscriber.nombre_abonado as "nombreAbonado",
+      subscriber.direccion,
+      subscriber.localidad,
+      subscriber.primer_contacto as "primerContacto",
+      subscriber.telefono_primer_contacto as "telefonoPrimerContacto",
+      subscriber.codigo_tipo_servicio as "codigoTipoServicio",
+      service_type.tipo_servicio as "tipoServicio",
+      coalesce(
+        jsonb_agg(
+          jsonb_build_object(
+            'idInternoZona', zone.id_interno_zona,
+            'codigoZona', zone.codigo_zona,
+            'descripcionZona', zone.descripcion_zona
+          ) order by zone.codigo_zona, zone.id_interno_zona
+        ) filter (where zone.id_interno_zona is not null),
+        '[]'::jsonb
+      ) as zonas
+    from softguard_abonados subscriber
+    left join softguard_tipos_servicio service_type
+      on service_type.codigo_tipo_servicio = subscriber.codigo_tipo_servicio and service_type.is_active
+    left join softguard_zonas zone
+      on zone.id_interno_abonado = subscriber.id_interno and zone.is_active
+    where subscriber.is_active and (
+      ${normalizedSearch} = ''
+      or subscriber.numero_abonado ilike ${pattern}
+      or to_tsvector('simple', coalesce(subscriber.nombre_abonado, '')) @@ websearch_to_tsquery('simple', ${normalizedSearch})
+      or subscriber.localidad ilike ${pattern}
+    )
+    group by subscriber.id_interno, service_type.tipo_servicio
+    order by subscriber.numero_abonado nulls last, subscriber.nombre_abonado nulls last
+    limit ${safeLimit} offset ${safeOffset}
+  `
+  return { records, limit: safeLimit, offset: safeOffset }
+}
+
 async function replaceCollections(sql, state) {
   await sql`delete from pignus_roles`
   if (state.roles.length) await sql`insert into pignus_roles ${sql(state.roles.map(record => ({ id: String(record.id), data: sql.json(record) })))}`
@@ -96,4 +142,4 @@ async function appendAudit(sql, entries) {
   await sql`delete from pignus_audit_log where id in (select id from pignus_audit_log order by occurred_at desc offset 100)`
 }
 
-module.exports = { appendAudit, database, readExportState, readRevision, readState, replaceCollections }
+module.exports = { appendAudit, database, readExportState, readRevision, readSoftguardSubscribers, readState, replaceCollections }

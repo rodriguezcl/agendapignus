@@ -9,5 +9,9 @@ async function request(url, options) {
 
 export const apiClient = {
   getState: () => request(STATE_ENDPOINT),
-  saveState: state => request(STATE_ENDPOINT, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state) })
+  saveState: state => request(STATE_ENDPOINT, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state) }),
+  searchSoftguardSubscribers: ({ search = '', limit = 50, offset = 0 } = {}) => {
+    const query = new URLSearchParams({ search, limit: String(limit), offset: String(offset) })
+    return request(`/api/softguard/abonados?${query}`)
+  }
 }
