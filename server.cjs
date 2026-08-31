@@ -1010,6 +1010,7 @@ function saveState(state, user) {
     error.statusCode = 409
     throw error
   }
+  const previousState = readState()
   state = authorizedIncomingState(state, user)
   const normalizedRoles = (state.roles || []).map(role => ({ ...role, code: role.code || legacyRoleCode(role) }))
   const roleById = new Map(normalizedRoles.map(role => [String(role.id), role]))
@@ -1024,11 +1025,17 @@ function saveState(state, user) {
   const normalizedVehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), mileage: vehicle.mileage == null || vehicle.mileage === '' ? null : Number(vehicle.mileage), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
   const serviceById = new Map(normalizedServices.map(service => [String(service.id), service]))
   const serviceByName = new Map(normalizedServices.map(service => [normalizedServiceName(service.name), service]))
+  const previousServiceById = new Map((previousState.services || []).map(service => [String(service.id), service]))
+  const previousServiceByName = new Map((previousState.services || []).map(service => [normalizedServiceName(service.name), service]))
   const normalizeServiceReference = item => {
     const matched = serviceById.get(String(item.serviceId ?? '')) || serviceByName.get(normalizedServiceName(item.service))
     if (!matched) return item
-    const estimatedMinutes = item.estimatedMinutes == null ? matched.estimatedMinutes : item.estimatedMinutes
-    return { ...item, serviceId: matched.id, service: matched.name, estimatedMinutes }
+    const previousService = previousServiceById.get(String(item.serviceId ?? '')) || previousServiceByName.get(normalizedServiceName(item.service))
+    const previousDefault = normalizeServiceEstimatedMinutes(previousService?.estimatedMinutes, matched.estimatedMinutes)
+    const closed = ['Completado', 'Cancelado', 'Reprogramado'].includes(item?.status)
+    const customized = item.estimatedMinutesCustomized === true || (item.estimatedMinutesCustomized !== false && item.estimatedMinutes != null && Number(item.estimatedMinutes) !== Number(previousDefault))
+    const estimatedMinutes = closed || customized ? normalizeServiceEstimatedMinutes(item.estimatedMinutes, matched.estimatedMinutes) : matched.estimatedMinutes
+    return { ...item, serviceId: matched.id, service: matched.name, estimatedMinutes, estimatedMinutesCustomized: closed ? (item.estimatedMinutesCustomized ?? true) : customized }
   }
   const completedRetirementCustomerIds = new Set((state.history || [])
     .filter(record => record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo'))
@@ -1250,7 +1257,7 @@ function sessionUser(req) {
 function requireSession(req, res) {
   const user = sessionUser(req)
   if (!user) {
-    send(res, 401, { error: 'Sesión requerida.' })
+    send(res, 401, { code: 'SESSION_ENDED', error: 'Esta sesión ya no está activa. La cuenta pudo haberse abierto en otro dispositivo o la sesión pudo haber vencido.' })
     return null
   }
   return user
@@ -1396,7 +1403,12 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${host}:${port}`)
   if (req.method === 'GET' && url.pathname === '/api/auth/session') {
     const user = sessionUser(req)
-    return user ? send(res, 200, { user }) : send(res, 401, { error: 'Sin sesión activa.' })
+    const hadSessionCookie = Boolean(parseCookies(req.headers.cookie).pignus_session)
+    return user
+      ? send(res, 200, { user })
+      : send(res, 401, hadSessionCookie
+        ? { code: 'SESSION_ENDED', error: 'Esta sesión ya no está activa. La cuenta pudo haberse abierto en otro dispositivo o la sesión pudo haber vencido.' }
+        : { code: 'SESSION_REQUIRED', error: 'Sin sesión activa.' })
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/login') {
     if (loginLimited(req)) return send(res, 429, { error: 'Demasiados intentos. Esperá 15 minutos antes de volver a intentar.' })
@@ -1424,11 +1436,17 @@ const server = http.createServer((req, res) => {
       const assignedRole = rows('roles').find(role => String(role.id) === String(employee.roleId)) || rows('roles').find(role => normalizedRoleName(role.name) === normalizedRoleName(employee.role))
       const user = { id: employee.id, name: employee.name, email: employee.email, roleId: assignedRole?.id, roleCode: assignedRole?.code || legacyRoleCode(assignedRole || { id: employee.roleId, name: employee.role }), role: assignedRole?.name || employee.role }
       const token = crypto.randomBytes(32).toString('hex')
+      let replacedSessions = 0
+      for (const [activeToken, session] of sessions) {
+        if (String(session.user.id) !== String(user.id)) continue
+        sessions.delete(activeToken)
+        replacedSessions += 1
+      }
       sessions.set(token, { user, expiresAt: Date.now() + SESSION_MAX_AGE })
       // Un bloqueo momentáneo del registro de auditoría no debe impedir que una
       // credencial válida abra sesión. El acceso sigue quedando aislado en memoria.
       try {
-        writeAudit(user, 'Inició sesión', 'Sesión', String(user.id), null, { sessionExpiresAt: new Date(Date.now() + SESSION_MAX_AGE).toISOString() })
+        writeAudit(user, 'Inició sesión', 'Sesión', String(user.id), null, { sessionExpiresAt: new Date(Date.now() + SESSION_MAX_AGE).toISOString(), replacedSessions })
       } catch (auditError) {
         console.error('No se pudo registrar la auditoría del inicio de sesión:', auditError)
       }

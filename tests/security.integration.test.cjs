@@ -199,6 +199,19 @@ test('gestiona solicitudes de contraseña únicamente para administradores', asy
   assert.equal(payload.requests.some(request => request.email === 'qa-tech@pignus.test'), false)
 })
 
+test('el último ingreso invalida cualquier sesión anterior del mismo correo', async () => {
+  const firstCookie = await login('qa-tech@pignus.test')
+  assert.equal((await api('/api/state', firstCookie)).status, 200)
+  const secondCookie = await login('qa-tech@pignus.test')
+  assert.notEqual(firstCookie, secondCookie)
+  const displaced = await api('/api/state', firstCookie)
+  assert.equal(displaced.status, 401)
+  const payload = await displaced.json()
+  assert.equal(payload.code, 'SESSION_ENDED')
+  assert.match(payload.error, /otro dispositivo|vencido/i)
+  assert.equal((await api('/api/state', secondCookie)).status, 200)
+})
+
 test('un gestor de empleados no puede elevar privilegios', async () => {
   const cookie = await login('qa-employees@pignus.test')
   let current = await state(cookie)
@@ -292,6 +305,15 @@ test('el historial contextual del técnico es de solo lectura y registra quién 
   assert.ok(visible.history.some(record => record.id === 'qa-tech-context'))
   assert.equal(visible.history.some(record => record.id === 'qa-tech-private'), false)
   assert.deepEqual(visible.customers, [])
+
+  // Conserva la misma sesión: simula que Administración agrega un servicio
+  // después de que el técnico ya abrió su agenda.
+  const addedDuringSession = { id: 'qa-tech-added-during-session', date: today, time: '14:30', customerId: 'qa-customer-a', clientAccount: 'PIG-9001', client: 'PIG-9001 CLIENTE INCLUIDO QA', service: 'Service técnico', status: 'Pendiente', technicianIds: ['qa-tech'], technicians: ['QA Técnico'] }
+  const liveUpdateDb = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  upsertJson(liveUpdateDb, 'work_history', 'id', addedDuringSession)
+  liveUpdateDb.close()
+  const refreshedDuringSession = await state(cookie)
+  assert.ok(refreshedDuringSession.history.some(record => record.id === addedDuringSession.id))
 
   const futureVehicleControl = { id: 'qa-tech-future-vehicle-control', date: '2999-08-29', time: '15:30', client: 'Ford Ka · QA123AA', service: 'Control semanal de vehículo', status: 'Pendiente', technicianIds: ['qa-tech'], technicians: ['QA Técnico'], vehicleControl: true, vehicleId: 'qa-vehicle' }
   const vehicleControlDb = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))

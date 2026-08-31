@@ -153,7 +153,8 @@ function validateChangedAgendaSchedules(state, previousState = null) {
         const [hours, minutes] = task.time.split(':').map(Number)
         const start = hours * 60 + minutes
         const actualRelease = completedReleaseMinute(task)
-        return { task, taskIndex, start, end: actualRelease ?? start + Math.max(60, estimatedMinutesFor(task, serviceMap)) }
+        const plannedEnd = start + Math.max(60, estimatedMinutesFor(task, serviceMap))
+        return { task, taskIndex, start, end: actualRelease == null ? plannedEnd : Math.min(actualRelease, plannedEnd) }
       }).sort((first, second) => first.start - second.start)
       scheduled.forEach((current, index) => {
         const conflict = scheduled.slice(0, index).find(previousTask => current.start < previousTask.end)

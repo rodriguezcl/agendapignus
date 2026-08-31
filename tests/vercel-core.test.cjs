@@ -31,6 +31,20 @@ test('todos los roles muestran una recuperación en lugar de una pantalla blanca
   assert.match(boundary, /Cerrar sesión/)
 })
 
+test('cada correo conserva una sola sesión y la sesión desplazada lo explica', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
+  const serverSource = fs.readFileSync(path.resolve(__dirname, '../server.cjs'), 'utf8')
+  assert.match(apiSource, /delete from pignus_sessions where employee_id/)
+  assert.match(apiSource, /select id from pignus_employees where id[\s\S]*for update/)
+  assert.match(apiSource, /order by newest\.created_at desc, newest\.token_hash desc/)
+  assert.match(apiSource, /replacedSessions: revoked\.length/)
+  assert.match(serverSource, /sessions\.delete\(activeToken\)/)
+  assert.match(source, /function Login\(\{ onLogin, initialError = '' \}\)/)
+  assert.match(source, /endInvalidatedSession\(data\.error\)/)
+  assert.match(source, /cuenta fue abierta en otro dispositivo/)
+})
+
 test('el acceso explica las credenciales sin mencionar módulos restringidos', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /Usá el correo y la contraseña definidos por el administrador\./)
@@ -61,6 +75,17 @@ test('el tiempo estimado queda compacto y alineado con los demás campos', () =>
   assert.match(form, /className="service-duration-inputs"/)
   assert.doesNotMatch(form, /<small>\{formatServiceEstimatedTime\(form\.estimatedMinutes\)\}<\/small>/)
   assert.match(styles, /\.service-duration-inputs :is\(input,select\)\{height:40px;min-height:40px\}/)
+})
+
+test('las agendas distinguen el tiempo predeterminado de un ajuste manual', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
+  assert.match(source, /estimatedMinutesCustomized: false/)
+  assert.match(source, /estimatedMinutesCustomized: true/)
+  assert.match(source, /serviceDefaultsRef/)
+  assert.match(source, /previousDefaults\.get/)
+  assert.match(help, /se actualizan los servicios pendientes/)
+  assert.match(help, /ajustado manualmente/)
 })
 
 test('el buscador del historial técnico contempla todos los datos útiles', async () => {
@@ -191,7 +216,15 @@ test('la confirmación espera el guardado y el servidor admite reintentos idempo
   assert.match(source, /await action\(\)/)
   assert.match(source, /submitting \? 'Guardando…' : label/)
   assert.match(source, /role="alert"/)
-  assert.match(source, /window\.setInterval\(refreshSharedAgenda, 30000\)/)
+  assert.match(source, /void refreshSharedAgenda\(\)/)
+  assert.match(source, /window\.setInterval\(refreshWhenVisible, 15000\)/)
+  assert.match(source, /window\.addEventListener\('pageshow', refreshWhenVisible\)/)
+  assert.match(source, /window\.addEventListener\('online', refreshWhenVisible\)/)
+  assert.match(source, /document\.addEventListener\('visibilitychange', refreshWhenVisible\)/)
+  assert.match(source, /window\.setInterval\(refreshWhenVisible, 5000\)/)
+  assert.match(source, /error\.status === 409/)
+  assert.match(source, /applyRemoteState\(remoteState\)/)
+  assert.match(source, /No se guardó el último cambio porque otra sesión había actualizado la información/)
   assert.match(apiSource, /set local lock_timeout = '5s'/)
   assert.match(apiSource, /record\.technicalStatus === type/)
   assert.match(apiSource, /technicalReportedById\) === String\(user\.id\)/)
@@ -443,7 +476,7 @@ test('las agendas diaria y semanal renderizan directamente el estado de cada ser
   assert.match(weeklyStyles, /:not\(\.agenda-task-status\)/)
 })
 
-test('los servicios cerrados no ofrecen guardado y sólo los completados de hoy conservan su ocupación real', () => {
+test('los servicios cerrados no ofrecen guardado y una finalización anticipada puede liberar agenda hoy', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /const taskIsResolvedForPlanning = \(task, date, history\) => \{[\s\S]*?status === 'Completado' \|\| \(status === 'Cancelado' && String\(date \|\| ''\) < currentLocalDate\(\)\)/)
   assert.match(source, /const showSaveAgenda = hasPendingAgendaServices \|\| !hasResolvedAgendaServices/)
