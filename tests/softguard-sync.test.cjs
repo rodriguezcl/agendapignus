@@ -5,6 +5,37 @@ const test = require('node:test')
 
 const root = path.resolve(__dirname, '..')
 
+function streamFromChunks(chunks, tracker = {}) {
+  let index = 0
+  return new ReadableStream({
+    pull(controller) {
+      tracker.pulls = (tracker.pulls || 0) + 1
+      if (index >= chunks.length) {
+        controller.close()
+        return
+      }
+      controller.enqueue(chunks[index++])
+    },
+    cancel() {
+      tracker.cancelled = true
+    }
+  })
+}
+
+function requestFrom({ method = 'POST', headers = {}, chunks = [], tracker = {} } = {}) {
+  const stream = streamFromChunks(chunks, tracker)
+  return {
+    method,
+    headers: new Headers(headers),
+    body: {
+      getReader() {
+        tracker.readerRequests = (tracker.readerRequests || 0) + 1
+        return stream.getReader()
+      }
+    }
+  }
+}
+
 test('verifica firmas HMAC con secreto actual o anterior y rechaza firmas alteradas', async () => {
   const { hmacHex, sha256Hex, verifyHmac } = await import('../supabase/functions/_shared/sync-security.mjs')
   const bodyHash = await sha256Hex('{"action":"finalize"}')
@@ -56,11 +87,113 @@ test('el Worker usa las vistas definitivas, IdInternoZona y conserva el tipo cer
 
 test('la Edge Function limita cuerpo y lote y exige HMAC antes de ejecutar RPC', () => {
   const source = fs.readFileSync(path.join(root, 'supabase/functions/softguard-sync/index.ts'), 'utf8')
-  assert.match(source, /MAX_BODY_BYTES = 1_000_000/)
+  const gate = fs.readFileSync(path.join(root, 'supabase/functions/_shared/sync-request.mjs'), 'utf8')
+  assert.match(gate, /MAX_BODY_BYTES = 1_048_576/)
   assert.match(source, /MAX_BATCH_RECORDS = 500/)
-  assert.ok(source.indexOf('verifyHmac') < source.indexOf("softguard_claim_request"))
+  assert.ok(source.indexOf('if (!authenticated.ok) return') < source.indexOf("softguard_claim_request"))
+  assert.doesNotMatch(gate, /\brpc\s*\(/)
+  assert.doesNotMatch(source, /request\.(text|json|arrayBuffer)\s*\(/)
   assert.match(source, /SOFTGUARD_SYNC_SECRET_PREVIOUS/)
   assert.doesNotMatch(source, /Access-Control-Allow-Origin/i)
+})
+
+test('rechaza Content-Length superior o inválido antes de leer o verificar HMAC', async () => {
+  const { authenticateSyncRequest, MAX_BODY_BYTES } = await import('../supabase/functions/_shared/sync-request.mjs')
+  for (const [contentLength, status, error] of [
+    [String(MAX_BODY_BYTES + 1), 413, 'PAYLOAD_TOO_LARGE'],
+    ['-1', 400, 'INVALID_CONTENT_LENGTH'],
+    ['not-a-number', 400, 'INVALID_CONTENT_LENGTH'],
+    ['1, 2', 400, 'INVALID_CONTENT_LENGTH'],
+    [String(Number.MAX_SAFE_INTEGER) + '0', 400, 'INVALID_CONTENT_LENGTH']
+  ]) {
+    const tracker = {}
+    let verificationCalls = 0
+    const result = await authenticateSyncRequest(requestFrom({
+      headers: { 'content-length': contentLength },
+      chunks: [new Uint8Array([1])],
+      tracker
+    }), {
+      secrets: ['unused'],
+      verifyHmacFn: async () => { verificationCalls += 1; return false }
+    })
+    assert.deepEqual(result, { ok: false, status, error })
+    assert.equal(tracker.readerRequests || 0, 0)
+    assert.equal(verificationCalls, 0)
+  }
+})
+
+test('rechaza Content-Length contradictorio con los bytes recibidos', async () => {
+  const { authenticateSyncRequest } = await import('../supabase/functions/_shared/sync-request.mjs')
+  let verificationCalls = 0
+  const result = await authenticateSyncRequest(requestFrom({
+    headers: { 'content-length': '1' },
+    chunks: [new Uint8Array([1, 2])]
+  }), {
+    secrets: ['unused'],
+    verifyHmacFn: async () => { verificationCalls += 1; return false }
+  })
+  assert.deepEqual(result, { ok: false, status: 400, error: 'CONTENT_LENGTH_MISMATCH' })
+  assert.equal(verificationCalls, 0)
+})
+
+test('cancela un cuerpo fragmentado apenas supera 1 MiB', async () => {
+  const { authenticateSyncRequest, MAX_BODY_BYTES } = await import('../supabase/functions/_shared/sync-request.mjs')
+  const tracker = {}
+  let verificationCalls = 0
+  const result = await authenticateSyncRequest(requestFrom({
+    chunks: [new Uint8Array(MAX_BODY_BYTES / 2), new Uint8Array(MAX_BODY_BYTES / 2), new Uint8Array([1])],
+    tracker
+  }), {
+    secrets: ['unused'],
+    verifyHmacFn: async () => { verificationCalls += 1; return false }
+  })
+  assert.deepEqual(result, { ok: false, status: 413, error: 'PAYLOAD_TOO_LARGE' })
+  assert.equal(tracker.cancelled, true)
+  assert.equal(verificationCalls, 0)
+})
+
+test('acepta exactamente 1 MiB y conserva los bytes crudos para HMAC', async () => {
+  const { hmacHex, sha256Hex } = await import('../supabase/functions/_shared/sync-security.mjs')
+  const { authenticateSyncRequest, MAX_BODY_BYTES } = await import('../supabase/functions/_shared/sync-request.mjs')
+  const bytes = new Uint8Array(MAX_BODY_BYTES)
+  for (let index = 0; index < bytes.length; index += 1) bytes[index] = index % 251
+  const bodyHash = await sha256Hex(bytes)
+  const secret = 'test-secret-with-more-than-thirty-two-bytes'
+  const now = Date.parse('2026-08-31T12:00:00Z')
+  const timestamp = String(now / 1000)
+  const nonce = '55555555-5555-4555-8555-555555555555'
+  const signature = await hmacHex(secret, timestamp, nonce, bodyHash)
+  const result = await authenticateSyncRequest(requestFrom({
+    headers: {
+      'content-length': String(MAX_BODY_BYTES),
+      'x-sync-timestamp': timestamp,
+      'x-sync-nonce': nonce,
+      'x-sync-signature': signature
+    },
+    chunks: [bytes.subarray(0, 12345), bytes.subarray(12345)]
+  }), { secrets: [secret], now })
+  assert.equal(result.ok, true)
+  assert.equal(result.bodyHash, bodyHash)
+  assert.deepEqual(result.rawBody, bytes)
+})
+
+test('rechaza 1 MiB más un byte y encoding comprimido sin verificar HMAC', async () => {
+  const { authenticateSyncRequest, MAX_BODY_BYTES } = await import('../supabase/functions/_shared/sync-request.mjs')
+  let verificationCalls = 0
+  const verifyHmacFn = async () => { verificationCalls += 1; return false }
+  const oversized = await authenticateSyncRequest(requestFrom({
+    chunks: [new Uint8Array(MAX_BODY_BYTES + 1)]
+  }), { secrets: ['unused'], verifyHmacFn })
+  const compressedTracker = {}
+  const compressed = await authenticateSyncRequest(requestFrom({
+    headers: { 'content-encoding': 'gzip' },
+    chunks: [new Uint8Array([1, 2, 3])],
+    tracker: compressedTracker
+  }), { secrets: ['unused'], verifyHmacFn })
+  assert.deepEqual(oversized, { ok: false, status: 413, error: 'PAYLOAD_TOO_LARGE' })
+  assert.deepEqual(compressed, { ok: false, status: 415, error: 'UNSUPPORTED_CONTENT_ENCODING' })
+  assert.equal(compressedTracker.readerRequests || 0, 0)
+  assert.equal(verificationCalls, 0)
 })
 
 test('la lectura autenticada usa sólo tablas softguard activas', async () => {

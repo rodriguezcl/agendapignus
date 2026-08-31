@@ -1,6 +1,6 @@
-import { sha256Hex, signedDateFromUnixSeconds, validUuid, verifyHmac } from '../_shared/sync-security.mjs'
+import { sha256Hex, validUuid } from '../_shared/sync-security.mjs'
+import { authenticateSyncRequest } from '../_shared/sync-request.mjs'
 
-const MAX_BODY_BYTES = 1_000_000
 const MAX_BATCH_RECORDS = 500
 const allowedEntities = new Set(['abonados', 'zonas', 'tipos_servicio'])
 
@@ -53,27 +53,15 @@ async function markFailed(syncRunId: unknown, error: unknown) {
 }
 
 Deno.serve(async request => {
-  if (request.method !== 'POST') return response(405, { error: 'METHOD_NOT_ALLOWED' })
-  const contentLength = Number(request.headers.get('content-length') || 0)
-  if (contentLength > MAX_BODY_BYTES) return response(413, { error: 'SYNC_BODY_TOO_LARGE' })
-
-  const timestamp = request.headers.get('x-sync-timestamp') || ''
-  const nonce = request.headers.get('x-sync-nonce') || ''
-  const signature = request.headers.get('x-sync-signature') || ''
-  const signedAt = signedDateFromUnixSeconds(timestamp)
-  if (!signedAt || !validUuid(nonce)) return response(401, { error: 'SYNC_AUTH_HEADERS_INVALID' })
-
-  const rawBody = await request.text()
-  if (new TextEncoder().encode(rawBody).byteLength > MAX_BODY_BYTES) return response(413, { error: 'SYNC_BODY_TOO_LARGE' })
-  const bodyHash = await sha256Hex(rawBody)
-  const validSignature = await verifyHmac({
+  const authenticated = await authenticateSyncRequest(request, {
     secrets: [
       Deno.env.get('SOFTGUARD_SYNC_SECRET_CURRENT') || '',
       Deno.env.get('SOFTGUARD_SYNC_SECRET_PREVIOUS') || ''
-    ],
-    timestamp, nonce, bodyHash, signature
+    ]
   })
-  if (!validSignature) return response(401, { error: 'SYNC_SIGNATURE_INVALID' })
+  if (!authenticated.ok) return response(authenticated.status, { error: authenticated.error })
+
+  const { bodyHash, nonce, rawBody, signedAt } = authenticated
 
   try {
     await rpc('softguard_claim_request', { p_nonce: nonce, p_signed_at: signedAt, p_body_hash: bodyHash })
@@ -84,7 +72,7 @@ Deno.serve(async request => {
 
   let body: Record<string, unknown>
   try {
-    body = JSON.parse(rawBody)
+    body = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(rawBody))
   } catch {
     return response(400, { error: 'SYNC_JSON_INVALID' })
   }

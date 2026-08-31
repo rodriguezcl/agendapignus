@@ -16,3 +16,5 @@ The request signature is lowercase hexadecimal HMAC-SHA256 over:
 ```
 
 The function must be deployed with platform JWT verification disabled because the Worker authenticates with HMAC. HMAC verification, the five-minute timestamp window, nonce claiming, global request limits, and database privileges form the endpoint's authentication boundary.
+
+Request bodies must be uncompressed and are limited to exactly 1 MiB (1,048,576 bytes). The function validates `Content-Length`, then reads the body as a bounded byte stream and retains the exact bytes for HMAC verification.

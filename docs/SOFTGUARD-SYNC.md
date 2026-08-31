@@ -242,7 +242,7 @@ sc.exe qfailure PignusSoftGuardSync
 - `SOFTGUARD_SYNC_SECRET_PREVIOUS`: secreto anterior, sólo durante rotación.
 - `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`: permanecen en el entorno administrado de la función.
 
-La función se configura con `verify_jwt = false` porque el Worker no posee un JWT de usuario. Esto no la deja anónima: exige HMAC, timestamp dentro de cinco minutos, nonce UUID de un solo uso, límite de solicitudes, cuerpo máximo de 1 MB y lotes de 500 registros.
+La función se configura con `verify_jwt = false` porque el Worker no posee un JWT de usuario. Esto no la deja anónima: exige HMAC, timestamp dentro de cinco minutos, nonce UUID de un solo uso, límite de solicitudes, cuerpo máximo sin compresión de 1 MiB (1.048.576 bytes) y lotes de 500 registros. Rechaza `Content-Encoding` comprimido y lee el cuerpo como un stream acotado antes de validar la firma.
 
 ## Integración con PIGNUS
 
