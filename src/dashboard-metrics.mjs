@@ -19,3 +19,13 @@ export function countYearToDateAlarmInstallations(records, { throughDate, zone =
     matches: record => isAlarmRecord(record) && zoneOf(record) === zone
   })
 }
+
+const pendingDefinitionStatuses = new Set(['Pendiente', 'Reprogramado', 'Requiere revisión'])
+
+export function pendingDefinitionRecords(records, today) {
+  return (records || []).filter(record => {
+    const status = record?.status || 'Pendiente'
+    const effectiveDate = String(record?.scheduledDate || record?.date || '')
+    return pendingDefinitionStatuses.has(status) && Boolean(effectiveDate) && effectiveDate <= today
+  })
+}

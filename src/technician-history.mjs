@@ -50,6 +50,24 @@ export function technicianRecordResolved(record) {
   return Boolean(record?.technicalStatus || record?.status === 'Completado' || record?.status === 'Cancelado' || record?.status === 'Reprogramado')
 }
 
+const nextCalendarDate = value => {
+  const date = new Date(`${value}T12:00:00Z`)
+  if (Number.isNaN(date.getTime())) return value
+  date.setUTCDate(date.getUTCDate() + 1)
+  return date.toISOString().slice(0, 10)
+}
+
+export function technicianAgendaServices(records, today) {
+  const tomorrow = nextCalendarDate(today)
+  return (records || []).filter(record => {
+    if (technicianRecordResolved(record)) return false
+    const date = String(record?.date || '')
+    const visibleDay = date === today || date === tomorrow
+    const overdueVehicleControl = Boolean(record?.vehicleControl && date && date < today)
+    return visibleDay || overdueVehicleControl
+  })
+}
+
 export function overdueVehicleControls(records, today) {
   return (records || []).filter(record => record?.vehicleControl && record.date < today && !technicianRecordResolved(record))
 }

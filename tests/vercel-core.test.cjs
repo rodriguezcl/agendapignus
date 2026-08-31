@@ -104,6 +104,35 @@ test('el buscador del historial técnico contempla todos los datos útiles', asy
   assert.equal(technicianTeamLabel({ technicians: ['Rodrigo Gonzalez', 'Rodrigo Gonzalez'] }), 'Rodrigo Gonzalez')
 })
 
+test('la agenda técnica muestra sólo hoy, mañana y controles vehiculares vencidos', async () => {
+  const { technicianAgendaServices } = await import('../src/technician-history.mjs')
+  const records = [
+    { id: 'past-service', date: '2026-08-30', status: 'Pendiente' },
+    { id: 'overdue-control', date: '2026-08-30', status: 'Pendiente', vehicleControl: true },
+    { id: 'today', date: '2026-08-31', status: 'Pendiente' },
+    { id: 'tomorrow', date: '2026-09-01', status: 'Pendiente' },
+    { id: 'tomorrow-completed', date: '2026-09-01', status: 'Completado' },
+    { id: 'later-service', date: '2026-09-02', status: 'Pendiente' },
+    { id: 'later-control', date: '2026-09-04', status: 'Pendiente', vehicleControl: true }
+  ]
+  assert.deepEqual(technicianAgendaServices(records, '2026-08-31').map(record => record.id), ['overdue-control', 'today', 'tomorrow'])
+})
+
+test('el resumen sólo contabiliza pendientes cuya fecha efectiva ya llegó', async () => {
+  const { pendingDefinitionRecords } = await import('../src/dashboard-metrics.mjs')
+  const records = [
+    { id: 'past', date: '2026-08-30', status: 'Pendiente' },
+    { id: 'today', date: '2026-08-31', status: 'Pendiente' },
+    { id: 'today-review', date: '2026-08-31', status: 'Requiere revisión' },
+    { id: 'tomorrow', date: '2026-09-01', status: 'Pendiente' },
+    { id: 'future-control', date: '2026-09-04', status: 'Pendiente', vehicleControl: true },
+    { id: 'rescheduled-future', date: '2026-08-20', scheduledDate: '2026-09-03', status: 'Reprogramado' },
+    { id: 'completed', date: '2026-08-30', status: 'Completado' },
+    { id: 'cancelled', date: '2026-08-30', status: 'Cancelado' }
+  ]
+  assert.deepEqual(pendingDefinitionRecords(records, '2026-08-31').map(record => record.id), ['past', 'today', 'today-review'])
+})
+
 test('el acceso cancela solicitudes bloqueadas y permite reintentar', async () => {
   const { AUTH_LOGIN_TIMEOUT_MS, AUTH_REQUEST_TIMEOUT_MS, fetchAuthWithRetry, fetchWithTimeout } = await import('../src/fetch-timeout.mjs')
   assert.equal(AUTH_REQUEST_TIMEOUT_MS, 15_000)
