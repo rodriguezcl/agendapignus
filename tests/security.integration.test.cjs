@@ -60,7 +60,7 @@ function createFixtureDatabase(databasePath) {
     { ...baseHistory, id: 'qa-history-excluded', date: '2096-03-11', team: 'Equipo 2', customerId: 'qa-customer-b', clientAccount: 'PIG-9002', client: 'CLIENTE EXCLUIDO QA', address: 'Calle QA 200', phone: '3510000002' }
   ].forEach(record => upsertJson(db, 'work_history', 'id', record))
   upsertJson(db, 'agendas', 'id', { id: 'current', date: '2096-03-12', teams: [{ teamId: 'qa-team', memberIds: [], members: [], tasks: [] }], weekly: { '2096-03-12': { teams: [] } } })
-  db.prepare('INSERT INTO preferences (key, value) VALUES (?, ?), (?, ?)').run('state_revision', '0', 'theme', 'light')
+  db.prepare('INSERT INTO preferences (key, value) VALUES (?, ?), (?, ?), (?, ?)').run('state_revision', '0', 'theme', 'light', 'vehicles', JSON.stringify([{ id: 'qa-vehicle', brand: 'Ford', model: 'Ka', year: 2024, mileage: 1000, plate: 'QA123AA', insuranceExpiresOn: '2099-12-31' }]))
   db.close()
 }
 
@@ -154,6 +154,22 @@ test('protege rutas y agrega cabeceras de seguridad', async () => {
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff')
   assert.equal(response.headers.get('x-frame-options'), 'DENY')
   assert.match(response.headers.get('content-security-policy'), /default-src 'none'/)
+})
+
+test('el seguro vehicular sólo se carga como administrador y se descarga con sesión técnica', async () => {
+  const administratorCookie = await login('qa-admin@pignus.test')
+  const technicianCookie = await login('qa-tech@pignus.test')
+  const pdf = `data:application/pdf;base64,${Buffer.from('%PDF-1.4\n%%EOF').toString('base64')}`
+  let response = await api('/api/vehicle-insurance/qa-vehicle', technicianCookie, { method: 'POST', body: JSON.stringify({ fileName: 'seguro.pdf', pdf }) })
+  assert.equal(response.status, 403)
+  response = await api('/api/vehicle-insurance/qa-vehicle', administratorCookie, { method: 'POST', body: JSON.stringify({ fileName: 'seguro-qa.pdf', pdf }) })
+  assert.equal(response.status, 200)
+  response = await api('/api/vehicle-insurance/qa-vehicle', technicianCookie)
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('content-type'), 'application/pdf')
+  assert.match(response.headers.get('content-disposition'), /seguro-qa\.pdf/)
+  response = await api('/api/vehicle-insurance/qa-vehicle', null)
+  assert.equal(response.status, 401)
 })
 
 test('sirve la aplicación compilada y conserva aisladas las rutas API', async () => {

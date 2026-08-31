@@ -43,6 +43,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, data TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS reviews (id TEXT PRIMARY KEY, data TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS vehicle_control_photos (record_id TEXT PRIMARY KEY, vehicle_id TEXT NOT NULL, mime_type TEXT NOT NULL, photo_data BLOB NOT NULL, created_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS vehicle_insurance_documents (vehicle_id TEXT PRIMARY KEY, file_name TEXT NOT NULL, pdf_data BLOB NOT NULL, uploaded_at TEXT NOT NULL);
 `)
 
 const historicalImportPath = path.join(dataDir, 'historical-import.json')
@@ -716,7 +717,7 @@ function readTechnicianState(user) {
   const activeCustomerAccounts = new Set(activeAssigned.map(record => String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()).filter(Boolean))
   return {
     revision: currentStateRevision(),
-    roles: [], employees: [], services: [], vehicles: [], customers: [], agenda: null, preferences: {},
+    roles: [], employees: [], services: [], vehicles: readState().vehicles || [], customers: [], agenda: null, preferences: {},
     // El nombre es solamente una etiqueta visible. El acceso se decide siempre
     // mediante el identificador inmutable del empleado autenticado.
     history: history.filter(record => {
@@ -763,6 +764,7 @@ function userCan(user, permission) {
 function authorizedIncomingState(state, user) {
   const current = readState()
   const administrator = user?.roleCode === 'administrator'
+  const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
   let employees = current.employees
   if (administrator) employees = state.employees
   else if (userCan(user, 'employees')) {
@@ -796,6 +798,8 @@ function authorizedIncomingState(state, user) {
     ...(userCan(user, 'agenda') ? { date: incomingAgenda.date, teams: incomingAgenda.teams } : {}),
     ...(userCan(user, 'weekly') ? { weekly: protectedWeekly } : {})
   }
+  const existingCustomerIds = new Set((current.customers || []).map(customer => String(customer.customerId)))
+  const planningCustomers = canPlan ? [...(current.customers || []), ...(state.customers || []).filter(customer => !existingCustomerIds.has(String(customer.customerId)) && customerKind(customer) === 'client')] : current.customers
   return {
     ...state,
     roles: administrator ? state.roles : current.roles,
@@ -803,7 +807,7 @@ function authorizedIncomingState(state, user) {
     services: userCan(user, 'services') ? state.services : current.services,
     vehicles: userCan(user, 'vehicles') && Array.isArray(state.vehicles) ? state.vehicles : current.vehicles,
     history: userCan(user, 'history') ? state.history : current.history,
-    customers: userCan(user, 'accounts') ? state.customers : current.customers,
+    customers: userCan(user, 'accounts') ? state.customers : planningCustomers,
     // El módulo fue retirado. Sus registros históricos se conservan internamente
     // y nunca se reemplazan con datos provenientes de la interfaz.
     reviews: current.reviews,
@@ -891,6 +895,8 @@ function validateState(state, previousState = null) {
     if (!Number.isInteger(Number(vehicle.year)) || Number(vehicle.year) < 1886 || Number(vehicle.year) > maximumVehicleYear) throw new Error(`Vehículo ${index + 1}: el año no es válido.`)
     if (vehicle.mileage != null && (!Number.isInteger(Number(vehicle.mileage)) || Number(vehicle.mileage) < 0 || Number(vehicle.mileage) > 99999999)) throw new Error(`Vehículo ${index + 1}: el kilometraje no es válido.`)
     if (!String(vehicle.plate ?? '').trim() || !text(vehicle.plate, 20)) throw new Error(`Vehículo ${index + 1}: la matrícula es obligatoria o demasiado extensa.`)
+    if (vehicle.insuranceExpiresOn && !/^\d{4}-\d{2}-\d{2}$/.test(String(vehicle.insuranceExpiresOn))) throw new Error(`Vehículo ${index + 1}: la fecha de vencimiento del seguro no es válida.`)
+    if (!text(vehicle.insuranceFileName, 180)) throw new Error(`Vehículo ${index + 1}: el nombre del archivo de seguro es demasiado extenso.`)
   })
   state.customers.forEach((customer, index) => {
     if (!String(customer.name ?? '').trim() || !text(customer.name, 180)) throw new Error(`Cliente ${index + 1}: el titular es obligatorio.`)
@@ -909,7 +915,9 @@ function validateState(state, previousState = null) {
     if (record.serviceId && (!Number.isInteger(Number(record.estimatedMinutes)) || Number(record.estimatedMinutes) < 15 || Number(record.estimatedMinutes) > 720)) throw new Error(`Historial ${index + 1}: el tiempo estimado debe estar entre 15 minutos y 12 horas.`)
   })
   state.history.forEach((record, index) => {
-    if (!customerIds.has(String(record.customerId))) throw new Error(`Historial ${index + 1}: el cliente vinculado no existe.`)
+    if (String(record.customerId || '').trim() && !customerIds.has(String(record.customerId))) throw new Error(`Historial ${index + 1}: el cliente vinculado no existe.`)
+    if (record.subscriberReservation && String(record.customerId || '').trim()) throw new Error(`Historial ${index + 1}: una reserva PIG pendiente no puede estar vinculada a un cliente.`)
+    if (record.subscriberReservation && ![record.clientNameAtService || record.client, record.address, record.phone].every(value => String(value || '').trim())) throw new Error(`Historial ${index + 1}: la reserva PIG debe incluir nombre, dirección y contacto provisorios.`)
     if (!serviceIds.has(String(record.serviceId))) throw new Error(`Historial ${index + 1}: el tipo de servicio vinculado no existe.`)
     if ((record.technicianIds || []).some(id => !employeeIds.has(String(id)))) throw new Error(`Historial ${index + 1}: contiene un técnico inexistente.`)
   })
@@ -1366,7 +1374,8 @@ function exportHistory(res, month, category, technicianId = null, format = 'exce
   const records = rows('work_history').filter(record => {
     if (!record.date?.startsWith(month) || (technicianId && !record.technicianIds?.some(id => String(id) === String(technicianId)))) return false
     if (isRetirementExport) return record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo')
-    return (String(record.serviceId) === String(alarmService?.id) || (!record.serviceId && normalizedServiceName(record.service) === 'instalacion de alarma')) && (isAllCategories || alarmCategory(record) === category)
+    const installationCategory = alarmCategory(record)
+    return !record.subscriberReservation && installationCategory !== 'no-monitoreada' && (String(record.serviceId) === String(alarmService?.id) || (!record.serviceId && normalizedServiceName(record.service) === 'instalacion de alarma')) && (isAllCategories || installationCategory === category)
   }).sort(compareReportRecords)
   if (isRetirementExport) {
     const headers = ['Fecha', 'Cliente', 'Servicio', 'Dirección', 'Contacto', 'Técnicos asignados']
@@ -1540,6 +1549,30 @@ const server = http.createServer((req, res) => {
     if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
     res.writeHead(200, { 'Content-Type': photo.mime_type, 'Content-Length': photo.photo_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
     return res.end(photo.photo_data)
+  }
+  if (['GET', 'POST'].includes(req.method) && url.pathname.startsWith('/api/vehicle-insurance/')) {
+    const user = requireSession(req, res)
+    if (!user) return
+    const vehicleId = decodeURIComponent(url.pathname.slice('/api/vehicle-insurance/'.length))
+    if (req.method === 'GET') {
+      if (!(readState().vehicles || []).some(vehicle => String(vehicle.id) === String(vehicleId))) return send(res, 404, { error: 'El vehículo no existe.' })
+      if (user.roleCode !== 'technician' && !userCan(user, 'vehicles')) return send(res, 403, { error: 'No tenés permiso para descargar este seguro.' })
+      const document = db.prepare('SELECT file_name, pdf_data FROM vehicle_insurance_documents WHERE vehicle_id = ?').get(vehicleId)
+      if (!document) return send(res, 404, { error: 'El seguro no está cargado.' })
+      res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${String(document.file_name || 'seguro.pdf').replace(/["\r\n]/g, '')}"`, 'Content-Length': document.pdf_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
+      return res.end(document.pdf_data)
+    }
+    if (user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede cargar seguros.' })
+    return readJson(req, 11_000_000).then(({ fileName, pdf }) => {
+      const match = String(pdf || '').match(/^data:application\/pdf;base64,([a-z0-9+/=]+)$/i)
+      const data = match ? Buffer.from(match[1], 'base64') : null
+      if (!data?.length || data.length > 3_000_000 || data.subarray(0, 5).toString() !== '%PDF-') return send(res, 400, { error: 'Seleccioná un PDF válido de hasta 3 MB.' })
+      const safeName = String(fileName || 'seguro.pdf').trim().slice(0, 180)
+      const uploadedAt = new Date().toISOString()
+      db.prepare('INSERT OR REPLACE INTO vehicle_insurance_documents (vehicle_id, file_name, pdf_data, uploaded_at) VALUES (?, ?, ?, ?)').run(vehicleId, safeName, data, uploadedAt)
+      writeAudit(user, 'Cargó seguro', 'Vehículo', vehicleId, null, { fileName: safeName, uploadedAt })
+      return send(res, 200, { fileName: safeName, uploadedAt, documentUrl: `/api/vehicle-insurance/${encodeURIComponent(vehicleId)}` })
+    }).catch(error => send(res, 400, { error: error.message || 'No se pudo cargar el seguro.' }))
   }
   if (req.method === 'POST' && url.pathname === '/api/technician/status') {
     const user = requireSession(req, res)

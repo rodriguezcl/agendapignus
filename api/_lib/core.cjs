@@ -85,7 +85,7 @@ function visibleStateForUser(state, user) {
     })
     return {
       revision: state.revision,
-      roles: [], employees: [], services: [], vehicles: [], customers: [], agenda: null, preferences: {},
+      roles: [], employees: [], services: [], vehicles: state.vehicles || [], customers: [], agenda: null, preferences: {},
       history: visibleHistory
     }
   }
@@ -105,6 +105,7 @@ function visibleStateForUser(state, user) {
 
 function authorizeIncomingState(incoming, current, user) {
   const administrator = user.roleCode === 'administrator'
+  const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
   let employees = current.employees
   if (administrator) employees = incoming.employees
   else if (userCan(user, 'employees')) {
@@ -133,6 +134,8 @@ function authorizeIncomingState(incoming, current, user) {
         ...(currentAgenda.weekly?._annualGuards ? { _annualGuards: currentAgenda.weekly._annualGuards } : {}),
         ...(currentAgenda.weekly?._monthlyTeams ? { _monthlyTeams: currentAgenda.weekly._monthlyTeams } : {})
       }
+  const existingCustomerIds = new Set((current.customers || []).map(customer => String(customer.customerId)))
+  const planningCustomers = canPlan ? [...(current.customers || []), ...(incoming.customers || []).filter(customer => !existingCustomerIds.has(String(customer.customerId)) && customerKind(customer) === 'client')] : current.customers
   return {
     ...incoming,
     roles: administrator ? incoming.roles : current.roles,
@@ -140,7 +143,7 @@ function authorizeIncomingState(incoming, current, user) {
     services: userCan(user, 'services') ? incoming.services : current.services,
     vehicles: userCan(user, 'vehicles') && Array.isArray(incoming.vehicles) ? incoming.vehicles : current.vehicles || [],
     history: userCan(user, 'history') ? incoming.history : current.history,
-    customers: userCan(user, 'accounts') ? incoming.customers : current.customers,
+    customers: userCan(user, 'accounts') ? incoming.customers : planningCustomers,
     reviews: current.reviews,
     agenda: {
       ...currentAgenda,
@@ -329,11 +332,15 @@ function validateState(state, previousState = null) {
     if (!Number.isInteger(Number(vehicle.year)) || Number(vehicle.year) < 1886 || Number(vehicle.year) > maximumVehicleYear) throw new Error(`Vehículo ${index + 1}: el año no es válido.`)
     if (vehicle.mileage != null && (!Number.isInteger(Number(vehicle.mileage)) || Number(vehicle.mileage) < 0 || Number(vehicle.mileage) > 99999999)) throw new Error(`Vehículo ${index + 1}: el kilometraje no es válido.`)
     if (!String(vehicle.plate || '').trim() || String(vehicle.plate).trim().length > 20) throw new Error(`Vehículo ${index + 1}: la matrícula es obligatoria o demasiado extensa.`)
+    if (vehicle.insuranceExpiresOn && !/^\d{4}-\d{2}-\d{2}$/.test(String(vehicle.insuranceExpiresOn))) throw new Error(`Vehículo ${index + 1}: la fecha de vencimiento del seguro no es válida.`)
+    if (String(vehicle.insuranceFileName || '').length > 180) throw new Error(`Vehículo ${index + 1}: el nombre del archivo de seguro es demasiado extenso.`)
   })
   state.history.forEach((record, index) => {
     if (record.date && !/^\d{4}-\d{2}-\d{2}$/.test(record.date)) throw new Error(`Historial ${index + 1}: fecha inválida.`)
     if (record.serviceId != null && !serviceIds.has(String(record.serviceId))) throw new Error(`Historial ${index + 1}: el tipo de servicio no existe.`)
-    if (record.customerId != null && !customerIds.has(String(record.customerId))) throw new Error(`Historial ${index + 1}: el cliente no existe.`)
+    if (record.customerId != null && String(record.customerId).trim() && !customerIds.has(String(record.customerId))) throw new Error(`Historial ${index + 1}: el cliente no existe.`)
+    if (record.subscriberReservation && String(record.customerId || '').trim()) throw new Error(`Historial ${index + 1}: una reserva PIG pendiente no puede estar vinculada a un cliente.`)
+    if (record.subscriberReservation && ![record.clientNameAtService || record.client, record.address, record.phone].every(value => String(value || '').trim())) throw new Error(`Historial ${index + 1}: la reserva PIG debe incluir nombre, dirección y contacto provisorios.`)
     if ((record.technicianIds || []).some(id => !employeeIds.has(String(id)))) throw new Error(`Historial ${index + 1}: contiene un técnico inexistente.`)
     if (record.serviceId != null && (!Number.isInteger(Number(record.estimatedMinutes)) || Number(record.estimatedMinutes) < 15 || Number(record.estimatedMinutes) > 720)) throw new Error(`Historial ${index + 1}: el tiempo estimado debe estar entre 15 minutos y 12 horas.`)
   })

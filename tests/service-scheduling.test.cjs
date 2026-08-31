@@ -132,6 +132,16 @@ test('la API rechaza duraciones inválidas y solapamientos por equipo', () => {
   ] }], weekly: {} } }), /conflicto de horarios/)
 })
 
+test('la API admite una reserva PIG sin crear un cliente y exige sus datos provisorios', () => {
+  const service = { id: 's1', code: 'alarm-installation', name: 'Instalación de alarma', description: '', estimatedMinutes: 150, status: 'Activo' }
+  const reservation = { id: 'h1', date: '2026-09-03', serviceId: 's1', service: service.name, customerId: '', client: 'NUEVO ABONADO', clientNameAtService: 'NUEVO ABONADO', address: 'Dirección provisoria', phone: '3515550000', status: 'Pendiente', time: '09:00', estimatedMinutes: 150, subscriberReservation: true }
+  const base = { roles: [], employees: [], services: [service], vehicles: [], customers: [], reviews: [], history: [reservation], agenda: { teams: [], weekly: {} } }
+
+  assert.doesNotThrow(() => validateState(base))
+  assert.throws(() => validateState({ ...base, history: [{ ...reservation, phone: '' }] }), /reserva PIG debe incluir nombre, dirección y contacto provisorios/)
+  assert.throws(() => validateState({ ...base, customers: [{ customerId: 'c1', account: 'PIG-9000' }], history: [{ ...reservation, customerId: 'c1' }] }), /reserva PIG pendiente no puede estar vinculada/)
+})
+
 test('los servicios completados y los cancelados de fechas pasadas no participan en conflictos de agenda', () => {
   const service = { id: 's1', code: 's1', name: 'Servicio', description: '', estimatedMinutes: 120, status: 'Activo' }
   const completed = { id: 'h1', sourceTaskId: 'done', date: '2000-01-01', serviceId: 's1', customerId: 'c1', time: '09:00', status: 'Completado', estimatedMinutes: 120 }
