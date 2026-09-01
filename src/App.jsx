@@ -3654,7 +3654,7 @@ function PasswordResetReminder() {
       // presentarse como si la aplicación completa hubiera perdido conexión.
       console.warn('No se pudieron actualizar las solicitudes de contraseña.', loadError)
     }
-  }, [employees, roles])
+  }, [])
   useEffect(() => {
     load()
     const timer = setInterval(load, 30000)
