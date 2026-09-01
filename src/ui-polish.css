@@ -2185,6 +2185,7 @@ html.modal-open body {
 }
 
 .content > .team-card .task-row > .installation-zone,
+.content > .team-card .task-row > .internal-preparation,
 .content > .team-card .task-row > .daily-extra-fields,
 .content > .team-card .task-row > .service-trace {
   grid-column: 2 / 5 !important;
@@ -2300,6 +2301,7 @@ html.modal-open body {
   .content > .team-card .task-row > .daily-field-contact { grid-column: 4; }
   .content > .team-card .task-row > .daily-field-observations,
   .content > .team-card .task-row > .installation-zone,
+  .content > .team-card .task-row > .internal-preparation,
   .content > .team-card .task-row > .daily-extra-fields,
   .content > .team-card .task-row > .service-trace { grid-column: 2 / 5 !important; }
 
