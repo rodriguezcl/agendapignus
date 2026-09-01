@@ -17,8 +17,11 @@ const employee = { id: 'e1', firstName: 'Ana', lastName: 'Técnica', name: 'Ana 
 
 test('declara los hooks usados por la alerta de recuperación de contraseña', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const reminder = source.slice(source.indexOf('function PasswordResetReminder'), source.indexOf('function Dashboard('))
   assert.match(source, /import React, \{[^}]*useCallback[^}]*\} from 'react'/)
   assert.match(source, /function PasswordResetReminder/)
+  assert.match(reminder, /const load = useCallback\([\s\S]*?\}, \[\]\)/)
+  assert.doesNotMatch(reminder, /\}, \[employees, roles\]\)/)
 })
 
 test('todos los roles muestran una recuperación en lugar de una pantalla blanca', () => {
