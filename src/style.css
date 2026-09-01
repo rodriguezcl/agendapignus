@@ -144,6 +144,16 @@
 .technician-vehicle-row { border-top: 1px solid #dce6de; }
 .technician-vehicle-row > b, .technician-vehicle-row > strong { color: #173d2b; }
 .technician-vehicle-row a.secondary { width: fit-content; text-decoration: none; display: inline-flex; align-items: center; gap: 7px; }
+.permission-group { border-top: 1px solid #e7eee7; }
+.permission-group > .permission { border-top: 0; }
+.feature-permissions { margin: 0 14px 12px 34px; border: 1px solid #dce7de; border-radius: 10px; overflow: hidden; background: #f8faf7; }
+.feature-permission { padding: 11px 14px; }
+.feature-permission:first-child { border-top: 0; }
+.feature-permission b { font-size: 13px; }
+.permission.locked-permission { cursor: default; opacity: .68; }
+.import-preview { display: grid; gap: 6px; margin-top: 14px; padding: 14px; border: 1px solid #d5b14b; border-radius: 10px; background: #fff8e4; color: #624900; }
+.import-preview small { line-height: 1.4; }
+.import-confirm-modal .modal-actions { margin-top: 18px; }
 @media (max-width: 720px) {
   .technician-vehicle-head { display: none; }
   .technician-vehicle-row { grid-template-columns: 1fr auto; gap: 8px 14px; }

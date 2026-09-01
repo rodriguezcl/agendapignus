@@ -16,6 +16,7 @@ const LOGIN_MAX_ATTEMPTS = 5
 const AUDIT_LOG_LIMIT = 100
 const PASSWORD_RESET_REQUESTS_KEY = 'password_reset_requests'
 const PASSWORD_RESET_REQUESTS_LIMIT = 50
+const CUSTOMER_IMPORT_BACKUP_KEY = 'last_customer_import_backup'
 
 function productionSecretsAreValid() {
   return ['PIGNUS_SESSION_SECRET', 'PIGNUS_RATE_LIMIT_SECRET'].every(name => String(process.env[name] || '').length >= 32)
@@ -348,6 +349,7 @@ async function handleSaveState(req, res, sql, user) {
       ]
       if (JSON.stringify(current.agenda) !== JSON.stringify(next.agenda)) entries.push(auditEntry(user, 'Modificó', 'Agenda técnica', 'agenda-actual', current.agenda, next.agenda))
       await replaceCollections(transaction, next)
+      if (JSON.stringify(current.customers) !== JSON.stringify(next.customers)) await transaction`delete from pignus_preferences where key = ${CUSTOMER_IMPORT_BACKUP_KEY}`
       await appendAudit(transaction, entries)
       const nextRevision = currentRevision + 1
       await transaction`update pignus_preferences set value = ${String(nextRevision)}, updated_at = now() where key = 'state_revision'`
@@ -494,6 +496,50 @@ async function handleClearAgenda(req, res, sql, user) {
   return send(res, 200, { ok: true, revision })
 }
 
+async function handleCustomerImport(req, res, sql, user) {
+  if (req.method === 'GET') {
+    if (user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede consultar importaciones reversibles.' })
+    const rows = await sql`select value from pignus_preferences where key = ${CUSTOMER_IMPORT_BACKUP_KEY}`
+    return send(res, 200, { canUndo: Boolean(rows[0]?.value) })
+  }
+  const undo = req.method === 'DELETE'
+  if (undo ? user.roleCode !== 'administrator' : !userCan(user, 'accountsImport')) return send(res, 403, { error: undo ? 'Solamente un administrador puede deshacer una importación.' : 'No tenés permiso para importar abonados.' })
+  try {
+    const result = await sql.begin(async transaction => {
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const currentRevision = Number(revisionRows[0]?.value || 0)
+      const current = await readState(transaction)
+      let nextCustomers
+      if (undo) {
+        const backupRows = await transaction`select value from pignus_preferences where key = ${CUSTOMER_IMPORT_BACKUP_KEY} for update`
+        if (!backupRows[0]?.value) { const error = new Error('No hay una importación pendiente para deshacer.'); error.statusCode = 409; throw error }
+        let backup
+        try { backup = JSON.parse(backupRows[0].value) } catch { backup = null }
+        if (!Array.isArray(backup?.customers)) throw new Error('La copia de seguridad de la importación no es válida.')
+        nextCustomers = backup.customers
+      } else {
+        const body = requestBody(req)
+        if (!Number.isInteger(Number(body.revision)) || Number(body.revision) !== currentRevision) { const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de importar.'); error.statusCode = 409; throw error }
+        if (!Array.isArray(body.customers)) throw new Error('La importación no contiene una lista válida de abonados.')
+        nextCustomers = normalizeStateForSave({ ...current, customers: body.customers }, current).customers
+        await transaction`insert into pignus_preferences (key, value, updated_at) values (${CUSTOMER_IMPORT_BACKUP_KEY}, ${JSON.stringify({ customers: current.customers, importedAt: new Date().toISOString(), importedBy: { id: user.id, name: user.name, email: user.email } })}, now()) on conflict (key) do update set value = excluded.value, updated_at = now()`
+      }
+      validateState({ ...current, customers: nextCustomers }, current)
+      await transaction`delete from pignus_customers`
+      if (nextCustomers.length) await transaction`insert into pignus_customers ${transaction(nextCustomers.map(record => ({ account: String(record.account), customer_id: String(record.customerId), data: transaction.json(record) })))}`
+      if (undo) await transaction`delete from pignus_preferences where key = ${CUSTOMER_IMPORT_BACKUP_KEY}`
+      await appendAudit(transaction, [auditEntry(user, undo ? 'Deshizo importación' : 'Importó', 'Abonados / Clientes', 'importacion-maestra', { total: current.customers.length }, { total: nextCustomers.length })])
+      const nextRevision = currentRevision + 1
+      await transaction`update pignus_preferences set value = ${String(nextRevision)}, updated_at = now() where key = 'state_revision'`
+      return { revision: nextRevision, customers: nextCustomers, canUndo: !undo }
+    })
+    return send(res, 200, result)
+  } catch (error) {
+    return send(res, error.statusCode || 400, { error: error.message || 'No se pudo procesar la importación.' })
+  }
+}
+
 module.exports = async function handler(req, res) {
   try {
     if (process.env.VERCEL && !productionSecretsAreValid()) return send(res, 500, { error: 'La API no tiene configurados secretos de seguridad válidos.' })
@@ -551,6 +597,7 @@ module.exports = async function handler(req, res) {
       return rows[0] ? send(res, 200, { record: rows[0].data }) : send(res, 404, { error: 'El registro de auditoría no existe.' })
     }
     if (req.method === 'POST' && route === '/technician/status') return await handleTechnicianStatus(req, res, sql, session.user)
+    if (['GET', 'POST', 'DELETE'].includes(req.method) && route === '/customers/import') return await handleCustomerImport(req, res, sql, session.user)
     if (req.method === 'GET' && route.startsWith('/vehicle-control/photo/')) return await handleVehicleControlPhoto(req, res, sql, session.user, decodeURIComponent(route.slice('/vehicle-control/photo/'.length)))
     if (['GET', 'POST'].includes(req.method) && route.startsWith('/vehicle-insurance/')) return await handleVehicleInsurance(req, res, sql, session.user, decodeURIComponent(route.slice('/vehicle-insurance/'.length)))
     if (req.method === 'POST' && route === '/agenda/daily/clear') return await handleClearAgenda(req, res, sql, session.user)

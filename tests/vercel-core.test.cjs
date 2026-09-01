@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const {
   authorizeIncomingState, compareReportRecords, hashPassword, normalizeRetirementCustomers, normalizeStateForSave,
-  secureEmployees, statePersistenceChanged, userForEmployee, verifyPassword, visibleStateForUser
+  secureEmployees, statePersistenceChanged, userCan, userForEmployee, verifyPassword, visibleStateForUser
 } = require('../api/_lib/core.cjs')
 
 const roles = [
@@ -606,7 +606,7 @@ test('el administrador configura dos horarios predeterminados para cada mes', ()
   assert.match(source, /Horarios del mes/)
   assert.match(source, /className="modal monthly-times-modal"/)
   assert.match(source, /monthlyTimesSetup\.times\.map\(\(time, index\)/)
-  assert.match(source, /Solo un administrador puede definir los horarios mensuales/)
+  assert.match(source, /No tenés permiso para definir los horarios mensuales/)
   assert.match(source, /defaultTimes: monthlyTimesSetup\.times, defaultTimePeriods/)
   assert.match(source, /applyMonthlyDefaultTimes\(previous, monthlyTimesSetup\.month, monthlyTimesSetup\.effectiveFrom, monthlyTimesSetup\.times\)/)
   assert.match(source, /key < effectiveFrom/)
@@ -787,6 +787,74 @@ test('un planificador puede crear un cliente CLI sin modificar clientes existent
   assert.deepEqual(authorized.customers, [existing, created])
 })
 
+test('los permisos granulares no se heredan del módulo y sólo se habilitan de forma explícita', () => {
+  const legacyUser = { roleCode: 'user', permissions: { weekly: true, history: true, accounts: true } }
+  for (const permission of ['weeklyTeams', 'weeklyHours', 'weeklyVehicles', 'weeklyGuards', 'historyManage', 'accountsEdit', 'accountsDelete', 'accountsImport']) assert.equal(userCan(legacyUser, permission), false)
+  assert.equal(userCan({ ...legacyUser, permissions: { ...legacyUser.permissions, weeklyTeams: true, historyManage: true, accountsImport: true } }, 'weeklyTeams'), true)
+  assert.equal(userCan({ ...legacyUser, permissions: { ...legacyUser.permissions, weeklyTeams: true, historyManage: true, accountsImport: true } }, 'historyManage'), true)
+  assert.equal(userCan({ roleCode: 'user', permissions: { weekly: false, weeklyTeams: true } }, 'weeklyTeams'), false)
+  assert.equal(userCan({ roleCode: 'user', permissions: { history: false, historyManage: true } }, 'historyManage'), false)
+  assert.equal(userCan({ roleCode: 'administrator', permissions: {} }, 'accountsImport'), true)
+})
+
+test('vehículos del mes recibe la flota sin habilitar el módulo completo de vehículos', () => {
+  const role = { id: 'weekly-vehicles-role', code: 'user', name: 'Usuario', permissions: { weekly: true, weeklyVehicles: true, vehicles: false } }
+  const user = userForEmployee({ ...employee, roleId: role.id, role: role.name }, [...roles, role])
+  const vehicle = { id: 'v1', brand: 'Ford', model: 'Ka', plate: 'AB403KZ' }
+  const visible = visibleStateForUser({ revision: 1, roles: [...roles, role], employees: [employee], services: [], vehicles: [vehicle], customers: [], history: [], agenda: { weekly: {} }, preferences: {} }, user)
+  assert.deepEqual(visible.vehicles, [vehicle])
+})
+
+test('el servidor protege configuraciones, historial y clientes según cada función concedida', () => {
+  const baseRole = { id: 'user-role', code: 'user', name: 'Usuario', permissions: { weekly: true, history: true, accounts: true } }
+  const baseUser = userForEmployee({ ...employee, roleId: baseRole.id, role: baseRole.name }, [...roles, baseRole])
+  const currentCustomer = { customerId: 'c1', kind: 'subscriber', account: 'PIG-1', name: 'ORIGINAL' }
+  const currentHistory = { id: 'h1', status: 'Pendiente', detail: 'Original' }
+  const current = { roles: [...roles, baseRole], employees: [employee], services: [], vehicles: [], customers: [currentCustomer], history: [currentHistory], reviews: [], agenda: { weekly: { _monthlyTeams: { '2026-09': { teams: [{ teamId: 'original' }], defaultTimes: ['09:00'], vehicleAssignments: [] } }, _annualGuards: { 2026: ['e1'] } } } }
+  const incoming = structuredClone(current)
+  incoming.customers[0].name = 'ALTERADO'
+  incoming.history[0].detail = 'Alterado'
+  incoming.agenda.weekly._monthlyTeams['2026-09'] = { teams: [{ teamId: 'alterado' }], defaultTimes: ['10:00'], vehicleAssignments: ['v1'] }
+  incoming.agenda.weekly._annualGuards = { 2026: ['otro'] }
+  const protectedState = authorizeIncomingState(incoming, current, baseUser)
+  assert.deepEqual(protectedState.customers, current.customers)
+  assert.deepEqual(protectedState.history, current.history)
+  assert.deepEqual(protectedState.agenda.weekly._monthlyTeams, current.agenda.weekly._monthlyTeams)
+  assert.deepEqual(protectedState.agenda.weekly._annualGuards, current.agenda.weekly._annualGuards)
+
+  const enabledRole = { ...baseRole, permissions: { ...baseRole.permissions, weeklyTeams: true, accountsEdit: true, historyManage: true } }
+  const enabledUser = userForEmployee({ ...employee, roleId: enabledRole.id, role: enabledRole.name }, [...roles, enabledRole])
+  const enabledState = authorizeIncomingState(incoming, { ...current, roles: [...roles, enabledRole] }, enabledUser)
+  assert.equal(enabledState.customers[0].name, 'ALTERADO')
+  assert.equal(enabledState.history[0].detail, 'Alterado')
+  assert.equal(enabledState.agenda.weekly._monthlyTeams['2026-09'].teams[0].teamId, 'alterado')
+  assert.deepEqual(enabledState.agenda.weekly._monthlyTeams['2026-09'].defaultTimes, ['09:00'])
+})
+
+test('un planificador puede actualizar la ficha pendiente vinculada a la agenda sin alterar su estado', () => {
+  const planningRole = { id: 'planner', code: 'user', name: 'Usuario', permissions: { weekly: true, history: true } }
+  const planningUser = userForEmployee({ ...employee, roleId: planningRole.id, role: planningRole.name }, [...roles, planningRole])
+  const record = { id: 'h-plan', sourceTaskId: 'task-plan', status: 'Pendiente', detail: 'Original' }
+  const current = { roles: [...roles, planningRole], employees: [employee], services: [], vehicles: [], customers: [], history: [record], reviews: [], agenda: { weekly: { '2026-09-03': { teams: [{ teamId: 'team', tasks: [{ taskId: 'task-plan', historyId: 'h-plan' }] }] } } } }
+  const incoming = structuredClone(current)
+  incoming.history[0] = { ...incoming.history[0], detail: 'Corregido desde agenda', status: 'Completado', completedAt: '2026-09-03T15:00:00.000Z' }
+  const authorized = authorizeIncomingState(incoming, current, planningUser)
+  assert.equal(authorized.history[0].detail, 'Corregido desde agenda')
+  assert.equal(authorized.history[0].status, 'Pendiente')
+  assert.equal(authorized.history[0].completedAt, undefined)
+})
+
+test('la interfaz ofrece equipos semanales editables, permisos por función e importación confirmada y reversible', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const weeklyToggle = source.slice(source.indexOf('const toggleWeeklyTech'), source.indexOf('const updateTask', source.indexOf('const toggleWeeklyTech')))
+  assert.match(weeklyToggle, /activeTechs\.find\(item => item\.name === technician\)/)
+  assert.doesNotMatch(weeklyToggle, /destinationTeam|movedTask/)
+  for (const permission of ['weeklyTeams', 'weeklyHours', 'weeklyVehicles', 'weeklyGuards', 'historyManage', 'accountsEdit', 'accountsDelete', 'accountsImport']) assert.match(source, new RegExp(permission))
+  assert.match(source, /Consulta de solo lectura\. Las modificaciones requieren permisos adicionales/)
+  assert.match(source, /Confirmar importación/)
+  assert.match(source, /Deshacer última importación/)
+})
+
 test('el ABM de vehículos integra estado, permisos, seguro privado y campos requeridos', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const api = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
@@ -806,7 +874,7 @@ test('el ABM de vehículos integra estado, permisos, seguro privado y campos req
   assert.match(source, /DOCUMENTACIÓN DE FLOTA/)
   assert.match(apiCore, /unique\(state\.vehicles, 'plate', 'Matrícula'\)/)
   assert.match(apiCore, /el kilometraje no es válido/)
-  assert.match(apiCore, /vehicles: userCan\(user, 'vehicles'\)/)
+  assert.match(apiCore, /vehicles: userCan\(user, 'vehicles'\) \|\| userCan\(user, 'weeklyVehicles'\)/)
   assert.match(apiCore, /vehicles: state\.vehicles \|\| \[\]/)
   assert.match(apiCore, /fecha de vencimiento del seguro no es válida/)
   assert.match(database, /pignus_vehicle_insurance_documents/)
