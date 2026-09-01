@@ -62,9 +62,10 @@ export function technicianAgendaServices(records, today) {
   return (records || []).filter(record => {
     if (technicianRecordResolved(record)) return false
     const date = String(record?.date || '')
-    const visibleDay = date === today || date === tomorrow
-    const overdueVehicleControl = Boolean(record?.vehicleControl && date && date < today)
-    return visibleDay || overdueVehicleControl
+    // La agenda operativa incluye cualquier pendiente vencido y limita el
+    // futuro al día siguiente. La misma regla se aplica a controles vehiculares
+    // y servicios comunes para que ninguna tarea posterior quede anticipada.
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= tomorrow
   })
 }
 

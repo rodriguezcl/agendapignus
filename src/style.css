@@ -138,9 +138,17 @@
 .vehicles-table .vehicle-row > span:nth-child(5) { display: grid; gap: 3px; }
 .vehicles-table .vehicle-row > span:nth-child(5) a { color: #17643f; font-weight: 700; }
 .vehicle-insurance-current { grid-column: 1 / -1; }
-.technician-vehicles { display: grid; gap: 14px; }
-.technician-vehicles article { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; padding: 18px; border: 1px solid #d1ded4; border-radius: 16px; background: #fff; }
-.technician-vehicles h2, .technician-vehicles p { margin: 0; }
-.technician-vehicles div { display: grid; gap: 5px; }
-.technician-vehicles a.primary { text-decoration: none; display: inline-flex; align-items: center; gap: 7px; }
-@media (max-width: 720px) { .technician-vehicles article { grid-template-columns: auto 1fr; } .technician-vehicles article > a, .technician-vehicles article > span:last-child { grid-column: 1 / -1; } }
+.technician-vehicle-table { overflow: hidden; }
+.technician-vehicle-head, .technician-vehicle-row { display: grid; grid-template-columns: minmax(180px, 1.5fr) minmax(70px, .5fr) minmax(110px, .7fr) minmax(150px, .8fr); align-items: center; gap: 16px; padding: 14px 18px; }
+.technician-vehicle-head { background: #eef4ef; color: #45624e; font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.technician-vehicle-row { border-top: 1px solid #dce6de; }
+.technician-vehicle-row > b, .technician-vehicle-row > strong { color: #173d2b; }
+.technician-vehicle-row a.secondary { width: fit-content; text-decoration: none; display: inline-flex; align-items: center; gap: 7px; }
+@media (max-width: 720px) {
+  .technician-vehicle-head { display: none; }
+  .technician-vehicle-row { grid-template-columns: 1fr auto; gap: 8px 14px; }
+  .technician-vehicle-row > b { grid-column: 1 / -1; }
+  .technician-vehicle-row > span:last-child { grid-column: 1 / -1; }
+  .technician-vehicle-row > span:nth-child(2)::before { content: 'Año: '; font-weight: 700; }
+  .technician-vehicle-row > strong::before { content: 'Matrícula: '; font-weight: 700; }
+}

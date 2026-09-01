@@ -107,7 +107,7 @@ test('el buscador del historial técnico contempla todos los datos útiles', asy
   assert.equal(technicianTeamLabel({ technicians: ['Rodrigo Gonzalez', 'Rodrigo Gonzalez'] }), 'Rodrigo Gonzalez')
 })
 
-test('la agenda técnica muestra sólo hoy, mañana y controles vehiculares vencidos', async () => {
+test('la agenda técnica muestra pendientes vencidos, de hoy y de mañana, pero ninguno posterior', async () => {
   const { technicianAgendaServices } = await import('../src/technician-history.mjs')
   const records = [
     { id: 'past-service', date: '2026-08-30', status: 'Pendiente' },
@@ -116,9 +116,10 @@ test('la agenda técnica muestra sólo hoy, mañana y controles vehiculares venc
     { id: 'tomorrow', date: '2026-09-01', status: 'Pendiente' },
     { id: 'tomorrow-completed', date: '2026-09-01', status: 'Completado' },
     { id: 'later-service', date: '2026-09-02', status: 'Pendiente' },
-    { id: 'later-control', date: '2026-09-04', status: 'Pendiente', vehicleControl: true }
+    { id: 'later-control', date: '2026-09-04', status: 'Pendiente', vehicleControl: true },
+    { id: 'missing-date', date: '', status: 'Pendiente' }
   ]
-  assert.deepEqual(technicianAgendaServices(records, '2026-08-31').map(record => record.id), ['overdue-control', 'today', 'tomorrow'])
+  assert.deepEqual(technicianAgendaServices(records, '2026-08-31').map(record => record.id), ['past-service', 'overdue-control', 'today', 'tomorrow'])
 })
 
 test('el resumen sólo contabiliza pendientes cuya fecha efectiva ya llegó', async () => {
@@ -687,11 +688,23 @@ test('genera y verifica hashes compatibles con las credenciales existentes', () 
 
 test('resuelve el rol y limita el estado visible del técnico', () => {
   const user = userForEmployee(employee, roles)
-  const state = { revision: 4, roles, employees: [employee], services: [], customers: [], agenda: {}, preferences: {}, history: [{ id: 'a', technicianIds: ['e1'] }, { id: 'b', technicianIds: ['e2'] }] }
+  const state = { revision: 4, roles, employees: [employee], services: [], vehicles: [{ id: 'v1', brand: 'Ford', model: 'Ka', year: 2017, mileage: 76294, plate: 'AB403KZ', insuranceFileName: 'seguro.pdf', insuranceExpiresOn: '2026-09-30', internalNote: 'privado' }], customers: [], agenda: {}, preferences: {}, history: [{ id: 'a', technicianIds: ['e1'] }, { id: 'b', technicianIds: ['e2'] }] }
   const visible = visibleStateForUser(state, user)
   assert.deepEqual(visible.history.map(record => record.id), ['a'])
   assert.equal(visible.agenda, null)
   assert.deepEqual(visible.customers, [])
+  assert.deepEqual(visible.vehicles, [{ id: 'v1', brand: 'Ford', model: 'Ka', year: 2017, plate: 'AB403KZ', insuranceFileName: 'seguro.pdf' }])
+})
+
+test('el técnico dispone del módulo Vehículos como tabla de solo lectura y puede descargar seguros', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
+  const technicianPortal = source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function DashboardStatusView'))
+  assert.match(technicianPortal, /data-view="vehicles"[\s\S]*?<span>Vehículos<\/span>/)
+  assert.match(technicianPortal, /technician-vehicle-head[\s\S]*?<span>Vehículo<\/span><span>Año<\/span><span>Matrícula<\/span><span>Seguro<\/span>/)
+  assert.match(technicianPortal, /href=\{`\/api\/vehicle-insurance\/\$\{encodeURIComponent\(String\(vehicle\.id\)\)\}`\}[\s\S]*?Descargar PDF/)
+  assert.doesNotMatch(technicianPortal, /view === 'vehicles'[\s\S]*?Kilometraje[\s\S]*?function DashboardStatusView/)
+  assert.match(styles, /\.technician-vehicle-head, \.technician-vehicle-row/)
 })
 
 test('el técnico recibe contexto histórico sólo de clientes con trabajos vigentes asignados', () => {
@@ -790,7 +803,7 @@ test('el ABM de vehículos integra estado, permisos, seguro privado y campos req
   assert.match(source, /\/api\/vehicle-insurance\//)
   assert.match(source, /insuranceExpiresOn: record\.insuranceExpiresOn, vehicle: record, revision: stateRevision/)
   assert.match(source, /if \(refreshRemoteState\) await refreshRemoteState\(\)/)
-  assert.match(source, /Vehículos y seguros/)
+  assert.match(source, /DOCUMENTACIÓN DE FLOTA/)
   assert.match(apiCore, /unique\(state\.vehicles, 'plate', 'Matrícula'\)/)
   assert.match(apiCore, /el kilometraje no es válido/)
   assert.match(apiCore, /vehicles: userCan\(user, 'vehicles'\)/)
