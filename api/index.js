@@ -152,15 +152,52 @@ async function handleVehicleInsurance(req, res, sql, user, vehicleId) {
     return res.status(200).send(rows[0].pdf_data)
   }
   if (user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede cargar seguros.' })
-  const { fileName, pdf } = requestBody(req)
+  const { fileName, pdf, vehicle: incomingVehicle, insuranceExpiresOn, revision: incomingRevision } = requestBody(req)
   const match = String(pdf || '').match(/^data:application\/pdf;base64,([a-z0-9+/=]+)$/i)
   const data = match ? Buffer.from(match[1], 'base64') : null
   if (!data?.length || data.length > 3_000_000 || data.subarray(0, 5).toString() !== '%PDF-') return send(res, 400, { error: 'Seleccioná un PDF válido de hasta 3 MB.' })
   const safeName = String(fileName || 'seguro.pdf').trim().slice(0, 180)
   const uploadedAt = new Date().toISOString()
-  await sql`insert into pignus_vehicle_insurance_documents (vehicle_id, file_name, pdf_data, uploaded_at) values (${String(vehicleId)}, ${safeName}, ${data}, ${uploadedAt}) on conflict (vehicle_id) do update set file_name = excluded.file_name, pdf_data = excluded.pdf_data, uploaded_at = excluded.uploaded_at`
-  await appendAudit(sql, [auditEntry(user, 'Cargó seguro', 'Vehículo', String(vehicleId), null, { fileName: safeName, uploadedAt })])
-  return send(res, 200, { fileName: safeName, uploadedAt, documentUrl: `/api/vehicle-insurance/${encodeURIComponent(String(vehicleId))}` })
+  try {
+    const result = await sql.begin(async transaction => {
+      await transaction`set local lock_timeout = '5s'`
+      await transaction`set local statement_timeout = '15s'`
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const currentRevision = Number(revisionRows[0]?.value || 0)
+      if (incomingRevision != null && Number(incomingRevision) !== currentRevision) {
+        const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de volver a cargar el seguro.')
+        error.statusCode = 409
+        throw error
+      }
+      const current = await readState(transaction)
+      const previousVehicle = current.vehicles.find(vehicle => String(vehicle.id) === String(vehicleId))
+      const submittedVehicle = incomingVehicle && typeof incomingVehicle === 'object' ? incomingVehicle : previousVehicle
+      if (!submittedVehicle || String(submittedVehicle.id) !== String(vehicleId)) {
+        const error = new Error('El vehículo no existe o sus datos no coinciden.')
+        error.statusCode = 404
+        throw error
+      }
+      const expiresOn = String(insuranceExpiresOn || submittedVehicle.insuranceExpiresOn || '')
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(expiresOn)) throw new Error('Indicá una fecha de vencimiento válida para el seguro.')
+      const documentUrl = `/api/vehicle-insurance/${encodeURIComponent(String(vehicleId))}`
+      const nextVehicle = { ...submittedVehicle, id: vehicleId, insuranceExpiresOn: expiresOn, insuranceFileName: safeName, insuranceUploadedAt: uploadedAt, insuranceDocumentUrl: documentUrl }
+      const nextVehicles = previousVehicle
+        ? current.vehicles.map(vehicle => String(vehicle.id) === String(vehicleId) ? nextVehicle : vehicle)
+        : [...current.vehicles, nextVehicle]
+      validateState({ ...current, vehicles: nextVehicles }, current)
+      await transaction`insert into pignus_vehicle_insurance_documents (vehicle_id, file_name, pdf_data, uploaded_at) values (${String(vehicleId)}, ${safeName}, ${data}, ${uploadedAt}) on conflict (vehicle_id) do update set file_name = excluded.file_name, pdf_data = excluded.pdf_data, uploaded_at = excluded.uploaded_at`
+      await transaction`insert into pignus_preferences (key, value, updated_at) values ('vehicles', ${JSON.stringify(nextVehicles)}, now()) on conflict (key) do update set value = excluded.value, updated_at = now()`
+      const entries = [auditEntry(user, 'Cargó seguro', 'Vehículo', String(vehicleId), previousVehicle || null, nextVehicle)]
+      await appendAudit(transaction, entries)
+      const revision = currentRevision + 1
+      await transaction`update pignus_preferences set value = ${String(revision)}, updated_at = now() where key = 'state_revision'`
+      return { vehicle: nextVehicle, revision, fileName: safeName, uploadedAt, documentUrl }
+    })
+    return send(res, 200, result)
+  } catch (error) {
+    return send(res, error.statusCode || 400, { error: error.message || 'No se pudo cargar el seguro.' })
+  }
 }
 
 async function handleLogin(req, res, sql) {
