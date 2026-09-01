@@ -775,6 +775,10 @@ test('la nota y el checklist internos se conservan para administración y no apa
 test('el editor semanal aprovecha un ancho mayor sólo en pantallas de escritorio', () => {
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.weekly-editor-backdrop \.weekly-task-modal \{[\s\S]*?width: min\(960px, calc\(100vw - 96px\)\);[\s\S]*?max-width: 960px;/)
+  assert.match(styles, /\.weekly-task-modal \.weekly-task-form \{\s*grid-template-columns: minmax\(150px, \.45fr\) minmax\(260px, 1fr\) minmax\(260px, \.8fr\);/)
+  assert.match(styles, /\.weekly-task-modal \.weekly-task-form \.week-task-top \{ display: contents; \}/)
+  assert.match(styles, /\.weekly-task-modal \.weekly-task-form > \.task-duration-field \{ grid-column: 3; grid-row: 1; \}/)
+  assert.match(styles, /\.weekly-task-modal \.weekly-task-form > label > textarea \{ min-height: 150px; \}/)
   assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.weekly-task-modal \.week-task-top/)
 })
 
