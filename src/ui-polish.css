@@ -2387,7 +2387,17 @@ html.modal-open body {
     padding: 32px 38px;
   }
 
-  .weekly-task-modal .weekly-task-form { gap: 14px; }
-  .weekly-task-modal .weekly-task-form textarea { min-height: 110px; }
+  .weekly-task-modal .weekly-task-form {
+    grid-template-columns: minmax(150px, .45fr) minmax(260px, 1fr) minmax(260px, .8fr);
+    gap: 14px;
+  }
+
+  .weekly-task-modal .weekly-task-form .week-task-top { display: contents; }
+  .weekly-task-modal .weekly-task-form .week-task-top > label { grid-row: 1; }
+  .weekly-task-modal .weekly-task-form .week-task-top > label:first-child { grid-column: 1; }
+  .weekly-task-modal .weekly-task-form .week-task-top > label:last-child { grid-column: 2; }
+  .weekly-task-modal .weekly-task-form > .task-duration-field { grid-column: 3; grid-row: 1; }
+  .weekly-task-modal .weekly-task-form > :not(.week-task-top):not(.task-duration-field) { grid-column: 1 / -1; }
+  .weekly-task-modal .weekly-task-form > label > textarea { min-height: 150px; }
   .weekly-task-modal .internal-preparation { padding: 18px; }
 }
