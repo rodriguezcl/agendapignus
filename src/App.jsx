@@ -1069,6 +1069,10 @@ export default function App() {
   const [theme, setTheme] = useState(() => readLocalValue('pignus-theme', 'light'))
   const [roles, setRoles] = useState([])
   const [employees, setEmployees] = useState([])
+  const employeeRole = employee => roles.find(role => String(role.id) === String(employee.roleId)) || roles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role))
+  // Se calcula antes de registrar efectos que sincronizan reprogramaciones.
+  // Así también está disponible mientras se recupera una sesión persistente.
+  const activeTechs = employees.filter(employee => employee.status === 'Activo' && roleCode(employeeRole(employee)) === 'technician')
   const [services, setServices] = useState([])
   const [vehicles, setVehicles] = useState([])
   const [history, setHistory] = useState([])
@@ -1782,9 +1786,6 @@ export default function App() {
       return { ...currentTeam, tasks: changesTime && !timeInput ? sortTasksByTime(availableTasks) : availableTasks }
     }))
   }
-  const employeeRole = employee => roles.find(role => String(role.id) === String(employee.roleId)) || roles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role))
-  // La capacidad técnica depende del código estable, no del nombre editable.
-  const activeTechs = employees.filter(employee => employee.status === 'Activo' && roleCode(employeeRole(employee)) === 'technician')
   const isAdministrator = authUser?.roleCode === 'administrator' || (!authUser?.roleCode && normalizeRoleName(authUser?.role) === 'administrador')
   useEffect(() => {
     if (!isAdministrator || !databaseReady) return
