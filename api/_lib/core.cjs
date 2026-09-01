@@ -32,6 +32,11 @@ function publicEmployee(employee = {}) {
   return safe
 }
 
+function technicianVehicle(vehicle = {}) {
+  const { id, brand, model, year, plate, insuranceFileName } = vehicle
+  return { id, brand, model, year, plate, insuranceFileName }
+}
+
 function auditSafe(record) {
   if (!record) return null
   const { password, passwordHash, ...safe } = record
@@ -85,7 +90,7 @@ function visibleStateForUser(state, user) {
     })
     return {
       revision: state.revision,
-      roles: [], employees: [], services: [], vehicles: state.vehicles || [], customers: [], agenda: null, preferences: {},
+      roles: [], employees: [], services: [], vehicles: (state.vehicles || []).map(technicianVehicle), customers: [], agenda: null, preferences: {},
       history: visibleHistory
     }
   }
