@@ -718,6 +718,17 @@ function readState() {
   }
 }
 
+function technicianSafeRecord(record = {}) {
+  const { internalNote: _internalNote, internalChecklist: _internalChecklist, ...visible } = record
+  return visible
+}
+
+function internalPlanningIsValid(record = {}) {
+  const checklist = record.internalChecklist
+  return String(record.internalNote || '').length <= 5000 &&
+    (checklist == null || (Array.isArray(checklist) && checklist.length <= 30 && checklist.every(item => item && typeof item === 'object' && String(item.text || '').length <= 500 && typeof item.completed === 'boolean')))
+}
+
 function readTechnicianState(user) {
   const technicianId = String(user.id)
   const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
@@ -736,7 +747,7 @@ function readTechnicianState(user) {
       const customerId = String(record.customerId || '')
       const account = String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()
       return (customerId && activeCustomerIds.has(customerId)) || (account && activeCustomerAccounts.has(account))
-    })
+    }).map(technicianSafeRecord)
   }
 }
 
@@ -997,6 +1008,7 @@ function validateState(state, previousState = null) {
     if (!['Pendiente', 'Completado', 'Cancelado', 'Reprogramado', 'Requiere revisión'].includes(record.status)) throw new Error(`Historial ${index + 1}: el estado no es válido.`)
     if (!Array.isArray(record.technicianIds || [])) throw new Error(`Historial ${index + 1}: la asignación de técnicos no es válida.`)
     if (record.serviceId && (!Number.isInteger(Number(record.estimatedMinutes)) || Number(record.estimatedMinutes) < 15 || Number(record.estimatedMinutes) > 720)) throw new Error(`Historial ${index + 1}: el tiempo estimado debe estar entre 15 minutos y 12 horas.`)
+    if (!internalPlanningIsValid(record)) throw new Error(`Historial ${index + 1}: la nota o el checklist interno contiene datos no válidos.`)
   })
   state.history.forEach((record, index) => {
     if (String(record.customerId || '').trim() && !customerIds.has(String(record.customerId))) throw new Error(`Historial ${index + 1}: el cliente vinculado no existe.`)
@@ -1018,6 +1030,7 @@ function validateState(state, previousState = null) {
       if (!time(task.time) || !text(task.service, 160) || !text(task.client, 200) || !text(task.address, 320) || !text(task.phone, 50) || !text(task.detail, 4000)) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} contiene datos inválidos.`)
       if (task.serviceId && !serviceIds.has(String(task.serviceId))) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} tiene un tipo inexistente.`)
       if (task.customerId && !customerIds.has(String(task.customerId))) throw new Error(`Agenda: servicio ${taskIndex + 1} del equipo ${teamIndex + 1} tiene un cliente inexistente.`)
+      if (!internalPlanningIsValid(task)) throw new Error(`Agenda: la nota o el checklist interno del servicio ${taskIndex + 1} del equipo ${teamIndex + 1} contiene datos no válidos.`)
     })
   })
   validateChangedAgendaSchedules(state, previousState)
@@ -1756,7 +1769,7 @@ const server = http.createServer((req, res) => {
         if (record.vehicleControl && type !== 'Completado') return send(res, 400, { error: 'El control vehicular debe completarse con foto y kilometraje; no admite cancelación ni reprogramación.' })
         if (record.vehicleControl && !vehicleControlIsOpen(record)) return send(res, 409, { error: `El control vehicular se habilita el ${vehicleControlWindowLabel(record)}.` })
         if (record.technicalStatus) {
-          if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record })
+          if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record: technicianSafeRecord(record) })
           return send(res, 409, { error: 'Este servicio ya fue informado desde otra sesión.' })
         }
       const completingVehicleControl = Boolean(record.vehicleControl && type === 'Completado')
@@ -1799,7 +1812,7 @@ const server = http.createServer((req, res) => {
         db.exec('ROLLBACK')
         throw error
       }
-      return send(res, 200, { record: updated })
+      return send(res, 200, { record: technicianSafeRecord(updated) })
     }).catch(() => send(res, 400, { error: 'No se pudo informar el estado.' }))
   }
   if (req.method === 'POST' && url.pathname === '/api/agenda/daily/clear') {

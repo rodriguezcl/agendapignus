@@ -7,7 +7,7 @@ const {
   assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
   reportDate, secureEmployees, statePersistenceChanged, userCan, userForEmployee, validateState, verifyPassword,
-  visibleStateForUser
+  technicianSafeRecord, visibleStateForUser
 } = require('./_lib/core.cjs')
 
 const SESSION_MAX_AGE = 8 * 60 * 60 * 1000
@@ -474,7 +474,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
       await transaction`update pignus_preferences set value = (value::integer + 1)::text, updated_at = now() where key = 'state_revision'`
       return next
     })
-    return send(res, 200, { record: updated })
+    return send(res, 200, { record: technicianSafeRecord(updated) })
   } catch (error) {
     const databaseBusy = error.code === '55P03' || error.code === '57014'
     return send(res, databaseBusy ? 503 : (error.statusCode || 400), { error: databaseBusy ? 'La base de datos está ocupada. El sistema volverá a intentarlo automáticamente.' : (error.message || 'No se pudo informar el estado.') })

@@ -742,12 +742,34 @@ test('genera y verifica hashes compatibles con las credenciales existentes', () 
 
 test('resuelve el rol y limita el estado visible del técnico', () => {
   const user = userForEmployee(employee, roles)
-  const state = { revision: 4, roles, employees: [employee], services: [], vehicles: [{ id: 'v1', brand: 'Ford', model: 'Ka', year: 2017, mileage: 76294, plate: 'AB403KZ', insuranceFileName: 'seguro.pdf', insuranceExpiresOn: '2026-09-30', internalNote: 'privado' }], customers: [], agenda: {}, preferences: {}, history: [{ id: 'a', technicianIds: ['e1'] }, { id: 'b', technicianIds: ['e2'] }] }
+  const state = { revision: 4, roles, employees: [employee], services: [], vehicles: [{ id: 'v1', brand: 'Ford', model: 'Ka', year: 2017, mileage: 76294, plate: 'AB403KZ', insuranceFileName: 'seguro.pdf', insuranceExpiresOn: '2026-09-30', internalNote: 'privado' }], customers: [], agenda: {}, preferences: {}, history: [{ id: 'a', technicianIds: ['e1'], internalNote: 'Hay stock', internalChecklist: [{ id: 'i1', text: 'Preparar central', completed: false }] }, { id: 'b', technicianIds: ['e2'] }] }
   const visible = visibleStateForUser(state, user)
   assert.deepEqual(visible.history.map(record => record.id), ['a'])
+  assert.equal('internalNote' in visible.history[0], false)
+  assert.equal('internalChecklist' in visible.history[0], false)
   assert.equal(visible.agenda, null)
   assert.deepEqual(visible.customers, [])
   assert.deepEqual(visible.vehicles, [{ id: 'v1', brand: 'Ford', model: 'Ka', year: 2017, plate: 'AB403KZ', insuranceFileName: 'seguro.pdf' }])
+})
+
+test('la nota y el checklist internos se conservan para administración y no aparecen en el portal técnico', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
+  const localServer = fs.readFileSync(path.resolve(__dirname, '../server.cjs'), 'utf8')
+  const record = { id: 'service-a', technicianIds: ['e1'], internalNote: 'No pedir al proveedor', internalChecklist: [{ id: 'c1', text: 'Reservar sensor', completed: true }] }
+  const state = { revision: 1, roles, employees: [employee], services: [], vehicles: [], customers: [], agenda: {}, preferences: {}, history: [record] }
+  const administratorState = visibleStateForUser(state, { id: 'admin', roleCode: 'administrator', permissions: {} })
+
+  assert.equal(administratorState.history[0].internalNote, 'No pedir al proveedor')
+  assert.deepEqual(administratorState.history[0].internalChecklist, record.internalChecklist)
+  assert.match(source, /function InternalPreparationFields/)
+  assert.match(source, />Nota interna</)
+  assert.match(source, />Crear checklist</)
+  assert.match(source, /internalNote: task\.internalNote \|\| ''/)
+  assert.match(source, /internalChecklist: normalizeInternalChecklist\(task\.internalChecklist\)/)
+  assert.doesNotMatch(source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function DashboardStatusView')), /internalNote|internalChecklist|Nota interna|Checklist de preparación/)
+  assert.match(apiSource, /record: technicianSafeRecord\(updated\)/)
+  assert.match(localServer, /history:[\s\S]*?\.map\(technicianSafeRecord\)/)
 })
 
 test('el técnico dispone del módulo Vehículos como tabla de solo lectura y puede descargar seguros', () => {
