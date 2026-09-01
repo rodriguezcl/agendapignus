@@ -772,6 +772,12 @@ test('la nota y el checklist internos se conservan para administración y no apa
   assert.match(localServer, /history:[\s\S]*?\.map\(technicianSafeRecord\)/)
 })
 
+test('el editor semanal aprovecha un ancho mayor sólo en pantallas de escritorio', () => {
+  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.weekly-editor-backdrop \.weekly-task-modal \{[\s\S]*?width: min\(960px, calc\(100vw - 96px\)\);[\s\S]*?max-width: 960px;/)
+  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.weekly-task-modal \.week-task-top/)
+})
+
 test('el técnico dispone del módulo Vehículos como tabla de solo lectura y puede descargar seguros', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
