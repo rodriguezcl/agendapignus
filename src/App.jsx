@@ -552,12 +552,15 @@ const applyRemovedWeeklyTasks = (teams = [], removedTaskIds = []) => {
     tasks: (team.tasks || []).filter(task => !weeklyTaskRemovalAliases(task).some(alias => removed.has(alias)))
   }))
 }
-const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?.rescheduledFrom || record?.date) => {
+const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?.rescheduledFrom || record?.date, activeTechs = []) => {
   if (!record?.id || !sourceDate || !nextDate) return weekly
   const matchesRecord = task => String(task.historyId || '') === String(record.id) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
   const removeRecord = day => day?.teams?.length ? { ...day, teams: day.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !matchesRecord(task)) })) } : day
   const createDefaultTeams = date => (isSaturday(date) ? [null] : (weekly?._monthlyTeams?.[date.slice(0, 7)]?.teams || [null, null, null])).map((team, index) => ({
-    teamId: team?.teamId || createTeamId(),
+    // Los sábados no tienen un equipo mensual canónico. Si el día ya fue
+    // materializado, conservar su ID evita un ciclo semanal ↔ Historial que
+    // generaba un equipo nuevo en cada sincronización.
+    teamId: team?.teamId || (isSaturday(date) ? weekly?.[date]?.teams?.[index]?.teamId : '') || createTeamId(),
     label: team?.label || `Equipo ${index + 1}`,
     memberIds: team?.memberIds || [],
     members: team?.members || [],
@@ -576,7 +579,18 @@ const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?
   const next = { ...(weekly || {}) }
   next[sourceDate] = removeRecord(next[sourceDate])
   const destination = removeRecord(destinationWithDefaults(next[nextDate]))
-  const teams = [...(destination.teams || [])]
+  // Una reprogramación hacia un sábado pertenece a la guardia del día destino,
+  // no a la dotación que tenía el servicio cancelado en su fecha original.
+  const normalizedSaturdayDestination = isSaturday(nextDate)
+    ? normalizeSaturdayTeams(destination.teams, nextDate, weekly)
+    : null
+  const saturdayDestinationForGuard = normalizedSaturdayDestination?.[0]?.guardOverride
+    ? normalizedSaturdayDestination
+    : normalizedSaturdayDestination?.map((team, index) => index === 0 ? { ...team, memberIds: [], members: [] } : team)
+  const destinationTeams = isSaturday(nextDate)
+    ? assignGuardToEmptySaturday(saturdayDestinationForGuard, nextDate, weekly, activeTechs)
+    : destination.teams
+  const teams = [...(destinationTeams || [])]
   const teamNumber = Number(String(record.team || '').match(/\d+/)?.[0]) || 1
   let teamIndex = teams.findIndex(team => record.teamId && String(team.teamId || '') === String(record.teamId))
   if (teamIndex < 0 && teams[teamNumber - 1]) teamIndex = teamNumber - 1
@@ -1314,7 +1328,7 @@ export default function App() {
     const moveWeeklyService = event => {
       const { record, nextDate, sourceDate } = event.detail || {}
       if (!record || !nextDate) return
-      setWeekly(previous => moveRecordInWeeklyAgenda(previous, record, nextDate, sourceDate))
+      setWeekly(previous => moveRecordInWeeklyAgenda(previous, record, nextDate, sourceDate, activeTechs))
     }
     window.addEventListener('pignus:reschedule-service', moveWeeklyService)
     return () => window.removeEventListener('pignus:reschedule-service', moveWeeklyService)
@@ -1327,7 +1341,7 @@ export default function App() {
     if (!rescheduled.length) return
     setWeekly(previous => {
       const next = rescheduled.reduce(
-        (current, record) => moveRecordInWeeklyAgenda(current, record, record.date, record.rescheduledFrom),
+        (current, record) => moveRecordInWeeklyAgenda(current, record, record.date, record.rescheduledFrom, activeTechs),
         previous
       )
       return JSON.stringify(next) === JSON.stringify(previous) ? previous : next
@@ -1343,7 +1357,7 @@ export default function App() {
         return JSON.stringify(next) === JSON.stringify(previous) ? previous : next
       })
     }
-  }, [history, date])
+  }, [history, date, employees, roles])
   useEffect(() => {
     // Historial debe reflejar la dotacion real del equipo del dia destino, no la
     // dotacion que tenia el servicio antes de ser reprogramado.
@@ -3092,7 +3106,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
           // Un sábado admite una sola persona: elegir otro nombre crea una
           // excepción puntual sin modificar la rotación anual.
           if (selected) return team
-          return { ...team, teamId: team.teamId || createTeamId(), memberIds: [technician.id], members: [technician.name], tasks: (team.tasks || []).map(task => stampServiceRecord(task, authUser)) }
+          return { ...team, teamId: team.teamId || createTeamId(), guardOverride: true, memberIds: [technician.id], members: [technician.name], tasks: (team.tasks || []).map(task => stampServiceRecord(task, authUser)) }
         }
         const memberIds = (team.memberIds || []).filter(id => String(id) !== String(technician.id))
         const members = (team.members || []).filter(name => name !== technician.name)
@@ -3639,7 +3653,7 @@ function PasswordResetReminder() {
       // presentarse como si la aplicación completa hubiera perdido conexión.
       console.warn('No se pudieron actualizar las solicitudes de contraseña.', loadError)
     }
-  }, [])
+  }, [employees, roles])
   useEffect(() => {
     load()
     const timer = setInterval(load, 30000)
