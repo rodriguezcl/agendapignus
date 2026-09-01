@@ -524,6 +524,19 @@ test('los servicios cerrados no ofrecen guardado y una finalización anticipada 
   assert.match(source, /status === 'Completado' && String\(date \|\| ''\) !== currentLocalDate\(\)/)
 })
 
+test('una reprogramación al sábado conserva el equipo estable y adopta la guardia del día', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const move = source.slice(source.indexOf('const moveRecordInWeeklyAgenda'), source.indexOf('const blankEmployee'))
+
+  assert.match(move, /activeTechs = \[\]/)
+  assert.match(move, /weekly\?\.\[date\]\?\.teams\?\.\[index\]\?\.teamId/)
+  assert.match(move, /normalizedSaturdayDestination\?\.\[0\]\?\.guardOverride/)
+  assert.match(move, /memberIds: \[\], members: \[\]/)
+  assert.match(move, /assignGuardToEmptySaturday\(saturdayDestinationForGuard, nextDate, weekly, activeTechs\)/)
+  assert.match(source, /guardOverride: true, memberIds: \[technician\.id\], members: \[technician\.name\]/)
+  assert.match(source, /moveRecordInWeeklyAgenda\(previous, record, nextDate, sourceDate, activeTechs\)/)
+})
+
 test('los conflictos de agenda identifican fecha, integrantes y servicios afectados', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /const planningTeamDescription = \(team, teamIndex\) =>/)
