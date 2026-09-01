@@ -1,5 +1,5 @@
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000
-const PROVIDER_TIMEOUT_MS = 4_000
+const PROVIDER_TIMEOUT_MS = 2_000
 const holidayCache = new Map()
 
 function validHolidayYear(value, now = new Date()) {
@@ -92,8 +92,10 @@ function localHolidayFallback(year) {
   return [...new Map(records.map(([date, name, type]) => [date, { date, name, type, source: 'Respaldo legal local' }])).values()].sort((left, right) => left.date.localeCompare(right.date))
 }
 
-async function fetchJson(url, fetchImpl, timeoutMs) {
+async function fetchJson(url, fetchImpl, timeoutMs, externalSignal) {
   const controller = new AbortController()
+  const abortFromOutside = () => controller.abort()
+  externalSignal?.addEventListener('abort', abortFromOutside, { once: true })
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const response = await fetchImpl(url, { headers: { Accept: 'application/json' }, signal: controller.signal })
@@ -101,7 +103,31 @@ async function fetchJson(url, fetchImpl, timeoutMs) {
     return await response.json()
   } finally {
     clearTimeout(timeout)
+    externalSignal?.removeEventListener('abort', abortFromOutside)
   }
+}
+
+async function firstAvailableHolidayRecords(providers) {
+  const controllers = providers.map(() => new AbortController())
+  return new Promise(resolve => {
+    let pending = providers.length
+    let settled = false
+    const finishEmptyProvider = () => {
+      pending -= 1
+      if (!settled && pending === 0) resolve([])
+    }
+    providers.forEach((provider, index) => {
+      Promise.resolve().then(() => provider(controllers[index].signal)).then(records => {
+        if (settled) return
+        if (!Array.isArray(records) || !records.length) { finishEmptyProvider(); return }
+        settled = true
+        controllers.forEach((controller, controllerIndex) => {
+          if (controllerIndex !== index) controller.abort()
+        })
+        resolve(records)
+      }).catch(finishEmptyProvider)
+    })
+  })
 }
 
 async function fetchNationalHolidays(year, fetchImpl = globalThis.fetch) {
@@ -109,14 +135,14 @@ async function fetchNationalHolidays(year, fetchImpl = globalThis.fetch) {
   if (cached && cached.expiresAt > Date.now()) return cached.records
   if (typeof fetchImpl !== 'function') throw new Error('No hay conexión disponible para consultar feriados.')
 
-  const providers = await Promise.allSettled([
-    fetchJson(`https://api.argentinadatos.com/v1/feriados/${year}`, fetchImpl, PROVIDER_TIMEOUT_MS).then(normalizeArgentinaData),
-    fetchJson(`https://nagerholidays.com/api/v4/Holidays/AR/${year}`, fetchImpl, PROVIDER_TIMEOUT_MS).then(normalizeNagerData)
+  const records = await firstAvailableHolidayRecords([
+    signal => fetchJson(`https://api.argentinadatos.com/v1/feriados/${year}`, fetchImpl, PROVIDER_TIMEOUT_MS, signal).then(normalizeArgentinaData),
+    signal => fetchJson(`https://nagerholidays.com/api/v4/Holidays/AR/${year}`, fetchImpl, PROVIDER_TIMEOUT_MS, signal).then(normalizeNagerData)
   ])
-  const records = providers.find(result => result.status === 'fulfilled' && result.value.length)?.value || localHolidayFallback(year)
-  const unique = [...new Map(records.map(record => [record.date, record])).values()].sort((left, right) => left.date.localeCompare(right.date))
+  const availableRecords = records.length ? records : localHolidayFallback(year)
+  const unique = [...new Map(availableRecords.map(record => [record.date, record])).values()].sort((left, right) => left.date.localeCompare(right.date))
   holidayCache.set(year, { records: unique, expiresAt: Date.now() + CACHE_TTL_MS })
   return unique
 }
 
-module.exports = { fetchNationalHolidays, localHolidayFallback, normalizeArgentinaData, normalizeNagerData, validHolidayYear }
+module.exports = { fetchNationalHolidays, firstAvailableHolidayRecords, localHolidayFallback, normalizeArgentinaData, normalizeNagerData, validHolidayYear }
