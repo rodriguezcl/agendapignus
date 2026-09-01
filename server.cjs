@@ -29,6 +29,17 @@ const LOGIN_MAX_ATTEMPTS = 5
 const AUDIT_LOG_LIMIT = 100
 const PASSWORD_RESET_REQUESTS_KEY = 'password_reset_requests'
 const PASSWORD_RESET_REQUESTS_LIMIT = 50
+const CUSTOMER_IMPORT_BACKUP_KEY = 'last_customer_import_backup'
+const FEATURE_PERMISSION_PARENTS = {
+  weeklyTeams: 'weekly',
+  weeklyHours: 'weekly',
+  weeklyVehicles: 'weekly',
+  weeklyGuards: 'weekly',
+  historyManage: 'history',
+  accountsEdit: 'accounts',
+  accountsDelete: 'accounts',
+  accountsImport: 'accounts'
+}
 
 // Esquema idempotente: permite iniciar el sistema en una instalación nueva.
 db.exec(`
@@ -739,7 +750,7 @@ function readStateForUser(user) {
     ...visibleState,
     employees: userCan(user, 'employees') ? state.employees : state.employees.map(({ id, firstName, lastName, name, roleId, role, status }) => ({ id, firstName, lastName, name, roleId, role, status })),
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? state.services : [],
-    vehicles: userCan(user, 'vehicles') ? state.vehicles : [],
+    vehicles: userCan(user, 'vehicles') || userCan(user, 'weeklyVehicles') ? state.vehicles : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
     history: userCan(user, 'history') || userCan(user, 'accounts') ? state.history : [],
     agenda: canPlan ? state.agenda : null
@@ -756,7 +767,57 @@ function roleForEmployee(employee) {
 }
 
 function userCan(user, permission) {
-  return user?.roleCode === 'administrator' || Boolean(user?.permissions?.[permission])
+  if (user?.roleCode === 'administrator') return true
+  const parent = FEATURE_PERMISSION_PARENTS[permission]
+  if (parent && user?.permissions?.[parent] !== true) return false
+  if (typeof user?.permissions?.[permission] === 'boolean') return user.permissions[permission]
+  return false
+}
+
+function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], agenda = {}) {
+  const linked = new Set()
+  const removed = new Set()
+  const inspectPlan = plan => {
+    ;(plan?.removedTaskIds || []).forEach(id => removed.add(String(id)))
+    ;(plan?.teams || []).forEach(team => (team.tasks || []).forEach(task => {
+      if (task.historyId) linked.add(String(task.historyId))
+      if (task.taskId) linked.add(String(task.taskId))
+    }))
+  }
+  inspectPlan({ teams: agenda.teams || [] })
+  Object.entries(agenda.weekly || {}).forEach(([key, value]) => { if (!key.startsWith('_')) inspectPlan(value) })
+  const incomingById = new Map(incomingHistory.map(record => [String(record.id), record]))
+  const protectedFields = ['status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt']
+  const result = []
+  for (const previous of currentHistory) {
+    const id = String(previous.id)
+    const sourceTaskId = String(previous.sourceTaskId || '')
+    const proposed = incomingById.get(id)
+    const closed = ['Completado', 'Cancelado', 'Reprogramado'].includes(previous.status) || Boolean(previous.technicalStatus)
+    if (!proposed) {
+      if (!closed && (removed.has(id) || (sourceTaskId && removed.has(sourceTaskId)))) continue
+      result.push(previous)
+      continue
+    }
+    incomingById.delete(id)
+    if (closed || (!linked.has(id) && !(sourceTaskId && linked.has(sourceTaskId)))) { result.push(previous); continue }
+    const next = { ...proposed }
+    protectedFields.forEach(field => {
+      if (previous[field] == null || previous[field] === '') delete next[field]
+      else next[field] = previous[field]
+    })
+    next.status = previous.status || 'Pendiente'
+    result.push(next)
+  }
+  for (const proposed of incomingById.values()) {
+    const id = String(proposed.id)
+    const sourceTaskId = String(proposed.sourceTaskId || '')
+    if (!linked.has(id) && !(sourceTaskId && linked.has(sourceTaskId))) continue
+    const next = { ...proposed, status: 'Pendiente' }
+    protectedFields.filter(field => field !== 'status').forEach(field => { delete next[field] })
+    result.push(next)
+  }
+  return result
 }
 
 // La interfaz conserva un estado amplio, pero el servidor nunca acepta cambios
@@ -784,15 +845,27 @@ function authorizedIncomingState(state, user) {
   }
   const currentAgenda = current.agenda || {}
   const incomingAgenda = state.agenda || {}
-  const { _holidayOverrides: ignoredHolidayOverrides, _annualGuards: ignoredAnnualGuards, _monthlyTeams: ignoredMonthlyTeams, ...incomingWeeklyWithoutHolidayOverrides } = incomingAgenda.weekly || {}
-  const protectedWeekly = administrator
-    ? incomingAgenda.weekly
-    : {
-        ...incomingWeeklyWithoutHolidayOverrides,
-        ...(currentAgenda.weekly?._holidayOverrides ? { _holidayOverrides: currentAgenda.weekly._holidayOverrides } : {}),
-        ...(currentAgenda.weekly?._annualGuards ? { _annualGuards: currentAgenda.weekly._annualGuards } : {}),
-        ...(currentAgenda.weekly?._monthlyTeams ? { _monthlyTeams: currentAgenda.weekly._monthlyTeams } : {})
-      }
+  const { _holidayOverrides: ignoredHolidayOverrides, _annualGuards: ignoredAnnualGuards, _monthlyTeams: ignoredMonthlyTeams, ...incomingWeeklyWithoutProtectedConfiguration } = incomingAgenda.weekly || {}
+  const currentMonthly = currentAgenda.weekly?._monthlyTeams || {}
+  const incomingMonthly = incomingAgenda.weekly?._monthlyTeams || {}
+  const protectedMonthly = Object.fromEntries([...new Set([...Object.keys(currentMonthly), ...Object.keys(incomingMonthly)])].map(month => {
+    const previous = currentMonthly[month] || {}
+    const proposed = incomingMonthly[month] || {}
+    const canConfigureAnything = ['weeklyTeams', 'weeklyHours', 'weeklyVehicles'].some(permission => userCan(user, permission))
+    return [month, {
+      ...previous,
+      ...(userCan(user, 'weeklyTeams') ? { teams: proposed.teams ?? previous.teams } : {}),
+      ...(userCan(user, 'weeklyHours') ? { defaultTimes: proposed.defaultTimes ?? previous.defaultTimes, defaultTimePeriods: proposed.defaultTimePeriods ?? previous.defaultTimePeriods } : {}),
+      ...(userCan(user, 'weeklyVehicles') ? { vehicleAssignments: proposed.vehicleAssignments ?? previous.vehicleAssignments } : {}),
+      ...(canConfigureAnything && proposed.configurationHistory ? { configurationHistory: proposed.configurationHistory } : {})
+    }]
+  }))
+  const protectedWeekly = administrator ? incomingAgenda.weekly : {
+    ...incomingWeeklyWithoutProtectedConfiguration,
+    ...(currentAgenda.weekly?._holidayOverrides ? { _holidayOverrides: currentAgenda.weekly._holidayOverrides } : {}),
+    ...(userCan(user, 'weeklyGuards') ? (incomingAgenda.weekly?._annualGuards ? { _annualGuards: incomingAgenda.weekly._annualGuards } : {}) : (currentAgenda.weekly?._annualGuards ? { _annualGuards: currentAgenda.weekly._annualGuards } : {})),
+    ...(Object.keys(protectedMonthly).length ? { _monthlyTeams: protectedMonthly } : {})
+  }
   const agenda = {
     ...currentAgenda,
     ...(userCan(user, 'agenda') ? { date: incomingAgenda.date, teams: incomingAgenda.teams } : {}),
@@ -800,14 +873,25 @@ function authorizedIncomingState(state, user) {
   }
   const existingCustomerIds = new Set((current.customers || []).map(customer => String(customer.customerId)))
   const planningCustomers = canPlan ? [...(current.customers || []), ...(state.customers || []).filter(customer => !existingCustomerIds.has(String(customer.customerId)) && customerKind(customer) === 'client')] : current.customers
+  let customers = planningCustomers
+  if (userCan(user, 'accountsEdit')) {
+    const proposedById = new Map((state.customers || []).map(customer => [String(customer.customerId), customer]))
+    customers = (current.customers || []).map(customer => proposedById.get(String(customer.customerId)) || customer)
+    ;(state.customers || []).filter(customer => !existingCustomerIds.has(String(customer.customerId))).forEach(customer => customers.push(customer))
+  }
+  if (userCan(user, 'accountsDelete')) {
+    const incomingIds = new Set((state.customers || []).map(customer => String(customer.customerId)))
+    customers = customers.filter(customer => !existingCustomerIds.has(String(customer.customerId)) || incomingIds.has(String(customer.customerId)))
+  }
+  const planningHistory = canPlan ? planningHistoryForAgenda(state.history || [], current.history || [], incomingAgenda) : current.history
   return {
     ...state,
     roles: administrator ? state.roles : current.roles,
     employees,
     services: userCan(user, 'services') ? state.services : current.services,
     vehicles: userCan(user, 'vehicles') && Array.isArray(state.vehicles) ? state.vehicles : current.vehicles,
-    history: userCan(user, 'history') ? state.history : current.history,
-    customers: userCan(user, 'accounts') ? state.customers : planningCustomers,
+    history: userCan(user, 'historyManage') ? state.history : planningHistory,
+    customers,
     // El módulo fue retirado. Sus registros históricos se conservan internamente
     // y nunca se reemplazan con datos provenientes de la interfaz.
     reviews: current.reviews,
@@ -1139,6 +1223,7 @@ function saveState(state, user) {
     replaceRows('services', state.services, 'id')
     replaceRows('work_history', normalizedHistory, 'id')
     replaceRows('customers', state.customers, 'account')
+    if (JSON.stringify(previousState.customers) !== JSON.stringify(state.customers)) db.prepare('DELETE FROM preferences WHERE key = ?').run(CUSTOMER_IMPORT_BACKUP_KEY)
     replaceRows('reviews', state.reviews, 'id')
     db.prepare('INSERT OR REPLACE INTO agendas (id, data) VALUES (?, ?)').run('current', JSON.stringify(nextAgenda))
     db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('theme', state.preferences?.theme || 'light')
@@ -1408,6 +1493,49 @@ function exportHistory(res, month, category, technicianId = null, format = 'exce
   res.end(`\ufeff${html}`)
 }
 
+function handleCustomerImport(req, res, user) {
+  if (req.method === 'GET') {
+    if (user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede consultar importaciones reversibles.' })
+    return send(res, 200, { canUndo: Boolean(db.prepare('SELECT value FROM preferences WHERE key = ?').get(CUSTOMER_IMPORT_BACKUP_KEY)?.value) })
+  }
+  const undo = req.method === 'DELETE'
+  if (undo ? user.roleCode !== 'administrator' : !userCan(user, 'accountsImport')) return send(res, 403, { error: undo ? 'Solamente un administrador puede deshacer una importación.' : 'No tenés permiso para importar abonados.' })
+  const execute = body => {
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      const current = readState()
+      const currentRevision = currentStateRevision()
+      let nextCustomers
+      if (undo) {
+        const stored = db.prepare('SELECT value FROM preferences WHERE key = ?').get(CUSTOMER_IMPORT_BACKUP_KEY)?.value
+        if (!stored) { const error = new Error('No hay una importación pendiente para deshacer.'); error.statusCode = 409; throw error }
+        let backup
+        try { backup = JSON.parse(stored) } catch { backup = null }
+        if (!Array.isArray(backup?.customers)) throw new Error('La copia de seguridad de la importación no es válida.')
+        nextCustomers = backup.customers
+      } else {
+        if (!Number.isInteger(Number(body.revision)) || Number(body.revision) !== currentRevision) { const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de importar.'); error.statusCode = 409; throw error }
+        if (!Array.isArray(body.customers)) throw new Error('La importación no contiene una lista válida de abonados.')
+        nextCustomers = body.customers
+        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run(CUSTOMER_IMPORT_BACKUP_KEY, JSON.stringify({ customers: current.customers, importedAt: new Date().toISOString(), importedBy: { id: user.id, name: user.name, email: user.email } }))
+      }
+      validateState({ ...current, customers: nextCustomers }, current)
+      replaceRows('customers', nextCustomers, 'account')
+      if (undo) db.prepare('DELETE FROM preferences WHERE key = ?').run(CUSTOMER_IMPORT_BACKUP_KEY)
+      writeAudit(user, undo ? 'Deshizo importación' : 'Importó', 'Abonados / Clientes', 'importacion-maestra', { total: current.customers.length }, { total: nextCustomers.length })
+      const revision = currentRevision + 1
+      db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
+      db.exec('COMMIT')
+      return send(res, 200, { revision, customers: nextCustomers, canUndo: !undo })
+    } catch (error) {
+      db.exec('ROLLBACK')
+      return send(res, error.statusCode || 400, { error: error.message || 'No se pudo procesar la importación.' })
+    }
+  }
+  if (undo) return execute({})
+  return readJson(req, 15_000_000).then(execute).catch(error => send(res, 400, { error: error.message || 'No se pudo procesar la importación.' }))
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${host}:${port}`)
   if (req.method === 'GET' && url.pathname === '/api/auth/session') {
@@ -1513,6 +1641,11 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     return send(res, 200, readStateForUser(user))
+  }
+  if (['GET', 'POST', 'DELETE'].includes(req.method) && url.pathname === '/api/customers/import') {
+    const user = requireSession(req, res)
+    if (!user) return
+    return handleCustomerImport(req, res, user)
   }
   if (req.method === 'GET' && url.pathname === '/api/holidays') {
     const user = requireSession(req, res)

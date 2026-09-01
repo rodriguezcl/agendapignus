@@ -606,6 +606,30 @@ test('mantiene vinculados los históricos cuando una baja convierte PIG en CLI',
   assert.equal(current.customers.filter(customer => customer.name === 'CLIENTE CONVERTIDO QA').length, 1)
 })
 
+test('la importación requiere permiso, pide una revisión vigente y el administrador puede deshacerla', async () => {
+  const weeklyCookie = await login('qa-weekly@pignus.test')
+  let response = await api('/api/customers/import', weeklyCookie, { method: 'POST', body: JSON.stringify({ revision: 0, customers: [] }) })
+  assert.equal(response.status, 403)
+
+  const administratorCookie = await login('qa-admin@pignus.test')
+  const before = await state(administratorCookie)
+  response = await api('/api/customers/import', administratorCookie)
+  assert.equal(response.status, 200)
+  assert.equal((await response.json()).canUndo, false)
+  const importedCustomer = { customerId: 'qa-import-reversible', kind: 'subscriber', account: 'PIG-999999', name: 'IMPORTACIÓN REVERSIBLE QA', street: 'Calle QA 999', address: 'Calle QA 999', locality: 'Córdoba', province: 'Córdoba', phone: '3519999999', type: 'Residencial', fields: {} }
+  response = await api('/api/customers/import', administratorCookie, { method: 'POST', body: JSON.stringify({ revision: before.revision, customers: [...before.customers, importedCustomer] }) })
+  assert.equal(response.status, 200)
+  assert.ok((await state(administratorCookie)).customers.some(customer => customer.customerId === importedCustomer.customerId))
+  response = await api('/api/customers/import', administratorCookie)
+  assert.equal((await response.json()).canUndo, true)
+
+  response = await api('/api/customers/import', administratorCookie, { method: 'DELETE' })
+  assert.equal(response.status, 200)
+  assert.ok(!(await state(administratorCookie)).customers.some(customer => customer.customerId === importedCustomer.customerId))
+  response = await api('/api/customers/import', administratorCookie)
+  assert.equal((await response.json()).canUndo, false)
+})
+
 test('elimina copias de una misma tarea sin confundir servicios distintos', () => {
   const teams = dedupeAgendaTeams([
     { teamId: 'uno', tasks: [{ historyId: 'work-1', taskId: 'task-1', client: 'CLIENTE A' }, { historyId: 'work-1', taskId: 'task-1', client: 'CLIENTE A' }] },

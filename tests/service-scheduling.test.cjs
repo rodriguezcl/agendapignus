@@ -176,7 +176,9 @@ test('los servicios completados y los cancelados de fechas pasadas no participan
 })
 
 test('la validación del servidor aprovecha la finalización anticipada de un completado de hoy', () => {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+  // Fecha histórica estable: esta prueba valida la liberación anticipada, no la
+  // restricción independiente que impide reubicar servicios en horas ya pasadas.
+  const today = '2026-08-31'
   const service = { id: 's1', code: 's1', name: 'Servicio', estimatedMinutes: 60, status: 'Activo' }
   const completed = { id: 'h-live', sourceTaskId: 'done-live', date: today, serviceId: 's1', customerId: 'c1', time: '08:30', status: 'Completado', estimatedMinutes: 150, completedAt: `${today}T13:02:10.000Z` }
   const state = start => ({
@@ -231,7 +233,7 @@ test('una duración histórica inválida sin cambios no bloquea y al editarla in
     { taskId: 'old-a', serviceId: 's1', service: service.name, client: 'PIG-7009 CLIENTE', time: '08:30', estimatedMinutes: 60 },
     { taskId: 'old-b', serviceId: 's1', service: service.name, client: 'PIG-7006 CLIENTE', time: '14:00', estimatedMinutes: 0 }
   ] }] }
-  const previous = { roles: [], employees: [], services: [service], vehicles: [], customers: [], history: [], agenda: { date: '2026-09-01', teams: [], weekly: { '2026-08-31': legacyPlan } } }
+  const previous = { roles: [], employees: [], services: [service], vehicles: [], customers: [], history: [], agenda: { date: '2026-08-30', teams: [], weekly: { '2026-08-31': legacyPlan } } }
   const next = structuredClone(previous)
   next.agenda.teams = [{ teamId: 'current-team', members: [], tasks: [{ taskId: 'new', serviceId: 's1', service: service.name, time: '10:00', estimatedMinutes: 60 }] }]
   assert.doesNotThrow(() => validateState(next, previous))

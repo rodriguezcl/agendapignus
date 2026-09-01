@@ -23,8 +23,72 @@ const normalizeServiceEstimatedMinutes = value => {
   return Number.isInteger(minutes) && minutes >= 15 && minutes <= 720 ? minutes : 60
 }
 
+const FEATURE_PERMISSION_PARENTS = {
+  weeklyTeams: 'weekly',
+  weeklyHours: 'weekly',
+  weeklyVehicles: 'weekly',
+  weeklyGuards: 'weekly',
+  historyManage: 'history',
+  accountsEdit: 'accounts',
+  accountsDelete: 'accounts',
+  accountsImport: 'accounts'
+}
+
 function userCan(user, permission) {
-  return user?.roleCode === 'administrator' || Boolean(user?.permissions?.[permission])
+  if (user?.roleCode === 'administrator') return true
+  const parent = FEATURE_PERMISSION_PARENTS[permission]
+  if (parent && user?.permissions?.[parent] !== true) return false
+  if (typeof user?.permissions?.[permission] === 'boolean') return user.permissions[permission]
+  // Los permisos granulares son opt-in para cualquier rol no administrativo.
+  // Un rol creado antes de esta versión no debe heredar por accidente acciones
+  // de escritura o configuración sólo por poder visualizar el módulo padre.
+  return false
+}
+
+function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], agenda = {}) {
+  const linked = new Set()
+  const removed = new Set()
+  const inspectPlan = plan => {
+    ;(plan?.removedTaskIds || []).forEach(id => removed.add(String(id)))
+    ;(plan?.teams || []).forEach(team => (team.tasks || []).forEach(task => {
+      if (task.historyId) linked.add(String(task.historyId))
+      if (task.taskId) linked.add(String(task.taskId))
+    }))
+  }
+  inspectPlan({ teams: agenda.teams || [] })
+  Object.entries(agenda.weekly || {}).forEach(([key, value]) => { if (!key.startsWith('_')) inspectPlan(value) })
+  const incomingById = new Map(incomingHistory.map(record => [String(record.id), record]))
+  const protectedFields = ['status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt']
+  const result = []
+  for (const previous of currentHistory) {
+    const id = String(previous.id)
+    const sourceTaskId = String(previous.sourceTaskId || '')
+    const proposed = incomingById.get(id)
+    const closed = ['Completado', 'Cancelado', 'Reprogramado'].includes(previous.status) || Boolean(previous.technicalStatus)
+    if (!proposed) {
+      if (!closed && (removed.has(id) || (sourceTaskId && removed.has(sourceTaskId)))) continue
+      result.push(previous)
+      continue
+    }
+    incomingById.delete(id)
+    if (closed || (!linked.has(id) && !(sourceTaskId && linked.has(sourceTaskId)))) { result.push(previous); continue }
+    const next = { ...proposed }
+    protectedFields.forEach(field => {
+      if (previous[field] == null || previous[field] === '') delete next[field]
+      else next[field] = previous[field]
+    })
+    next.status = previous.status || 'Pendiente'
+    result.push(next)
+  }
+  for (const proposed of incomingById.values()) {
+    const id = String(proposed.id)
+    const sourceTaskId = String(proposed.sourceTaskId || '')
+    if (!linked.has(id) && !(sourceTaskId && linked.has(sourceTaskId))) continue
+    const next = { ...proposed, status: 'Pendiente' }
+    protectedFields.filter(field => field !== 'status').forEach(field => { delete next[field] })
+    result.push(next)
+  }
+  return result
 }
 
 function publicEmployee(employee = {}) {
@@ -100,7 +164,7 @@ function visibleStateForUser(state, user) {
     roles: state.roles,
     employees: userCan(user, 'employees') ? state.employees.map(publicEmployee) : state.employees.map(({ id, firstName, lastName, name, roleId, role, status }) => ({ id, firstName, lastName, name, roleId, role, status })),
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? state.services : [],
-    vehicles: userCan(user, 'vehicles') ? state.vehicles || [] : [],
+    vehicles: userCan(user, 'vehicles') || userCan(user, 'weeklyVehicles') ? state.vehicles || [] : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
     history: userCan(user, 'history') || userCan(user, 'accounts') ? state.history : [],
     agenda: canPlan ? state.agenda : null,
@@ -131,24 +195,47 @@ function authorizeIncomingState(incoming, current, user) {
   const currentAgenda = current.agenda || {}
   const incomingAgenda = incoming.agenda || {}
   const { _holidayOverrides: ignoredHolidayOverrides, _annualGuards: ignoredAnnualGuards, _monthlyTeams: ignoredMonthlyTeams, ...incomingWeeklyWithoutProtectedConfiguration } = incomingAgenda.weekly || {}
-  const protectedWeekly = administrator
-    ? incomingAgenda.weekly
-    : {
-        ...incomingWeeklyWithoutProtectedConfiguration,
-        ...(currentAgenda.weekly?._holidayOverrides ? { _holidayOverrides: currentAgenda.weekly._holidayOverrides } : {}),
-        ...(currentAgenda.weekly?._annualGuards ? { _annualGuards: currentAgenda.weekly._annualGuards } : {}),
-        ...(currentAgenda.weekly?._monthlyTeams ? { _monthlyTeams: currentAgenda.weekly._monthlyTeams } : {})
-      }
+  const currentMonthly = currentAgenda.weekly?._monthlyTeams || {}
+  const incomingMonthly = incomingAgenda.weekly?._monthlyTeams || {}
+  const protectedMonthly = Object.fromEntries([...new Set([...Object.keys(currentMonthly), ...Object.keys(incomingMonthly)])].map(month => {
+    const previous = currentMonthly[month] || {}
+    const proposed = incomingMonthly[month] || {}
+    const canConfigureAnything = ['weeklyTeams', 'weeklyHours', 'weeklyVehicles'].some(permission => userCan(user, permission))
+    return [month, {
+      ...previous,
+      ...(userCan(user, 'weeklyTeams') ? { teams: proposed.teams ?? previous.teams } : {}),
+      ...(userCan(user, 'weeklyHours') ? { defaultTimes: proposed.defaultTimes ?? previous.defaultTimes, defaultTimePeriods: proposed.defaultTimePeriods ?? previous.defaultTimePeriods } : {}),
+      ...(userCan(user, 'weeklyVehicles') ? { vehicleAssignments: proposed.vehicleAssignments ?? previous.vehicleAssignments } : {}),
+      ...(canConfigureAnything && proposed.configurationHistory ? { configurationHistory: proposed.configurationHistory } : {})
+    }]
+  }))
+  const protectedWeekly = administrator ? incomingAgenda.weekly : {
+    ...incomingWeeklyWithoutProtectedConfiguration,
+    ...(currentAgenda.weekly?._holidayOverrides ? { _holidayOverrides: currentAgenda.weekly._holidayOverrides } : {}),
+    ...(userCan(user, 'weeklyGuards') ? (incomingAgenda.weekly?._annualGuards ? { _annualGuards: incomingAgenda.weekly._annualGuards } : {}) : (currentAgenda.weekly?._annualGuards ? { _annualGuards: currentAgenda.weekly._annualGuards } : {})),
+    ...(Object.keys(protectedMonthly).length ? { _monthlyTeams: protectedMonthly } : {})
+  }
   const existingCustomerIds = new Set((current.customers || []).map(customer => String(customer.customerId)))
   const planningCustomers = canPlan ? [...(current.customers || []), ...(incoming.customers || []).filter(customer => !existingCustomerIds.has(String(customer.customerId)) && customerKind(customer) === 'client')] : current.customers
+  let customers = planningCustomers
+  if (userCan(user, 'accountsEdit')) {
+    const proposedById = new Map((incoming.customers || []).map(customer => [String(customer.customerId), customer]))
+    customers = (current.customers || []).map(customer => proposedById.get(String(customer.customerId)) || customer)
+    ;(incoming.customers || []).filter(customer => !existingCustomerIds.has(String(customer.customerId))).forEach(customer => customers.push(customer))
+  }
+  if (userCan(user, 'accountsDelete')) {
+    const incomingIds = new Set((incoming.customers || []).map(customer => String(customer.customerId)))
+    customers = customers.filter(customer => !existingCustomerIds.has(String(customer.customerId)) || incomingIds.has(String(customer.customerId)))
+  }
+  const planningHistory = canPlan ? planningHistoryForAgenda(incoming.history || [], current.history || [], incomingAgenda) : current.history
   return {
     ...incoming,
     roles: administrator ? incoming.roles : current.roles,
     employees,
     services: userCan(user, 'services') ? incoming.services : current.services,
     vehicles: userCan(user, 'vehicles') && Array.isArray(incoming.vehicles) ? incoming.vehicles : current.vehicles || [],
-    history: userCan(user, 'history') ? incoming.history : current.history,
-    customers: userCan(user, 'accounts') ? incoming.customers : planningCustomers,
+    history: userCan(user, 'historyManage') ? incoming.history : planningHistory,
+    customers,
     reviews: current.reviews,
     agenda: {
       ...currentAgenda,
