@@ -238,6 +238,36 @@ test('el estado técnico conserva el error funcional y no lo reintenta', async (
   assert.equal(requests, 1)
 })
 
+test('el guardado técnico cancela una solicitud colgada y reintenta sin refrescar la página', async () => {
+  const { submitTechnicianStatus } = await import('../src/technician-status.mjs')
+  let attempts = 0
+  const fetcher = (_url, options) => {
+    attempts += 1
+    if (attempts === 2) return Promise.resolve({ ok: true, status: 200, json: async () => ({ record: { id: 'service-timeout', status: 'Completado' } }) })
+    return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => {
+      const error = new Error('aborted')
+      error.name = 'AbortError'
+      reject(error)
+    }))
+  }
+  const record = await submitTechnicianStatus({ recordId: 'service-timeout', type: 'Completado', observation: 'Trabajo realizado.', fetcher, retryDelay: 0, requestTimeout: 5 })
+  assert.equal(record.status, 'Completado')
+  assert.equal(attempts, 2)
+})
+
+test('el guardado técnico informa la demora y permite un nuevo intento desde el modal', async () => {
+  const { submitTechnicianStatus } = await import('../src/technician-status.mjs')
+  const fetcher = (_url, options) => new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => {
+    const error = new Error('aborted')
+    error.name = 'AbortError'
+    reject(error)
+  }))
+  await assert.rejects(
+    submitTechnicianStatus({ recordId: 'service-timeout', type: 'Completado', observation: 'Trabajo realizado.', fetcher, retryDelay: 0, requestTimeout: 5 }),
+    /no duplicará el servicio/i
+  )
+})
+
 test('el técnico no puede informar un servicio sin observación', async () => {
   const { submitTechnicianStatus } = await import('../src/technician-status.mjs')
   let requests = 0
@@ -282,6 +312,7 @@ test('la confirmación espera el guardado y el servidor admite reintentos idempo
   assert.match(source, /applyRemoteState\(remoteState\)/)
   assert.match(source, /No se guardó el último cambio porque otra sesión había actualizado la información/)
   assert.match(apiSource, /set local lock_timeout = '5s'/)
+  assert.match(apiSource, /set local statement_timeout = '15s'/)
   assert.match(apiSource, /record\.technicalStatus === type/)
   assert.match(apiSource, /technicalReportedById\) === String\(user\.id\)/)
 })
