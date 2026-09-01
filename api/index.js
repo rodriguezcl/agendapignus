@@ -241,7 +241,7 @@ async function handleLogin(req, res, sql) {
     await appendAudit(transaction, [auditEntry(user, 'Inició sesión', 'Sesión', String(user.id), null, { sessionExpiresAt: expiresAt.toISOString(), replacedSessions: revoked.length })])
   })
   res.setHeader('Set-Cookie', `pignus_session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE / 1000}`)
-  return send(res, 200, { user })
+  return send(res, 200, { user, state: visibleStateForUser(await readState(sql), user) })
 }
 
 function parsePasswordResetRequests(value) {
@@ -314,8 +314,10 @@ async function handleLogout(req, res, sql) {
   `
   const session = rows[0]
   const user = session?.employee ? userForEmployee(session.employee, session.roles || []) : null
+  const discardDailyAgenda = Boolean(requestBody(req).discardDailyAgenda)
+  const revision = user && discardDailyAgenda && userCan(user, 'agenda') ? await clearDailyAgenda(sql, user) : null
   if (user) await appendAudit(sql, [auditEntry(user, 'Cerró sesión', 'Sesión', String(user.id), { sessionExpiresAt: new Date(session.expires_at).toISOString() }, null)])
-  return send(res, 200, { ok: true })
+  return send(res, 200, { ok: true, ...(revision == null ? {} : { revision }) })
 }
 
 async function handleSaveState(req, res, sql, user) {
@@ -479,9 +481,8 @@ async function handleTechnicianStatus(req, res, sql, user) {
   }
 }
 
-async function handleClearAgenda(req, res, sql, user) {
-  if (!userCan(user, 'agenda')) return send(res, 403, { error: 'No tenés permiso para limpiar la agenda del día.' })
-  const revision = await sql.begin(async transaction => {
+async function clearDailyAgenda(sql, user) {
+  return sql.begin(async transaction => {
     await transaction`select value from pignus_preferences where key = 'state_revision' for update`
     const rows = await transaction`select data from pignus_agendas where id = 'current' for update`
     const previous = rows[0]?.data || {}
@@ -493,6 +494,11 @@ async function handleClearAgenda(req, res, sql, user) {
     const result = await transaction`update pignus_preferences set value = (value::integer + 1)::text, updated_at = now() where key = 'state_revision' returning value`
     return Number(result[0].value)
   })
+}
+
+async function handleClearAgenda(req, res, sql, user) {
+  if (!userCan(user, 'agenda')) return send(res, 403, { error: 'No tenés permiso para limpiar la agenda del día.' })
+  const revision = await clearDailyAgenda(sql, user)
   return send(res, 200, { ok: true, revision })
 }
 
@@ -552,7 +558,7 @@ module.exports = async function handler(req, res) {
       const session = await sessionContext(req, sql)
       const hadSessionCookie = Boolean(cookies(req.headers.cookie).pignus_session)
       return session
-        ? send(res, 200, { user: session.user })
+        ? send(res, 200, { user: session.user, state: visibleStateForUser(await readState(sql), session.user) })
         : send(res, 401, hadSessionCookie
           ? { code: 'SESSION_ENDED', error: 'Esta sesión ya no está activa. La cuenta pudo haberse abierto en otro dispositivo o la sesión pudo haber vencido.' }
           : { code: 'SESSION_REQUIRED', error: 'Sin sesión activa.' })

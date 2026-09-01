@@ -178,6 +178,29 @@ test('el acceso cancela solicitudes bloqueadas y permite reintentar', async () =
   assert.equal(attempts, 1)
 })
 
+test('el acceso reutiliza el estado inicial y el cierre normal evita una limpieza adicional', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const api = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
+  const server = fs.readFileSync(path.resolve(__dirname, '../server.cjs'), 'utf8')
+  assert.match(source, /onLogin\(data\.user, data\.state\)/)
+  assert.match(source, /initialRemoteStateRef\.current = data\?\.state \|\| null/)
+  assert.match(source, /if \(initialState\) \{[\s\S]*?applyRemoteState\(initialState\)[\s\S]*?return/)
+  assert.match(source, /JSON\.stringify\(\{ discardDailyAgenda: Boolean\(discardDailyAgenda && databaseReady\) \}\)/)
+  assert.doesNotMatch(source.slice(source.indexOf('const logout = async'), source.indexOf('const requestLogout')), /\/api\/agenda\/daily\/clear/)
+  assert.match(api, /state: visibleStateForUser\(await readState\(sql\), user\)/)
+  assert.match(server, /state: readStateForUser\(user\)/)
+})
+
+test('la agenda técnica usa una descripción neutral sin la palabra únicamente', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
+  const portal = source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function DashboardStatusView'))
+  const helpSection = help.slice(help.indexOf("title: 'Servicios asignados'"), help.indexOf("title: 'Marcar un servicio como completado'"))
+  assert.match(portal, /Consultá los servicios pendientes de hoy y mañana/)
+  assert.doesNotMatch(portal, /únicamente/i)
+  assert.doesNotMatch(helpSection, /únicamente/i)
+})
+
 test('un fallo del recordatorio de contraseñas no se muestra como pérdida general de conexión', () => {
   const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
   const reminder = source.slice(source.indexOf('function PasswordResetReminder'), source.indexOf('function DashboardStatusView'))

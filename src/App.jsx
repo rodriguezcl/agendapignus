@@ -1064,7 +1064,7 @@ function Login({ onLogin, initialError = '' }) {
       const data = await response.json().catch(() => ({ error: 'La base de datos todavía está iniciando. Esperá un momento e intentá nuevamente.' }))
       if (!response.ok) throw new Error(data.error || 'No se pudo iniciar sesión.')
       setPassword('')
-      onLogin(data.user)
+      onLogin(data.user, data.state)
     } catch (loginError) { setError(loginError.message) }
     finally { setSubmitting(false) }
   }
@@ -1111,6 +1111,7 @@ export default function App() {
   const stateSaveQueue = useRef(Promise.resolve())
   const stateSaveTimerRef = useRef(null)
   const loggingOutRef = useRef(false)
+  const initialRemoteStateRef = useRef(null)
   const hydratingStateRef = useRef(false)
   const hydrationTimerRef = useRef(null)
   const lastPersistedSnapshotRef = useRef(null)
@@ -1267,7 +1268,10 @@ export default function App() {
         return null
       }
       return data
-    }).then(data => setAuthUser(data?.user || null)).catch(() => setAuthUser(null)).finally(() => setAuthLoading(false))
+    }).then(data => {
+      initialRemoteStateRef.current = data?.state || null
+      setAuthUser(data?.user || null)
+    }).catch(() => setAuthUser(null)).finally(() => setAuthLoading(false))
   }, [])
   useEffect(() => {
     const brand = document.querySelector('.brand')
@@ -1650,6 +1654,12 @@ export default function App() {
     setTeams([{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])
     setDate(currentLocalDate())
     clearOperationalStorage()
+    const initialState = initialRemoteStateRef.current
+    initialRemoteStateRef.current = null
+    if (initialState) {
+      applyRemoteState(initialState)
+      return
+    }
     fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' }).then(async response => {
       if (response.ok) return response.json()
       const payload = await response.json().catch(() => ({}))
@@ -1850,7 +1860,7 @@ export default function App() {
     const hasPendingTask = team.tasks.some(task => Object.values(task).some(Boolean) && !history.some(record => record.date === date && record.team === `Equipo ${teamIndex + 1}` && record.time === task.time && record.service === task.service && record.client === task.client && record.address === task.address && record.phone === task.phone && record.detail === task.detail))
     return membersChanged || hasPendingTask
   })
-  const logout = async () => {
+  const logout = async ({ discardDailyAgenda = false } = {}) => {
     if (loggingOutRef.current) return
     loggingOutRef.current = true
     setLoggingOut(true)
@@ -1861,23 +1871,14 @@ export default function App() {
     }
     await stateSaveQueue.current.catch(() => {})
 
-    // La agenda temporal no debe permanecer disponible para la próxima sesión.
-    if (authUser?.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() !== 'tecnico') {
-      if (databaseReady) {
-        try {
-          const response = await fetch('/api/agenda/daily/clear', { method: 'POST' })
-          const payload = await response.json().catch(() => ({}))
-          if (!response.ok) throw new Error(payload.error || 'No se pudo limpiar la agenda del día.')
-          stateRevisionRef.current = Number(payload.revision)
-        } catch (error) {
-          console.error('No se pudo limpiar la agenda antes de cerrar sesión.', error)
-        }
-      }
+    // La limpieza sólo se solicita cuando el usuario confirmó que desea
+    // descartar una agenda sin guardar. El cierre normal no modifica la agenda.
+    if (discardDailyAgenda && authUser?.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() !== 'tecnico') {
       const clean = emptyAgenda()
       setTeams(clean.teams); setDate(clean.date)
     }
     try {
-      const response = await fetch('/api/auth/logout', { method: 'POST' })
+      const response = await fetchWithTimeout('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ discardDailyAgenda: Boolean(discardDailyAgenda && databaseReady) }) })
       if (!response.ok) throw new Error('No se pudo invalidar la sesión en el servidor.')
     } catch (error) {
       console.error('Error al cerrar la sesión en el servidor.', error)
@@ -1890,8 +1891,8 @@ export default function App() {
     }
   }
   const requestLogout = () => setConfirmation(hasUnsavedAgenda
-    ? { title: 'Agenda sin guardar', detail: 'Hay servicios cargados que aún no fueron guardados en el historial. Si cerrás sesión, la agenda se limpiará y esos datos se perderán.', action: logout, destructive: true, confirmLabel: 'Cerrar sesión y descartar agenda' }
-    : { title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? La agenda se limpiará para dejar el sistema listo para una nueva sesión.', action: logout, confirmLabel: 'Sí, cerrar sesión' })
+    ? { title: 'Agenda sin guardar', detail: 'Hay servicios cargados que aún no fueron guardados en el historial. Si cerrás sesión, la agenda se limpiará y esos datos se perderán.', action: () => logout({ discardDailyAgenda: true }), destructive: true, confirmLabel: 'Cerrar sesión y descartar agenda' }
+    : { title: 'Cerrar sesión', detail: '¿Querés cerrar sesión?', action: logout, confirmLabel: 'Sí, cerrar sesión' })
   useEffect(() => {
     // Intercepta el botón común del encabezado para aplicar la verificación de agenda antes de salir.
     const button = document.querySelector('.topbar .logout-button')
@@ -1902,7 +1903,7 @@ export default function App() {
   })
   if (loggingOut) return <main className="login-page"><div className="login-loading">Cerrando sesión segura…</div></main>
   if (authLoading) return <main className="login-page"><div className="login-loading">Verificando sesión segura…</div></main>
-  if (!authUser) return <Login initialError={sessionEndedMessage} onLogin={user => { setSessionEndedMessage(''); setAuthUser(user) }} />
+  if (!authUser) return <Login initialError={sessionEndedMessage} onLogin={(user, initialState) => { setSessionEndedMessage(''); initialRemoteStateRef.current = initialState || null; setAuthUser(user) }} />
   if (!databaseReady) return <main className="login-page"><div className="login-card"><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">DATOS PROTEGIDOS</p><h1>{databaseError ? 'No se pudo cargar la agenda' : 'Cargando información autorizada…'}</h1>{databaseError && <><p className="login-error" role="alert">{databaseError}</p><button className="primary" type="button" onClick={() => { setDatabaseError(''); setAuthUser(current => current ? { ...current } : current) }}>Reintentar</button><button className="secondary" type="button" onClick={logout}>Cerrar sesión</button></>}</div></main>
   if (authUser.roleCode === 'technician' || normalizeRoleName(authUser.role) === 'tecnico') return <TechnicianPortalErrorBoundary logout={logout}><TechnicianPortal user={authUser} history={history} setHistory={setHistory} vehicles={vehicles} setVehicles={setVehicles} logout={logout} sessionInvalidated={endInvalidatedSession} /></TechnicianPortalErrorBoundary>
   if (module === 'help') return <HelpShell user={authUser} onNavigate={setModule} logout={logout} theme={theme} setTheme={setTheme} isAdministrator={isAdministrator} navigation={nav} />
@@ -3970,7 +3971,7 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
     const title = document.querySelector('.technician-content h1')
     const help = document.querySelector('.technician-help')
     if (title) title.textContent = view === 'agenda' ? 'Agenda de hoy y mañana' : view === 'history' ? 'Historial de servicios' : 'Vehículos'
-    if (help) help.textContent = view === 'agenda' ? 'Consultá únicamente los servicios pendientes de hoy y mañana. Los controles vehiculares son tareas autónomas y, si están vencidos, permanecen visibles hasta informarlos.' : view === 'history' ? 'Consultá los servicios que ya informaste y el estado registrado en cada uno.' : 'Descargá la documentación vigente de los vehículos de la empresa.'
+    if (help) help.textContent = view === 'agenda' ? 'Consultá los servicios pendientes de hoy y mañana. Los controles vehiculares son tareas autónomas y, si están vencidos, permanecen visibles hasta informarlos.' : view === 'history' ? 'Consultá los servicios que ya informaste y el estado registrado en cada uno.' : 'Descargá la documentación vigente de los vehículos de la empresa.'
   }, [view])
   useEffect(() => {
     const cards = document.querySelectorAll('.technician-service')
