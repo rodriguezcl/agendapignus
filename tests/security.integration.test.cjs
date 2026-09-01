@@ -268,6 +268,22 @@ test('el último ingreso invalida cualquier sesión anterior del mismo correo', 
   assert.equal((await api('/api/state', secondCookie)).status, 200)
 })
 
+test('el ingreso y la recuperación de sesión entregan el estado inicial sin una segunda carga', async () => {
+  const loginResponse = await fetch(`${origin}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'qa-admin@pignus.test', password: 'Prueba1234' }) })
+  assert.equal(loginResponse.status, 200)
+  const loginPayload = await loginResponse.json()
+  assert.equal(loginPayload.user.email, 'qa-admin@pignus.test')
+  assert.ok(Array.isArray(loginPayload.state.history))
+  const cookie = loginResponse.headers.get('set-cookie').split(';')[0]
+  const sessionResponse = await api('/api/auth/session', cookie)
+  assert.equal(sessionResponse.status, 200)
+  const sessionPayload = await sessionResponse.json()
+  assert.equal(sessionPayload.state.revision, loginPayload.state.revision)
+  assert.ok(sessionPayload.state.agenda)
+  const logoutResponse = await api('/api/auth/logout', cookie, { method: 'POST', body: JSON.stringify({ discardDailyAgenda: false }) })
+  assert.equal(logoutResponse.status, 200)
+})
+
 test('un gestor de empleados no puede elevar privilegios', async () => {
   const cookie = await login('qa-employees@pignus.test')
   let current = await state(cookie)

@@ -1542,7 +1542,7 @@ const server = http.createServer((req, res) => {
     const user = sessionUser(req)
     const hadSessionCookie = Boolean(parseCookies(req.headers.cookie).pignus_session)
     return user
-      ? send(res, 200, { user })
+      ? send(res, 200, { user, state: readStateForUser(user) })
       : send(res, 401, hadSessionCookie
         ? { code: 'SESSION_ENDED', error: 'Esta sesión ya no está activa. La cuenta pudo haberse abierto en otro dispositivo o la sesión pudo haber vencido.' }
         : { code: 'SESSION_REQUIRED', error: 'Sin sesión activa.' })
@@ -1588,7 +1588,7 @@ const server = http.createServer((req, res) => {
         console.error('No se pudo registrar la auditoría del inicio de sesión:', auditError)
       }
       res.setHeader('Set-Cookie', `pignus_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE / 1000}${secureCookies ? '; Secure' : ''}`)
-      return send(res, 200, { user })
+      return send(res, 200, { user, state: readStateForUser(user) })
     }).catch(error => {
       console.error('Error al procesar el acceso:', error)
       const clientError = ['Datos inválidos.', 'Solicitud demasiado grande.'].includes(error?.message)
@@ -1609,12 +1609,15 @@ const server = http.createServer((req, res) => {
     }).catch(error => send(res, 400, { error: error.message || 'No se pudo registrar la solicitud.' }))
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
-    const token = parseCookies(req.headers.cookie).pignus_session
-    const session = token && sessions.get(token)
-    if (session) writeAudit(session.user, 'Cerró sesión', 'Sesión', String(session.user.id), { sessionExpiresAt: new Date(session.expiresAt).toISOString() }, null)
-    if (token) sessions.delete(token)
-    res.setHeader('Set-Cookie', 'pignus_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
-    return send(res, 200, { ok: true })
+    return readJson(req).then(({ discardDailyAgenda }) => {
+      const token = parseCookies(req.headers.cookie).pignus_session
+      const session = token && sessions.get(token)
+      const revision = session && discardDailyAgenda && userCan(session.user, 'agenda') ? clearDailyAgenda(session.user) : null
+      if (session) writeAudit(session.user, 'Cerró sesión', 'Sesión', String(session.user.id), { sessionExpiresAt: new Date(session.expiresAt).toISOString() }, null)
+      if (token) sessions.delete(token)
+      res.setHeader('Set-Cookie', 'pignus_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
+      return send(res, 200, { ok: true, ...(revision == null ? {} : { revision }) })
+    }).catch(error => send(res, 400, { error: error.message || 'No se pudo cerrar la sesión.' }))
   }
   if (url.pathname === '/api/auth/password-reset-requests' && ['GET', 'DELETE'].includes(req.method)) {
     const user = requireSession(req, res)
