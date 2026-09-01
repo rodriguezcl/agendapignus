@@ -34,6 +34,30 @@ test('la agenda recibe el respaldo local cuando fallan todos los proveedores ext
   assert.ok(holidays.some(record => record.name === 'Viernes Santo'))
 })
 
+test('la consulta usa la primera fuente de feriados disponible sin esperar a la más lenta', async () => {
+  const { firstAvailableHolidayRecords } = require('../api/_lib/holidays.cjs')
+  const startedAt = Date.now()
+  const records = await firstAvailableHolidayRecords([
+    async () => [{ date: '2026-09-01', name: 'Respuesta rápida' }],
+    async signal => new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => resolve([{ date: '2026-09-02', name: 'Respuesta lenta' }]), 500)
+      signal.addEventListener('abort', () => { clearTimeout(timeout); reject(new Error('cancelada')) }, { once: true })
+    })
+  ])
+  assert.equal(records[0].name, 'Respuesta rápida')
+  assert.ok(Date.now() - startedAt < 200)
+})
+
+test('el navegador reutiliza durante doce horas el calendario ya verificado', async () => {
+  const { NATIONAL_HOLIDAY_CACHE_TTL_MS, readNationalHolidayCache, writeNationalHolidayCache } = await import('../src/holidays.mjs')
+  const values = new Map()
+  const storage = { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value) }
+  const records = [{ date: '2026-12-25', name: 'Navidad' }]
+  assert.equal(writeNationalHolidayCache('2026', records, storage, 1_000), true)
+  assert.deepEqual(readNationalHolidayCache(['2026'], storage, 1_000 + NATIONAL_HOLIDAY_CACHE_TTL_MS - 1), { complete: true, records })
+  assert.deepEqual(readNationalHolidayCache(['2026'], storage, 1_000 + NATIONAL_HOLIDAY_CACHE_TTL_MS), { complete: false, records: [] })
+})
+
 test('un feriado queda bloqueado hasta la decisión administrativa', async () => {
   const { holidayDecisionForDate, holidayForDate, holidayIsBlocked, holidayDecisionLabel } = await import('../src/holidays.mjs')
   const holiday = holidayForDate([{ date: '2026-12-08', name: 'Inmaculada Concepción' }], '2026-12-08')

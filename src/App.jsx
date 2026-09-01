@@ -11,7 +11,7 @@ import { countYearToDateAlarmInstallations, countYearToDateCompletedRecords, pen
 import { advancedSaturdayGuardMessage, findAdvancedSaturdayGuard, suppressAdvancedSaturdayAvailability } from './weekend-guard.mjs'
 import { annualGuardForDate, DEFAULT_2026_GUARD_ROTATION, firstSaturdayOfYear } from './annual-guards.mjs'
 import { monthlyTeamRotation } from './monthly-team-rotation.mjs'
-import { holidayDecisionForDate, holidayDecisionLabel, holidayForDate, holidayIsBlocked } from './holidays.mjs'
+import { holidayDecisionForDate, holidayDecisionLabel, holidayForDate, holidayIsBlocked, readNationalHolidayCache, writeNationalHolidayCache } from './holidays.mjs'
 import { buildVehicleControlRecords, rescheduleVehicleControlRecords, suggestedVehicleAssignments, vehicleControlTask, vehicleLabel } from './vehicle-controls.mjs'
 import { vehicleControlIsOpen, vehicleControlWindowLabel } from './vehicle-control-window.mjs'
 import { appendConfigurationHistory, guardConfigurationSnapshot, teamConfigurationSnapshot, vehicleConfigurationSnapshot } from './configuration-history.mjs'
@@ -60,13 +60,20 @@ function useNationalHolidays(years) {
   useEffect(() => {
     const requestedYears = yearKey.split(',').filter(Boolean)
     if (!requestedYears.length) { setState({ key: yearKey, records: [], loading: false, error: '' }); return undefined }
+    const cached = readNationalHolidayCache(requestedYears)
+    if (cached.complete) {
+      setState({ key: yearKey, records: cached.records, loading: false, error: '' })
+      return undefined
+    }
     let active = true
     setState(previous => ({ ...previous, key: yearKey, loading: true, error: '' }))
     Promise.all(requestedYears.map(async year => {
-      const response = await fetchWithTimeout(`/api/holidays?year=${encodeURIComponent(year)}`, { cache: 'no-store', credentials: 'same-origin' })
+      const response = await fetchWithTimeout(`/api/holidays?year=${encodeURIComponent(year)}`, { credentials: 'same-origin' })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'No se pudo consultar el calendario de feriados.')
-      return payload.holidays || []
+      const records = payload.holidays || []
+      writeNationalHolidayCache(year, records)
+      return records
     })).then(groups => {
       if (active) setState({ key: yearKey, records: groups.flat(), loading: false, error: '' })
     }).catch(error => {
