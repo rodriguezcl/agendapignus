@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const {
   authorizeIncomingState, compareReportRecords, hashPassword, normalizeRetirementCustomers, normalizeStateForSave,
-  secureEmployees, statePersistenceChanged, userCan, userForEmployee, verifyPassword, visibleStateForUser
+  secureEmployees, statePersistenceChanged, technicianSafeRecord, userCan, userForEmployee, verifyPassword, visibleStateForUser
 } = require('../api/_lib/core.cjs')
 
 const roles = [
@@ -500,9 +500,33 @@ test('configura formulario, forma de pago y monto según el servicio', () => {
   assert.match(source, /const formatCurrencyAmount = value =>/)
   assert.match(source, /toLocaleString\('es-AR'/)
   assert.match(source, /<CurrencyInput \{\.\.\.amountProps\}/)
-  assert.match(source, /`Monto: \$\{previewValue\(formatCurrencyAmount\(extras\.amount\)\)\}`/)
+  assert.match(source, /`Monto: \$\{previewValue\(formatCurrencyAmount\(technicianExtras\.amount\)\)\}`/)
   assert.match(source, /requiresPaymentAmount\(task, serviceForTask\(task\)\)/)
   assert.match(source, /requiresPaymentAmount\(draft, serviceForWeeklyTask\(draft\)\)/)
+})
+
+test('el técnico y la agenda compartida reciben únicamente efectivo y formulario incompleto', () => {
+  const hidden = technicianSafeRecord({ paymentMethod: 'Transferencia', amount: '25000', monthlyFee: '8000', form: 'Completo' })
+  assert.equal('paymentMethod' in hidden, false)
+  assert.equal('amount' in hidden, false)
+  assert.equal('monthlyFee' in hidden, false)
+  assert.equal('form' in hidden, false)
+
+  const visible = technicianSafeRecord({ paymentMethod: 'Efectivo', amount: '25000', monthlyFee: '8000', form: 'Incompleto (Abonado completa a mano)' })
+  assert.equal(visible.paymentMethod, 'Efectivo')
+  assert.equal(visible.amount, '25000')
+  assert.equal(visible.form, 'Incompleto (Abonado completa a mano)')
+  assert.equal('monthlyFee' in visible, false)
+
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const preview = source.slice(source.indexOf('const previewDetails = task =>'), source.indexOf('const taskMessage = task =>'))
+  assert.match(preview, /technicianVisibleServiceExtras\(extras\)/)
+  assert.doesNotMatch(preview, /Abono mensual|monthlyFee/)
+  assert.match(source, /technicianExtras\.paymentMethod && <p><b>Forma de pago:<\/b>/)
+  assert.match(source, /technicianExtras\.form && <p><b>Formulario:<\/b>/)
+
+  const localServer = fs.readFileSync(path.resolve(__dirname, '../server.cjs'), 'utf8')
+  assert.match(localServer, /monthlyFee: _monthlyFee[\s\S]*?if \(!cashPayment\)[\s\S]*?delete visible\.paymentMethod[\s\S]*?if \(!handwrittenForm\) delete visible\.form/)
 })
 
 test('permite copiar un servicio individual de la agenda diaria', () => {

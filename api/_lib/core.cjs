@@ -135,7 +135,14 @@ function userForEmployee(employee, roles) {
 }
 
 function technicianSafeRecord(record = {}) {
-  const { internalNote: _internalNote, internalChecklist: _internalChecklist, ...visible } = record
+  const { internalNote: _internalNote, internalChecklist: _internalChecklist, monthlyFee: _monthlyFee, ...visible } = record
+  const cashPayment = normalizedRoleName(visible.paymentMethod) === 'efectivo'
+  const handwrittenForm = normalizedRoleName(visible.form).startsWith('incompleto')
+  if (!cashPayment) {
+    delete visible.paymentMethod
+    delete visible.amount
+  }
+  if (!handwrittenForm) delete visible.form
   return visible
 }
 
