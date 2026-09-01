@@ -998,6 +998,7 @@ input[type='radio'] {
 .modal > label:not(.file-drop),
 .weekly-task-form > label,
 .weekly-task-form .week-task-top > label,
+.weekly-task-form > .task-duration-field,
 .weekly-task-form .weekly-extra-fields > label,
 .weekly-task-form > .customer-autocomplete {
   padding: 9px 10px;
@@ -1063,7 +1064,7 @@ input[type='radio'] {
   box-shadow: none;
 }
 
-.app-shell[data-theme='dark'] :is(.modal > label:not(.file-drop), .weekly-task-form > label, .weekly-task-form .week-task-top > label, .weekly-task-form .weekly-extra-fields > label, .weekly-task-form > .customer-autocomplete) {
+.app-shell[data-theme='dark'] :is(.modal > label:not(.file-drop), .weekly-task-form > label, .weekly-task-form .week-task-top > label, .weekly-task-form > .task-duration-field, .weekly-task-form .weekly-extra-fields > label, .weekly-task-form > .customer-autocomplete) {
   border-color: #405c49;
   background: #203128;
 }
