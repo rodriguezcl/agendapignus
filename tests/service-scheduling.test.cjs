@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { assertServiceCanBeCompleted, normalizeHistoryCompletionTimes, normalizeStateForSave, validateState } = require('../api/_lib/core.cjs')
-const { agendaTaskIsResolvedForPlanning, completedReleaseMinute } = require('../api/_lib/scheduling-validation.cjs')
+const { agendaTaskIsResolvedForPlanning, agendaTaskWasAlreadyScheduled, completedReleaseMinute } = require('../api/_lib/scheduling-validation.cjs')
 
 test('el portal técnico acepta el reloj numérico usado para habilitar servicios', async () => {
   const { serviceHasStarted } = await import('../src/service-start.mjs')
@@ -11,6 +11,17 @@ test('el portal técnico acepta el reloj numérico usado para habilitar servicio
   assert.equal(serviceHasStarted({ date: '2026-08-31', time: '08:00' }, clock), false)
   assert.equal(serviceHasStarted({ date: '2026-08-29', time: '18:00' }, clock), true)
   assert.equal(serviceHasStarted({ date: '2026-08-30', time: '08:00' }, 'fecha-inválida'), false)
+})
+
+test('distingue un servicio persistido de un alta o cambio de horario realizado hoy', () => {
+  const task = { taskId: 'task-1', historyId: 'history-1', serviceId: 's1', customerId: 'c1', time: '09:00' }
+  const record = { id: 'history-1', sourceTaskId: 'task-1', date: '2026-09-01', serviceId: 's1', customerId: 'c1', time: '09:00', status: 'Pendiente' }
+
+  assert.equal(agendaTaskWasAlreadyScheduled(task, '2026-09-01', null, [record]), true)
+  assert.equal(agendaTaskWasAlreadyScheduled({ ...task, time: '08:30' }, '2026-09-01', null, [record]), false)
+  assert.equal(agendaTaskWasAlreadyScheduled(task, '2026-09-02', null, [record]), false)
+  assert.equal(agendaTaskWasAlreadyScheduled(task, '2026-09-01', { teams: [{ tasks: [task] }] }, []), true)
+  assert.equal(agendaTaskWasAlreadyScheduled({ ...task, taskId: 'new', historyId: '', customerId: 'c2' }, '2026-09-01', { teams: [{ tasks: [task] }] }, []), false)
 })
 
 test('usa la duración real y conserva la reserva operativa mínima', async () => {

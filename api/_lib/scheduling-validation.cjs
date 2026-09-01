@@ -126,6 +126,30 @@ const taskDescription = (task, taskIndex) => {
   return `Servicio ${taskIndex + 1}${details.length ? ` (${details.join(' · ')})` : ''}`
 }
 
+const taskIdentifiers = task => [task?.taskId, task?.historyId, task?.sourceTaskId, task?.sourceHistoryId].filter(Boolean).map(String)
+
+const sameTaskIdentity = (left, right) => {
+  const leftIds = taskIdentifiers(left)
+  const rightIds = new Set(taskIdentifiers(right))
+  if (leftIds.length && leftIds.some(id => rightIds.has(id))) return true
+  const leftCustomer = normalizedName(left?.customerId || left?.clientAccount || left?.account || left?.client)
+  const rightCustomer = normalizedName(right?.customerId || right?.clientAccount || right?.account || right?.client)
+  const leftService = normalizedName(left?.serviceId || left?.service)
+  const rightService = normalizedName(right?.serviceId || right?.service)
+  return Boolean(leftCustomer && leftService && leftCustomer === rightCustomer && leftService === rightService)
+}
+
+const agendaTaskWasAlreadyScheduled = (task, date, previousPlan, previousHistory = []) => {
+  const time = normalizedName(task?.time || task?.scheduledTime)
+  if (!time) return false
+  const previousTask = (previousPlan?.teams || []).flatMap(team => team?.tasks || []).find(candidate => (
+    sameTaskIdentity(task, candidate) && normalizedName(candidate?.time || candidate?.scheduledTime) === time
+  ))
+  if (previousTask) return true
+  const record = historyRecordForAgendaTask(task, date, previousHistory)
+  return Boolean(record && String(record.date || '') === String(date || '') && normalizedName(record.time || record.scheduledTime) === time)
+}
+
 function validateChangedAgendaSchedules(state, previousState = null) {
   const serviceMap = serviceMapFor(state?.services)
   const nextPlans = agendaPlans(state?.agenda)
@@ -134,7 +158,6 @@ function validateChangedAgendaSchedules(state, previousState = null) {
     const previous = previousPlans.get(key)
     if (previous && scheduleSignature(previous.teams, serviceMap, previous.date, previousState?.history) === scheduleSignature(plan.teams, serviceMap, plan.date, state?.history)) return
     ;(plan.teams || []).forEach((team, teamIndex) => {
-      const previousTaskIds = new Set((previous?.teams || []).flatMap(previousTeam => previousTeam.tasks || []).flatMap(task => [task?.taskId, task?.historyId].filter(Boolean).map(String)))
       const activeTasks = (team.tasks || []).map((task, taskIndex) => ({ task, taskIndex })).filter(({ task }) => (task.serviceId || task.service) && !agendaTaskIsResolvedForPlanning(task, plan.date, state?.history))
       const occupancyTasks = (team.tasks || []).map((task, taskIndex) => ({ task: agendaTaskForScheduleOccupancy(task, plan.date, state?.history), taskIndex })).filter(({ task }) => task && (task.serviceId || task.service))
       activeTasks.forEach(({ task, taskIndex }) => {
@@ -142,10 +165,9 @@ function validateChangedAgendaSchedules(state, previousState = null) {
         if (!Number.isInteger(estimatedMinutes) || estimatedMinutes < 15 || estimatedMinutes > 720) {
           throw new Error(`${teamDescription(team, teamIndex)} del ${longDate(plan.date)} tiene un tiempo estimado inválido en el ${taskDescription(task, taskIndex)}. Configurá una duración de entre 15 minutos y 12 horas.`)
         }
-        const taskIds = [task?.taskId, task?.historyId].filter(Boolean).map(String)
         const startMatch = String(task.time || '').match(/^(\d{1,2}):(\d{2})$/)
         const start = startMatch ? Number(startMatch[1]) * 60 + Number(startMatch[2]) : null
-        if (plan.date === argentinaToday() && start !== null && !taskIds.some(id => previousTaskIds.has(id)) && start < nextArgentinaQuarterMinute()) {
+        if (plan.date === argentinaToday() && start !== null && !agendaTaskWasAlreadyScheduled(task, plan.date, previous, previousState?.history) && start < nextArgentinaQuarterMinute()) {
           throw new Error(`${teamDescription(team, teamIndex)} del ${longDate(plan.date)} no puede agregar el ${taskDescription(task, taskIndex)} a las ${task.time} porque ese horario ya pasó. Elegí un horario futuro desde el próximo cuarto de hora disponible.`)
         }
       })
@@ -165,4 +187,4 @@ function validateChangedAgendaSchedules(state, previousState = null) {
   })
 }
 
-module.exports = { agendaTaskForScheduleOccupancy, agendaTaskIsResolvedForPlanning, completedReleaseMinute, validateChangedAgendaSchedules }
+module.exports = { agendaTaskForScheduleOccupancy, agendaTaskIsResolvedForPlanning, agendaTaskWasAlreadyScheduled, completedReleaseMinute, validateChangedAgendaSchedules }
