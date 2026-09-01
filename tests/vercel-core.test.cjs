@@ -778,6 +778,7 @@ test('el editor semanal aprovecha un ancho mayor sólo en pantallas de escritori
   assert.match(styles, /\.weekly-task-modal \.weekly-task-form \{\s*grid-template-columns: minmax\(150px, \.45fr\) minmax\(260px, 1fr\) minmax\(260px, \.8fr\);/)
   assert.match(styles, /\.weekly-task-modal \.weekly-task-form \.week-task-top \{ display: contents; \}/)
   assert.match(styles, /\.weekly-task-modal \.weekly-task-form > \.task-duration-field \{ grid-column: 3; grid-row: 1; \}/)
+  assert.match(styles, /\.weekly-task-form > \.task-duration-field,[\s\S]*?padding: 9px 10px;[\s\S]*?border: 1px solid #d9e5da;/)
   assert.match(styles, /\.weekly-task-modal \.weekly-task-form > label > textarea \{ min-height: 150px; \}/)
   assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.weekly-task-modal \.week-task-top/)
 })
