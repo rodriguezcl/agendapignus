@@ -1563,16 +1563,48 @@ const server = http.createServer((req, res) => {
       return res.end(document.pdf_data)
     }
     if (user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede cargar seguros.' })
-    return readJson(req, 11_000_000).then(({ fileName, pdf }) => {
+    return readJson(req, 11_000_000).then(({ fileName, pdf, vehicle: incomingVehicle, insuranceExpiresOn, revision: incomingRevision }) => {
       const match = String(pdf || '').match(/^data:application\/pdf;base64,([a-z0-9+/=]+)$/i)
       const data = match ? Buffer.from(match[1], 'base64') : null
       if (!data?.length || data.length > 3_000_000 || data.subarray(0, 5).toString() !== '%PDF-') return send(res, 400, { error: 'Seleccioná un PDF válido de hasta 3 MB.' })
       const safeName = String(fileName || 'seguro.pdf').trim().slice(0, 180)
       const uploadedAt = new Date().toISOString()
-      db.prepare('INSERT OR REPLACE INTO vehicle_insurance_documents (vehicle_id, file_name, pdf_data, uploaded_at) VALUES (?, ?, ?, ?)').run(vehicleId, safeName, data, uploadedAt)
-      writeAudit(user, 'Cargó seguro', 'Vehículo', vehicleId, null, { fileName: safeName, uploadedAt })
-      return send(res, 200, { fileName: safeName, uploadedAt, documentUrl: `/api/vehicle-insurance/${encodeURIComponent(vehicleId)}` })
-    }).catch(error => send(res, 400, { error: error.message || 'No se pudo cargar el seguro.' }))
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const current = readState()
+        const currentRevision = currentStateRevision()
+        if (incomingRevision != null && Number(incomingRevision) !== currentRevision) {
+          const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de volver a cargar el seguro.')
+          error.statusCode = 409
+          throw error
+        }
+        const previousVehicle = current.vehicles.find(vehicle => String(vehicle.id) === String(vehicleId))
+        const submittedVehicle = incomingVehicle && typeof incomingVehicle === 'object' ? incomingVehicle : previousVehicle
+        if (!submittedVehicle || String(submittedVehicle.id) !== String(vehicleId)) {
+          const error = new Error('El vehículo no existe o sus datos no coinciden.')
+          error.statusCode = 404
+          throw error
+        }
+        const expiresOn = String(insuranceExpiresOn || submittedVehicle.insuranceExpiresOn || '')
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(expiresOn)) throw new Error('Indicá una fecha de vencimiento válida para el seguro.')
+        const documentUrl = `/api/vehicle-insurance/${encodeURIComponent(vehicleId)}`
+        const nextVehicle = { ...submittedVehicle, id: vehicleId, insuranceExpiresOn: expiresOn, insuranceFileName: safeName, insuranceUploadedAt: uploadedAt, insuranceDocumentUrl: documentUrl }
+        const nextVehicles = previousVehicle
+          ? current.vehicles.map(vehicle => String(vehicle.id) === String(vehicleId) ? nextVehicle : vehicle)
+          : [...current.vehicles, nextVehicle]
+        validateState({ ...current, vehicles: nextVehicles }, current)
+        db.prepare('INSERT OR REPLACE INTO vehicle_insurance_documents (vehicle_id, file_name, pdf_data, uploaded_at) VALUES (?, ?, ?, ?)').run(vehicleId, safeName, data, uploadedAt)
+        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('vehicles', JSON.stringify(nextVehicles))
+        writeAudit(user, 'Cargó seguro', 'Vehículo', vehicleId, previousVehicle || null, nextVehicle)
+        const revision = currentRevision + 1
+        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
+        db.exec('COMMIT')
+        return send(res, 200, { vehicle: nextVehicle, revision, fileName: safeName, uploadedAt, documentUrl })
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+    }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo cargar el seguro.' }))
   }
   if (req.method === 'POST' && url.pathname === '/api/technician/status') {
     const user = requireSession(req, res)
