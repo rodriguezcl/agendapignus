@@ -991,7 +991,7 @@ function showAgendaValidationModal(missing) {
   const list = document.createElement('ul'); list.className = 'validation-list'
   missing.forEach(item => { const entry = document.createElement('li'); entry.textContent = item; list.append(entry) })
   const actions = document.createElement('div'); actions.className = 'confirm-actions'
-  const close = document.createElement('button'); close.className = 'primary'; close.type = 'button'; close.textContent = 'Entendido'; close.onclick = () => layer.remove()
+  const close = document.createElement('button'); close.className = 'primary modal-dismiss'; close.type = 'button'; close.textContent = 'Entendido'; close.onclick = () => layer.remove()
   actions.append(close); modal.append(icon, title, detail, list, actions); layer.append(modal)
   layer.addEventListener('click', event => { if (event.target === layer) layer.remove() })
   document.body.append(layer)
@@ -1205,6 +1205,39 @@ export default function App() {
     observer.observe(body, { childList: true, subtree: true })
     syncModalScrollLock()
     return () => { observer.disconnect(); unlock() }
+  }, [])
+  useEffect(() => {
+    const modalLayers = () => [...document.querySelectorAll('.modal-layer, .modal-backdrop')]
+      .filter(layer => layer.isConnected && window.getComputedStyle(layer).display !== 'none')
+    const dismiss = layer => {
+      const control = layer?.querySelector([
+        '.close-modal:not(:disabled)',
+        '.modal-close:not(:disabled)',
+        '.modal-dismiss:not(:disabled)',
+        '.modal-actions .secondary:not(:disabled)',
+        '.confirm-actions .secondary:not(:disabled)'
+      ].join(', '))
+      if (!control) return false
+      control.click()
+      return true
+    }
+    const closeFromBackdrop = event => {
+      if (!(event.target instanceof Element) || !event.target.matches('.modal-layer, .modal-backdrop')) return
+      dismiss(event.target)
+    }
+    const closeFromEscape = event => {
+      if (event.key !== 'Escape') return
+      const layers = modalLayers()
+      if (!layers.length || !dismiss(layers[layers.length - 1])) return
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    document.addEventListener('click', closeFromBackdrop)
+    document.addEventListener('keydown', closeFromEscape, true)
+    return () => {
+      document.removeEventListener('click', closeFromBackdrop)
+      document.removeEventListener('keydown', closeFromEscape, true)
+    }
   }, [])
   useEffect(() => {
     const media = window.matchMedia('(min-width: 641px)')
