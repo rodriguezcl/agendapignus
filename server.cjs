@@ -13,6 +13,7 @@ const { ensureVehicleControlService } = require('./api/_lib/vehicle-control-serv
 const { assertNoPastWeeklyServiceAdditions } = require('./api/_lib/past-agenda.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
+const { mergeConcurrentState } = require('./api/_lib/state-merge.cjs')
 
 // API local: Vite reenvía las rutas /api a este proceso durante el desarrollo.
 const port = Number(process.env.PIGNUS_PORT || 3001)
@@ -1122,13 +1123,16 @@ function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now
 function saveState(state, user) {
   const expectedRevision = Number(state.revision)
   const actualRevision = currentStateRevision()
-  if (!Number.isInteger(expectedRevision) || expectedRevision !== actualRevision) {
+  const base = state.base && typeof state.base === 'object' ? state.base : null
+  const merged = Boolean(base && expectedRevision !== actualRevision)
+  const previousState = readState()
+  state = authorizedIncomingState(state, user)
+  if (base) state = mergeConcurrentState(base, previousState, state)
+  else if (!Number.isInteger(expectedRevision) || expectedRevision !== actualRevision) {
     const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de volver a guardar.')
     error.statusCode = 409
     throw error
   }
-  const previousState = readState()
-  state = authorizedIncomingState(state, user)
   const normalizedRoles = (state.roles || []).map(role => ({ ...role, code: role.code || legacyRoleCode(role) }))
   const roleById = new Map(normalizedRoles.map(role => [String(role.id), role]))
   const roleByName = new Map(normalizedRoles.map(role => [normalizedRoleName(role.name), role]))
@@ -1256,7 +1260,7 @@ function saveState(state, user) {
     const nextRevision = actualRevision + 1
     db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(nextRevision))
     db.exec('COMMIT')
-    return nextRevision
+    return { revision: nextRevision, merged }
   } catch (error) {
     db.exec('ROLLBACK')
     throw error
@@ -1895,14 +1899,14 @@ const server = http.createServer((req, res) => {
     if (!user) return
     if (user.roleCode === 'technician') return send(res, 403, { error: 'El rol técnico no puede modificar la agenda.' })
     readJson(req, 15_000_000).then(state => {
-      const revision = saveState(state, user)
-      send(res, 200, { ok: true, revision })
+      const result = saveState(state, user)
+      send(res, 200, { ok: true, revision: result.revision, merged: result.merged, state: readStateForUser(user) })
     }).catch(error => {
       console.error(error)
       const status = error?.statusCode || 400
       send(res, status, {
         error: error?.message || 'No se pudieron guardar los datos.',
-        ...(status === 409 ? { code: 'STATE_REVISION_CONFLICT', revision: currentStateRevision() } : {})
+        ...(status === 409 ? { code: error?.code || 'STATE_REVISION_CONFLICT', conflictPath: error?.conflictPath, revision: currentStateRevision() } : {})
       })
     })
     return

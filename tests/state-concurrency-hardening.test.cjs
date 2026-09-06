@@ -3,6 +3,48 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const { deduplicateScheduledTasks, normalizeStateForSave } = require('../api/_lib/core.cjs')
+const { mergeConcurrentState } = require('../api/_lib/state-merge.cjs')
+
+test('fusiona altas simultáneas sobre registros diferentes', () => {
+  const base = { services: [{ id: 'service-1', name: 'Base' }] }
+  const current = { services: [...base.services, { id: 'service-a', name: 'Alta A' }] }
+  const incoming = { services: [...base.services, { id: 'service-b', name: 'Alta B' }] }
+
+  assert.deepEqual(mergeConcurrentState(base, current, incoming).services.map(service => service.id), ['service-1', 'service-a', 'service-b'])
+})
+
+test('fusiona servicios distintos agregados al mismo equipo y día', () => {
+  const scheduled = taskId => ({ taskId, serviceId: 'service-1', time: '10:00' })
+  const agendaWith = services => ({
+    '2026-09': {
+      '2026-09-07': [{ teamId: 'team-1', members: ['Técnico 1'], services }]
+    }
+  })
+  const base = { agenda: agendaWith([scheduled('task-base')]) }
+  const current = { agenda: agendaWith([scheduled('task-base'), scheduled('task-a')]) }
+  const incoming = { agenda: agendaWith([scheduled('task-base'), scheduled('task-b')]) }
+
+  const mergedServices = mergeConcurrentState(base, current, incoming).agenda['2026-09']['2026-09-07'][0].services
+  assert.deepEqual(mergedServices.map(service => service.taskId), ['task-base', 'task-a', 'task-b'])
+})
+
+test('fusiona campos distintos del mismo servicio y rechaza el mismo campo', () => {
+  const base = { history: [{ id: 'record-1', time: '10:00', detail: 'Original', status: 'Pendiente' }] }
+  const current = { history: [{ ...base.history[0], time: '10:30' }] }
+  const compatible = { history: [{ ...base.history[0], detail: 'Detalle nuevo' }] }
+  const conflicting = { history: [{ ...base.history[0], time: '11:00' }] }
+
+  assert.deepEqual(mergeConcurrentState(base, current, compatible).history[0], { id: 'record-1', time: '10:30', detail: 'Detalle nuevo', status: 'Pendiente' })
+  assert.throws(() => mergeConcurrentState(base, current, conflicting), error => error.statusCode === 409 && error.code === 'STATE_WRITE_CONFLICT' && error.conflictPath.includes('.time'))
+})
+
+test('rechaza eliminar un registro que fue modificado en otra sesión', () => {
+  const base = { history: [{ id: 'record-1', detail: 'Original' }] }
+  const current = { history: [{ id: 'record-1', detail: 'Actualizado' }] }
+  const incoming = { history: [] }
+
+  assert.throws(() => mergeConcurrentState(base, current, incoming), /también cambiaron en otra sesión/)
+})
 
 test('deduplica una misma alta por taskId aunque llegue repetida o en otro equipo', () => {
   const repeated = { taskId: 'task-1', serviceId: 'service-1', service: 'Mantenimiento', time: '10:00' }
@@ -69,7 +111,9 @@ test('la interfaz bloquea doble guardado y descarta instantáneas encoladas obso
   assert.match(source, /const stateSaveGenerationRef = useRef\(0\)/)
   assert.match(source, /if \(saveGeneration !== stateSaveGenerationRef\.current\) return/)
   assert.match(source, /invalidatePendingSaves: \(\) => \{ stateSaveGenerationRef\.current \+= 1 \}/)
+  assert.match(source, /stateRepository\.save\(\{ revision: stateRevisionRef\.current, \.\.\.\(base \? \{ base \} : \{\}\), \.\.\.snapshot \}\)/)
+  assert.match(source, /payload\.state && currentSnapshotRef\.current === serializedStateSnapshot/)
   assert.match(source, /if \(!taskEditor \|\| taskEditorSaveGuardRef\.current\) return/)
   assert.match(source, /disabled=\{taskEditorSaving\}/)
-  assert.match(api, /payload\.code = 'STATE_REVISION_CONFLICT'/)
+  assert.match(api, /payload\.code = error\.code \|\| 'STATE_REVISION_CONFLICT'/)
 })
