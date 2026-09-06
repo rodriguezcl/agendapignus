@@ -30,6 +30,7 @@ import { stateRepository } from './infrastructure/repositories/state-repository.
 import { auditRepository } from './infrastructure/repositories/audit-repository.mjs'
 import { customerImportRepository } from './infrastructure/repositories/customer-import-repository.mjs'
 import { useSessionLifecycle } from './features/auth/application/useSessionLifecycle.js'
+import { readSettledLoginCredentials } from './features/auth/application/login-autofill.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -1028,30 +1029,30 @@ function technicianTimeConflicts(teams, employees = []) {
 /** Pantalla aislada de autenticación; la contraseña sólo viaja al endpoint de acceso. */
 function Login({ onLogin, initialError = '' }) {
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState(initialError)
   const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [requestingReset, setRequestingReset] = useState(false)
+  const submissionInProgressRef = useRef(false)
   const submit = async event => {
     event.preventDefault()
-    // Safari puede mostrar valores autocompletados antes de sincronizarlos con
-    // React. Leer el formulario al enviar garantiza que viajen esos valores.
+    if (submissionInProgressRef.current) return
+    submissionInProgressRef.current = true
     const form = event.currentTarget
-    const submittedEmail = form.elements.email.value.trim()
-    const submittedPassword = form.elements.password.value
     setError('')
     setMessage('')
     setSubmitting(true)
     try {
-      const response = await fetchWithTimeout('/api/auth/login', { credentials: 'same-origin', method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: submittedEmail, password: submittedPassword }) }, AUTH_LOGIN_TIMEOUT_MS)
+      const credentials = await readSettledLoginCredentials(form)
+      const response = await fetchAuthWithRetry('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(credentials) }, AUTH_LOGIN_TIMEOUT_MS)
       const data = await response.json().catch(() => ({ error: 'La base de datos todavía está iniciando. Esperá un momento e intentá nuevamente.' }))
       if (!response.ok) throw new Error(data.error || 'No se pudo iniciar sesión.')
-      setPassword('')
+      form.reset()
+      setEmail('')
       onLogin(data.user, data.state)
     } catch (loginError) { setError(loginError.message) }
-    finally { setSubmitting(false) }
+    finally { submissionInProgressRef.current = false; setSubmitting(false) }
   }
   const requestPasswordReset = async () => {
     setError(''); setMessage('')
@@ -1065,7 +1066,7 @@ function Login({ onLogin, initialError = '' }) {
     } catch (requestError) { setError(requestError.message) }
     finally { setRequestingReset(false) }
   }
-  return <main className="login-page"><form className="login-card" onSubmit={submit}><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">ACCESO SEGURO</p><h1>Ingresá a Agenda técnica</h1><p>Usá el correo y la contraseña definidos por el administrador.</p><label htmlFor="login-email"><RequiredLabel>Correo electrónico</RequiredLabel><input id="login-email" name="email" required autoCapitalize="none" autoCorrect="off" autoComplete="username" type="email" value={email} onChange={event => setEmail(event.target.value)} /></label><label htmlFor="login-password"><RequiredLabel>Contraseña</RequiredLabel></label><div className="password-field"><input id="login-password" name="password" aria-label="Contraseña" required autoComplete="current-password" minLength="8" type={showPassword ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} /><button type="button" className="password-visibility" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}><Icon name="eye" size={17} /><span>{showPassword ? 'Ocultar' : 'Mostrar'}</span></button></div><button type="button" className="forgot-password" disabled={requestingReset || submitting} onClick={requestPasswordReset}>{requestingReset ? 'Enviando solicitud...' : 'Olvidé mi contraseña'}</button>{error && <p className="login-error" role="alert">{error}</p>}{message && <p className="login-success" role="status">{message}</p>}<button className="primary" disabled={submitting || requestingReset}>{submitting ? 'Verificando acceso...' : 'Iniciar sesión'}</button><small>El acceso se cierra automáticamente al finalizar la sesión.</small></form></main>
+  return <main className="login-page"><form className="login-card" onSubmit={submit}><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">ACCESO SEGURO</p><h1>Ingresá a Agenda técnica</h1><p>Usá el correo y la contraseña definidos por el administrador.</p><label htmlFor="login-email"><RequiredLabel>Correo electrónico</RequiredLabel><input id="login-email" name="email" required autoCapitalize="none" autoCorrect="off" autoComplete="username" type="email" defaultValue="" onInput={event => setEmail(event.currentTarget.value)} /></label><label htmlFor="login-password"><RequiredLabel>Contraseña</RequiredLabel></label><div className="password-field"><input id="login-password" name="password" aria-label="Contraseña" required autoComplete="current-password" minLength="8" type={showPassword ? 'text' : 'password'} defaultValue="" /><button type="button" className="password-visibility" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}><Icon name="eye" size={17} /><span>{showPassword ? 'Ocultar' : 'Mostrar'}</span></button></div><button type="button" className="forgot-password" disabled={requestingReset || submitting} onClick={requestPasswordReset}>{requestingReset ? 'Enviando solicitud...' : 'Olvidé mi contraseña'}</button>{error && <p className="login-error" role="alert">{error}</p>}{message && <p className="login-success" role="status">{message}</p>}<button className="primary" disabled={submitting || requestingReset}>{submitting ? 'Verificando acceso...' : 'Iniciar sesión'}</button><small>El acceso se cierra automáticamente al finalizar la sesión.</small></form></main>
 }
 
 export default function App() {
