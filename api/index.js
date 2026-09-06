@@ -3,6 +3,7 @@ const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
 const { appendAudit, database, readExportState, readRevision, readState, replaceCollections } = require('./_lib/database.cjs')
 const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
+const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./_lib/service-advance.cjs')
 const {
   assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
@@ -499,6 +500,39 @@ async function clearDailyAgenda(sql, user) {
   })
 }
 
+async function handleServiceAdvance(req, res, sql, user, decision = '') {
+  const { recordId } = requestBody(req)
+  const administratorDecision = Boolean(decision)
+  if (administratorDecision && user.roleCode !== 'administrator') return send(res, 403, { error: 'Esta decisión es exclusiva del rol Administrador.' })
+  if (!administratorDecision && user.roleCode !== 'technician') return send(res, 403, { error: 'Esta solicitud es exclusiva del rol técnico.' })
+  try {
+    const result = await sql.begin(async transaction => {
+      await transaction`set local lock_timeout = '5s'`
+      await transaction`set local statement_timeout = '15s'`
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const rows = await transaction`select data from pignus_work_history where id = ${String(recordId || '')} for update`
+      const previous = rows[0]?.data
+      const next = administratorDecision ? resolveServiceAdvance(previous, user, decision) : requestServiceAdvance(previous, user)
+      if (next === previous) return { record: previous, revision: await readRevision(transaction) }
+      await transaction`update pignus_work_history set data = ${transaction.json(next)} where id = ${String(next.id)}`
+      const agendaRows = await transaction`select data from pignus_agendas where id = 'current' for update`
+      if (agendaRows[0]?.data) {
+        const nextAgenda = synchronizeAgendaAdvance(agendaRows[0].data, next)
+        await transaction`update pignus_agendas set data = ${transaction.json(nextAgenda)}, updated_at = now() where id = 'current'`
+      }
+      const action = administratorDecision ? (decision === 'approved' ? 'Aprobó adelanto de servicio' : 'Denegó adelanto de servicio') : 'Solicitó adelanto de servicio'
+      await appendAudit(transaction, [auditEntry(user, action, 'Servicio / historial', String(next.id), previous, next)])
+      const revisionRows = await transaction`update pignus_preferences set value = (value::integer + 1)::text, updated_at = now() where key = 'state_revision' returning value`
+      return { record: next, revision: Number(revisionRows[0]?.value || 0) }
+    })
+    return send(res, 200, { record: user.roleCode === 'technician' ? technicianSafeRecord(result.record) : result.record, revision: result.revision })
+  } catch (error) {
+    const databaseBusy = error.code === '55P03' || error.code === '57014'
+    return send(res, databaseBusy ? 503 : (error.statusCode || 400), { error: databaseBusy ? 'La base de datos está ocupada. Intentá nuevamente.' : (error.message || 'No se pudo procesar la solicitud de adelanto.') })
+  }
+}
+
 async function handleClearAgenda(req, res, sql, user) {
   if (!userCan(user, 'agenda')) return send(res, 403, { error: 'No tenés permiso para limpiar la agenda del día.' })
   const revision = await clearDailyAgenda(sql, user)
@@ -616,6 +650,9 @@ module.exports = async function handler(req, res) {
       return rows[0] ? send(res, 200, { record: rows[0].data }) : send(res, 404, { error: 'El registro de auditoría no existe.' })
     }
     if (req.method === 'POST' && route === '/technician/status') return await handleTechnicianStatus(req, res, sql, session.user)
+    if (req.method === 'POST' && route === '/technician/advance-request') return await handleServiceAdvance(req, res, sql, session.user)
+    if (req.method === 'POST' && route === '/admin/advance-request/approve') return await handleServiceAdvance(req, res, sql, session.user, 'approved')
+    if (req.method === 'POST' && route === '/admin/advance-request/deny') return await handleServiceAdvance(req, res, sql, session.user, 'denied')
     if (['GET', 'POST', 'DELETE'].includes(req.method) && route === '/customers/import') return await handleCustomerImport(req, res, sql, session.user)
     if (req.method === 'GET' && route.startsWith('/vehicle-control/photo/')) return await handleVehicleControlPhoto(req, res, sql, session.user, decodeURIComponent(route.slice('/vehicle-control/photo/'.length)))
     if (['GET', 'POST'].includes(req.method) && route.startsWith('/vehicle-insurance/')) return await handleVehicleInsurance(req, res, sql, session.user, decodeURIComponent(route.slice('/vehicle-insurance/'.length)))

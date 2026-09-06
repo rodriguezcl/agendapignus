@@ -31,6 +31,7 @@ import { auditRepository } from './infrastructure/repositories/audit-repository.
 import { customerImportRepository } from './infrastructure/repositories/customer-import-repository.mjs'
 import { useSessionLifecycle } from './features/auth/application/useSessionLifecycle.js'
 import { readSettledLoginCredentials } from './features/auth/application/login-autofill.mjs'
+import { serviceAdvanceRepository } from './infrastructure/repositories/service-advance-repository.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -1069,6 +1070,37 @@ function Login({ onLogin, initialError = '' }) {
   return <main className="login-page"><form className="login-card" onSubmit={submit}><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">ACCESO SEGURO</p><h1>Ingresá a Agenda técnica</h1><p>Usá el correo y la contraseña definidos por el administrador.</p><label htmlFor="login-email"><RequiredLabel>Correo electrónico</RequiredLabel><input id="login-email" name="email" required autoCapitalize="none" autoCorrect="off" autoComplete="username" type="email" defaultValue="" onInput={event => setEmail(event.currentTarget.value)} /></label><label htmlFor="login-password"><RequiredLabel>Contraseña</RequiredLabel></label><div className="password-field"><input id="login-password" name="password" aria-label="Contraseña" required autoComplete="current-password" minLength="8" type={showPassword ? 'text' : 'password'} defaultValue="" /><button type="button" className="password-visibility" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}><Icon name="eye" size={17} /><span>{showPassword ? 'Ocultar' : 'Mostrar'}</span></button></div><button type="button" className="forgot-password" disabled={requestingReset || submitting} onClick={requestPasswordReset}>{requestingReset ? 'Enviando solicitud...' : 'Olvidé mi contraseña'}</button>{error && <p className="login-error" role="alert">{error}</p>}{message && <p className="login-success" role="status">{message}</p>}<button className="primary" disabled={submitting || requestingReset}>{submitting ? 'Verificando acceso...' : 'Iniciar sesión'}</button><small>El acceso se cierra automáticamente al finalizar la sesión.</small></form></main>
 }
 
+function showAdvanceRequestConfirmation(record, onRequested) {
+  const layer = document.createElement('div'); layer.className = 'modal-layer'; layer.setAttribute('role', 'presentation')
+  const modal = document.createElement('div'); modal.className = 'modal confirm-modal'; modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-label', 'Confirmar solicitud de adelanto')
+  const icon = document.createElement('span'); icon.className = 'confirm-icon'; icon.textContent = '↥'
+  const title = document.createElement('h2'); title.textContent = 'Adelantar servicio'
+  const detail = document.createElement('p'); detail.textContent = `¿Querés solicitar a Administración que habilite ahora el servicio de ${record.client}? Está programado para las ${record.time || record.scheduledTime}.`
+  const error = document.createElement('div'); error.className = 'notice confirm-error'; error.hidden = true; error.setAttribute('role', 'alert')
+  const actions = document.createElement('div'); actions.className = 'confirm-actions'
+  const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'secondary'; cancel.textContent = 'Cancelar'
+  const confirm = document.createElement('button'); confirm.type = 'button'; confirm.className = 'primary'; confirm.textContent = 'Confirmar solicitud'
+  const close = () => layer.remove()
+  cancel.onclick = close
+  confirm.onclick = async () => {
+    confirm.disabled = true; cancel.disabled = true; confirm.textContent = 'Enviando…'; error.hidden = true
+    try {
+      const data = await serviceAdvanceRepository.request(record.id)
+      await onRequested(data.record)
+      close()
+    } catch (requestError) {
+      error.textContent = requestError.message || 'No se pudo enviar la solicitud.'
+      error.hidden = false; confirm.disabled = false; cancel.disabled = false; confirm.textContent = 'Confirmar solicitud'
+    }
+  }
+  layer.addEventListener('mousedown', event => { if (event.target === layer) close() })
+  const escape = event => { if (event.key === 'Escape') { close(); document.removeEventListener('keydown', escape) } }
+  document.addEventListener('keydown', escape)
+  const observer = new MutationObserver(() => { if (!layer.isConnected) { document.removeEventListener('keydown', escape); observer.disconnect() } })
+  observer.observe(document.body, { childList: true })
+  actions.append(cancel, confirm); modal.append(icon, title, detail, error, actions); layer.append(modal); document.body.append(layer)
+}
+
 export default function App() {
   const [module, setModule] = useState('dashboard')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -1650,6 +1682,7 @@ export default function App() {
   const refreshRemoteState = async () => {
     applyRemoteState(await stateRepository.load())
   }
+  globalThis.__pignusRefreshRemoteState = refreshRemoteState
   const endInvalidatedSession = message => {
     if (loggingOutRef.current) return
     if (stateSaveTimerRef.current) window.clearTimeout(stateSaveTimerRef.current)
@@ -2126,19 +2159,19 @@ function ServiceExtraFields({ className, task, service, onChange, buffered = fal
       title: enabled ? '' : 'Este campo no aplica para el tipo de servicio o la ubicación seleccionados.'
     }
     if (key === 'form') {
-      return <label key={key}>{label}<select value={enabled ? normalizeFormValue(task?.form) : ''} disabled={!enabled} title={props.title} onChange={event => onChange({ form: event.target.value })}><option value="">{enabled ? 'Seleccionar' : 'No aplica'}</option>{enabled && FORM_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
+      return <label className="service-extra-field service-extra-form" key={key}>{label}<select value={enabled ? normalizeFormValue(task?.form) : ''} disabled={!enabled} title={props.title} onChange={event => onChange({ form: event.target.value })}><option value="">{enabled ? 'Seleccionar' : 'No aplica'}</option>{enabled && FORM_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
     }
     if (key === 'paymentMethod') {
       const paymentValue = enabled ? task?.paymentMethod || '' : ''
       const legacyValue = paymentValue && !PAYMENT_OPTIONS.includes(paymentValue) ? paymentValue : ''
-      return <label key={key}>{label}<select value={paymentValue} disabled={!enabled} title={props.title} onChange={event => onChange({ paymentMethod: event.target.value, ...(!event.target.value || event.target.value === 'No aplica' ? { amount: '' } : {}) })}><option value="">{enabled ? 'Seleccionar' : 'No aplica'}</option>{legacyValue && <option value={legacyValue}>{legacyValue}</option>}{enabled && PAYMENT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
+      return <label className="service-extra-field" key={key}>{label}<select value={paymentValue} disabled={!enabled} title={props.title} onChange={event => onChange({ paymentMethod: event.target.value, ...(!event.target.value || event.target.value === 'No aplica' ? { amount: '' } : {}) })}><option value="">{enabled ? 'Seleccionar' : 'No aplica'}</option>{legacyValue && <option value={legacyValue}>{legacyValue}</option>}{enabled && PAYMENT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
     }
     if (key === 'amount') {
       const required = task?.paymentMethod !== 'A confirmar'
       const amountProps = { ...props, inputMode: 'decimal', required, placeholder: required ? 'Ingresar monto' : 'Opcional' }
-      return <label key={key}>{required ? <RequiredLabel>{label}</RequiredLabel> : label}<CurrencyInput {...amountProps} buffered={buffered} onCommit={value => onChange({ amount: value })} /></label>
+      return <label className="service-extra-field" key={key}>{required ? <RequiredLabel>{label}</RequiredLabel> : label}<CurrencyInput {...amountProps} buffered={buffered} onCommit={value => onChange({ amount: value })} /></label>
     }
-    return <label key={key}>{label}{buffered
+    return <label className="service-extra-field" key={key}>{label}{buffered
       ? <BufferedInput {...props} onCommit={value => onChange({ [key]: value })} />
       : <input {...props} onChange={event => onChange({ [key]: event.target.value })} />}</label>
   })}</div></>
@@ -3756,9 +3789,20 @@ function PasswordResetReminder() {
   return <section className="password-reset-reminders" aria-label="Solicitudes de cambio de contraseña">{error && <p className="login-error" role="alert">{error}</p>}{requests.map(request => <article className="password-reset-reminder" key={request.id}><Icon name="settings" /><div><b>Solicitud de cambio de contraseña</b><span><strong>{request.email}</strong> solicita actualizar su contraseña.</span><small>{new Date(request.requestedAt).toLocaleString('es-AR')}</small></div><div className="password-reset-actions"><button className="secondary" type="button" onClick={() => window.dispatchEvent(new Event('pignus:open-employees'))}>Gestionar en Empleados</button><button className="primary" type="button" onClick={() => resolve(request.id)}>Marcar resuelta</button></div></article>)}</section>
 }
 
+function ServiceAdvanceRequestsReminder({ history = [] }) {
+  const [decision, setDecision] = useState(null)
+  const pending = history.filter(record => record.advanceRequest?.status === 'pending')
+  const resolve = async () => {
+    await serviceAdvanceRepository.resolve(decision.record.id, decision.value)
+    await globalThis.__pignusRefreshRemoteState?.()
+  }
+  if (!pending.length && !decision) return null
+  return <><section className="service-advance-reminders" role="alert" aria-label="Solicitudes para adelantar servicios">{pending.map(record => <article key={record.id}><Icon name="history" size={19} /><div><b>Solicitud para adelantar servicio</b><span><strong>{record.advanceRequest.requestedByName}</strong> solicita habilitar {record.service} de {record.client} antes de las {record.advanceRequest.scheduledTime || record.time}.</span><small>Solicitado el {prettyReportDateTime(record.advanceRequest.requestedAt)}</small></div><div className="service-advance-actions"><button className="secondary" type="button" onClick={() => setDecision({ record, value: 'denied' })}>Denegar</button><button className="primary" type="button" onClick={() => setDecision({ record, value: 'approved' })}>Aprobar adelanto</button></div></article>)}</section>{decision && <Confirm title={decision.value === 'approved' ? 'Aprobar adelanto' : 'Denegar adelanto'} detail={decision.value === 'approved' ? `¿Confirmás que ${decision.record.advanceRequest.requestedByName} puede realizar ahora el servicio de ${decision.record.client}? El horario se actualizará al momento de la aprobación.` : `¿Confirmás que el servicio de ${decision.record.client} debe conservar su horario de ${decision.record.advanceRequest.scheduledTime || decision.record.time}?`} action={resolve} confirmLabel={decision.value === 'approved' ? 'Sí, habilitar ahora' : 'Sí, denegar'} close={() => setDecision(null)} />}</>
+}
+
 function Dashboard({ history, services, vehicles = [] }) {
   vehicles = vehicles.length ? vehicles : globalThis.__pignusVehicles || []
-  return <DashboardView history={history} services={services} vehicles={vehicles} />
+  return <DashboardView history={history} services={services} vehicles={vehicles} isAdministrator={globalThis.__pignusCurrentUser?.roleCode === 'administrator'} />
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
   const records = history.filter(record => record.date?.startsWith(month)).sort((a, b) => b.date.localeCompare(a.date))
   const installations = records.filter(record => record.service?.toLowerCase().includes('instalación'))
@@ -3785,8 +3829,8 @@ function SubscriberReservationReminders({ history = [] }) {
   return <section className="subscriber-reservation-reminders" role="alert">{reservations.map(record => <article key={record.id}><Icon name="calendar" size={19} /><div><b>Reserva pendiente de vincular con un PIG</b><span>{record.client} · {prettyDate(record.date)} a las {record.time || record.scheduledTime || 'hora a confirmar'}. Seleccioná el abonado importado antes del servicio.</span></div></article>)}</section>
 }
 
-function DashboardView({ history, services, vehicles = [] }) {
-  return <><PasswordResetReminder /><VehicleInsuranceReminders vehicles={vehicles} /><SubscriberReservationReminders history={history} /><DashboardStatusView history={history} services={services} vehicles={vehicles} /></>
+function DashboardView({ history, services, vehicles = [], isAdministrator = false }) {
+  return <>{isAdministrator && <ServiceAdvanceRequestsReminder history={history} />}<PasswordResetReminder /><VehicleInsuranceReminders vehicles={vehicles} /><SubscriberReservationReminders history={history} /><DashboardStatusView history={history} services={services} vehicles={vehicles} /></>
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
   const year = month.slice(0, 4)
   const records = history.filter(record => record.date?.startsWith(month)).sort((a, b) => b.date.localeCompare(a.date))
@@ -4047,7 +4091,20 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
       if (help?.parentNode) help.parentNode.insertBefore(banner, help.nextSibling)
     }
     cards.forEach((card, index) => {
-      card.classList.toggle('vehicle-control-card', Boolean(services[index]?.vehicleControl))
+      const serviceRecord = services[index]
+      card.classList.toggle('vehicle-control-card', Boolean(serviceRecord?.vehicleControl))
+      card.querySelector('.technician-advance-request')?.remove()
+      const actions = card.querySelector('.technician-actions')
+      const advanceStatus = serviceRecord?.advanceRequest?.status
+      const canRequestAdvance = view === 'agenda' && actions && !serviceRecord?.vehicleControl && serviceRecord?.date === today && !serviceHasStarted(serviceRecord, clock)
+      if (canRequestAdvance) {
+        const button = document.createElement('button')
+        button.type = 'button'; button.className = 'secondary technician-advance-request'
+        button.textContent = advanceStatus === 'pending' ? 'Solicitud de adelanto pendiente' : advanceStatus === 'denied' ? 'Solicitud de adelanto denegada' : 'Adelantar servicios'
+        button.disabled = advanceStatus === 'pending' || advanceStatus === 'denied'
+        button.onclick = () => showAdvanceRequestConfirmation(serviceRecord, async updated => setHistory(previous => previous.map(item => String(item.id) === String(updated.id) ? updated : item)))
+        actions.querySelector('.primary')?.insertAdjacentElement('afterend', button)
+      }
       const badge = card.querySelector('.work-status')
       if (!badge) return
       badge.classList.remove('tech-status-completado', 'tech-status-cancelado', 'tech-status-reprogramacion')
@@ -4076,9 +4133,9 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
     })
     return () => {
       document.querySelector('.vehicle-control-blocker-banner')?.remove()
-      cards.forEach(card => { const team = directChildWithClass(card, 'technician-team'); if (team) card.removeChild(team); card.classList.remove('blocked-by-vehicle-control', 'vehicle-control-card') })
+      cards.forEach(card => { const team = directChildWithClass(card, 'technician-team'); if (team) card.removeChild(team); card.querySelector('.technician-advance-request')?.remove(); card.classList.remove('blocked-by-vehicle-control', 'vehicle-control-card') })
     }
-  }, [services, view, today])
+  }, [services, view, today, clock, setHistory])
   const saveStatus = async () => {
     const { record, type } = confirm
     const updated = await submitTechnicianStatus({ recordId: record.id, type, observation, vehicleMileage: vehicleMileageRef.current, vehiclePhoto: vehiclePhotoRef.current, vehicleControl: Boolean(record.vehicleControl && type === 'Completado') })
