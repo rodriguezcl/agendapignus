@@ -19,6 +19,7 @@ import { compactVehiclePhoto } from './image-upload.mjs'
 import { serviceHasStarted } from './service-start.mjs'
 import { DEFAULT_SERVICE_ESTIMATED_MINUTES, MAX_SERVICE_ESTIMATED_MINUTES, normalizeServiceEstimatedMinutes, removeOverlappingDefaultSlots, serviceScheduleConflicts, taskOccupiedInterval } from './service-scheduling.mjs'
 import { mergeImportedCustomers } from './customer-import.mjs'
+import { sortServicesAlphabetically } from './service-order.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -1987,7 +1988,7 @@ export default function App() {
 }
 
 function Agenda({ date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady, authUser }) {
-  const SERVICES = services.filter(service => service.status === 'Activo').map(service => service.name)
+  const SERVICES = sortServicesAlphabetically(services.filter(service => service.status === 'Activo')).map(service => service.name)
   useEffect(() => {
     const tasks = teams.flatMap(team => team.tasks || [])
     const rows = document.querySelectorAll('.team-card .task-row')
@@ -2026,7 +2027,7 @@ function AgendaLayout({ date, setDate, teams, setTeams, activeTechs, customers, 
   const [preview, setPreview] = useState(false)
   const [techOpen, setTechOpen] = useState(null)
   const [filter, setFilter] = useState('')
-  const activeServices = services.filter(service => service.status === 'Activo' && service.category !== 'vehicle-control')
+  const activeServices = sortServicesAlphabetically(services.filter(service => service.status === 'Activo' && service.category !== 'vehicle-control'))
   const serviceForTask = task => services.find(service => String(service.id) === String(task.serviceId)) || services.find(service => normalizeServiceName(service.name) === normalizeServiceName(task.service))
   const selectTaskService = (teamIndex, taskIndex, selectedId) => { const selected = services.find(service => String(service.id) === String(selectedId)); updateTask(teamIndex, taskIndex, selected ? { serviceId: selected.id, service: selected.name, installationZone: serviceCode(selected) === 'alarm-installation' ? teams[teamIndex]?.tasks[taskIndex]?.installationZone : '' } : { serviceId: '', service: '', installationZone: '' }) }
   const message = `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n${teams.map((team, index) => `👥 *Equipo ${index + 1}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${team.tasks.map(task => `🕒 ${task.time || '--:--'} Hs\n🛠️ *${task.service || 'Servicio'}*\n👤 *${task.client || 'Cliente'}*${task.detail ? `\n📝 *Detalle:* ${task.detail}` : ''}${task.address ? `\n📍 *Dirección:* ${task.address}` : ''}${task.phone ? `\n📞 *Contacto:* ${task.phone}` : ''}`).join('\n\n')}`).join('\n\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n')}`
@@ -2055,7 +2056,7 @@ function AgendaWorkspace({ date, setDate, teams, setTeams, activeTechs, customer
     button.onclick = saveAgenda
     group.insertBefore(button, group.lastElementChild)
   })
-  const activeServices = services.filter(service => service.status === 'Activo' && service.category !== 'vehicle-control')
+  const activeServices = sortServicesAlphabetically(services.filter(service => service.status === 'Activo' && service.category !== 'vehicle-control'))
   const serviceForTask = task => services.find(service => String(service.id) === String(task.serviceId)) || services.find(service => normalizeServiceName(service.name) === normalizeServiceName(task.service))
   const selectTaskService = (teamIndex, taskIndex, selectedId) => { const selected = services.find(service => String(service.id) === String(selectedId)); updateTask(teamIndex, taskIndex, selected ? { serviceId: selected.id, service: selected.name, installationZone: serviceCode(selected) === 'alarm-installation' ? teams[teamIndex]?.tasks[taskIndex]?.installationZone : '' } : { serviceId: '', service: '', installationZone: '' }) }
   const validateAgenda = () => {
@@ -2462,7 +2463,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     copyButton.addEventListener('click', intercept, true)
     return () => copyButton.removeEventListener('click', intercept, true)
   }, [date, teams, history, activeTechs])
-  const activeServices = services.filter(service => service.status === 'Activo')
+  const activeServices = sortServicesAlphabetically(services.filter(service => service.status === 'Activo'))
   const serviceForTask = task => resolveServiceForTask(task, services)
   const selectTaskService = (teamIndex, taskIndex, selectedId) => {
     const selected = services.find(service => String(service.id) === String(selectedId))
@@ -2882,7 +2883,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     const nextPosition = sourceRange ? (source.scrollLeft / sourceRange) * targetRange : 0
     if (Math.abs(target.scrollLeft - nextPosition) > 0.5) target.scrollLeft = nextPosition
   }
-  const activeServices = services.filter(service => service.status === 'Activo')
+  const activeServices = sortServicesAlphabetically(services.filter(service => service.status === 'Activo'))
   const serviceForWeeklyTask = task => resolveServiceForTask(task, services)
   const selectWeeklyService = (day, teamIndex, taskIndex, selectedId) => {
     const selected = services.find(service => String(service.id) === String(selectedId))
