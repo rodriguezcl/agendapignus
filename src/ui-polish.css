@@ -2082,6 +2082,48 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
   white-space: nowrap;
 }
 
+.history-concurrency-warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 0 18px;
+  color: #74351f;
+  background: #fff3ed;
+  border-color: #e9aa94;
+}
+
+.history-concurrency-warning > span {
+  line-height: 1.45;
+}
+
+.history-concurrency-warning > button {
+  flex: 0 0 auto;
+  min-width: max-content;
+}
+
+.history-detail.concurrently-updated .history-actions,
+.history-detail.concurrently-updated .detail-edit {
+  opacity: .62;
+}
+
+.app-shell[data-theme='dark'] .history-concurrency-warning {
+  color: #ffd9cc;
+  background: #49271f;
+  border-color: #91513d;
+}
+
+@media (max-width: 640px) {
+  .history-concurrency-warning {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .history-concurrency-warning > button {
+    width: 100%;
+  }
+}
+
 html.modal-open,
 html.modal-open body {
   overscroll-behavior: none;

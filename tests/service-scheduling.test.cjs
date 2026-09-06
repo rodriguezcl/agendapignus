@@ -144,6 +144,25 @@ test('la API rechaza duraciones inválidas y solapamientos por equipo', () => {
   ] }], weekly: {} } }), /conflicto de horarios/)
 })
 
+test('la API rechaza que un técnico tenga servicios superpuestos en equipos diferentes', () => {
+  const service = { id: 's1', code: 's1', name: 'Servicio', description: '', estimatedMinutes: 60, status: 'Activo' }
+  const employee = { id: 'tech-1', firstName: 'Técnico', lastName: 'Uno', email: 'tecnico@pignus.test', roleId: 'r1' }
+  const state = {
+    roles: [{ id: 'r1', code: 'technician', name: 'Técnico' }], employees: [employee], services: [service], vehicles: [], customers: [], reviews: [], history: [],
+    agenda: { date: '2099-01-05', teams: [], weekly: { '2099-01-05': { teams: [
+      { teamId: 'team-1', label: 'Equipo 1', memberIds: ['tech-1'], members: ['Técnico Uno'], tasks: [{ taskId: 'task-1', time: '10:00', serviceId: 's1', service: 'Servicio', estimatedMinutes: 60 }] },
+      { teamId: 'team-2', label: 'Equipo 2', memberIds: ['tech-1'], members: ['Técnico Uno'], tasks: [{ taskId: 'task-2', time: '10:30', serviceId: 's1', service: 'Servicio', estimatedMinutes: 60 }] }
+    ] } } }
+  }
+
+  assert.throws(() => validateState(state), /Técnico Uno tiene servicios incompatibles.*Equipo 1.*Equipo 2/)
+  assert.doesNotThrow(() => validateState({
+    ...state,
+    employees: [employee, { ...employee, id: 'tech-2', email: 'tecnico2@pignus.test' }],
+    agenda: { ...state.agenda, weekly: { '2099-01-05': { teams: state.agenda.weekly['2099-01-05'].teams.map((team, index) => index ? { ...team, memberIds: ['tech-2'], members: ['Técnico Dos'] } : team) } } }
+  }))
+})
+
 test('la API admite una reserva PIG sin crear un cliente y exige sus datos provisorios', () => {
   const service = { id: 's1', code: 'alarm-installation', name: 'Instalación de alarma', description: '', estimatedMinutes: 150, status: 'Activo' }
   const reservation = { id: 'h1', date: '2026-09-03', serviceId: 's1', service: service.name, customerId: '', client: 'NUEVO ABONADO', clientNameAtService: 'NUEVO ABONADO', address: 'Dirección provisoria', phone: '3515550000', status: 'Pendiente', time: '09:00', estimatedMinutes: 150, subscriberReservation: true }
