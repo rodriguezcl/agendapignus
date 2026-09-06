@@ -3,7 +3,35 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const { deduplicateScheduledTasks, normalizeStateForSave } = require('../api/_lib/core.cjs')
-const { mergeConcurrentState } = require('../api/_lib/state-merge.cjs')
+const { concurrentStateChanged, mergeConcurrentState } = require('../api/_lib/state-merge.cjs')
+const { stateConcurrencyEvent } = require('../api/_lib/concurrency-observability.cjs')
+
+test('la telemetría de concurrencia es estructurada y no incluye datos funcionales', () => {
+  const event = stateConcurrencyEvent('state_write_conflict', {
+    actorRole: 'administrator',
+    expectedRevision: 8,
+    currentRevision: 9,
+    conflictPath: 'agenda.2026-09.2026-09-07[team:team-1]',
+    customer: 'dato que no debe registrarse'
+  }, new Date('2026-09-06T18:00:00.000Z'))
+
+  assert.deepEqual(event, {
+    timestamp: '2026-09-06T18:00:00.000Z',
+    scope: 'state_concurrency',
+    event: 'state_write_conflict',
+    code: 'STATE_WRITE_CONFLICT',
+    actorRole: 'administrator',
+    expectedRevision: 8,
+    currentRevision: 9,
+    conflictPath: 'agenda.2026-09.2026-09-07[team:team-1]'
+  })
+})
+
+test('detecta una fusión real aunque la colección privada no esté en el cliente', () => {
+  const base = { services: [{ id: 'service-1', name: 'Original' }] }
+  assert.equal(concurrentStateChanged(base, { ...base, reviews: [{ id: 'private-review' }] }), false)
+  assert.equal(concurrentStateChanged(base, { services: [{ id: 'service-1', name: 'Actualizado' }], reviews: [] }), true)
+})
 
 test('fusiona altas simultáneas sobre registros diferentes', () => {
   const base = { services: [{ id: 'service-1', name: 'Base' }] }

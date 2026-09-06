@@ -13,7 +13,8 @@ const { ensureVehicleControlService } = require('./api/_lib/vehicle-control-serv
 const { assertNoPastWeeklyServiceAdditions } = require('./api/_lib/past-agenda.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
-const { mergeConcurrentState } = require('./api/_lib/state-merge.cjs')
+const { concurrentStateChanged, mergeConcurrentState } = require('./api/_lib/state-merge.cjs')
+const { logStateConcurrencyEvent } = require('./api/_lib/concurrency-observability.cjs')
 
 // API local: Vite reenvía las rutas /api a este proceso durante el desarrollo.
 const port = Number(process.env.PIGNUS_PORT || 3001)
@@ -1124,8 +1125,8 @@ function saveState(state, user) {
   const expectedRevision = Number(state.revision)
   const actualRevision = currentStateRevision()
   const base = state.base && typeof state.base === 'object' ? state.base : null
-  const merged = Boolean(base && expectedRevision !== actualRevision)
   const previousState = readState()
+  const merged = Boolean(base && concurrentStateChanged(base, previousState))
   state = authorizedIncomingState(state, user)
   if (base) state = mergeConcurrentState(base, previousState, state)
   else if (!Number.isInteger(expectedRevision) || expectedRevision !== actualRevision) {
@@ -1898,12 +1899,26 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     if (user.roleCode === 'technician') return send(res, 403, { error: 'El rol técnico no puede modificar la agenda.' })
+    let attemptedRevision = null
     readJson(req, 15_000_000).then(state => {
+      attemptedRevision = state.revision
       const result = saveState(state, user)
+      if (result.merged) logStateConcurrencyEvent('state_write_merged', {
+        actorRole: user.roleCode,
+        expectedRevision: state.revision,
+        currentRevision: result.revision
+      })
       send(res, 200, { ok: true, revision: result.revision, merged: result.merged, state: readStateForUser(user) })
     }).catch(error => {
       console.error(error)
       const status = error?.statusCode || 400
+      if (status === 409) logStateConcurrencyEvent('state_write_conflict', {
+        actorRole: user.roleCode,
+        code: error?.code || 'STATE_REVISION_CONFLICT',
+        expectedRevision: attemptedRevision,
+        currentRevision: currentStateRevision(),
+        conflictPath: error?.conflictPath
+      })
       send(res, status, {
         error: error?.message || 'No se pudieron guardar los datos.',
         ...(status === 409 ? { code: error?.code || 'STATE_REVISION_CONFLICT', conflictPath: error?.conflictPath, revision: currentStateRevision() } : {})

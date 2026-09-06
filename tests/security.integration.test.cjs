@@ -102,6 +102,7 @@ test.before(async () => {
   roles.forEach(role => upsertJson(db, 'roles', 'id', role))
   const employees = [
     { id: 'qa-admin', firstName: 'QA', lastName: 'Admin', name: 'QA Admin', roleId: 1, role: 'Administrador', email: 'qa-admin@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') },
+    { id: 'qa-admin-secondary', firstName: 'QA', lastName: 'Admin Secundario', name: 'QA Admin Secundario', roleId: 1, role: 'Administrador', email: 'qa-admin-secondary@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') },
     { id: 'qa-employees', firstName: 'QA', lastName: 'Empleados', name: 'QA Empleados', roleId: 'qa-employees-role', role: 'QA Empleados', email: 'qa-employees@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') },
     { id: 'qa-settings', firstName: 'QA', lastName: 'Configuración', name: 'QA Configuración', roleId: 'qa-settings-role', role: 'QA Configuración', email: 'qa-settings@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') },
     { id: 'qa-weekly', firstName: 'QA', lastName: 'Semanal', name: 'QA Semanal', roleId: 'qa-weekly-role', role: 'QA Semanal', email: 'qa-weekly@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') },
@@ -367,6 +368,24 @@ test('fusiona dos escrituras concurrentes sobre registros diferentes', async () 
   assert.equal(concurrentIds.length, 2)
 })
 
+test('conserva una ráfaga multiusuario de altas independientes', async () => {
+  const cookies = await Promise.all([login('qa-admin@pignus.test'), login('qa-admin-secondary@pignus.test')])
+  const baseline = await state(cookies[0])
+  const ids = Array.from({ length: 12 }, (_, index) => `qa-stress-${index + 1}`)
+  const responses = await Promise.all(ids.map((id, index) => api('/api/state', cookies[index % cookies.length], {
+    method: 'PUT',
+    body: JSON.stringify({
+      ...baseline,
+      base: baseline,
+      services: [...baseline.services, { id, name: `Servicio de estrés ${index + 1}`, description: '', estimatedMinutes: 60, status: 'Activo' }]
+    })
+  })))
+
+  assert.equal(responses.every(response => response.status === 200), true)
+  const persisted = await state(cookies[0])
+  assert.deepEqual(persisted.services.filter(service => ids.includes(service.id)).map(service => service.id).sort(), ids.sort())
+})
+
 test('rechaza dos escrituras concurrentes sobre el mismo campo', async () => {
   const cookie = await login('qa-admin@pignus.test')
   const baseline = await state(cookie)
@@ -381,6 +400,25 @@ test('rechaza dos escrituras concurrentes sobre el mismo campo', async () => {
   const conflict = await responses.find(response => response.status === 409).json()
   assert.equal(conflict.code, 'STATE_WRITE_CONFLICT')
   assert.match(conflict.conflictPath, /services\[id:qa-service\]\.description/)
+})
+
+test('una ráfaga sobre el mismo campo confirma una sola escritura', async () => {
+  const cookies = await Promise.all([login('qa-admin@pignus.test'), login('qa-admin-secondary@pignus.test')])
+  const baseline = await state(cookies[0])
+  const target = baseline.services.find(service => service.id === 'qa-service')
+  const responses = await Promise.all(Array.from({ length: 8 }, (_, index) => api('/api/state', cookies[index % cookies.length], {
+    method: 'PUT',
+    body: JSON.stringify({
+      ...baseline,
+      base: baseline,
+      services: baseline.services.map(service => service.id === target.id ? { ...service, description: `Colisión ${index + 1}` } : service)
+    })
+  })))
+
+  assert.equal(responses.filter(response => response.status === 200).length, 1)
+  assert.equal(responses.filter(response => response.status === 409).length, 7)
+  const conflicts = await Promise.all(responses.filter(response => response.status === 409).map(response => response.json()))
+  assert.equal(conflicts.every(conflict => conflict.code === 'STATE_WRITE_CONFLICT'), true)
 })
 
 test('revoca inmediatamente una sesión al desactivar el empleado', async () => {
