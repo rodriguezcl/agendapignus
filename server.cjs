@@ -12,6 +12,7 @@ const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./api/_lib/
 const { ensureVehicleControlService } = require('./api/_lib/vehicle-control-service.cjs')
 const { assertNoPastWeeklyServiceAdditions } = require('./api/_lib/past-agenda.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
+const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
 
 // API local: Vite reenvía las rutas /api a este proceso durante el desarrollo.
 const port = Number(process.env.PIGNUS_PORT || 3001)
@@ -1192,7 +1193,7 @@ function saveState(state, user) {
     const members = [...new Map([...byId, ...byName].map(employee => [String(employee.id), employee])).values()]
     return { ...team, teamId: team.teamId || stableTeamId(month || 'current', index), memberIds: members.map(employee => employee.id), members: members.map(employee => employee.name), tasks: (team.tasks || []).map(normalizeReference) }
   }
-  const normalizeTeams = (teams, month) => dedupeAgendaTeams((teams || []).map((team, index) => normalizeTeam(team, index, month)))
+  const normalizeTeams = (teams, month) => deduplicateScheduledTasks(dedupeAgendaTeams((teams || []).map((team, index) => normalizeTeam(team, index, month))))
   const incomingAgenda = state.agenda || {}
   const normalizedWeekly = Object.fromEntries(Object.entries(incomingAgenda.weekly || {}).map(([key, value]) => {
     if (key === '_monthlyTeams') return [key, Object.fromEntries(Object.entries(value || {}).map(([month, config]) => [month, { ...config, teams: normalizeTeams(config?.teams, month) }]))]
@@ -1896,7 +1897,14 @@ const server = http.createServer((req, res) => {
     readJson(req, 15_000_000).then(state => {
       const revision = saveState(state, user)
       send(res, 200, { ok: true, revision })
-    }).catch(error => { console.error(error); send(res, error?.statusCode || 400, { error: error?.message || 'No se pudieron guardar los datos.' }) })
+    }).catch(error => {
+      console.error(error)
+      const status = error?.statusCode || 400
+      send(res, status, {
+        error: error?.message || 'No se pudieron guardar los datos.',
+        ...(status === 409 ? { code: 'STATE_REVISION_CONFLICT', revision: currentStateRevision() } : {})
+      })
+    })
     return
   }
   if (!url.pathname.startsWith('/api/') && serveApplication(req, res, url.pathname)) return

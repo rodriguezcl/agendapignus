@@ -345,6 +345,28 @@ test('rechaza escrituras con una revisión antigua', async () => {
   assert.equal(first.status, 200)
   const stale = await api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(original) })
   assert.equal(stale.status, 409)
+  const conflict = await stale.json()
+  assert.equal(conflict.code, 'STATE_REVISION_CONFLICT')
+  assert.equal(Number.isInteger(conflict.revision), true)
+})
+
+test('serializa dos escrituras concurrentes y confirma solamente una revisión', async () => {
+  const cookie = await login('qa-admin@pignus.test')
+  const baseline = await state(cookie)
+  const left = { ...baseline, services: [...baseline.services, { id: 'qa-concurrent-left', name: 'Servicio concurrente izquierdo', description: '', estimatedMinutes: 60, status: 'Activo' }] }
+  const right = { ...baseline, services: [...baseline.services, { id: 'qa-concurrent-right', name: 'Servicio concurrente derecho', description: '', estimatedMinutes: 60, status: 'Activo' }] }
+
+  const responses = await Promise.all([
+    api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(left) }),
+    api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(right) })
+  ])
+  assert.deepEqual(responses.map(response => response.status).sort(), [200, 409])
+  const rejected = responses.find(response => response.status === 409)
+  assert.equal((await rejected.json()).code, 'STATE_REVISION_CONFLICT')
+
+  const persisted = await state(cookie)
+  const concurrentIds = persisted.services.filter(service => String(service.id).startsWith('qa-concurrent-')).map(service => service.id)
+  assert.equal(concurrentIds.length, 1)
 })
 
 test('revoca inmediatamente una sesión al desactivar el empleado', async () => {

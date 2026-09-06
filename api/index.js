@@ -361,7 +361,13 @@ async function handleSaveState(req, res, sql, user) {
     return send(res, 200, { ok: true, revision })
   } catch (error) {
     console.error('No se pudo guardar el estado:', error.message)
-    return send(res, error.statusCode || 400, { error: error.message || 'No se pudieron guardar los datos.' })
+    const status = error.statusCode || 400
+    const payload = { error: error.message || 'No se pudieron guardar los datos.' }
+    if (status === 409) {
+      payload.code = 'STATE_REVISION_CONFLICT'
+      try { payload.revision = await readRevision(sql) } catch { /* El mensaje funcional sigue siendo suficiente. */ }
+    }
+    return send(res, status, payload)
   }
 }
 

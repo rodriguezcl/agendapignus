@@ -33,6 +33,7 @@ import { useSessionLifecycle } from './features/auth/application/useSessionLifec
 import { readSettledLoginCredentials } from './features/auth/application/login-autofill.mjs'
 import { serviceAdvanceRepository } from './infrastructure/repositories/service-advance-repository.mjs'
 import { serviceRecordFingerprint } from './domain/history/service-concurrency.mjs'
+import { recoverStateRevisionConflict } from './features/state/application/state-save-conflict.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -1128,6 +1129,7 @@ export default function App() {
   const stateRevisionRef = useRef(null)
   const pendingStateSaves = useRef(0)
   const stateSaveQueue = useRef(Promise.resolve())
+  const stateSaveGenerationRef = useRef(0)
   const stateSaveTimerRef = useRef(null)
   const loggingOutRef = useRef(false)
   const initialRemoteStateRef = useRef(null)
@@ -1734,6 +1736,7 @@ export default function App() {
     // Desde que existe un cambio local pendiente (incluido el debounce) se
     // bloquea la recarga periódica para que no restaure la versión anterior.
     pendingStateSaves.current += 1
+    const saveGeneration = stateSaveGenerationRef.current
     let saveStarted = false
     const timer = setTimeout(() => {
       stateSaveTimerRef.current = null
@@ -1744,6 +1747,7 @@ export default function App() {
       saveStarted = true
       const snapshot = stateSnapshot
       stateSaveQueue.current = stateSaveQueue.current.catch(() => {}).then(async () => {
+        if (saveGeneration !== stateSaveGenerationRef.current) return
         const payload = await stateRepository.save({ revision: stateRevisionRef.current, ...snapshot })
         stateRevisionRef.current = Number(payload.revision)
         lastPersistedSnapshotRef.current = serializedStateSnapshot
@@ -1754,18 +1758,13 @@ export default function App() {
           endInvalidatedSession(error.message)
           return
         }
-        if (error.status === 409) {
-          try {
-            const remoteState = await stateRepository.load()
-            if (!loggingOutRef.current) {
-              applyRemoteState(remoteState)
-              setNotice('No se guardó el último cambio porque otra sesión había actualizado la información. La pantalla ya muestra el estado real; volvé a realizar la acción.')
-            }
-            return
-          } catch {
-            // Se conserva el aviso original si tampoco es posible recuperar el estado.
-          }
-        }
+        if (await recoverStateRevisionConflict(error, {
+          invalidatePendingSaves: () => { stateSaveGenerationRef.current += 1 },
+          loadRemoteState: stateRepository.load,
+          applyRemoteState,
+          notify: setNotice,
+          cancelled: () => loggingOutRef.current
+        })) return
         setNotice(`No se guardó el último cambio. ${error.message || 'Comprobá la conexión antes de continuar.'}`)
       })
         .finally(() => { pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1) })
@@ -2842,6 +2841,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
   const [techPicker, setTechPicker] = useState(null)
   const [techFilter, setTechFilter] = useState('')
   const [taskEditor, setTaskEditor] = useState(null)
+  const [taskEditorSaving, setTaskEditorSaving] = useState(false)
+  const taskEditorSaveGuardRef = useRef(false)
   const [taskMove, setTaskMove] = useState(null)
   const [taskRemoval, setTaskRemoval] = useState(null)
   const [teamRemoval, setTeamRemoval] = useState(null)
@@ -3024,6 +3025,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
   })
   const openTaskEditor = (day, teamIndex, taskIndex) => {
     if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
+    taskEditorSaveGuardRef.current = false
+    setTaskEditorSaving(false)
     const teamSnapshot = dayPlan(day).teams[teamIndex]
     const task = teamSnapshot?.tasks[taskIndex]
     if (task) setTaskEditor({ day, teamIndex, taskIndex, teamId: teamSnapshot.teamId, teamSnapshot: { ...teamSnapshot, tasks: [...(teamSnapshot.tasks || [])] }, taskId: task.taskId, draft: taskWithServiceEstimate(task, serviceForWeeklyTask(task)) })
@@ -3042,9 +3045,16 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
   const beginDraftNewCustomer = value => updateTaskDraft({ newCustomer: true, subscriberReservation: false, customerId: '', client: value, clientAccount: '', clientNameAtService: normalizeCustomerName(value), address: '', phone: '' })
   const beginDraftSubscriberReservation = value => updateTaskDraft(subscriberReservationPatch(value, authUser))
   const saveTaskEditor = () => {
-    if (!taskEditor) return
+    if (!taskEditor || taskEditorSaveGuardRef.current) return
+    taskEditorSaveGuardRef.current = true
+    setTaskEditorSaving(true)
+    const rejectSave = message => {
+      taskEditorSaveGuardRef.current = false
+      setTaskEditorSaving(false)
+      setNotice(message)
+    }
     const { day, teamIndex, taskIndex, teamId, teamSnapshot, taskId } = taskEditor
-    if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
+    if (dayHasFinished(day)) { rejectSave(finishedDayMessage(day)); return }
     let draft = taskEditor.draft
     const advance = advancedGuardForDay(day)
     if (advance) {
@@ -3055,24 +3065,24 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     const missing = weeklyTaskMissingFields(draft, serviceForWeeklyTask(draft))
     if (!draft.vehicleControl && requiresPaymentAmount(draft, serviceForWeeklyTask(draft)) && !missing.includes('monto')) missing.push('monto')
     if (missing.length) {
-      setNotice(`Completá ${missing.join(', ')} antes de guardar el servicio.`)
+      rejectSave(`Completá ${missing.join(', ')} antes de guardar el servicio.`)
       return
     }
     if (draft.newCustomer) {
       const created = createQuickClient(draft, customers)
-      if (!created) { setNotice('Completá nombre, dirección y contacto del cliente nuevo.'); return }
+      if (!created) { rejectSave('Completá nombre, dirección y contacto del cliente nuevo.'); return }
       draft = created.task
       setCustomers(previous => previous.some(customer => customer.customerId === created.customer.customerId) ? previous : [...previous, created.customer])
     }
     const draftStart = serviceTimeInMinutes(draft.time)
     if (day === currentLocalDate() && !historyRecordForTask(draft, day, operationalHistory) && draftStart !== null && draftStart < nextLiveScheduleMinute()) {
-      setNotice('Elegí un horario futuro desde el próximo cuarto de hora disponible.')
+      rejectSave('Elegí un horario futuro desde el próximo cuarto de hora disponible.')
       return
     }
     const editorHours = hoursForDay(day)
     const editorInterval = taskOccupiedInterval(taskWithServiceEstimate(draft, serviceForWeeklyTask(draft)))
     if (editorHours && editorInterval?.serviceEnd > serviceTimeInMinutes(editorHours.max)) {
-      setNotice(`La franja estimada termina a las ${editorInterval.serviceEndTime}, fuera del horario habilitado (${editorHours.label}).`)
+      rejectSave(`La franja estimada termina a las ${editorInterval.serviceEndTime}, fuera del horario habilitado (${editorHours.label}).`)
       return
     }
     const editedPlan = dayPlan(day)
@@ -3083,7 +3093,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
       return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(task)) : null
     }).filter(Boolean) }])[0]
     if (gapConflict) {
-      setNotice(planningConflictMessage(day, editedTeam, teamIndex, gapConflict))
+      rejectSave(planningConflictMessage(day, editedTeam, teamIndex, gapConflict))
       return
     }
     const tracedDraft = stampServiceRecord({ ...draft, ...applicableServiceExtras(draft, serviceForWeeklyTask(draft)) }, authUser)
@@ -3704,7 +3714,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
       if (!task || !hours) return null
       return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskEditor(null)}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button type="button" className="modal-close" aria-label="Cerrar edición del servicio" title="Cerrar" onClick={() => setTaskEditor(null)}><Icon name="close" size={18} /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>{task.vehicleControl ? 'Control semanal de vehículo' : `Servicio ${taskIndex + 1}`}</h2><p className="weekly-modal-team">{taskEditor.teamSnapshot?.label || `Equipo ${teamIndex + 1}`} · {taskEditor.teamSnapshot?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTaskDraft({ time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" disabled={task.vehicleControl} value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectDraftService(event.target.value)}>{task.vehicleControl && serviceForWeeklyTask(task) ? <option value={serviceForWeeklyTask(task).id}>{serviceForWeeklyTask(task).name}</option> : <><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</>}</select></label></div>{task.vehicleControl ? <label className="vehicle-control-fixed-duration"><span><RequiredLabel>Tiempo estimado</RequiredLabel></span><input value="15 minutos" readOnly /></label> : <ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTaskDraft({ estimatedMinutes, estimatedMinutesCustomized: true })} />}{task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))}</small>}{taskConflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>{scheduleConflictForTaskMessage(taskConflict, taskIndex)}</span></p>}{task.vehicleControl ? <div className="vehicle-control-planning-fields"><label>Vehículo<input value={task.client || vehicleLabel(task)} readOnly /></label><label><RequiredLabel>Técnico a cargo</RequiredLabel><select value={task.technicianIds?.[0] || ''} onChange={event => { const technician = activeTechs.find(item => String(item.id) === event.target.value); updateTaskDraft({ technicianIds: technician ? [technician.id] : [], technicians: technician ? [technician.name] : [] }) }}><option value="">Seleccionar técnico</option>{activeTechs.map(technician => <option key={technician.id} value={technician.id}>{technician.name}</option>)}</select></label><p>Podés reemplazar al responsable para este control ante una contingencia. La asignación mensual predeterminada no se modifica.</p></div> : <>{serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input aria-required="true" type="radio" name={`weekly-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTaskDraft({ installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
 <CustomerAutocomplete className="weekly-customer-search" value={task.client} customerId={task.customerId} customers={customers} subscriberReservation={task.subscriberReservation} onTextCommit={commitDraftCustomerText} onCustomerSelect={selectDraftCustomer} onAddCustomer={beginDraftNewCustomer} onReserveSubscriber={beginDraftSubscriberReservation} />
-<label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.address} onChange={event => updateTaskDraft({ address: event.target.value })} /></label><label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.phone} onChange={event => updateTaskDraft({ phone: event.target.value })} /></label><p className="weekly-customer-data-note">{task.subscriberReservation ? 'Estos datos son provisorios y no crean un CLI. Vinculá el PIG importado cuando esté disponible.' : task.newCustomer ? 'Completá dirección y contacto para crear el cliente CLI al guardar.' : 'Dirección y contacto se administran desde el módulo Abonados y clientes.'}</p><label><RequiredLabel>Detalle</RequiredLabel><BufferedTextarea aria-required="true" value={task.detail} onCommit={value => updateTaskDraft({ detail: value })} /></label><ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} onChange={updateTaskDraft} /></>}</div><div className="modal-actions"><button className="secondary" onClick={() => setTaskEditor(null)}>Cancelar</button><button className="primary" onClick={saveTaskEditor}><Icon name="check" size={16} />Guardar servicio</button></div></section></div>
+<label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.address} onChange={event => updateTaskDraft({ address: event.target.value })} /></label><label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.phone} onChange={event => updateTaskDraft({ phone: event.target.value })} /></label><p className="weekly-customer-data-note">{task.subscriberReservation ? 'Estos datos son provisorios y no crean un CLI. Vinculá el PIG importado cuando esté disponible.' : task.newCustomer ? 'Completá dirección y contacto para crear el cliente CLI al guardar.' : 'Dirección y contacto se administran desde el módulo Abonados y clientes.'}</p><label><RequiredLabel>Detalle</RequiredLabel><BufferedTextarea aria-required="true" value={task.detail} onCommit={value => updateTaskDraft({ detail: value })} /></label><ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} onChange={updateTaskDraft} /></>}</div><div className="modal-actions"><button className="secondary" disabled={taskEditorSaving} onClick={() => setTaskEditor(null)}>Cancelar</button><button className="primary" disabled={taskEditorSaving} onClick={saveTaskEditor}><Icon name="check" size={16} />{taskEditorSaving ? 'Guardando…' : 'Guardar servicio'}</button></div></section></div>
     })()}
     <div className="weekly-scroll-top" ref={weeklyTopScrollRef} tabIndex={0} aria-label="Desplazamiento horizontal superior" onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyBoardRef.current)}><div style={{ width: `${weeklyScrollWidth}px` }} /></div>
     <div className="weekly-board" ref={weeklyBoardRef} onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyTopScrollRef.current)}>
