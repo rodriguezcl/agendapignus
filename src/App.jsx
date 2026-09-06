@@ -1,25 +1,34 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './components/ui/Icon.jsx'
+import RequiredLabel from './presentation/components/forms/RequiredLabel.jsx'
+import ServiceTypes from './features/services/presentation/ServiceTypes.jsx'
 import { HelpShell } from './HelpCenter.jsx'
 import { visibleAnnualMonthLabels } from './annual-chart.mjs'
-import { reportDownloadName, triggerBrowserDownload } from './browser-download.mjs'
-import { blockingOverdueVehicleControl, filterTechnicianHistory, overdueVehicleControls, technicianAgendaServices, technicianRecordResolved, technicianTeamLabel } from './technician-history.mjs'
-import { AUTH_LOGIN_TIMEOUT_MS, fetchAuthWithRetry, fetchWithTimeout } from './fetch-timeout.mjs'
-import { sortOperationalHistory } from './history-order.mjs'
-import { submitTechnicianStatus } from './technician-status.mjs'
-import { countYearToDateAlarmInstallations, countYearToDateCompletedRecords, pendingDefinitionRecords } from './dashboard-metrics.mjs'
-import { advancedSaturdayGuardMessage, findAdvancedSaturdayGuard, suppressAdvancedSaturdayAvailability } from './weekend-guard.mjs'
-import { annualGuardForDate, DEFAULT_2026_GUARD_ROTATION, firstSaturdayOfYear } from './annual-guards.mjs'
-import { monthlyTeamRotation } from './monthly-team-rotation.mjs'
-import { holidayDecisionForDate, holidayDecisionLabel, holidayForDate, holidayIsBlocked, readNationalHolidayCache, writeNationalHolidayCache } from './holidays.mjs'
-import { buildVehicleControlRecords, ensureVehicleControlService, monthFridays, rescheduleVehicleControlRecords, suggestedVehicleAssignments, vehicleControlTask, vehicleLabel } from './vehicle-controls.mjs'
-import { setVehicleControlAssignedRecords, vehicleControlIsOpen, vehicleControlWindowLabel } from './vehicle-control-window.mjs'
-import { appendConfigurationHistory, guardConfigurationSnapshot, teamConfigurationSnapshot, vehicleConfigurationSnapshot } from './configuration-history.mjs'
-import { compactVehiclePhoto } from './image-upload.mjs'
-import { serviceHasStarted } from './service-start.mjs'
-import { DEFAULT_SERVICE_ESTIMATED_MINUTES, MAX_SERVICE_ESTIMATED_MINUTES, normalizeServiceEstimatedMinutes, removeOverlappingDefaultSlots, serviceScheduleConflicts, taskOccupiedInterval } from './service-scheduling.mjs'
-import { mergeImportedCustomers } from './customer-import.mjs'
-import { sortServicesAlphabetically } from './service-order.mjs'
+import { reportDownloadName, triggerBrowserDownload } from './infrastructure/browser/browser-download.mjs'
+import { blockingOverdueVehicleControl, filterTechnicianHistory, overdueVehicleControls, technicianAgendaServices, technicianRecordResolved, technicianTeamLabel } from './domain/technicians/technician-history.mjs'
+import { AUTH_LOGIN_TIMEOUT_MS, fetchAuthWithRetry, fetchWithTimeout } from './infrastructure/http/fetch-timeout.mjs'
+import { sortOperationalHistory } from './domain/history/history-order.mjs'
+import { submitTechnicianStatus } from './infrastructure/http/technician-status.mjs'
+import { countYearToDateAlarmInstallations, countYearToDateCompletedRecords, pendingDefinitionRecords } from './domain/dashboard/dashboard-metrics.mjs'
+import { advancedSaturdayGuardMessage, findAdvancedSaturdayGuard, suppressAdvancedSaturdayAvailability } from './domain/agenda/weekend-guard.mjs'
+import { annualGuardForDate, DEFAULT_2026_GUARD_ROTATION, firstSaturdayOfYear } from './domain/agenda/annual-guards.mjs'
+import { monthlyTeamRotation } from './domain/agenda/monthly-team-rotation.mjs'
+import { holidayDecisionForDate, holidayDecisionLabel, holidayForDate, holidayIsBlocked } from './domain/agenda/holidays.mjs'
+import { readNationalHolidayCache, writeNationalHolidayCache } from './infrastructure/browser/holiday-cache.mjs'
+import { buildVehicleControlRecords, ensureVehicleControlService, monthFridays, rescheduleVehicleControlRecords, suggestedVehicleAssignments, vehicleControlTask, vehicleLabel } from './domain/vehicles/vehicle-controls.mjs'
+import { setVehicleControlAssignedRecords, vehicleControlIsOpen, vehicleControlWindowLabel } from './domain/vehicles/vehicle-control-window.mjs'
+import { appendConfigurationHistory, guardConfigurationSnapshot, teamConfigurationSnapshot, vehicleConfigurationSnapshot } from './domain/configuration/configuration-history.mjs'
+import { compactVehiclePhoto } from './infrastructure/media/image-upload.mjs'
+import { serviceHasStarted } from './domain/agenda/service-start.mjs'
+import { DEFAULT_SERVICE_ESTIMATED_MINUTES, MAX_SERVICE_ESTIMATED_MINUTES, normalizeServiceEstimatedMinutes, removeOverlappingDefaultSlots, serviceScheduleConflicts, taskOccupiedInterval } from './domain/agenda/service-scheduling.mjs'
+import { mergeImportedCustomers } from './domain/customers/customer-import.mjs'
+import { sortServicesAlphabetically } from './domain/services/service-order.mjs'
+import { serviceCode } from './domain/services/service.mjs'
+import { normalizeCustomerName, normalizeSearchText, normalizeServiceName } from './domain/shared/normalization.mjs'
+import { DEFAULT_FEATURE_PERMISSIONS, DEFAULT_MODULE_PERMISSIONS, FEATURE_PERMISSIONS, MODULE_PERMISSIONS, normalizeRoleName, resolvedRolePermissions, roleCode } from './domain/access/permissions.mjs'
+import { stateRepository } from './infrastructure/repositories/state-repository.mjs'
+import { auditRepository } from './infrastructure/repositories/audit-repository.mjs'
+import { customerImportRepository } from './infrastructure/repositories/customer-import-repository.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -31,10 +40,6 @@ const nextLiveScheduleMinute = (now = new Date()) => {
 }
 import './ui-polish.css'
 import './login.css'
-
-function RequiredLabel({ children }) {
-  return <span className="field-label-text">{children}<span className="required-mark" aria-hidden="true">*</span></span>
-}
 
 class TechnicianPortalErrorBoundary extends React.Component {
   constructor(props) {
@@ -720,61 +725,12 @@ const customerLinkPatch = (task, customer, user) => ({
     reservationLinkedBy: serviceActor(user)
   } : {})
 })
-// Catálogo único: evita que un módulo quede fuera de la matriz de permisos.
-const MODULE_PERMISSIONS = [
-  ['dashboard', 'Menú principal', 'Ver indicadores y resumen operativo'],
-  ['weekly', 'Agenda semanal', 'Planificar los servicios de toda la semana'],
-  ['agenda', 'Agenda del día', 'Crear y editar equipos y servicios'],
-  ['history', 'Historial', 'Consultar y gestionar trabajos registrados'],
-  ['accounts', 'Abonados y clientes', 'Consultar y administrar abonados y clientes'],
-  ['employees', 'Empleados', 'Administrar técnicos y accesos'],
-  ['services', 'Tipo de servicio', 'Administrar el catálogo de servicios'],
-  ['vehicles', 'Vehículos', 'Administrar la flota de la empresa'],
-  ['settings', 'Configuración', 'Modificar roles y permisos'],
-  ['audit', 'Auditoría', 'Consultar acciones y accesos del sistema']
-]
-const DEFAULT_MODULE_PERMISSIONS = Object.fromEntries(MODULE_PERMISSIONS.map(([key]) => [key, false]))
-const FEATURE_PERMISSIONS = [
-  ['weekly', 'weeklyTeams', 'Equipos del mes', 'Definir la conformación mensual de los equipos'],
-  ['weekly', 'weeklyHours', 'Horarios del mes', 'Modificar los horarios predeterminados del mes'],
-  ['weekly', 'weeklyVehicles', 'Vehículos del mes', 'Asignar responsables y generar controles vehiculares'],
-  ['weekly', 'weeklyGuards', 'Guardias del año', 'Configurar la rotación anual de guardias'],
-  ['history', 'historyManage', 'Gestionar historial', 'Editar, completar, cancelar, reprogramar o eliminar registros'],
-  ['accounts', 'accountsEdit', 'Crear y editar', 'Crear clientes y modificar sus datos'],
-  ['accounts', 'accountsDelete', 'Eliminar registros', 'Eliminar clientes o abonados sin referencias'],
-  ['accounts', 'accountsImport', 'Importar abonados', 'Importar el archivo maestro de cuentas']
-]
-const DEFAULT_FEATURE_PERMISSIONS = Object.fromEntries(FEATURE_PERMISSIONS.map(([, key]) => [key, false]))
-
 // Versión histórica preservada temporalmente durante la migración a components/ui/Icon.jsx.
 function LegacyIcon({ name, size = 18 }) {
   const paths = { menu: 'M3 6h18M3 12h18M3 18h18', calendar: 'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2', users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m18-8a4 4 0 1 0 0-8m-2 2a4 4 0 1 0-8 0', accounts: 'M4 4h16v16H4zM8 8h8M8 12h8M8 16h5', settings: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm0-13v2m0 15v2m9.5-9.5h-2m-15 0h-2m16.2-6.7-1.4 1.4M6.7 17.3l-1.4 1.4m13.4 0-1.4-1.4M6.7 6.7 5.3 5.3', copy: 'M9 8h10v12H9zM5 16H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1', eye: 'M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6', plus: 'M12 5v14M5 12h14', edit: 'm4 16.5-.5 4 4-.5L19 8.5l-3.5-3.5L4 16.5ZM13.5 7l3.5 3.5', trash: 'M4 7h16m-10 4v6m4-6v6M9 7l1-3h4l1 3m-9 0 1 14h10l1-14', upload: 'M12 16V3m0 0L7 8m5-5 5 5M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5', search: 'm21 21-4.5-4.5m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0', moon: 'M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z', sun: 'M12 3v2m0 14v2M3 12h2m14 0h2m-3.6-5.4 1.4-1.4M5.2 18.8l1.4-1.4m0-10.8L5.2 5.2m13.6 13.6-1.4-1.4M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0', close: 'M6 6l12 12M18 6 6 18', check: 'm5 12 4 4L19 6', lock: 'M6 10V7a6 6 0 0 1 12 0v3M5 10h14v11H5z' }
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] || paths.settings} /></svg>
 }
 const initials = name => name.split(' ').map(x => x[0]).slice(0, 2).join('').toUpperCase()
-const normalizeRoleName = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
-const roleCode = role => role?.code || ({ administrador: 'administrator', tecnico: 'technician', coordinador: 'coordinator', usuario: 'user' }[normalizeRoleName(role?.name)] || `role-${role?.id}`)
-const resolvedRolePermissions = role => {
-  const code = roleCode(role)
-  const explicit = role?.permissions || {}
-  const resolved = { ...DEFAULT_MODULE_PERMISSIONS, ...DEFAULT_FEATURE_PERMISSIONS, ...explicit }
-  FEATURE_PERMISSIONS.forEach(([moduleKey, featureKey]) => {
-    if (code === 'administrator') resolved[featureKey] = true
-    else if (explicit[featureKey] == null) resolved[featureKey] = false
-  })
-  if (code === 'administrator') Object.keys(resolved).forEach(key => { resolved[key] = true })
-  return resolved
-}
-const normalizeServiceName = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
-// Las búsquedas operativas no dependen de tildes, mayúsculas, espacios ni
-// signos. "instalacion", "Instalación" y "INSTALACION" son equivalentes.
-const normalizeSearchText = value => String(value ?? '')
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g, '')
-  .toLocaleLowerCase('es')
-  .replace(/[^a-z0-9]/g, '')
-const normalizeCustomerName = value => String(value ?? '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR')
-
 function CustomerAutocomplete({ value = '', customerId = '', customers = [], subscriberReservation = false, onTextCommit, onCustomerSelect, onAddCustomer, onReserveSubscriber, className = '' }) {
   const [query, setQuery] = useState(value)
   const [open, setOpen] = useState(false)
@@ -856,12 +812,6 @@ function CustomerAutocomplete({ value = '', customerId = '', customers = [], sub
   </div>
 }
 
-const formatServiceEstimatedTime = value => {
-  const minutes = normalizeServiceEstimatedMinutes(value)
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  return [hours ? `${hours} h` : '', remainingMinutes ? `${remainingMinutes} min` : ''].filter(Boolean).join(' ')
-}
 const resolveServiceForTask = (task, services = []) => services.find(service => String(service.id) === String(task?.serviceId)) || services.find(service => normalizeServiceName(service.name) === normalizeServiceName(task?.service))
 const serviceEstimateForTask = (task, service) => task?.estimatedMinutesCustomized === false
   ? normalizeServiceEstimatedMinutes(service?.estimatedMinutes)
@@ -881,7 +831,6 @@ function ServiceEstimatedDurationField({ value, onChange, className = '' }) {
   }
   return <div className={`task-duration-field ${className}`.trim()}><span><RequiredLabel>Tiempo estimado</RequiredLabel></span><div><label><input aria-label="Horas estimadas del servicio" type="number" inputMode="numeric" min="0" max="12" step="1" value={hours} onChange={event => update(event.target.value, minutes)} /><small>h</small></label><label><select aria-label="Minutos estimados del servicio" value={minutes} onChange={event => update(hours, event.target.value)}><option value="0">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option></select><small>min</small></label></div></div>
 }
-const serviceCode = service => service?.code || (normalizeServiceName(service?.name) === 'instalacion de alarma' ? 'alarm-installation' : `service-${service?.id}`)
 const PAYMENT_SERVICE_NAMES = new Set([
   'instalacion de camara',
   'instalacion de camaras',
@@ -1697,10 +1646,7 @@ export default function App() {
     setDatabaseReady(true)
   }
   const refreshRemoteState = async () => {
-    const response = await fetchWithTimeout('/api/state', { cache: 'no-store', credentials: 'same-origin' })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(data.error || 'No se pudo actualizar la información guardada.')
-    applyRemoteState(data)
+    applyRemoteState(await stateRepository.load())
   }
   const endInvalidatedSession = message => {
     if (loggingOutRef.current) return
@@ -1732,11 +1678,7 @@ export default function App() {
       applyRemoteState(initialState)
       return
     }
-    fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' }).then(async response => {
-      if (response.ok) return response.json()
-      const payload = await response.json().catch(() => ({}))
-      throw new Error(payload.error || 'No se pudo cargar la información autorizada para esta sesión.')
-    }).then(applyRemoteState).catch(error => {
+    stateRepository.load().then(applyRemoteState).catch(error => {
       setDatabaseError(error.message || 'No se pudo conectar con la base de datos.')
     })
   }, [authUser])
@@ -1766,17 +1708,7 @@ export default function App() {
       saveStarted = true
       const snapshot = stateSnapshot
       stateSaveQueue.current = stateSaveQueue.current.catch(() => {}).then(async () => {
-        const response = await fetch('/api/state', {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ revision: stateRevisionRef.current, ...snapshot })
-        })
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}))
-          const error = new Error(payload.error || 'No se pudieron guardar los últimos cambios.')
-          error.status = response.status
-          throw error
-        }
-        const payload = await response.json()
+        const payload = await stateRepository.save({ revision: stateRevisionRef.current, ...snapshot })
         stateRevisionRef.current = Number(payload.revision)
         lastPersistedSnapshotRef.current = serializedStateSnapshot
         remoteConflictRevisionRef.current = null
@@ -1788,9 +1720,7 @@ export default function App() {
         }
         if (error.status === 409) {
           try {
-            const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' })
-            if (!response.ok) throw new Error('No se pudo recuperar el estado actual.')
-            const remoteState = await response.json()
+            const remoteState = await stateRepository.load()
             if (!loggingOutRef.current) {
               applyRemoteState(remoteState)
               setNotice('No se guardó el último cambio porque otra sesión había actualizado la información. La pantalla ya muestra el estado real; volvé a realizar la acción.')
@@ -1826,14 +1756,16 @@ export default function App() {
       if (document.activeElement?.closest('.weekly-board input, .weekly-board select, .weekly-board textarea, .team-card input, .team-card select, .team-card textarea')) return
       refreshing = true
       try {
-        const response = await fetch('/api/state/revision', { cache: 'no-store', credentials: 'same-origin' })
-        if (response.status === 401) {
-          const data = await response.json().catch(() => ({}))
-          if (!stopped) endInvalidatedSession(data.error)
-          return
+        let data
+        try {
+          data = await stateRepository.revision()
+        } catch (error) {
+          if (error.status === 401) {
+            if (!stopped) endInvalidatedSession(error.message)
+            return
+          }
+          throw error
         }
-        if (!response.ok) throw new Error('No se pudo consultar la revisión.')
-        const data = await response.json()
         const remoteRevision = Number(data.revision)
         if (!stopped && remoteRevision !== Number(stateRevisionRef.current)) {
           const hasLocalChanges = pendingStateSaves.current > 0 || currentSnapshotRef.current !== lastPersistedSnapshotRef.current
@@ -1841,9 +1773,7 @@ export default function App() {
             if (remoteConflictRevisionRef.current !== remoteRevision) setNotice('Hay cambios guardados desde otra sesión. Recargá la página para continuar sin sobrescribirlos.')
             remoteConflictRevisionRef.current = remoteRevision
           } else {
-            const stateResponse = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' })
-            if (!stateResponse.ok) throw new Error('No se pudo sincronizar el estado actualizado.')
-            const remoteState = await stateResponse.json()
+            const remoteState = await stateRepository.load()
             if (!stopped) {
               applyRemoteState(remoteState)
               setNotice('La información se actualizó con los cambios de otra sesión.')
@@ -3908,9 +3838,7 @@ function AuditPage({ user, onBack, onOpenMenu, logout }) {
   const loadAudit = async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/audit?limit=100', { cache: 'no-store', credentials: 'same-origin' })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data.error || 'No se pudo cargar el registro de auditoría.')
+      const data = await auditRepository.list(100)
       setRecords(Array.isArray(data.records) ? data.records : [])
       setError('')
     } catch (loadError) {
@@ -3945,9 +3873,8 @@ function AuditPage({ user, onBack, onOpenMenu, logout }) {
   }, [selected])
   const openDetail = async record => {
     try {
-      const response = await fetch(`/api/audit/${encodeURIComponent(record.id)}`, { cache: 'no-store', credentials: 'same-origin' })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok || !data.record) throw new Error(data.error || 'No se pudo cargar el detalle de auditoría.')
+      const data = await auditRepository.findById(record.id)
+      if (!data.record) throw new Error('No se pudo cargar el detalle de auditoría.')
       setSelected(data.record)
       setError('')
     } catch (detailError) {
@@ -4036,16 +3963,11 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
       if (stopped || refreshing || document.visibilityState === 'hidden') return
       refreshing = true
       try {
-        const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' })
-        if (response.status === 401) {
-          const data = await response.json().catch(() => ({}))
-          if (!stopped) sessionInvalidated(data.error)
-          return
-        }
-        const data = response.ok ? await response.json() : null
+        const data = await stateRepository.load()
         if (!stopped && Array.isArray(data?.history)) setHistory(data.history)
         if (!stopped && Array.isArray(data?.vehicles)) setVehicles?.(data.vehicles)
-      } catch {
+      } catch (error) {
+        if (error.status === 401 && !stopped) sessionInvalidated(error.message)
         // La agenda visible no se descarta ante un fallo temporal de conectividad.
       } finally {
         refreshing = false
@@ -4668,21 +4590,17 @@ function Accounts({ customers, setCustomers, setNotice, ask, history, teams, wee
   useEffect(() => setPage(1), [search, pageSize])
   useEffect(() => {
     if (!isAdministrator) return
-    fetch('/api/customers/import', { cache: 'no-store' }).then(response => response.ok ? response.json() : null).then(payload => setCanUndoImport(Boolean(payload?.canUndo))).catch(() => {})
+    customerImportRepository.status().then(payload => setCanUndoImport(Boolean(payload?.canUndo))).catch(() => {})
   }, [isAdministrator])
   const applyImport = async nextCustomers => {
-    const response = await fetchWithTimeout('/api/customers/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision: stateRevision, customers: nextCustomers }) }, 60000)
-    const payload = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(payload.error || 'No se pudo importar el archivo.')
+    const payload = await customerImportRepository.apply(stateRevision, nextCustomers)
     setCanUndoImport(Boolean(payload.canUndo)); setImportOpen(false)
     if (refreshRemoteState) await refreshRemoteState()
     else setCustomers(payload.customers || nextCustomers)
     setNotice('Importación confirmada y guardada. Administración puede deshacerla mientras no haya otra importación o modificación de clientes.')
   }
   const undoImport = () => ask('Deshacer última importación', '¿Querés restaurar exactamente los abonados y clientes existentes antes de la última importación? Esta acción no afecta servicios ni agendas.', async () => {
-    const response = await fetchWithTimeout('/api/customers/import', { method: 'DELETE' }, 60000)
-    const payload = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(payload.error || 'No se pudo deshacer la importación.')
+    const payload = await customerImportRepository.undo()
     setCanUndoImport(false)
     if (refreshRemoteState) await refreshRemoteState()
     else setCustomers(payload.customers || [])
@@ -4712,38 +4630,6 @@ function CustomerForm({ form, setForm, editing, customers, save, cancel }) {
   const changeKind = event => { const kind = event.target.value; setForm({ ...form, kind, account: editing ? form.account : nextCustomerCode(customers, kind) }) }
   const requiredLabel = text => <RequiredLabel>{text}</RequiredLabel>
   return <div className="modal-layer customer-editor-layer" role="dialog" aria-modal="true" aria-label={editing ? 'Editar abonado o cliente' : 'Nuevo cliente'} onMouseDown={cancel}><div className="modal customer-editor-modal" onMouseDown={event => event.stopPropagation()}><button type="button" className="close-modal" onClick={cancel} aria-label="Cerrar"><Icon name="close" /></button><p className="eyebrow">{editing ? 'EDITAR REGISTRO' : 'NUEVO REGISTRO'}</p><h2>{editing ? `${form.account} · ${form.name}` : 'Crear cliente'}</h2><p>{editing ? 'Actualizá los datos del abonado o cliente seleccionado.' : 'Completá los datos obligatorios para poder usarlo en las agendas.'}</p><form className="customer-form" onSubmit={save}><label>Condición<select disabled={!!editing} value={customerKind(form)} onChange={changeKind}><option value="subscriber">Abonado</option><option value="client">Cliente</option></select></label><label>{requiredLabel('Código')}<input required readOnly value={form.account} /></label><label>{requiredLabel('Nombre')}<input required value={form.name} onChange={set('name')} /></label><label>Categoría<input value={form.type} onChange={set('type')} placeholder="Ej.: Residencial o Comercial" /></label><label>{requiredLabel('Calle / dirección')}<input required value={form.street} onChange={set('street')} /></label><label>Localidad<input value={form.locality} onChange={set('locality')} /></label><label>Provincia / Estado<input value={form.province} onChange={set('province')} /></label><label>{requiredLabel('Teléfono / contacto')}<input required value={form.phone} onChange={set('phone')} /></label><button className="primary"><Icon name="check" />Guardar {customerKindLabel(form).toLowerCase()}</button><button type="button" className="secondary" onClick={cancel}>Cancelar</button></form></div></div>
-}
-
-function ServiceTypes({ services, setServices, setNotice, ask, history, teams, weekly }) {
-  const blankService = () => ({ name: '', description: '', estimatedMinutes: DEFAULT_SERVICE_ESTIMATED_MINUTES, status: 'Activo' })
-  const [form, setForm] = useState(blankService)
-  const [editing, setEditing] = useState(null)
-  const [open, setOpen] = useState(false)
-  const duration = normalizeServiceEstimatedMinutes(form.estimatedMinutes)
-  const durationHours = Math.floor(duration / 60)
-  const durationMinutes = duration % 60
-  const updateDuration = (hours, minutes) => {
-    const total = Math.min(MAX_SERVICE_ESTIMATED_MINUTES, Math.max(15, Number(hours) * 60 + Number(minutes)))
-    setForm(previous => ({ ...previous, estimatedMinutes: total }))
-  }
-  const save = event => {
-    event.preventDefault()
-    const estimatedMinutes = Number(form.estimatedMinutes)
-    if (!Number.isInteger(estimatedMinutes) || estimatedMinutes < 15 || estimatedMinutes > MAX_SERVICE_ESTIMATED_MINUTES) return setNotice('Definí un tiempo estimado de entre 15 minutos y 12 horas.')
-    const nextId = editing || Date.now()
-    const record = { ...form, estimatedMinutes, id: nextId, code: editing ? serviceCode(form) : `service-${nextId}`, category: editing ? (form.category || 'service') : (normalizeServiceName(form.name).startsWith('instalacion') ? 'installation' : 'service') }
-    ask(editing ? 'Confirmar edición' : 'Confirmar alta', `¿Querés guardar el tipo de servicio ${record.name}?`, () => {
-      setServices(previous => editing ? previous.map(service => service.id === editing ? record : service) : [...previous, record])
-      setOpen(false); setEditing(null); setNotice('El tipo de servicio fue guardado correctamente.')
-    })
-  }
-  const removeService = service => {
-    const agendaTeams = [...(teams || []), ...Object.entries(weekly || {}).flatMap(([key, value]) => key === '_monthlyTeams' ? Object.values(value || {}).flatMap(config => config?.teams || []) : key.startsWith('_') ? [] : value?.teams || [])]
-    const referenced = history.some(record => String(record.serviceId) === String(service.id)) || agendaTeams.some(team => (team.tasks || []).some(task => String(task.serviceId) === String(service.id)))
-    if (referenced) { setServices(previous => previous.map(item => item.id === service.id ? { ...item, status: 'Inactivo' } : item)); setNotice('El servicio tiene registros vinculados: se marcó como inactivo en lugar de eliminarlo.'); return }
-    setServices(previous => previous.filter(item => item.id !== service.id)); setNotice('El tipo de servicio fue eliminado.')
-  }
-  return <><div className="module-intro"><div><p className="eyebrow">CATÁLOGO OPERATIVO</p><h1>Tipo de servicio</h1><p>Administrá los servicios disponibles para planificar en la agenda técnica.</p></div><button className="primary" onClick={() => { setForm(blankService()); setEditing(null); setOpen(true) }}><Icon name="plus" />Nuevo servicio</button></div>{open && <form className="service-form" onSubmit={save}><label><RequiredLabel>Nombre del servicio</RequiredLabel><input required value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /></label><label>Descripción<input value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} /></label><div className="service-duration-field"><span><RequiredLabel>Tiempo estimado</RequiredLabel></span><div className="service-duration-inputs"><label><input aria-label="Horas estimadas" required type="number" inputMode="numeric" min="0" max="12" step="1" value={durationHours} onChange={event => updateDuration(event.target.value, durationMinutes)} /><small>h</small></label><label><select aria-label="Minutos estimados" value={durationMinutes} onChange={event => updateDuration(durationHours, event.target.value)}><option value="0">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option></select><small>min</small></label></div></div><button className="primary"><Icon name="check" />{editing ? 'Guardar cambios' : 'Guardar servicio'}</button><button type="button" className="secondary" onClick={() => setOpen(false)}>Cancelar</button></form>}<div className="data-card services-table"><div className="table-head"><span>Servicio</span><span>Descripción</span><span>Tiempo estimado</span><span>Estado</span><span>Acciones</span></div>{services.map(service => <div className="service-row" key={service.id}><b>{service.name}</b><span>{service.description || 'Sin descripción'}</span><strong className="service-duration-value">{formatServiceEstimatedTime(service.estimatedMinutes)}</strong><div><button disabled={service.system} title={service.system ? 'Servicio interno administrado por el sistema' : ''} className={`status ${service.status === 'Activo' ? 'on' : ''}`} onClick={() => ask('Cambiar estado', `¿Querés marcar ${service.name} como ${service.status === 'Activo' ? 'inactivo' : 'activo'}?`, () => setServices(previous => previous.map(item => item.id === service.id ? { ...item, status: item.status === 'Activo' ? 'Inactivo' : 'Activo' } : item)))}>{service.status}</button></div><div className="row-actions">{service.system ? <em className="system-service-chip">Servicio del sistema</em> : <><button title="Editar servicio" onClick={() => { setForm({ ...service, estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) }); setEditing(service.id); setOpen(true) }}><Icon name="edit" size={16} /></button><button className="delete" title="Eliminar servicio" onClick={() => ask('Eliminar servicio', `¿Querés eliminar ${service.name}?`, () => removeService(service), true)}><Icon name="trash" size={16} /></button></>}</div></div>)}</div></>
 }
 
 const blankVehicle = () => ({ brand: '', model: '', year: String(new Date().getFullYear()), mileage: '', plate: '', insuranceExpiresOn: '', insuranceFileName: '', insuranceUploadedAt: '', insuranceDocumentUrl: '' })
