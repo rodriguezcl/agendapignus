@@ -76,7 +76,30 @@ test('genera controles determinísticos para los viernes futuros a las 15:30', a
   const records = buildVehicleControlRecords({ month: '2026-09', assignments, vehicles, technicians, teams, fromDate: '2026-09-12' })
   assert.deepEqual(records.map(record => record.date), ['2026-09-18', '2026-09-25'])
   assert.ok(records.every(record => record.time === '15:30' && record.vehicleControl && record.technicianIds[0] === 'leonardo'))
+  assert.ok(records.every(record => record.serviceId === 'vehicle-weekly-control' && record.estimatedMinutes === 15 && record.estimatedMinutesCustomized === false))
+  assert.ok(records.every(record => !record.customerId && !record.address && !record.phone))
   assert.equal(records[0].id, 'vehicle-control-2026-09-18-ka')
+})
+
+test('permite reemplazar al responsable de un viernes sin cambiar la asignación mensual', async () => {
+  const { buildVehicleControlRecords } = await import('../src/vehicle-controls.mjs')
+  const assignments = [{ vehicleId: 'ka', technicianId: 'leonardo', weeklyOverrides: { '2026-09-18': 'mariano' } }]
+  const records = buildVehicleControlRecords({ month: '2026-09', assignments, vehicles, technicians, teams, fromDate: '2026-09-12' })
+
+  assert.equal(records.find(record => record.vehicleControlScheduledFriday === '2026-09-18').technicianIds[0], 'mariano')
+  assert.equal(records.find(record => record.vehicleControlScheduledFriday === '2026-09-25').technicianIds[0], 'leonardo')
+  assert.equal(assignments[0].technicianId, 'leonardo')
+})
+
+test('el catálogo siempre contiene el control vehicular como servicio de sistema de 15 minutos', async () => {
+  const { ensureVehicleControlService } = await import('../src/vehicle-controls.mjs')
+  const services = ensureVehicleControlService([{ id: 'service-1', name: 'Service de alarma' }])
+  const control = services.find(service => service.code === 'vehicle-weekly-control')
+
+  assert.equal(control.name, 'Control semanal de vehículo')
+  assert.equal(control.estimatedMinutes, 15)
+  assert.equal(control.category, 'vehicle-control')
+  assert.equal(control.system, true)
 })
 
 test('adelanta el control al último día operativo cuando el viernes es feriado cerrado', async () => {
@@ -134,6 +157,23 @@ test('un control vehicular se habilita recién en su fecha y hora programadas de
   assert.equal(vehicleControlIsOpen({ date: '2026-09-04', time: '15:30' }, '2026-09-01T00:00:00Z'), true)
 })
 
+test('habilita anticipadamente el control cuando ya no quedan servicios ordinarios pendientes ese día', async () => {
+  const { setVehicleControlAssignedRecords, vehicleControlDayAgendaCompleted, vehicleControlIsOpen } = await import('../src/vehicle-control-window.mjs')
+  const { serviceHasStarted } = await import('../src/service-start.mjs')
+  const control = { id: 'control', date: '2026-09-04', time: '15:30', vehicleControl: true }
+  const pending = { id: 'visita', date: '2026-09-04', time: '12:00', status: 'Pendiente' }
+  const completed = { ...pending, status: 'Completado', technicalStatus: 'Completado' }
+
+  assert.equal(vehicleControlDayAgendaCompleted(control, [control, pending]), false)
+  assert.equal(vehicleControlIsOpen(control, '2026-09-04T17:00:00.000Z', [control, pending]), false)
+  assert.equal(vehicleControlDayAgendaCompleted(control, [control, completed]), true)
+  assert.equal(vehicleControlIsOpen(control, '2026-09-04T17:00:00.000Z', [control, completed]), true)
+  setVehicleControlAssignedRecords([control, completed])
+  assert.equal(serviceHasStarted(control, '2026-09-04T17:00:00.000Z'), true)
+  setVehicleControlAssignedRecords(null)
+  assert.equal(vehicleControlIsOpen(control, '2026-09-03T17:00:00.000Z', [control, completed]), false)
+})
+
 test('un control vehicular vencido bloquea domicilio y contacto de servicios posteriores', async () => {
   const { blockingOverdueVehicleControl, overdueVehicleControls } = await import('../src/technician-history.mjs')
   const records = [
@@ -162,7 +202,7 @@ test('el servidor no permite omitir un control cancelándolo o reprogramándolo'
   for (const file of ['api/index.js', 'server.cjs']) {
     const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
     assert.match(source, /record\.vehicleControl && type !== 'Completado'/)
-    assert.match(source, /record\.vehicleControl && !vehicleControlIsOpen\(record\)/)
+    assert.match(source, /record\.vehicleControl && !vehicleControlIsOpen\(record, Date\.now\(\), technicianDayRecords\)/)
   }
 })
 
@@ -185,6 +225,8 @@ test('el control vehicular es autónomo y no muestra dirección, contacto ni avi
   assert.match(source, /\{record\.vehicleControl \? null : unlocked \? <>/)
   assert.match(source, /\{unlocked && !done && <>/)
   assert.match(source, /Los controles vehiculares son tareas autónomas/)
+  assert.match(source, /No hace falta agregar una observación/)
+  assert.match(source, /Reemplazos por contingencia/)
 })
 
 test('la captura vehicular admite imágenes del teléfono y solicita la cámara trasera', () => {

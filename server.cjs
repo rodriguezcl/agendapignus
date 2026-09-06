@@ -9,6 +9,7 @@ const { rebuildWeeklyFromHistory, dedupeAgendaTeams } = require('./scripts/rebui
 const { writeProfessionalPdf } = require('./scripts/professional-pdf.cjs')
 const { fetchNationalHolidays, validHolidayYear } = require('./api/_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./api/_lib/vehicle-control-window.cjs')
+const { ensureVehicleControlService } = require('./api/_lib/vehicle-control-service.cjs')
 
 // API local: Vite reenvía las rutas /api a este proceso durante el desarrollo.
 const port = Number(process.env.PIGNUS_PORT || 3001)
@@ -762,12 +763,12 @@ function readStateForUser(user) {
   if (user.roleCode === 'technician') return readTechnicianState(user)
   const state = readState()
   const { reviews: retiredReviews, ...visibleState } = state
-  if (user.roleCode === 'administrator') return visibleState
+  if (user.roleCode === 'administrator') return { ...visibleState, services: ensureVehicleControlService(state.services) }
   const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
   return {
     ...visibleState,
     employees: userCan(user, 'employees') ? state.employees : state.employees.map(({ id, firstName, lastName, name, roleId, role, status }) => ({ id, firstName, lastName, name, roleId, role, status })),
-    services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? state.services : [],
+    services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? ensureVehicleControlService(state.services) : [],
     vehicles: userCan(user, 'vehicles') || userCan(user, 'weeklyVehicles') ? state.vehicles : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
     history: userCan(user, 'history') || userCan(user, 'accounts') ? state.history : [],
@@ -1133,7 +1134,7 @@ function saveState(state, user) {
   })
   const employeeById = new Map(normalizedEmployees.map(employee => [String(employee.id), employee]))
   const employeeByName = new Map(normalizedEmployees.map(employee => [normalizedCustomerValue(employee.name), employee]))
-  const normalizedServices = (state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) }))
+  const normalizedServices = ensureVehicleControlService((state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) })))
   const normalizedVehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), mileage: vehicle.mileage == null || vehicle.mileage === '' ? null : Number(vehicle.mileage), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
   const serviceById = new Map(normalizedServices.map(service => [String(service.id), service]))
   const serviceByName = new Map(normalizedServices.map(service => [normalizedServiceName(service.name), service]))
@@ -1774,7 +1775,10 @@ const server = http.createServer((req, res) => {
       if (!assigned) return send(res, 403, { error: 'El servicio no está asignado al técnico autenticado.' })
         if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
         if (record.vehicleControl && type !== 'Completado') return send(res, 400, { error: 'El control vehicular debe completarse con foto y kilometraje; no admite cancelación ni reprogramación.' })
-        if (record.vehicleControl && !vehicleControlIsOpen(record)) return send(res, 409, { error: `El control vehicular se habilita el ${vehicleControlWindowLabel(record)}.` })
+        const technicianDayRecords = record.vehicleControl
+          ? rows('work_history').filter(item => String(item.date || '') === String(record.date || '') && item.technicianIds?.some(id => String(id) === String(user.id)))
+          : []
+        if (record.vehicleControl && !vehicleControlIsOpen(record, Date.now(), technicianDayRecords)) return send(res, 409, { error: `El control vehicular se habilita el ${vehicleControlWindowLabel(record)}.` })
         if (record.technicalStatus) {
           if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record: technicianSafeRecord(record) })
           return send(res, 409, { error: 'Este servicio ya fue informado desde otra sesión.' })
@@ -1799,7 +1803,7 @@ const server = http.createServer((req, res) => {
         vehicles[vehicleIndex] = nextVehicle
         vehicleChange = { vehicles, before: previousVehicle, after: nextVehicle, mileage, mimeType: photoMatch[1].toLowerCase(), photoBuffer }
       } else if (!String(observation || '').trim()) return send(res, 400, { error: 'La observación es obligatoria para informar el servicio.' })
-      if (type === 'Completado') assertServiceCanBeCompleted(record)
+      if (type === 'Completado' && !record.vehicleControl) assertServiceCanBeCompleted(record)
       const now = new Date().toISOString()
       const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
       db.exec('BEGIN')

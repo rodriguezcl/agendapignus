@@ -21,7 +21,11 @@ export function vehicleConfigurationSnapshot(assignments, vehicles, technicians)
       vehicleId: assignment.vehicleId || '',
       vehicle: [vehicle?.brand, vehicle?.model, vehicle?.plate && `· ${vehicle.plate}`].filter(Boolean).join(' ') || assignment.vehicle || 'Vehículo no disponible',
       technicianId: assignment.technicianId || '',
-      technician: technician?.name || assignment.technician || 'Técnico no disponible'
+      technician: technician?.name || assignment.technician || 'Técnico no disponible',
+      weeklyOverrides: Object.fromEntries(Object.entries(assignment.weeklyOverrides || {}).map(([date, technicianId]) => [date, {
+        technicianId,
+        technician: technicianById.get(String(technicianId))?.name || 'Técnico no disponible'
+      }]))
     }
   })
 }
