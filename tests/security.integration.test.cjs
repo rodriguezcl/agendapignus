@@ -368,6 +368,26 @@ test('fusiona dos escrituras concurrentes sobre registros diferentes', async () 
   assert.equal(concurrentIds.length, 2)
 })
 
+test('fusiona usando una base compacta sin alterar secciones ajenas', async () => {
+  const cookies = await Promise.all([login('qa-admin@pignus.test'), login('qa-admin-secondary@pignus.test')])
+  const baseline = await state(cookies[0])
+  const update = (id, name) => ({
+    ...baseline,
+    base: { services: baseline.services },
+    services: [...baseline.services, { id, name, description: '', estimatedMinutes: 60, status: 'Activo' }]
+  })
+  const responses = await Promise.all([
+    api('/api/state', cookies[0], { method: 'PUT', body: JSON.stringify(update('qa-compact-left', 'Compacto izquierdo')) }),
+    api('/api/state', cookies[1], { method: 'PUT', body: JSON.stringify(update('qa-compact-right', 'Compacto derecho')) })
+  ])
+
+  assert.deepEqual(responses.map(response => response.status), [200, 200])
+  const persisted = await state(cookies[0])
+  assert.equal(persisted.services.some(service => service.id === 'qa-compact-left'), true)
+  assert.equal(persisted.services.some(service => service.id === 'qa-compact-right'), true)
+  assert.deepEqual(persisted.customers, baseline.customers)
+})
+
 test('conserva una ráfaga multiusuario de altas independientes', async () => {
   const cookies = await Promise.all([login('qa-admin@pignus.test'), login('qa-admin-secondary@pignus.test')])
   const baseline = await state(cookies[0])

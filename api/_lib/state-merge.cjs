@@ -107,7 +107,16 @@ function concurrentStateChanged(base = {}, current = {}) {
 }
 
 function mergeConcurrentState(base, current, incoming) {
-  return mergeObject(persistentState(base), persistentState(current), persistentState(incoming), '')
+  const normalizedBase = persistentState(base)
+  const normalizedCurrent = persistentState(current)
+  const normalizedIncoming = persistentState(incoming)
+  const merged = { ...normalizedCurrent }
+  const sections = ['roles', 'employees', 'services', 'vehicles', 'customers', 'history', 'reviews', 'agenda', 'preferences']
+  sections.forEach(section => {
+    if (!Object.hasOwn(base, section)) return
+    merged[section] = mergeValue(normalizedBase[section], normalizedCurrent[section], normalizedIncoming[section], section)
+  })
+  return merged
 }
 
 module.exports = { concurrentStateChanged, mergeConcurrentState, persistentState }
