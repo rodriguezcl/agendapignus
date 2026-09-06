@@ -10,6 +10,7 @@ const { writeProfessionalPdf } = require('./scripts/professional-pdf.cjs')
 const { fetchNationalHolidays, validHolidayYear } = require('./api/_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./api/_lib/vehicle-control-window.cjs')
 const { ensureVehicleControlService } = require('./api/_lib/vehicle-control-service.cjs')
+const { assertNoPastWeeklyServiceAdditions } = require('./api/_lib/past-agenda.cjs')
 
 // API local: Vite reenvía las rutas /api a este proceso durante el desarrollo.
 const port = Number(process.env.PIGNUS_PORT || 3001)
@@ -1042,6 +1043,7 @@ function validateState(state, previousState = null) {
     })
   })
   validateChangedAgendaSchedules(state, previousState)
+  if (previousState) assertNoPastWeeklyServiceAdditions(state.agenda, previousState.agenda)
 }
 
 const traceActor = user => ({ id: user.id, name: user.name || user.email || 'Usuario', role: user.role || '', at: new Date().toISOString() })

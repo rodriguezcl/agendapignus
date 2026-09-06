@@ -2397,6 +2397,27 @@ html.modal-open body {
 
 .internal-preparation{grid-column:1/-1;display:grid;gap:10px;padding:14px;border:1px solid #d7e3d8;border-radius:12px;background:#f7faf7}.internal-preparation-heading,.internal-checklist-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.internal-preparation-heading>div{display:grid;gap:3px}.internal-preparation-heading b,.internal-checklist-heading b{color:#284b36}.internal-preparation-heading small{color:#718177;line-height:1.35}.internal-preparation .secondary.compact{min-height:34px;padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;gap:5px}.internal-note-field{display:grid;gap:6px;color:#4f6757;font-size:12px;font-weight:700}.internal-note-field textarea{width:100%;min-height:82px;resize:vertical}.internal-checklist{display:grid;gap:8px;padding-top:2px}.internal-checklist-item{display:grid;grid-template-columns:20px minmax(0,1fr) 36px;align-items:center;gap:8px}.internal-checklist-item>input[type=checkbox]{width:18px;height:18px;margin:0;accent-color:#197347}.internal-checklist-item>input[type=text]{width:100%;min-width:0}.internal-checklist-item.readonly{grid-template-columns:20px minmax(0,1fr);font-weight:500}.internal-checklist-item .completed{text-decoration:line-through;color:#76847a}.internal-note-value{margin:0;white-space:pre-wrap;line-height:1.5;color:#375442}.app-shell[data-theme=dark] .internal-preparation{background:#17281d;border-color:#3b5543}.app-shell[data-theme=dark] .internal-preparation-heading b,.app-shell[data-theme=dark] .internal-checklist-heading b,.app-shell[data-theme=dark] .internal-note-value{color:#e5eee7}.app-shell[data-theme=dark] .internal-preparation-heading small{color:#a8b6ac}@media(max-width:640px){.internal-preparation-heading,.internal-checklist-heading{align-items:flex-start;flex-direction:column}.internal-preparation .secondary.compact{width:100%;justify-content:center}}
 
+/* El botón pertenece a la grilla interna del checklist. Estas coordenadas evitan
+   que las reglas de acciones de .task-row lo desplacen a una fila inferior. */
+.task-row .internal-checklist-item > input[type="checkbox"],
+.internal-checklist-item > input[type="checkbox"] { grid-column: 1; grid-row: 1; }
+.task-row .internal-checklist-item > input[type="text"],
+.internal-checklist-item > input[type="text"] { grid-column: 2; grid-row: 1; }
+.task-row .internal-checklist-item > .icon-btn,
+.internal-checklist-item > .icon-btn {
+  grid-column: 3 !important;
+  grid-row: 1 !important;
+  align-self: center;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+}
+@media(max-width:640px) {
+  .internal-checklist-item { grid-template-columns: 20px minmax(0,1fr) 44px; }
+  .task-row .internal-checklist-item > .icon-btn,
+  .internal-checklist-item > .icon-btn { width: 44px; min-width: 44px !important; }
+}
+
 /* En escritorio el editor aprovecha el espacio disponible para que los datos
    extensos y la preparación interna puedan leerse sin una columna angosta. */
 @media (min-width: 1024px) {
@@ -2420,4 +2441,54 @@ html.modal-open body {
   .weekly-task-modal .weekly-task-form > :not(.week-task-top):not(.task-duration-field) { grid-column: 1 / -1; }
   .weekly-task-modal .weekly-task-form > label > textarea { min-height: 150px; }
   .weekly-task-modal .internal-preparation { padding: 18px; }
+}
+
+/* Las jornadas históricas conservan su información visible, pero todos sus
+   controles de planificación quedan inequívocamente en modo de solo lectura. */
+.weekly-day-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.week-day.finished-day { background: #f4f6f3; }
+.week-day.finished-day > header { background: #e9eeea; }
+.week-day.finished-day .weekly-day-fields { opacity: .82; }
+.week-day.finished-day .weekly-day-fields :is(button, input, select, textarea) { cursor: not-allowed; }
+
+/* Si una operación dentro de cualquier modal utiliza el aviso global, lo
+   eleva sobre el diálogo para que el mensaje nunca quede oculto detrás. */
+body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice {
+  position: fixed;
+  z-index: 1000;
+  top: 16px;
+  left: 50%;
+  width: min(620px, calc(100vw - 32px));
+  margin: 0;
+  transform: translateX(-50%);
+  color: #7a341f;
+  background: #fff3ed;
+  border-color: #e9aa94;
+  box-shadow: 0 14px 38px rgba(24, 38, 29, .28);
+}
+body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice span > svg { display: none; }
+body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice span::before {
+  content: '!';
+  display: grid;
+  place-items: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #fff;
+  background: #b64b36;
+  font-weight: 800;
+}
+.app-shell[data-theme="dark"] .week-day.finished-day,
+.app-shell[data-theme="dark"] .week-day.finished-day > header { background: #17231c; }
+.app-shell[data-theme="dark"] .week-day.finished-day .weekly-day-fields { opacity: .68; }
+body:has(.modal-backdrop, .modal-layer) .app-shell[data-theme="dark"] .content > .notice {
+  color: #ffd9cc;
+  background: #49271f;
+  border-color: #91513d;
 }

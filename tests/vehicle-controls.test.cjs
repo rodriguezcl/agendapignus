@@ -153,6 +153,7 @@ test('un control vehicular se habilita recién en su fecha y hora programadas de
   assert.equal(vehicleControlScheduledAt(record).toISOString(), '2026-09-04T18:30:00.000Z')
   assert.equal(vehicleControlIsOpen(record, '2026-09-04T18:29:59.999Z'), false)
   assert.equal(vehicleControlIsOpen(record, '2026-09-04T18:30:00.000Z'), true)
+  assert.equal(vehicleControlIsOpen(record, '2026-09-07T11:00:00.000Z'), true)
   assert.match(vehicleControlWindowLabel(record), /viernes.*4.*septiembre.*2026.*15:30/i)
   assert.equal(vehicleControlIsOpen({ date: '2026-09-04', time: '15:30' }, '2026-09-01T00:00:00Z'), true)
 })

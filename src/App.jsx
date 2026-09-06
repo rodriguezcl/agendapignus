@@ -2276,6 +2276,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   const sundayBlocked = isSunday(date)
   const holidayBlocked = holidayIsBlocked(holiday, holidayDecision)
   const holidayCalendarUnavailable = holidayCalendar.loading || Boolean(holidayCalendar.error)
+  const pastDayBlocked = String(date || '') < currentLocalDate()
   const advancedGuard = useMemo(() => advancedGuardForSaturdayDate(date, weekly, teams), [date, weekly, teams])
   const saveAgenda = () => requestAgendaAction('save')
   const [preview, setPreview] = useState(false)
@@ -2299,6 +2300,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   useEffect(() => {
     // Ambos módulos escriben sobre el mismo día: los cambios de la agenda del día
     // se reflejan inmediatamente en la agenda semanal, conservando campos extra.
+    if (pastDayBlocked) return
     if (advancedGuard || sundayBlocked || holidayBlocked || holidayCalendarUnavailable) return
     const hasContent = teams.some(team => team.members?.length || team.tasks.some(task => Object.entries(task).some(([key, value]) => !['time', 'taskId', 'historyId'].includes(key) && String(value || '').trim())))
     if (!hasContent) return
@@ -2334,7 +2336,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       const nextDay = { ...savedDay, teams: nextTeams }
       return JSON.stringify(savedDay) === JSON.stringify(nextDay) ? previous : { ...previous, [date]: nextDay }
     })
-  }, [date, teams, setWeekly, advancedGuard, sundayBlocked, holidayBlocked, holidayCalendarUnavailable])
+  }, [date, teams, setWeekly, pastDayBlocked, advancedGuard, sundayBlocked, holidayBlocked, holidayCalendarUnavailable])
   useEffect(() => {
     // Migra agendas creadas antes del identificador estable sin alterar sus datos.
     setTeams(previous => {
@@ -2511,6 +2513,10 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   }
   const registerHistory = (agendaTeams = teams) => {
     agendaTeams = agendaTeamsWithRealServices(agendaTeams)
+    if (pastDayBlocked) {
+      setNotice(`La jornada del ${prettyDate(date)} ya finalizó. Consultá o corregí sus servicios desde Historial.`)
+      return false
+    }
     if (sundayBlocked) {
       setNotice('Los domingos son días no operativos y no admiten servicios.')
       return false
@@ -2570,6 +2576,10 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
   }
   const requestAgendaAction = (action, allowWithoutTechnicians = false, agendaTeams = teams, skipCustomerProposal = false) => {
     agendaTeams = agendaTeamsWithRealServices(agendaTeams)
+    if (pastDayBlocked) {
+      setNotice(`La jornada del ${prettyDate(date)} ya finalizó. Consultá o corregí sus servicios desde Historial.`)
+      return
+    }
     if (advancedGuard) {
       setNotice(advancedSaturdayGuardMessage(advancedGuard))
       return
@@ -2779,6 +2789,9 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     return () => layer.remove()
   }, [taskMove, teams])
   const dailyCustomerField = (task, teamIndex, taskIndex) => <DailyCustomerField task={task} customers={customers} teamIndex={teamIndex} taskIndex={taskIndex} onTextCommit={commitCustomerText} onCustomerSelect={selectCustomerResult} onAddCustomer={beginNewCustomer} onReserveSubscriber={beginSubscriberReservation} />
+  if (pastDayBlocked) {
+    return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Jornada finalizada</h1><p>Las fechas pasadas son de solo lectura en las agendas. Consultá o corregí los servicios registrados desde Historial.</p></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required min={currentLocalDate()} type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div><p className="weekly-guard-advanced"><Icon name="lock" size={16} /><span>Esta jornada ya finalizó y no admite equipos ni servicios nuevos.</span></p></>
+  }
   if (sundayBlocked) {
     return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Agenda del domingo bloqueada</h1><p>Los domingos son días no operativos y no admiten equipos, técnicos ni servicios.</p></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div><p className="weekly-guard-advanced"><Icon name="lock" size={16} /><span>Domingo sin programación. Seleccioná otro día para organizar servicios.</span></p></>
   }
@@ -2827,6 +2840,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
   const weeklyBoardRef = useRef(null)
   const weeklyTopScrollRef = useRef(null)
   const [weeklyScrollWidth, setWeeklyScrollWidth] = useState(0)
+  const dayHasFinished = day => String(day || '') < today
+  const finishedDayMessage = day => `La jornada del ${prettyDate(day)} ya finalizó. La planificación histórica es de solo lectura y no admite servicios nuevos.`
   const syncWeeklyScroll = (source, target) => {
     if (!source || !target) return
     const sourceRange = Math.max(0, source.scrollWidth - source.clientWidth)
@@ -3000,6 +3015,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     return { ...previous, [day]: sortPlanTasksByTime(normalized) }
   })
   const openTaskEditor = (day, teamIndex, taskIndex) => {
+    if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
     const teamSnapshot = dayPlan(day).teams[teamIndex]
     const task = teamSnapshot?.tasks[taskIndex]
     if (task) setTaskEditor({ day, teamIndex, taskIndex, teamId: teamSnapshot.teamId, teamSnapshot: { ...teamSnapshot, tasks: [...(teamSnapshot.tasks || [])] }, taskId: task.taskId, draft: taskWithServiceEstimate(task, serviceForWeeklyTask(task)) })
@@ -3020,6 +3036,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
   const saveTaskEditor = () => {
     if (!taskEditor) return
     const { day, teamIndex, taskIndex, teamId, teamSnapshot, taskId } = taskEditor
+    if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
     let draft = taskEditor.draft
     const advance = advancedGuardForDay(day)
     if (advance) {
@@ -3190,6 +3207,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
   }
   const updateTask = (day, teamIndex, taskIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index !== teamIndex ? team : { ...team, tasks: team.tasks.map((task, index) => index === taskIndex ? stampServiceRecord({ ...task, ...patch }, authUser) : task) }) }))
   const addTeam = day => {
+    if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
     if (isSaturday(day)) { setNotice('Los sábados trabaja un solo técnico, por lo que la agenda admite únicamente un equipo.'); return }
     updateDay(day, plan => ({ ...plan, teams: [...plan.teams, createTeam(plan.teams.length, null, day)] }))
   }
@@ -3233,6 +3251,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
   const beginWeeklyNewCustomer = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, { newCustomer: true, subscriberReservation: false, customerId: '', client: value, clientAccount: '', clientNameAtService: normalizeCustomerName(value), address: '', phone: '' })
   const beginWeeklySubscriberReservation = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, subscriberReservationPatch(value, authUser))
   const addTask = (day, teamIndex) => {
+    if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
     const holidayState = holidayStateForDay(day)
     if (holidayState.blocked) {
       setNotice(holidayState.decision?.status === 'closed' ? 'La fecha fue definida como día no operativo.' : 'Primero definí si el feriado será laboral o no operativo.')
@@ -3511,6 +3530,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     }
   }, [isAdministrator, monthKey, monthlyTeams[monthKey], monthlySetup, monthlyTimesSetup, monthlyVehicleSetup, vehicles, activeTechs.length, priorVehicleAssignmentHistory])
   const openDay = day => {
+    if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
     const hours = hoursForDay(day)
     if (!hours) { setNotice('Los domingos no están habilitados para programar servicios.'); return }
     const holidayState = holidayStateForDay(day)
@@ -3584,6 +3604,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     return !recordMatchesWeeklyTask(historyRecordForTask(task, day, operationalHistory), weeklyHistoryRecord(day, team, teamIndex, task, taskIndex))
   }))
   const saveWeeklyDay = day => {
+    if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
     const hours = hoursForDay(day)
     if (!hours) { setNotice('Los domingos no están habilitados para programar servicios.'); return }
     const holidayState = holidayStateForDay(day)
@@ -3675,7 +3696,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
       if (!task || !hours) return null
       return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskEditor(null)}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button type="button" className="modal-close" aria-label="Cerrar edición del servicio" title="Cerrar" onClick={() => setTaskEditor(null)}><Icon name="close" size={18} /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>{task.vehicleControl ? 'Control semanal de vehículo' : `Servicio ${taskIndex + 1}`}</h2><p className="weekly-modal-team">{taskEditor.teamSnapshot?.label || `Equipo ${teamIndex + 1}`} · {taskEditor.teamSnapshot?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTaskDraft({ time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" disabled={task.vehicleControl} value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectDraftService(event.target.value)}>{task.vehicleControl && serviceForWeeklyTask(task) ? <option value={serviceForWeeklyTask(task).id}>{serviceForWeeklyTask(task).name}</option> : <><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</>}</select></label></div>{task.vehicleControl ? <label className="vehicle-control-fixed-duration"><span><RequiredLabel>Tiempo estimado</RequiredLabel></span><input value="15 minutos" readOnly /></label> : <ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTaskDraft({ estimatedMinutes, estimatedMinutesCustomized: true })} />}{task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))}</small>}{taskConflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>{scheduleConflictForTaskMessage(taskConflict, taskIndex)}</span></p>}{task.vehicleControl ? <div className="vehicle-control-planning-fields"><label>Vehículo<input value={task.client || vehicleLabel(task)} readOnly /></label><label><RequiredLabel>Técnico a cargo</RequiredLabel><select value={task.technicianIds?.[0] || ''} onChange={event => { const technician = activeTechs.find(item => String(item.id) === event.target.value); updateTaskDraft({ technicianIds: technician ? [technician.id] : [], technicians: technician ? [technician.name] : [] }) }}><option value="">Seleccionar técnico</option>{activeTechs.map(technician => <option key={technician.id} value={technician.id}>{technician.name}</option>)}</select></label><p>Podés reemplazar al responsable para este control ante una contingencia. La asignación mensual predeterminada no se modifica.</p></div> : <>{serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input aria-required="true" type="radio" name={`weekly-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTaskDraft({ installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
 <CustomerAutocomplete className="weekly-customer-search" value={task.client} customerId={task.customerId} customers={customers} subscriberReservation={task.subscriberReservation} onTextCommit={commitDraftCustomerText} onCustomerSelect={selectDraftCustomer} onAddCustomer={beginDraftNewCustomer} onReserveSubscriber={beginDraftSubscriberReservation} />
-<label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.address} onChange={event => updateTaskDraft({ address: event.target.value })} /></label><label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.phone} onChange={event => updateTaskDraft({ phone: event.target.value })} /></label><p className="weekly-customer-data-note">{task.subscriberReservation ? 'Estos datos son provisorios y no crean un CLI. Vinculá el PIG importado cuando esté disponible.' : task.newCustomer ? 'Completá dirección y contacto para crear el cliente CLI al guardar.' : 'Dirección y contacto se administran desde el módulo Abonados y clientes.'}</p><label><RequiredLabel>Detalle</RequiredLabel><textarea aria-required="true" value={task.detail} onChange={event => updateTaskDraft({ detail: event.target.value })} /></label><ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} onChange={updateTaskDraft} /></>}</div><div className="modal-actions"><button className="secondary" onClick={() => setTaskEditor(null)}>Cancelar</button><button className="primary" onClick={saveTaskEditor}><Icon name="check" size={16} />Guardar servicio</button></div></section></div>
+<label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.address} onChange={event => updateTaskDraft({ address: event.target.value })} /></label><label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.phone} onChange={event => updateTaskDraft({ phone: event.target.value })} /></label><p className="weekly-customer-data-note">{task.subscriberReservation ? 'Estos datos son provisorios y no crean un CLI. Vinculá el PIG importado cuando esté disponible.' : task.newCustomer ? 'Completá dirección y contacto para crear el cliente CLI al guardar.' : 'Dirección y contacto se administran desde el módulo Abonados y clientes.'}</p><label><RequiredLabel>Detalle</RequiredLabel><BufferedTextarea aria-required="true" value={task.detail} onCommit={value => updateTaskDraft({ detail: value })} /></label><ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} onChange={updateTaskDraft} /></>}</div><div className="modal-actions"><button className="secondary" onClick={() => setTaskEditor(null)}>Cancelar</button><button className="primary" onClick={saveTaskEditor}><Icon name="check" size={16} />Guardar servicio</button></div></section></div>
     })()}
     <div className="weekly-scroll-top" ref={weeklyTopScrollRef} tabIndex={0} aria-label="Desplazamiento horizontal superior" onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyBoardRef.current)}><div style={{ width: `${weeklyScrollWidth}px` }} /></div>
     <div className="weekly-board" ref={weeklyBoardRef} onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyTopScrollRef.current)}>
@@ -3688,15 +3709,16 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
         const hours = hoursForDay(day)
         const conflicts = conflictsForDay(day)
         const gapConflicts = gapConflictsForDay(day)
-        return <section className={`week-day ${!hours || holidayState.decision?.status === 'closed' ? 'closed-day' : ''}`} data-day={day} key={day}>
-          <header><div><b>{displayDate(day)}</b><small>{!hours ? 'No operativo' : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : day === today ? 'Hoy' : prettyDate(day)}</small></div><div className="weekly-day-actions">{hours && !advancedGuard && !calendarUnavailable && !holidayState.blocked && dayNeedsSave(day) && <button className="primary small weekly-save-day" title="Guardado pendiente: guardar agenda" onClick={() => saveWeeklyDay(day)}><Icon name="check" size={15} />Guardar</button>}<button className="secondary small" disabled={!hours || Boolean(advancedGuard) || calendarUnavailable || holidayState.blocked} title={advancedGuard ? advancedSaturdayGuardMessage(advancedGuard) : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : ''} onClick={() => openDay(day)}>Abrir día</button></div></header>
+        const finishedDay = dayHasFinished(day)
+        return <section className={`week-day ${!hours || holidayState.decision?.status === 'closed' ? 'closed-day' : ''} ${finishedDay ? 'finished-day' : ''}`} data-day={day} key={day}>
+          <header><div><b>{displayDate(day)}</b><small>{!hours ? 'No operativo' : finishedDay ? 'Jornada finalizada · solo lectura' : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : day === today ? 'Hoy' : prettyDate(day)}</small></div><div className="weekly-day-actions">{!finishedDay && hours && !advancedGuard && !calendarUnavailable && !holidayState.blocked && dayNeedsSave(day) && <button className="primary small weekly-save-day" title="Guardado pendiente: guardar agenda" onClick={() => saveWeeklyDay(day)}><Icon name="check" size={15} />Guardar</button>}<button className="secondary small" disabled={finishedDay || !hours || Boolean(advancedGuard) || calendarUnavailable || holidayState.blocked} title={finishedDay ? 'La jornada ya finalizó y es de solo lectura' : advancedGuard ? advancedSaturdayGuardMessage(advancedGuard) : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : ''} onClick={() => openDay(day)}>Abrir día</button></div></header>
           {!hours ? <p className="closed-day-note">Domingo · sin programación</p> : <>
             <small className="weekly-hours">Horario habilitado: {hours.label}</small>
             {calendarUnavailable ? <div className={`weekly-calendar-state ${holidayCalendar.error ? 'error' : ''}`}>{holidayCalendar.error ? 'No se pudo verificar el calendario de feriados.' : 'Verificando feriados nacionales…'}</div> : holidayState.holiday && <HolidayDecisionPanel compact holiday={holidayState.holiday} decision={holidayState.decision} canDecide={authUser?.roleCode === 'administrator'} onDecision={status => recordHolidayDecision(setWeekly, setNotice, day, holidayState.holiday, status, { weekly, history: operationalHistory, setHistory, holidays: holidayCalendar.records })} />}
             {!holidayState.blocked && advancedGuard && <p className={`weekly-guard-advanced ${advancedGuard.hasSaturdayConflict ? 'has-conflict' : ''}`}><Icon name={advancedGuard.hasSaturdayConflict ? 'alert' : 'check'} size={16} /><span>{advancedSaturdayGuardMessage(advancedGuard)}</span></p>}
             {conflicts.length > 0 && <p className="weekly-conflict">Conflicto: {conflicts.map(item => `${item.name} ${item.time}`).join(', ')}</p>}
             {gapConflicts.length > 0 && <p className="weekly-conflict">{planningConflictMessage(day, plan.teams[gapConflicts[0].teamIndex], gapConflicts[0].teamIndex, gapConflicts[0])}</p>}
-            <div className="week-teams">{plan.teams.map((team, teamIndex) => {
+            <fieldset className="week-teams weekly-day-fields" disabled={finishedDay}>{plan.teams.map((team, teamIndex) => {
               const pickerKey = `${day}-${teamIndex}`
               return <article className="week-team" key={team.teamId || teamIndex}>
                 <div className="week-team-header"><div className="week-team-identity"><strong>{team.label || `Equipo ${teamIndex + 1}`}</strong><span title={team.members?.join(' · ') || 'Sin técnicos'}>{team.members?.length ? team.members.map(weeklyTechnicianName).join(' · ') : 'Sin técnicos'}</span></div><div className="weekly-team-actions">{plan.teams.length > 1 && <button className="weekly-remove-team" title="Quitar equipo" aria-label={`Quitar ${team.label || `Equipo ${teamIndex + 1}`}`} onClick={() => setTeamRemoval({ day, teamIndex, label: team.label || `Equipo ${teamIndex + 1}` })}><Icon name="trash" size={15} /></button>}<div className="weekly-technicians-picker"><button className="secondary small weekly-add-tech-button" title="Agregar técnicos" aria-label="Agregar técnicos" onClick={() => { setTechPicker(techPicker === pickerKey ? null : pickerKey); setTechFilter('') }}><Icon name="users" size={16} /><span aria-hidden="true">+</span></button>{techPicker === pickerKey && <div className="tech-popover weekly-tech-popover"><div className="weekly-tech-popover-title"><div><strong>Asignar técnicos</strong><small>{team.label || `Equipo ${teamIndex + 1}`}</small></div><span>{team.members?.length || 0} seleccionados</span></div><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={event => setTechFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(techFilter.toLowerCase())).map(tech => <label key={tech.id} title={tech.name}><input type="checkbox" checked={(team.members || []).includes(tech.name)} onChange={() => toggleWeeklyTech(day, teamIndex, tech.name)} />{tech.firstName || tech.name.split(' ')[0]}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div></div>}</div></div></div>
@@ -3712,13 +3734,13 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
                   <label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" value={task.address} onChange={event => updateTask(day, teamIndex, taskIndex, { address: event.target.value })} /></label>
                   <label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" value={task.phone} onChange={event => updateTask(day, teamIndex, taskIndex, { phone: event.target.value })} /></label>
                   {serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input aria-required="true" type="radio" name={`weekly-card-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(day, teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
-                  <label><RequiredLabel>Detalle</RequiredLabel><textarea aria-required="true" value={task.detail} onChange={event => updateTask(day, teamIndex, taskIndex, { detail: event.target.value })} /></label>
+                  <label><RequiredLabel>Detalle</RequiredLabel><BufferedTextarea aria-required="true" value={task.detail} onCommit={value => updateTask(day, teamIndex, taskIndex, { detail: value })} /></label>
                   <ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} buffered onChange={patch => updateTask(day, teamIndex, taskIndex, patch)} />
                   </>}
                 </div>)}
                 {!advancedGuard && <button className="weekly-add-task" onClick={() => addTask(day, teamIndex)}><Icon name="plus" size={15} />Agregar servicio</button>}
               </article>
-            })}</div>
+            })}</fieldset>
             {!isSaturday(day) && <button className="weekly-add-team" onClick={() => addTeam(day)}><Icon name="plus" size={16} />Agregar otro equipo</button>}
           </>}
         </section>
@@ -4037,8 +4059,8 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
   useEffect(() => {
     const title = document.querySelector('.technician-content h1')
     const help = document.querySelector('.technician-help')
-    if (title) title.textContent = view === 'agenda' ? 'Agenda de hoy y mañana' : view === 'history' ? 'Historial de servicios' : 'Vehículos'
-    if (help) help.textContent = view === 'agenda' ? 'Consultá los servicios pendientes de hoy y mañana. Los controles vehiculares son tareas autónomas y, si están vencidos, permanecen visibles hasta informarlos.' : view === 'history' ? 'Consultá los servicios que ya informaste y el estado registrado en cada uno.' : 'Descargá la documentación vigente de los vehículos de la empresa.'
+    if (title) title.textContent = view === 'agenda' ? 'Pendientes, hoy y mañana' : view === 'history' ? 'Historial de servicios' : 'Vehículos'
+    if (help) help.textContent = view === 'agenda' ? 'Consultá los servicios vencidos todavía pendientes, los de hoy y los de mañana. Permanecen disponibles hasta que informes su estado. Los controles vehiculares son tareas autónomas.' : view === 'history' ? 'Consultá los servicios que ya informaste y el estado registrado en cada uno.' : 'Descargá la documentación vigente de los vehículos de la empresa.'
   }, [view])
   useEffect(() => {
     const cards = document.querySelectorAll('.technician-service')

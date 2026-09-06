@@ -11,6 +11,7 @@ test('el portal técnico acepta el reloj numérico usado para habilitar servicio
   assert.equal(serviceHasStarted({ date: '2026-08-31', time: '08:00' }, clock), false)
   assert.equal(serviceHasStarted({ date: '2026-08-29', time: '18:00' }, clock), true)
   assert.equal(serviceHasStarted({ date: '2026-08-30', time: '08:00' }, 'fecha-inválida'), false)
+  assert.doesNotThrow(() => assertServiceCanBeCompleted({ date: '2026-08-29', time: '18:00' }, '2026-08-31T12:00:00.000Z'))
 })
 
 test('distingue un servicio persistido de un alta o cambio de horario realizado hoy', () => {

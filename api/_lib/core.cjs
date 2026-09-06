@@ -1,6 +1,7 @@
 const crypto = require('node:crypto')
 const { validateChangedAgendaSchedules } = require('./scheduling-validation.cjs')
 const { ensureVehicleControlService } = require('./vehicle-control-service.cjs')
+const { assertNoPastWeeklyServiceAdditions } = require('./past-agenda.cjs')
 
 const normalizedText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 const normalizedRoleName = normalizedText
@@ -462,6 +463,7 @@ function validateState(state, previousState = null) {
     if (!internalPlanningIsValid(task)) throw new Error(`Agenda: la nota o el checklist interno del servicio ${taskIndex + 1} del equipo ${teamIndex + 1} contiene datos no válidos.`)
   }))
   validateChangedAgendaSchedules(state, previousState)
+  if (previousState) assertNoPastWeeklyServiceAdditions(state.agenda, previousState.agenda)
 }
 
 function auditChanges(previousRecords, nextRecords, key, entity, user) {
