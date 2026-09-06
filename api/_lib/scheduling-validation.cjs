@@ -184,6 +184,38 @@ function validateChangedAgendaSchedules(state, previousState = null) {
         throw new Error(`${teamDescription(team, teamIndex)} del ${longDate(plan.date)} tiene un conflicto de horarios entre el ${taskDescription(conflict.task, conflict.taskIndex)} a las ${conflict.task.time} y el ${taskDescription(current.task, current.taskIndex)} a las ${current.task.time}. Ajustá el horario o el tiempo estimado de uno de los servicios.`)
       })
     })
+    // La disponibilidad pertenece al técnico, no al equipo. Un mismo integrante
+    // no puede quedar oculto en dos equipos con franjas superpuestas.
+    const assignmentsByTechnician = new Map()
+    ;(plan.teams || []).forEach((team, teamIndex) => {
+      ;(team.tasks || []).forEach((candidate, taskIndex) => {
+        const task = agendaTaskForScheduleOccupancy(candidate, plan.date, state?.history)
+        const match = String(task?.time || task?.scheduledTime || '').match(/^(\d{1,2}):(\d{2})$/)
+        if (!task || !(task.serviceId || task.service) || !match) return
+        const start = Number(match[1]) * 60 + Number(match[2])
+        const actualRelease = completedReleaseMinute(task)
+        const plannedEnd = start + Math.max(60, estimatedMinutesFor(task, serviceMap))
+        const end = actualRelease == null ? plannedEnd : Math.min(actualRelease, plannedEnd)
+        const technicianIds = task.vehicleControl && task.technicianIds?.length ? task.technicianIds : team.memberIds || []
+        const technicianNames = task.vehicleControl && task.technicians?.length ? task.technicians : team.members || []
+        const identities = [
+          ...technicianIds.map((id, index) => ({ key: `id:${String(id)}`, name: technicianNames[index] || String(id) })),
+          ...technicianNames.map(name => ({ key: `name:${normalizedName(name)}`, name }))
+        ].filter(identity => identity.key !== 'name:')
+        const entry = { task, taskIndex, team, teamIndex, start, end }
+        ;[...new Map(identities.map(identity => [identity.key, identity])).values()].forEach(identity => {
+          assignmentsByTechnician.set(identity.key, { name: identity.name, entries: [...(assignmentsByTechnician.get(identity.key)?.entries || []), entry] })
+        })
+      })
+    })
+    assignmentsByTechnician.forEach(({ name, entries }) => {
+      const ordered = entries.sort((left, right) => left.start - right.start)
+      ordered.forEach((current, index) => {
+        const conflict = ordered.slice(0, index).find(previousAssignment => current.start < previousAssignment.end)
+        if (!conflict || conflict.teamIndex === current.teamIndex) return
+        throw new Error(`${name || 'El técnico'} tiene servicios incompatibles el ${longDate(plan.date)}: ${taskDescription(conflict.task, conflict.taskIndex)} en ${conflict.team.label || `Equipo ${conflict.teamIndex + 1}`} y ${taskDescription(current.task, current.taskIndex)} en ${current.team.label || `Equipo ${current.teamIndex + 1}`}. Reasigná el técnico o ajustá los horarios.`)
+      })
+    })
   })
 }
 
