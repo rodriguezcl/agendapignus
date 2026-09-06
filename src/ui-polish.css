@@ -2137,6 +2137,72 @@ html.modal-open body {
   display: none;
 }
 
+/* La acción excepcional queda inmediatamente debajo del bloqueo horario. */
+.technician-actions .technician-advance-request {
+  flex: 0 0 100%;
+  min-height: 44px;
+}
+
+.technician-actions .technician-advance-request:disabled {
+  border-color: #ddc478;
+  background: #fff7dc;
+  color: #806210;
+  cursor: default;
+  opacity: 1;
+}
+
+/* Los controles nativos de Formulario deben ocupar la misma caja que sus pares. */
+.service-extra-field,
+.service-extra-form,
+.service-extra-form select {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+
+.weekly-extra-fields .service-extra-form select,
+.daily-extra-fields .service-extra-form select {
+  min-height: 44px;
+}
+
+.service-advance-reminders {
+  display: grid;
+  gap: 10px;
+  margin: -6px 0 20px;
+}
+
+.service-advance-reminders article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #dfad32;
+  border-radius: 12px;
+  background: #fff5d9;
+  color: #674d08;
+}
+
+.service-advance-reminders article > div:not(.service-advance-actions),
+.service-advance-reminders :is(b, span, small) { display: block; }
+.service-advance-reminders span { margin-top: 3px; line-height: 1.4; }
+.service-advance-reminders small { margin-top: 5px; color: #826f39; }
+.service-advance-actions { display: flex; gap: 8px; }
+.service-advance-actions button { min-height: 40px; }
+
+.app-shell[data-theme='dark'] .service-advance-reminders article {
+  border-color: #745d24;
+  background: #3e3418;
+  color: #f5dfa0;
+}
+
+@media (max-width: 700px) {
+  .service-advance-reminders article { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .service-advance-actions { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
+  .service-advance-actions button { width: 100%; }
+}
+
 .technician-page[data-theme='dark'] .technician-team {
   border-color: #385041;
   background: #203329;

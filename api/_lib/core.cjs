@@ -60,7 +60,7 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
   inspectPlan({ teams: agenda.teams || [] })
   Object.entries(agenda.weekly || {}).forEach(([key, value]) => { if (!key.startsWith('_')) inspectPlan(value) })
   const incomingById = new Map(incomingHistory.map(record => [String(record.id), record]))
-  const protectedFields = ['status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt']
+  const protectedFields = ['status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'advanceRequest', 'originalScheduledTime']
   const result = []
   for (const previous of currentHistory) {
     const id = String(previous.id)

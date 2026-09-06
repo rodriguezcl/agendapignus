@@ -11,6 +11,7 @@ const { fetchNationalHolidays, validHolidayYear } = require('./api/_lib/holidays
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./api/_lib/vehicle-control-window.cjs')
 const { ensureVehicleControlService } = require('./api/_lib/vehicle-control-service.cjs')
 const { assertNoPastWeeklyServiceAdditions } = require('./api/_lib/past-agenda.cjs')
+const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 
 // API local: Vite reenvía las rutas /api a este proceso durante el desarrollo.
 const port = Number(process.env.PIGNUS_PORT || 3001)
@@ -807,7 +808,7 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
   inspectPlan({ teams: agenda.teams || [] })
   Object.entries(agenda.weekly || {}).forEach(([key, value]) => { if (!key.startsWith('_')) inspectPlan(value) })
   const incomingById = new Map(incomingHistory.map(record => [String(record.id), record]))
-  const protectedFields = ['status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt']
+  const protectedFields = ['status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'advanceRequest', 'originalScheduledTime']
   const result = []
   for (const previous of currentHistory) {
     const id = String(previous.id)
@@ -1783,6 +1784,40 @@ const server = http.createServer((req, res) => {
         throw error
       }
     }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo cargar el seguro.' }))
+  }
+  if (req.method === 'POST' && ['/api/technician/advance-request', '/api/admin/advance-request/approve', '/api/admin/advance-request/deny'].includes(url.pathname)) {
+    const user = requireSession(req, res)
+    if (!user) return
+    const decision = url.pathname.endsWith('/approve') ? 'approved' : url.pathname.endsWith('/deny') ? 'denied' : ''
+    if (decision && user.roleCode !== 'administrator') return send(res, 403, { error: 'Esta decisión es exclusiva del rol Administrador.' })
+    if (!decision && user.roleCode !== 'technician') return send(res, 403, { error: 'Esta solicitud es exclusiva del rol técnico.' })
+    return readJson(req).then(({ recordId }) => {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const previousRow = db.prepare('SELECT data FROM work_history WHERE id = ?').get(String(recordId || ''))
+        const previous = previousRow?.data ? JSON.parse(previousRow.data) : null
+        const next = decision ? resolveServiceAdvance(previous, user, decision) : requestServiceAdvance(previous, user)
+        if (next === previous) {
+          db.exec('COMMIT')
+          return send(res, 200, { record: technicianSafeRecord(previous), revision: currentStateRevision() })
+        }
+        db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(next), String(next.id))
+        const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+        if (agendaRow?.data) {
+          const nextAgenda = synchronizeAgendaAdvance(JSON.parse(agendaRow.data), next)
+          db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(nextAgenda), 'current')
+        }
+        const action = decision ? (decision === 'approved' ? 'Aprobó adelanto de servicio' : 'Denegó adelanto de servicio') : 'Solicitó adelanto de servicio'
+        writeAudit(user, action, 'Servicio / historial', String(next.id), previous, next)
+        const revision = currentStateRevision() + 1
+        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
+        db.exec('COMMIT')
+        return send(res, 200, { record: user.roleCode === 'technician' ? technicianSafeRecord(next) : next, revision })
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+    }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo procesar la solicitud de adelanto.' }))
   }
   if (req.method === 'POST' && url.pathname === '/api/technician/status') {
     const user = requireSession(req, res)
