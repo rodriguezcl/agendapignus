@@ -1,5 +1,6 @@
 const crypto = require('node:crypto')
 const { validateChangedAgendaSchedules } = require('./scheduling-validation.cjs')
+const { ensureVehicleControlService } = require('./vehicle-control-service.cjs')
 
 const normalizedText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 const normalizedRoleName = normalizedText
@@ -181,7 +182,7 @@ function visibleStateForUser(state, user) {
     revision: state.revision,
     roles: state.roles,
     employees: userCan(user, 'employees') ? state.employees.map(publicEmployee) : state.employees.map(({ id, firstName, lastName, name, roleId, role, status }) => ({ id, firstName, lastName, name, roleId, role, status })),
-    services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? state.services : [],
+    services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? ensureVehicleControlService(state.services) : [],
     vehicles: userCan(user, 'vehicles') || userCan(user, 'weeklyVehicles') ? state.vehicles || [] : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
     history: userCan(user, 'history') || userCan(user, 'accounts') ? state.history : [],
@@ -313,7 +314,7 @@ function normalizeStateForSave(state, current) {
     const role = roleById.get(String(employee.roleId))
     return { ...employee, name: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(), ...(role ? { roleId: role.id, role: role.name } : {}) }
   })
-  const services = (state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) }))
+  const services = ensureVehicleControlService((state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) })))
   const serviceById = new Map(services.map(service => [String(service.id), service]))
   const serviceByName = new Map(services.map(service => [normalizedServiceName(service.name), service]))
   const previousServiceById = new Map((current.services || []).map(service => [String(service.id), service]))

@@ -272,10 +272,24 @@ span.field-label-text > span.required-mark,
 .vehicle-control-photo-preview { grid-column: 1 / -1; }
 .vehicle-control-history-photo { margin-top: 12px; }
 .vehicle-control-detail { display: flex; flex-direction: column; gap: 5px; }
+.vehicle-control-report-help { margin: 8px 0 2px; padding: 12px 14px; border-radius: 8px; background: #f1f7fb; color: #315f79; }
+.vehicle-control-fixed-duration, .vehicle-control-planning-fields { display: grid; gap: 10px; }
+.vehicle-control-fixed-duration input, .vehicle-control-planning-fields input { background: #f4f7f4; }
+.vehicle-control-planning-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.vehicle-control-planning-fields p { grid-column: 1 / -1; margin: 0; color: #607366; font-size: .82rem; }
+.vehicle-control-summary { display: grid; gap: 6px; padding: 10px 12px; border-radius: 8px; background: #eef5f8; color: #315f79; }
+.vehicle-control-summary small { color: #607b69; }
+.vehicle-control-daily-fields { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; padding: 12px 14px; border-radius: 8px; background: #eef5f8; color: #315f79; }
+.monthly-vehicle-assignment { display: grid; gap: 8px; }
+.vehicle-control-overrides { padding: 10px 12px; border: 1px solid #dbe6dc; border-radius: 8px; background: #f8faf8; }
+.vehicle-control-overrides summary { cursor: pointer; color: #315f79; font-weight: 700; }
+.vehicle-control-overrides label { margin-top: 8px; }
+.system-service-chip { color: #315f79; font-size: .78rem; font-style: normal; font-weight: 700; white-space: nowrap; }
 .app-shell[data-theme='dark'] .monthly-vehicle-list label { background: #23352a; border-color: #3b5645; }
 .app-shell[data-theme='dark'] .monthly-vehicle-list b { color: #edf5ef; }
 .app-shell[data-theme='dark'] .vehicle-control-early-notice,
 body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #342f1d; color: #f2dda0; }
+.app-shell[data-theme='dark'] .vehicle-control-overrides { background: #1d3025; border-color: #3b5645; }
 
 @media (max-width: 900px) {
   .vehicle-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2366,7 +2380,10 @@ html.modal-open body {
   }
 }
 @media (max-width: 640px) {
-  .monthly-vehicle-list label, .vehicle-control-report-fields { grid-template-columns: minmax(0, 1fr); }
+  .monthly-vehicle-list label,
+  .vehicle-control-report-fields,
+  .vehicle-control-planning-fields,
+  .vehicle-control-daily-fields { grid-template-columns: minmax(0, 1fr); }
   .vehicle-control-report-fields { width: 100%; gap: 8px; }
   .vehicle-control-report-fields input {
     width: 100%;

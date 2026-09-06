@@ -279,7 +279,7 @@ test('el técnico no puede informar un servicio sin observación', async () => {
 
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /<RequiredLabel>Observación<\/RequiredLabel>/)
-  assert.match(source, /disabled=\{!observation\.trim\(\)\}/)
+  assert.match(source, /disabled=\{!draft\.record\.vehicleControl && !observation\.trim\(\)\}/)
   assert.doesNotMatch(source, /Observación técnica \(opcional\)/)
 })
 
@@ -1002,6 +1002,15 @@ test('el ABM de vehículos integra estado, permisos, seguro privado y campos req
 test('normaliza matrícula, año y kilometraje de los vehículos antes de persistir', () => {
   const normalized = normalizeStateForSave({ roles, employees: [], services: [], vehicles: [{ id: 'v1', brand: ' Ford ', model: ' Ranger ', year: '2025', mileage: '125000', plate: ' ab 123 cd ' }], customers: [], history: [], reviews: [], agenda: {} }, { reviews: [] })
   assert.deepEqual(normalized.vehicles, [{ id: 'v1', brand: 'Ford', model: 'Ranger', year: 2025, mileage: 125000, plate: 'AB 123 CD' }])
+})
+
+test('normaliza el control semanal como servicio de sistema de 15 minutos', () => {
+  const state = { roles, employees: [], services: [], vehicles: [], customers: [], history: [], reviews: [], agenda: { teams: [], weekly: {} } }
+  const normalized = normalizeStateForSave(state, { ...state, reviews: [] })
+  const control = normalized.services.find(service => service.code === 'vehicle-weekly-control')
+  assert.equal(control?.name, 'Control semanal de vehículo')
+  assert.equal(control?.estimatedMinutes, 15)
+  assert.equal(control?.system, true)
 })
 
 test('las agendas distinguen reservas PIG, clientes CLI y ubicación no monitoreada', () => {

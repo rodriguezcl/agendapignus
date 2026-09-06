@@ -1,7 +1,32 @@
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 
 export const VEHICLE_CONTROL_SERVICE = 'Control semanal de vehículo'
+export const VEHICLE_CONTROL_SERVICE_ID = 'vehicle-weekly-control'
+export const VEHICLE_CONTROL_SERVICE_CODE = 'vehicle-weekly-control'
+export const VEHICLE_CONTROL_ESTIMATED_MINUTES = 15
 export const VEHICLE_CONTROL_TIME = '15:30'
+
+export const vehicleControlService = () => ({
+  id: VEHICLE_CONTROL_SERVICE_ID,
+  code: VEHICLE_CONTROL_SERVICE_CODE,
+  category: 'vehicle-control',
+  name: VEHICLE_CONTROL_SERVICE,
+  description: 'Control interno de limpieza, fotografía y kilometraje de la flota.',
+  estimatedMinutes: VEHICLE_CONTROL_ESTIMATED_MINUTES,
+  status: 'Activo',
+  system: true
+})
+
+export function ensureVehicleControlService(services = []) {
+  let found = false
+  const next = (services || []).map(service => {
+    const matches = service?.code === VEHICLE_CONTROL_SERVICE_CODE || normalize(service?.name) === normalize(VEHICLE_CONTROL_SERVICE)
+    if (!matches) return service
+    found = true
+    return { ...service, ...vehicleControlService() }
+  })
+  return found ? next : [...next, vehicleControlService()]
+}
 
 export const vehicleLabel = vehicle => {
   const brand = vehicle?.brand || vehicle?.vehicleBrand
@@ -115,7 +140,8 @@ export function buildVehicleControlRecords({ month, assignments, vehicles, techn
     const date = vehicleControlOperationalDate(friday, holidays, holidayOverrides)
     if (fromDate && date < fromDate) return null
     const vehicle = byVehicle.get(String(assignment.vehicleId))
-    const technician = byTechnician.get(String(assignment.technicianId))
+    const assignedTechnicianId = assignment.weeklyOverrides?.[friday] || assignment.technicianId
+    const technician = byTechnician.get(String(assignedTechnicianId))
     if (!vehicle || !technician) return null
     const teamIndex = (teams || []).findIndex(team => (team.memberIds || []).some(id => String(id) === String(technician.id)))
     const id = vehicleControlId(friday, vehicle.id)
@@ -124,9 +150,12 @@ export function buildVehicleControlRecords({ month, assignments, vehicles, techn
       sourceTaskId: id,
       date,
       time: VEHICLE_CONTROL_TIME,
+      serviceId: VEHICLE_CONTROL_SERVICE_ID,
       service: VEHICLE_CONTROL_SERVICE,
+      estimatedMinutes: VEHICLE_CONTROL_ESTIMATED_MINUTES,
+      estimatedMinutesCustomized: false,
       client: vehicleLabel(vehicle),
-      address: 'Flota de la empresa',
+      address: '',
       phone: '',
       detail: 'Cargar una foto del interior del vehículo e informar el kilometraje actualizado.',
       status: 'Pendiente',
@@ -151,13 +180,18 @@ export function vehicleControlTask(record) {
     taskId: record.sourceTaskId || record.id,
     historyId: record.id,
     time: record.time,
+    serviceId: record.serviceId || VEHICLE_CONTROL_SERVICE_ID,
     service: record.service,
+    estimatedMinutes: record.estimatedMinutes || VEHICLE_CONTROL_ESTIMATED_MINUTES,
+    estimatedMinutesCustomized: false,
     client: record.client,
     address: record.address,
     phone: record.phone,
     detail: record.detail,
     vehicleControl: true,
     vehicleId: record.vehicleId,
+    technicianIds: record.technicianIds || [],
+    technicians: record.technicians || [],
     vehicleControlScheduledFriday: vehicleControlFriday(record),
     monthlyVehicleAssignment: record.monthlyVehicleAssignment
   }
