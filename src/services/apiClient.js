@@ -1,13 +1,8 @@
-/** Cliente único para la API local. Los módulos no deben conocer detalles de fetch. */
-const STATE_ENDPOINT = '/api/state'
-
-async function request(url, options) {
-  const response = await fetch(url, options)
-  if (!response.ok) throw new Error(`Error de API: ${response.status}`)
-  return response.json()
-}
+// Compatibility adapter for older imports. New code should depend on the
+// repository in infrastructure/repositories instead of a generic API object.
+import { stateRepository } from '../infrastructure/repositories/state-repository.mjs'
 
 export const apiClient = {
-  getState: () => request(STATE_ENDPOINT),
-  saveState: state => request(STATE_ENDPOINT, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state) })
+  getState: stateRepository.load,
+  saveState: stateRepository.save
 }

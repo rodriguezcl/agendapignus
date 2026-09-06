@@ -44,7 +44,7 @@ test('cada correo conserva una sola sesión y la sesión desplazada lo explica',
   assert.match(apiSource, /replacedSessions: revoked\.length/)
   assert.match(serverSource, /sessions\.delete\(activeToken\)/)
   assert.match(source, /function Login\(\{ onLogin, initialError = '' \}\)/)
-  assert.match(source, /endInvalidatedSession\(data\.error\)/)
+  assert.match(source, /endInvalidatedSession\(error\.message\)/)
   assert.match(source, /cuenta fue abierta en otro dispositivo/)
 })
 
@@ -65,18 +65,20 @@ test('normaliza el tiempo estimado de los tipos de servicio existentes', () => {
 })
 
 test('el ABM permite administrar y mostrar el tiempo estimado', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = [
+    fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8'),
+    fs.readFileSync(path.resolve(__dirname, '../src/features/services/presentation/ServiceTypes.jsx'), 'utf8')
+  ].join('\n')
   assert.match(source, /<RequiredLabel>Tiempo estimado<\/RequiredLabel>/)
   assert.match(source, /<span>Tiempo estimado<\/span>/)
   assert.match(source, /formatServiceEstimatedTime\(service\.estimatedMinutes\)/)
 })
 
 test('el tiempo estimado queda compacto y alineado con los demás campos', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/features/services/presentation/ServiceTypes.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
-  const form = source.slice(source.indexOf('function ServiceTypes'), source.indexOf('const blankVehicle'))
-  assert.match(form, /className="service-duration-inputs"/)
-  assert.doesNotMatch(form, /<small>\{formatServiceEstimatedTime\(form\.estimatedMinutes\)\}<\/small>/)
+  assert.match(source, /className="service-duration-inputs"/)
+  assert.doesNotMatch(source, /<small>\{formatServiceEstimatedTime\(form\.estimatedMinutes\)\}<\/small>/)
   assert.match(styles, /\.service-duration-inputs :is\(input,select\)\{height:40px;min-height:40px\}/)
 })
 
@@ -466,9 +468,10 @@ test('los controles nativos permanecen contenidos dentro de todos los modales', 
 
 test('los campos obligatorios usan un único indicador junto a la etiqueta', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const requiredLabel = fs.readFileSync(path.resolve(__dirname, '../src/presentation/components/forms/RequiredLabel.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   const legacyStyles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
-  assert.match(source, /function RequiredLabel\(\{ children \}\)/)
+  assert.match(requiredLabel, /function RequiredLabel\(\{ children \}\)/)
   assert.doesNotMatch(source, /<b>\s*\*\s*<\/b>/)
   assert.doesNotMatch(legacyStyles, /task-row>label:nth-of-type\(1\)::after/)
   assert.doesNotMatch(legacyStyles, /installation-zone legend::after/)
@@ -667,7 +670,7 @@ test('los horarios predeterminados cambian desde septiembre sin alterar servicio
 test('cada equipo reserva una hora mínima y oculta turnos vacíos incompatibles', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
-  const scheduling = fs.readFileSync(path.resolve(__dirname, '../src/service-scheduling.mjs'), 'utf8')
+  const scheduling = fs.readFileSync(path.resolve(__dirname, '../src/domain/agenda/service-scheduling.mjs'), 'utf8')
   assert.match(scheduling, /MINIMUM_SERVICE_RESERVATION_MINUTES = 60/)
   assert.match(scheduling, /Math\.max\([\s\S]*MINIMUM_SERVICE_RESERVATION_MINUTES/)
   assert.match(source, /removeUnavailableDefaultSlots\(\(team\.tasks \|\| \[\]\)\.map/)
@@ -697,7 +700,7 @@ test('el administrador configura dos horarios predeterminados para cada mes', ()
 test('equipos del mes escala la rotación según técnicos y vehículos', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
-  assert.match(source, /import \{ monthlyTeamRotation \} from '\.\/monthly-team-rotation\.mjs'/)
+  assert.match(source, /import \{ monthlyTeamRotation \} from '\.\/domain\/agenda\/monthly-team-rotation\.mjs'/)
   assert.match(source, /const rotation = monthlyTeamRotation\(activeTechs, monthKey, '2026-01', vehicles\.length \|\| 3\)/)
   assert.match(source, /const expectedTeamCount = Math\.min\(activeTechs\.length, vehicles\.length \|\| 3\)/)
   assert.match(source, /assignmentsMatchFleet/)
@@ -970,7 +973,10 @@ test('la interfaz ofrece equipos semanales editables, permisos por función e im
 })
 
 test('el ABM de vehículos integra estado, permisos, seguro privado y campos requeridos', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = [
+    fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8'),
+    fs.readFileSync(path.resolve(__dirname, '../src/domain/access/permissions.mjs'), 'utf8')
+  ].join('\n')
   const api = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
   const apiCore = fs.readFileSync(path.resolve(__dirname, '../api/_lib/core.cjs'), 'utf8')
   const database = fs.readFileSync(path.resolve(__dirname, '../api/_lib/database.cjs'), 'utf8')
