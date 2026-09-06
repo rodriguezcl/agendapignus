@@ -18,6 +18,7 @@ import { appendConfigurationHistory, guardConfigurationSnapshot, teamConfigurati
 import { compactVehiclePhoto } from './image-upload.mjs'
 import { serviceHasStarted } from './service-start.mjs'
 import { DEFAULT_SERVICE_ESTIMATED_MINUTES, MAX_SERVICE_ESTIMATED_MINUTES, normalizeServiceEstimatedMinutes, removeOverlappingDefaultSlots, serviceScheduleConflicts, taskOccupiedInterval } from './service-scheduling.mjs'
+import { mergeImportedCustomers } from './customer-import.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -4782,21 +4783,8 @@ function ImportModal({ customers, close, onImport }) {
     // The report is incremental: accounts not included in the file stay intact.
     // Matching accounts are updated, while missing report values preserve prior
     // customer data instead of accidentally erasing it.
-    const existingByAccount = new Map(customers.map(customer => [normalizeAccountKey(customer.account), customer]))
-    const importedKeys = new Set(imported.map(customer => customer.account))
-    const updated = imported.filter(customer => existingByAccount.has(customer.account)).length
-    const merged = imported.map(customer => {
-      const previous = existingByAccount.get(customer.account)
-      if (!previous) return { ...customer, customerId: createCustomerId() }
-      const next = { ...previous, ...customer }
-      ;['name', 'type', 'street', 'locality', 'province', 'phone'].forEach(field => {
-        if (!customer[field] || customer[field] === '-') next[field] = previous[field] || customer[field] || ''
-      })
-      next.address = [next.street, next.locality, next.province].filter(Boolean).join(', ') || '-'
-      next.fields = { ...(previous.fields || {}), ...(customer.fields || {}) }
-      return next
-    })
-    setPreview({ customers: [...customers.filter(customer => !importedKeys.has(normalizeAccountKey(customer.account))), ...merged], created: imported.length - updated, updated, total: imported.length, fileName: file.name })
+    const result = mergeImportedCustomers(customers, imported, createCustomerId)
+    setPreview({ ...result, total: imported.length, fileName: file.name })
     setMessage('')
   }
 
