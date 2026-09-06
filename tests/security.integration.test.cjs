@@ -350,23 +350,37 @@ test('rechaza escrituras con una revisión antigua', async () => {
   assert.equal(Number.isInteger(conflict.revision), true)
 })
 
-test('serializa dos escrituras concurrentes y confirma solamente una revisión', async () => {
+test('fusiona dos escrituras concurrentes sobre registros diferentes', async () => {
   const cookie = await login('qa-admin@pignus.test')
   const baseline = await state(cookie)
-  const left = { ...baseline, services: [...baseline.services, { id: 'qa-concurrent-left', name: 'Servicio concurrente izquierdo', description: '', estimatedMinutes: 60, status: 'Activo' }] }
-  const right = { ...baseline, services: [...baseline.services, { id: 'qa-concurrent-right', name: 'Servicio concurrente derecho', description: '', estimatedMinutes: 60, status: 'Activo' }] }
+  const left = { ...baseline, base: baseline, services: [...baseline.services, { id: 'qa-concurrent-left', name: 'Servicio concurrente izquierdo', description: '', estimatedMinutes: 60, status: 'Activo' }] }
+  const right = { ...baseline, base: baseline, services: [...baseline.services, { id: 'qa-concurrent-right', name: 'Servicio concurrente derecho', description: '', estimatedMinutes: 60, status: 'Activo' }] }
 
   const responses = await Promise.all([
     api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(left) }),
     api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(right) })
   ])
-  assert.deepEqual(responses.map(response => response.status).sort(), [200, 409])
-  const rejected = responses.find(response => response.status === 409)
-  assert.equal((await rejected.json()).code, 'STATE_REVISION_CONFLICT')
+  assert.deepEqual(responses.map(response => response.status), [200, 200])
 
   const persisted = await state(cookie)
   const concurrentIds = persisted.services.filter(service => String(service.id).startsWith('qa-concurrent-')).map(service => service.id)
-  assert.equal(concurrentIds.length, 1)
+  assert.equal(concurrentIds.length, 2)
+})
+
+test('rechaza dos escrituras concurrentes sobre el mismo campo', async () => {
+  const cookie = await login('qa-admin@pignus.test')
+  const baseline = await state(cookie)
+  const target = baseline.services.find(service => service.id === 'qa-service')
+  const update = description => ({ ...baseline, base: baseline, services: baseline.services.map(service => service.id === target.id ? { ...service, description } : service) })
+
+  const responses = await Promise.all([
+    api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(update('Cambio concurrente A')) }),
+    api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(update('Cambio concurrente B')) })
+  ])
+  assert.deepEqual(responses.map(response => response.status).sort(), [200, 409])
+  const conflict = await responses.find(response => response.status === 409).json()
+  assert.equal(conflict.code, 'STATE_WRITE_CONFLICT')
+  assert.match(conflict.conflictPath, /services\[id:qa-service\]\.description/)
 })
 
 test('revoca inmediatamente una sesión al desactivar el empleado', async () => {

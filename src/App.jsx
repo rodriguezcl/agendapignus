@@ -1748,11 +1748,16 @@ export default function App() {
       const snapshot = stateSnapshot
       stateSaveQueue.current = stateSaveQueue.current.catch(() => {}).then(async () => {
         if (saveGeneration !== stateSaveGenerationRef.current) return
-        const payload = await stateRepository.save({ revision: stateRevisionRef.current, ...snapshot })
+        let base = null
+        try { base = lastPersistedSnapshotRef.current ? JSON.parse(lastPersistedSnapshotRef.current) : null } catch { base = null }
+        const payload = await stateRepository.save({ revision: stateRevisionRef.current, ...(base ? { base } : {}), ...snapshot })
         stateRevisionRef.current = Number(payload.revision)
         lastPersistedSnapshotRef.current = serializedStateSnapshot
         remoteConflictRevisionRef.current = null
-        setStateRevision(stateRevisionRef.current)
+        if (payload.state && currentSnapshotRef.current === serializedStateSnapshot) {
+          applyRemoteState(payload.state)
+          if (payload.merged) setNotice('Tus cambios se guardaron junto con las actualizaciones compatibles de otra sesión.')
+        } else setStateRevision(stateRevisionRef.current)
       }).catch(async error => {
         if (error.status === 401) {
           endInvalidatedSession(error.message)

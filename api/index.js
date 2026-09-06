@@ -4,6 +4,7 @@ const { appendAudit, database, readExportState, readRevision, readState, replace
 const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./_lib/service-advance.cjs')
+const { mergeConcurrentState } = require('./_lib/state-merge.cjs')
 const {
   assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
@@ -324,23 +325,26 @@ async function handleLogout(req, res, sql) {
 async function handleSaveState(req, res, sql, user) {
   const incoming = requestBody(req)
   try {
-    const revision = await sql.begin(async transaction => {
+    const result = await sql.begin(async transaction => {
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
       const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const currentRevision = Number(revisionRows[0]?.value || 0)
       const current = await readState(transaction)
       let next = authorizeIncomingState(incoming, current, user)
+      const base = incoming.base && typeof incoming.base === 'object' ? incoming.base : null
+      const merged = Boolean(base && Number(incoming.revision) !== currentRevision)
+      if (base) next = mergeConcurrentState(base, current, next)
+      else if (!Number.isInteger(Number(incoming.revision)) || Number(incoming.revision) !== currentRevision) {
+        const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de volver a guardar.')
+        error.statusCode = 409
+        throw error
+      }
       next = normalizeStateForSave(next, current)
       next.employees = secureEmployees(next.employees, current.employees)
       validateState(next, current)
       // Un estado idéntico no es una nueva versión. Esto permite que dos
       // sesiones se hidraten simultáneamente sin generarse conflictos entre sí.
-      if (!statePersistenceChanged(current, next)) return currentRevision
-      if (!Number.isInteger(Number(incoming.revision)) || Number(incoming.revision) !== currentRevision) {
-        const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de volver a guardar.')
-        error.statusCode = 409
-        throw error
-      }
+      if (!statePersistenceChanged(current, next)) return { revision: currentRevision, state: current, merged }
       const entries = [
         ...auditChanges(current.roles, next.roles, 'id', 'Rol', user),
         ...auditChanges(current.employees, next.employees, 'id', 'Empleado', user),
@@ -356,15 +360,16 @@ async function handleSaveState(req, res, sql, user) {
       await appendAudit(transaction, entries)
       const nextRevision = currentRevision + 1
       await transaction`update pignus_preferences set value = ${String(nextRevision)}, updated_at = now() where key = 'state_revision'`
-      return nextRevision
+      return { revision: nextRevision, state: { ...next, revision: nextRevision }, merged }
     })
-    return send(res, 200, { ok: true, revision })
+    return send(res, 200, { ok: true, revision: result.revision, merged: result.merged, state: visibleStateForUser(result.state, user) })
   } catch (error) {
     console.error('No se pudo guardar el estado:', error.message)
     const status = error.statusCode || 400
     const payload = { error: error.message || 'No se pudieron guardar los datos.' }
     if (status === 409) {
-      payload.code = 'STATE_REVISION_CONFLICT'
+      payload.code = error.code || 'STATE_REVISION_CONFLICT'
+      if (error.conflictPath) payload.conflictPath = error.conflictPath
       try { payload.revision = await readRevision(sql) } catch { /* El mensaje funcional sigue siendo suficiente. */ }
     }
     return send(res, status, payload)
