@@ -98,8 +98,16 @@ function persistentState(state = {}) {
   }
 }
 
+function concurrentStateChanged(base = {}, current = {}) {
+  const normalizedBase = persistentState(base)
+  const normalizedCurrent = persistentState(current)
+  const visibleCollections = ['roles', 'employees', 'services', 'vehicles', 'customers', 'history', 'reviews', 'agenda']
+  if (visibleCollections.some(key => Object.hasOwn(base, key) && !equivalent(normalizedBase[key], normalizedCurrent[key]))) return true
+  return Boolean(base.preferences && Object.hasOwn(base.preferences, 'theme') && !equivalent(normalizedBase.preferences, normalizedCurrent.preferences))
+}
+
 function mergeConcurrentState(base, current, incoming) {
   return mergeObject(persistentState(base), persistentState(current), persistentState(incoming), '')
 }
 
-module.exports = { mergeConcurrentState, persistentState }
+module.exports = { concurrentStateChanged, mergeConcurrentState, persistentState }

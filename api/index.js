@@ -4,7 +4,8 @@ const { appendAudit, database, readExportState, readRevision, readState, replace
 const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./_lib/service-advance.cjs')
-const { mergeConcurrentState } = require('./_lib/state-merge.cjs')
+const { concurrentStateChanged, mergeConcurrentState } = require('./_lib/state-merge.cjs')
+const { logStateConcurrencyEvent } = require('./_lib/concurrency-observability.cjs')
 const {
   assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
@@ -332,7 +333,7 @@ async function handleSaveState(req, res, sql, user) {
       const current = await readState(transaction)
       let next = authorizeIncomingState(incoming, current, user)
       const base = incoming.base && typeof incoming.base === 'object' ? incoming.base : null
-      const merged = Boolean(base && Number(incoming.revision) !== currentRevision)
+      const merged = Boolean(base && concurrentStateChanged(base, current))
       if (base) next = mergeConcurrentState(base, current, next)
       else if (!Number.isInteger(Number(incoming.revision)) || Number(incoming.revision) !== currentRevision) {
         const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de volver a guardar.')
@@ -362,6 +363,11 @@ async function handleSaveState(req, res, sql, user) {
       await transaction`update pignus_preferences set value = ${String(nextRevision)}, updated_at = now() where key = 'state_revision'`
       return { revision: nextRevision, state: { ...next, revision: nextRevision }, merged }
     })
+    if (result.merged) logStateConcurrencyEvent('state_write_merged', {
+      actorRole: user.roleCode,
+      expectedRevision: incoming.revision,
+      currentRevision: result.revision
+    })
     return send(res, 200, { ok: true, revision: result.revision, merged: result.merged, state: visibleStateForUser(result.state, user) })
   } catch (error) {
     console.error('No se pudo guardar el estado:', error.message)
@@ -371,6 +377,13 @@ async function handleSaveState(req, res, sql, user) {
       payload.code = error.code || 'STATE_REVISION_CONFLICT'
       if (error.conflictPath) payload.conflictPath = error.conflictPath
       try { payload.revision = await readRevision(sql) } catch { /* El mensaje funcional sigue siendo suficiente. */ }
+      logStateConcurrencyEvent('state_write_conflict', {
+        actorRole: user.roleCode,
+        code: payload.code,
+        expectedRevision: incoming.revision,
+        currentRevision: payload.revision,
+        conflictPath: payload.conflictPath
+      })
     }
     return send(res, status, payload)
   }
