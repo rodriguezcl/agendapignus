@@ -33,6 +33,27 @@ test('detecta una fusión real aunque la colección privada no esté en el clien
   assert.equal(concurrentStateChanged(base, { services: [{ id: 'service-1', name: 'Actualizado' }], reviews: [] }), true)
 })
 
+test('la base compacta incluye sólo las secciones modificadas', async () => {
+  const { compactStateBase } = await import('../src/features/state/application/compact-state-base.mjs')
+  const customers = Array.from({ length: 1000 }, (_, index) => ({ customerId: `customer-${index}`, name: `Cliente ${index}` }))
+  const base = { customers, services: [{ id: 'service-1' }], agenda: { date: '2026-09-06', teams: [] }, preferences: { theme: 'light' } }
+  const next = { ...base, agenda: { ...base.agenda, date: '2026-09-07' } }
+  const compact = compactStateBase(base, next)
+
+  assert.deepEqual(Object.keys(compact), ['agenda'])
+  assert.equal(JSON.stringify(compact).length < JSON.stringify(base).length / 10, true)
+})
+
+test('una base parcial fusiona lo modificado y preserva las demás colecciones', () => {
+  const base = { agenda: { date: '2026-09-06', teams: [] } }
+  const current = { agenda: base.agenda, customers: [{ customerId: 'customer-1', name: 'Vigente' }] }
+  const incoming = { agenda: { date: '2026-09-07', teams: [] }, customers: [] }
+  const merged = mergeConcurrentState(base, current, incoming)
+
+  assert.equal(merged.agenda.date, '2026-09-07')
+  assert.deepEqual(merged.customers, current.customers)
+})
+
 test('fusiona altas simultáneas sobre registros diferentes', () => {
   const base = { services: [{ id: 'service-1', name: 'Base' }] }
   const current = { services: [...base.services, { id: 'service-a', name: 'Alta A' }] }
@@ -139,7 +160,8 @@ test('la interfaz bloquea doble guardado y descarta instantáneas encoladas obso
   assert.match(source, /const stateSaveGenerationRef = useRef\(0\)/)
   assert.match(source, /if \(saveGeneration !== stateSaveGenerationRef\.current\) return/)
   assert.match(source, /invalidatePendingSaves: \(\) => \{ stateSaveGenerationRef\.current \+= 1 \}/)
-  assert.match(source, /stateRepository\.save\(\{ revision: stateRevisionRef\.current, \.\.\.\(base \? \{ base \} : \{\}\), \.\.\.snapshot \}\)/)
+  assert.match(source, /const changedBase = base \? compactStateBase\(base, snapshot\) : null/)
+  assert.match(source, /changedBase && Object\.keys\(changedBase\)\.length \? \{ base: changedBase \} : \{\}/)
   assert.match(source, /payload\.state && currentSnapshotRef\.current === serializedStateSnapshot/)
   assert.match(source, /if \(!taskEditor \|\| taskEditorSaveGuardRef\.current\) return/)
   assert.match(source, /disabled=\{taskEditorSaving\}/)

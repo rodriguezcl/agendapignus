@@ -34,6 +34,7 @@ import { readSettledLoginCredentials } from './features/auth/application/login-a
 import { serviceAdvanceRepository } from './infrastructure/repositories/service-advance-repository.mjs'
 import { serviceRecordFingerprint } from './domain/history/service-concurrency.mjs'
 import { recoverStateRevisionConflict } from './features/state/application/state-save-conflict.mjs'
+import { compactStateBase } from './features/state/application/compact-state-base.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -1750,7 +1751,8 @@ export default function App() {
         if (saveGeneration !== stateSaveGenerationRef.current) return
         let base = null
         try { base = lastPersistedSnapshotRef.current ? JSON.parse(lastPersistedSnapshotRef.current) : null } catch { base = null }
-        const payload = await stateRepository.save({ revision: stateRevisionRef.current, ...(base ? { base } : {}), ...snapshot })
+        const changedBase = base ? compactStateBase(base, snapshot) : null
+        const payload = await stateRepository.save({ revision: stateRevisionRef.current, ...(changedBase && Object.keys(changedBase).length ? { base: changedBase } : {}), ...snapshot })
         stateRevisionRef.current = Number(payload.revision)
         lastPersistedSnapshotRef.current = serializedStateSnapshot
         remoteConflictRevisionRef.current = null
