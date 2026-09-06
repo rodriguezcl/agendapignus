@@ -2416,6 +2416,31 @@ html.modal-open body {
   .internal-checklist-item { grid-template-columns: 20px minmax(0,1fr) 44px; }
   .task-row .internal-checklist-item > .icon-btn,
   .internal-checklist-item > .icon-btn { width: 44px; min-width: 44px !important; }
+
+  /* Nota interna debe participar de la misma grilla móvil que el resto de los
+     campos. Sin esta regla, el auto-placement podía dejarla en una sola columna. */
+  .content > .team-card .task-row > .internal-preparation {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+    justify-self: stretch;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+    box-sizing: border-box;
+  }
+
+  .content > .team-card .internal-preparation > *,
+  .content > .team-card .internal-preparation-heading,
+  .content > .team-card .internal-note-field,
+  .content > .team-card .internal-note-field textarea {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .content > .team-card .internal-note-field textarea { display: block; }
 }
 
 /* En escritorio el editor aprovecha el espacio disponible para que los datos

@@ -29,6 +29,7 @@ import { DEFAULT_FEATURE_PERMISSIONS, DEFAULT_MODULE_PERMISSIONS, FEATURE_PERMIS
 import { stateRepository } from './infrastructure/repositories/state-repository.mjs'
 import { auditRepository } from './infrastructure/repositories/audit-repository.mjs'
 import { customerImportRepository } from './infrastructure/repositories/customer-import-repository.mjs'
+import { useSessionLifecycle } from './features/auth/application/useSessionLifecycle.js'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -1895,6 +1896,14 @@ export default function App() {
   const requestLogout = () => setConfirmation(hasUnsavedAgenda
     ? { title: 'Agenda sin guardar', detail: 'Hay servicios cargados que aún no fueron guardados en el historial. Si cerrás sesión, la agenda se limpiará y esos datos se perderán.', action: () => logout({ discardDailyAgenda: true }), destructive: true, confirmLabel: 'Cerrar sesión y descartar agenda' }
     : { title: 'Cerrar sesión', detail: '¿Querés cerrar sesión?', action: logout, confirmLabel: 'Sí, cerrar sesión' })
+  useSessionLifecycle({
+    enabled: Boolean(authUser),
+    onInvalidated: endInvalidatedSession,
+    onIdle: async () => {
+      setSessionEndedMessage('La sesión se cerró por seguridad después de 30 minutos sin actividad. Iniciá sesión nuevamente para continuar.')
+      await logout()
+    }
+  })
   useEffect(() => {
     // Intercepta el botón común del encabezado para aplicar la verificación de agenda antes de salir.
     const button = document.querySelector('.topbar .logout-button')

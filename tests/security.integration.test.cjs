@@ -257,15 +257,26 @@ test('gestiona solicitudes de contraseña únicamente para administradores', asy
 
 test('el último ingreso invalida cualquier sesión anterior del mismo correo', async () => {
   const firstCookie = await login('qa-tech@pignus.test')
-  assert.equal((await api('/api/state', firstCookie)).status, 200)
+  let statusResponse = await api('/api/auth/session-status', firstCookie)
+  assert.equal(statusResponse.status, 200)
+  let statusPayload = await statusResponse.json()
+  assert.deepEqual(Object.keys(statusPayload).sort(), ['active', 'expiresAt'])
+  assert.equal(statusPayload.active, true)
+
+  const activityResponse = await api('/api/auth/activity', firstCookie, { method: 'POST' })
+  assert.equal(activityResponse.status, 200)
+  assert.match(activityResponse.headers.get('set-cookie'), /Max-Age=1800/)
+
   const secondCookie = await login('qa-tech@pignus.test')
   assert.notEqual(firstCookie, secondCookie)
-  const displaced = await api('/api/state', firstCookie)
+  const displaced = await api('/api/auth/session-status', firstCookie)
   assert.equal(displaced.status, 401)
   const payload = await displaced.json()
   assert.equal(payload.code, 'SESSION_ENDED')
   assert.match(payload.error, /otro dispositivo|vencido/i)
-  assert.equal((await api('/api/state', secondCookie)).status, 200)
+  statusResponse = await api('/api/auth/session-status', secondCookie)
+  statusPayload = await statusResponse.json()
+  assert.equal(statusPayload.active, true)
 })
 
 test('el ingreso y la recuperación de sesión entregan el estado inicial sin una segunda carga', async () => {
