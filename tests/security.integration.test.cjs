@@ -343,7 +343,7 @@ test('el último ingreso invalida cualquier sesión anterior del mismo correo', 
   assert.equal(statusPayload.active, true)
 })
 
-test('el ingreso y la recuperación de sesión entregan el estado inicial sin una segunda carga', async () => {
+test('el ingreso entrega el estado y la recuperación por F5 valida primero la sesión de forma liviana', async () => {
   const loginResponse = await fetch(`${origin}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'qa-admin@pignus.test', password: 'Prueba1234' }) })
   assert.equal(loginResponse.status, 200)
   const loginPayload = await loginResponse.json()
@@ -353,8 +353,11 @@ test('el ingreso y la recuperación de sesión entregan el estado inicial sin un
   const sessionResponse = await api('/api/auth/session', cookie)
   assert.equal(sessionResponse.status, 200)
   const sessionPayload = await sessionResponse.json()
-  assert.equal(sessionPayload.state.revision, loginPayload.state.revision)
-  assert.ok(sessionPayload.state.agenda)
+  assert.equal(sessionPayload.user.email, loginPayload.user.email)
+  assert.equal('state' in sessionPayload, false)
+  const recoveredState = await state(cookie)
+  assert.equal(recoveredState.revision, loginPayload.state.revision)
+  assert.ok(recoveredState.agenda)
   const logoutResponse = await api('/api/auth/logout', cookie, { method: 'POST', body: JSON.stringify({ discardDailyAgenda: false }) })
   assert.equal(logoutResponse.status, 200)
 })
