@@ -9,11 +9,12 @@ import { formatServiceEstimatedTime } from '../../../domain/services/service.mjs
 import {
   blankService,
   buildServiceRecord,
-  editableService,
-  serviceIsReferenced
+  editableService
 } from '../../../domain/services/service-catalog.mjs'
+import { serviceCatalogRepository } from '../../../infrastructure/repositories/service-catalog-repository.mjs'
 
-export default function ServiceTypes({ services, setServices, setNotice, ask, history, teams, weekly }) {
+export default function ServiceTypes({ services, setServices, setNotice, ask, stateRevision, refreshRemoteState }) {
+  refreshRemoteState = refreshRemoteState || globalThis.__pignusRefreshRemoteState
   const [form, setForm] = useState(blankService)
   const [editing, setEditing] = useState(null)
   const [open, setOpen] = useState(false)
@@ -35,24 +36,33 @@ export default function ServiceTypes({ services, setServices, setNotice, ask, hi
       setNotice(error.message)
       return
     }
-    ask(editing ? 'Confirmar edición' : 'Confirmar alta', `¿Querés guardar el tipo de servicio ${record.name}?`, () => {
-      setServices(previous => editing
-        ? previous.map(service => service.id === editing ? record : service)
-        : [...previous, record])
+    const previous = editing ? services.find(service => String(service.id) === String(editing)) : null
+    ask(editing ? 'Confirmar edición' : 'Confirmar alta', `¿Querés guardar el tipo de servicio ${record.name}?`, async () => {
+      const payload = editing
+        ? await serviceCatalogRepository.update(record, previous, stateRevision)
+        : await serviceCatalogRepository.create(record, stateRevision)
+      if (refreshRemoteState) await refreshRemoteState()
+      else setServices(payload.services || [])
       setOpen(false)
       setEditing(null)
       setNotice('El tipo de servicio fue guardado correctamente.')
     })
   }
 
-  const removeService = service => {
-    if (serviceIsReferenced(service.id, history, teams, weekly)) {
-      setServices(previous => previous.map(item => item.id === service.id ? { ...item, status: 'Inactivo' } : item))
-      setNotice('El servicio tiene registros vinculados: se marcó como inactivo en lugar de eliminarlo.')
-      return
-    }
-    setServices(previous => previous.filter(item => item.id !== service.id))
-    setNotice('El tipo de servicio fue eliminado.')
+  const removeService = async service => {
+    const payload = await serviceCatalogRepository.remove(service, stateRevision)
+    if (refreshRemoteState) await refreshRemoteState()
+    else setServices(payload.services || [])
+    setNotice(payload.outcome === 'deactivated'
+      ? 'El servicio tiene registros vinculados: se marcó como inactivo en lugar de eliminarlo.'
+      : 'El tipo de servicio fue eliminado.')
+  }
+
+  const toggleStatus = async service => {
+    const payload = await serviceCatalogRepository.toggleStatus(service, stateRevision)
+    if (refreshRemoteState) await refreshRemoteState()
+    else setServices(payload.services || [])
+    setNotice(`El tipo de servicio fue marcado como ${payload.service?.status?.toLowerCase() || 'actualizado'}.`)
   }
 
   const startCreate = () => {
@@ -86,7 +96,7 @@ export default function ServiceTypes({ services, setServices, setNotice, ask, hi
       <div className="table-head"><span>Servicio</span><span>Descripción</span><span>Tiempo estimado</span><span>Estado</span><span>Acciones</span></div>
       {services.map(service => <div className="service-row" key={service.id}>
         <b>{service.name}</b><span>{service.description || 'Sin descripción'}</span><strong className="service-duration-value">{formatServiceEstimatedTime(service.estimatedMinutes)}</strong>
-        <div><button disabled={service.system} title={service.system ? 'Servicio interno administrado por el sistema' : ''} className={`status ${service.status === 'Activo' ? 'on' : ''}`} onClick={() => ask('Cambiar estado', `¿Querés marcar ${service.name} como ${service.status === 'Activo' ? 'inactivo' : 'activo'}?`, () => setServices(previous => previous.map(item => item.id === service.id ? { ...item, status: item.status === 'Activo' ? 'Inactivo' : 'Activo' } : item)))}>{service.status}</button></div>
+        <div><button disabled={service.system} title={service.system ? 'Servicio interno administrado por el sistema' : ''} className={`status ${service.status === 'Activo' ? 'on' : ''}`} onClick={() => ask('Cambiar estado', `¿Querés marcar ${service.name} como ${service.status === 'Activo' ? 'inactivo' : 'activo'}?`, () => toggleStatus(service))}>{service.status}</button></div>
         <div className="row-actions">{service.system ? <em className="system-service-chip">Servicio del sistema</em> : <><button title="Editar servicio" onClick={() => startEdit(service)}><Icon name="edit" size={16} /></button><button className="delete" title="Eliminar servicio" onClick={() => ask('Eliminar servicio', `¿Querés eliminar ${service.name}?`, () => removeService(service), true)}><Icon name="trash" size={16} /></button></>}</div>
       </div>)}
     </div>

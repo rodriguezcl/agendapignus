@@ -6,6 +6,7 @@ const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehi
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./_lib/service-advance.cjs')
 const { concurrentStateChanged, mergeConcurrentState } = require('./_lib/state-merge.cjs')
 const { logStateConcurrencyEvent } = require('./_lib/concurrency-observability.cjs')
+const { applyServiceCatalogOperation } = require('./_lib/service-catalog-operation.cjs')
 const {
   assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
@@ -389,6 +390,49 @@ async function handleSaveState(req, res, sql, user) {
   }
 }
 
+function serviceOperationForRequest(method, route) {
+  if (method === 'POST' && route === '/services') return { operation: 'create', serviceId: '' }
+  const match = route.match(/^\/services\/([^/]+)(\/status)?$/)
+  if (!match) return null
+  if (method === 'PUT' && !match[2]) return { operation: 'update', serviceId: decodeURIComponent(match[1]) }
+  if (method === 'PATCH' && match[2]) return { operation: 'toggle-status', serviceId: decodeURIComponent(match[1]) }
+  if (method === 'DELETE' && !match[2]) return { operation: 'delete', serviceId: decodeURIComponent(match[1]) }
+  return null
+}
+
+async function handleServiceCatalog(req, res, sql, user, requestOperation) {
+  if (!userCan(user, 'services')) return send(res, 403, { error: 'No tenés permiso para administrar tipos de servicio.' })
+  const incoming = requestBody(req)
+  try {
+    const result = await sql.begin(async transaction => {
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const currentRevision = Number(revisionRows[0]?.value || 0)
+      const current = await readState(transaction)
+      const operation = applyServiceCatalogOperation(current, { ...incoming, ...requestOperation })
+      let next = normalizeStateForSave({ ...current, services: operation.services }, current)
+      next.employees = secureEmployees(next.employees, current.employees)
+      validateState(next, current)
+      if (!statePersistenceChanged(current, next)) return { revision: currentRevision, services: current.services, ...operation }
+      const entries = [
+        ...auditChanges(current.services, next.services, 'id', 'Tipo de servicio', user),
+        ...auditChanges(current.history, next.history, 'id', 'Servicio / historial', user)
+      ]
+      if (JSON.stringify(current.agenda) !== JSON.stringify(next.agenda)) entries.push(auditEntry(user, 'Modificó', 'Agenda técnica', 'agenda-actual', current.agenda, next.agenda))
+      await replaceCollections(transaction, next)
+      await appendAudit(transaction, entries)
+      const revision = currentRevision + 1
+      await transaction`update pignus_preferences set value = ${String(revision)}, updated_at = now() where key = 'state_revision'`
+      const persistedService = operation.service ? next.services.find(service => String(service.id) === String(operation.service.id)) || operation.service : null
+      return { revision, services: next.services, service: persistedService, outcome: operation.outcome }
+    })
+    return send(res, 200, result)
+  } catch (error) {
+    const status = error.statusCode || 400
+    return send(res, status, { error: error.message || 'No se pudo guardar el tipo de servicio.', ...(error.code ? { code: error.code } : {}) })
+  }
+}
+
 function alarmCategory(record) {
   if (record.installationZone) return record.installationZone
   const address = `${record.address || ''} ${record.client || ''}`.toLowerCase()
@@ -643,6 +687,8 @@ module.exports = async function handler(req, res) {
     }
     if (req.method === 'GET' && route === '/state/revision') return send(res, 200, { revision: await readRevision(sql) })
     if (req.method === 'GET' && route === '/state') return send(res, 200, visibleStateForUser(await readState(sql), session.user))
+    const serviceOperation = serviceOperationForRequest(req.method, route)
+    if (serviceOperation) return await handleServiceCatalog(req, res, sql, session.user, serviceOperation)
     if (req.method === 'GET' && route === '/holidays') {
       const year = validHolidayYear(req.query.year)
       if (!year) return send(res, 400, { error: 'El año solicitado no es válido.' })

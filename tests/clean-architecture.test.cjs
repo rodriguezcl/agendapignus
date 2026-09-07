@@ -32,3 +32,12 @@ test('el catálogo rechaza duraciones fuera de la regla de negocio', async () =>
   const { buildServiceRecord } = await import('../src/domain/services/service-catalog.mjs')
   assert.throws(() => buildServiceRecord({ name: 'Inválido', estimatedMinutes: 10 }, null), /entre 15 minutos y 12 horas/)
 })
+
+test('el catálogo persiste por operaciones de registro y no mediante el estado global', () => {
+  const presentation = fs.readFileSync(path.join(root, 'src/features/services/presentation/ServiceTypes.jsx'), 'utf8')
+  const repository = fs.readFileSync(path.join(root, 'src/infrastructure/repositories/service-catalog-repository.mjs'), 'utf8')
+  assert.match(presentation, /serviceCatalogRepository\.(create|update|toggleStatus|remove)/)
+  assert.doesNotMatch(presentation, /stateRepository/)
+  for (const method of ["'POST'", "'PUT'", "'PATCH'", "'DELETE'"]) assert.match(repository, new RegExp(method))
+  assert.doesNotMatch(repository, /\/api\/state/)
+})

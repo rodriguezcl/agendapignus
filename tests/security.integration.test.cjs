@@ -157,6 +157,39 @@ test('protege rutas y agrega cabeceras de seguridad', async () => {
   assert.match(response.headers.get('content-security-policy'), /default-src 'none'/)
 })
 
+test('tipos de servicio usa operaciones pequeñas con concurrencia por registro', async () => {
+  const administratorCookie = await login('qa-admin@pignus.test')
+  const coordinatorCookie = await login('qa-weekly@pignus.test')
+  const createdService = { id: 'qa-small-operation', code: 'qa-small-operation', category: 'service', name: 'Operación pequeña QA', description: '', estimatedMinutes: 30, status: 'Activo' }
+  let response = await api('/api/services', coordinatorCookie, { method: 'POST', body: JSON.stringify({ service: createdService }) })
+  assert.equal(response.status, 403)
+  response = await api('/api/services', administratorCookie, { method: 'POST', body: JSON.stringify({ service: createdService }) })
+  assert.equal(response.status, 200)
+  let payload = await response.json()
+  const created = payload.services.find(service => service.id === createdService.id)
+  assert.equal(created.name, createdService.name)
+
+  const edited = { ...created, name: 'Operación pequeña editada', estimatedMinutes: 45 }
+  response = await api(`/api/services/${created.id}`, administratorCookie, { method: 'PUT', body: JSON.stringify({ base: created, service: edited }) })
+  assert.equal(response.status, 200)
+  payload = await response.json()
+  assert.equal(payload.service.name, edited.name)
+  assert.equal(payload.service.estimatedMinutes, 45)
+
+  response = await api(`/api/services/${created.id}`, administratorCookie, { method: 'PUT', body: JSON.stringify({ base: created, service: { ...edited, name: 'Edición obsoleta' } }) })
+  assert.equal(response.status, 409)
+  assert.equal((await response.json()).code, 'SERVICE_WRITE_CONFLICT')
+
+  response = await api(`/api/services/${created.id}/status`, administratorCookie, { method: 'PATCH', body: JSON.stringify({ base: payload.service }) })
+  assert.equal(response.status, 200)
+  payload = await response.json()
+  assert.equal(payload.service.status, 'Inactivo')
+  response = await api(`/api/services/${created.id}`, administratorCookie, { method: 'DELETE', body: JSON.stringify({ base: payload.service }) })
+  assert.equal(response.status, 200)
+  assert.equal((await response.json()).outcome, 'deleted')
+  assert.equal((await state(administratorCookie)).services.some(service => service.id === created.id), false)
+})
+
 test('el seguro vehicular sólo se carga como administrador y se descarga con sesión técnica', async () => {
   const administratorCookie = await login('qa-admin@pignus.test')
   const technicianCookie = await login('qa-tech@pignus.test')
