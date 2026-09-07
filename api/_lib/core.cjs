@@ -325,14 +325,21 @@ function normalizeStateForSave(state, current) {
     if (!service) return item
     const previousService = previousServiceById.get(String(item?.serviceId ?? '')) || previousServiceByName.get(normalizedServiceName(item?.service))
     const previousDefault = normalizeServiceEstimatedMinutes(previousService?.estimatedMinutes, service.estimatedMinutes)
+    const serviceDefaultChanged = Boolean(previousService) && previousDefault !== service.estimatedMinutes
     const closed = ['Completado', 'Cancelado', 'Reprogramado'].includes(item?.status)
     const customized = item.estimatedMinutesCustomized === true || (
       item.estimatedMinutesCustomized !== false && item.estimatedMinutes != null && Number(item.estimatedMinutes) !== Number(previousDefault)
     )
-    const estimatedMinutes = closed || customized
-      ? normalizeServiceEstimatedMinutes(item.estimatedMinutes, service.estimatedMinutes)
-      : service.estimatedMinutes
-    return { ...item, serviceId: service.id, service: service.name, estimatedMinutes, estimatedMinutesCustomized: closed ? (item.estimatedMinutesCustomized ?? true) : customized }
+    // Un guardado de Clientes, Vehículos u otro módulo no debe reescribir la
+    // agenda usando nuevamente el valor predeterminado del catálogo. Sólo se
+    // propaga ese valor cuando el tipo de servicio cambió realmente.
+    const estimatedMinutes = !previousService || serviceDefaultChanged
+      ? (closed || customized ? normalizeServiceEstimatedMinutes(item.estimatedMinutes, service.estimatedMinutes) : service.estimatedMinutes)
+      : normalizeServiceEstimatedMinutes(item.estimatedMinutes, service.estimatedMinutes)
+    const estimatedMinutesCustomized = closed
+      ? (item.estimatedMinutesCustomized ?? true)
+      : (!previousService || serviceDefaultChanged ? customized : (item.estimatedMinutesCustomized ?? customized))
+    return { ...item, serviceId: service.id, service: service.name, estimatedMinutes, estimatedMinutesCustomized }
   }
   const normalizeTeams = teams => deduplicateScheduledTasks((teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(normalizeScheduledService) })))
   const vehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), mileage: vehicle.mileage == null || vehicle.mileage === '' ? null : Number(vehicle.mileage), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
