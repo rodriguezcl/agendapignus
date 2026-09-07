@@ -1,5 +1,6 @@
 const crypto = require('node:crypto')
 const { validateChangedAgendaSchedules } = require('./scheduling-validation.cjs')
+const { migrateLegacyEstimatedMinutes } = require('./legacy-estimated-minutes.cjs')
 const { ensureVehicleControlService } = require('./vehicle-control-service.cjs')
 const { assertNoPastWeeklyServiceAdditions } = require('./past-agenda.cjs')
 
@@ -309,6 +310,7 @@ function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now
 
 function normalizeStateForSave(state, current) {
   current ||= { roles: [], employees: [], services: [], vehicles: [], customers: [], history: [], reviews: [], agenda: {} }
+  state = migrateLegacyEstimatedMinutes(state).state
   const roles = (state.roles || []).map(role => ({ ...role, code: role.code || legacyRoleCode(role) }))
   const roleById = new Map(roles.map(role => [String(role.id), role]))
   const employees = (state.employees || []).map(employee => {

@@ -13,6 +13,7 @@ const { ensureVehicleControlService } = require('./api/_lib/vehicle-control-serv
 const { assertNoPastWeeklyServiceAdditions } = require('./api/_lib/past-agenda.cjs')
 const { applyServiceCatalogOperation } = require('./api/_lib/service-catalog-operation.cjs')
 const { applyVehicleOperation } = require('./api/_lib/vehicle-operation.cjs')
+const { migrateLegacyEstimatedMinutes } = require('./api/_lib/legacy-estimated-minutes.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
 const { concurrentStateChanged, mergeConcurrentState } = require('./api/_lib/state-merge.cjs')
@@ -252,7 +253,9 @@ function migrateServiceReferences() {
   }
   const normalizeReference = item => {
     const matched = byId.get(String(item.serviceId ?? '')) || byName.get(normalizedServiceName(item.service)) || legacyService(item.service)
-    return matched ? { ...item, serviceId: matched.id, service: matched.name, estimatedMinutes: item.estimatedMinutes == null ? matched.estimatedMinutes : item.estimatedMinutes } : item
+    if (!matched) return item
+    const migrated = migrateLegacyEstimatedMinutes({ history: [item], agenda: {} }).state.history[0]
+    return { ...migrated, serviceId: matched.id, service: matched.name }
   }
   const normalizeTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(normalizeReference) }))
 
@@ -1136,6 +1139,7 @@ function saveState(state, user) {
     error.statusCode = 409
     throw error
   }
+  state = migrateLegacyEstimatedMinutes(state).state
   const normalizedRoles = (state.roles || []).map(role => ({ ...role, code: role.code || legacyRoleCode(role) }))
   const roleById = new Map(normalizedRoles.map(role => [String(role.id), role]))
   const roleByName = new Map(normalizedRoles.map(role => [normalizedRoleName(role.name), role]))
@@ -1156,10 +1160,16 @@ function saveState(state, user) {
     if (!matched) return item
     const previousService = previousServiceById.get(String(item.serviceId ?? '')) || previousServiceByName.get(normalizedServiceName(item.service))
     const previousDefault = normalizeServiceEstimatedMinutes(previousService?.estimatedMinutes, matched.estimatedMinutes)
+    const serviceDefaultChanged = Boolean(previousService) && previousDefault !== matched.estimatedMinutes
     const closed = ['Completado', 'Cancelado', 'Reprogramado'].includes(item?.status)
     const customized = item.estimatedMinutesCustomized === true || (item.estimatedMinutesCustomized !== false && item.estimatedMinutes != null && Number(item.estimatedMinutes) !== Number(previousDefault))
-    const estimatedMinutes = closed || customized ? normalizeServiceEstimatedMinutes(item.estimatedMinutes, matched.estimatedMinutes) : matched.estimatedMinutes
-    return { ...item, serviceId: matched.id, service: matched.name, estimatedMinutes, estimatedMinutesCustomized: closed ? (item.estimatedMinutesCustomized ?? true) : customized }
+    const estimatedMinutes = !previousService || serviceDefaultChanged
+      ? (closed || customized ? normalizeServiceEstimatedMinutes(item.estimatedMinutes, matched.estimatedMinutes) : matched.estimatedMinutes)
+      : normalizeServiceEstimatedMinutes(item.estimatedMinutes, matched.estimatedMinutes)
+    const estimatedMinutesCustomized = closed
+      ? (item.estimatedMinutesCustomized ?? true)
+      : (!previousService || serviceDefaultChanged ? customized : (item.estimatedMinutesCustomized ?? customized))
+    return { ...item, serviceId: matched.id, service: matched.name, estimatedMinutes, estimatedMinutesCustomized }
   }
   const completedRetirementCustomerIds = new Set((state.history || [])
     .filter(record => record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo'))

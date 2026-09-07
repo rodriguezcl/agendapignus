@@ -37,6 +37,7 @@ import { serviceAdvanceRepository } from './infrastructure/repositories/service-
 import { serviceRecordFingerprint } from './domain/history/service-concurrency.mjs'
 import { recoverStateRevisionConflict } from './features/state/application/state-save-conflict.mjs'
 import { compactStateBase } from './features/state/application/compact-state-base.mjs'
+import { migrateLegacyEstimatedMinutes } from './domain/state/legacy-estimated-minutes.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
 
@@ -1674,6 +1675,7 @@ export default function App() {
     })
   }, [weekly, date])
   const applyRemoteState = data => {
+    data = migrateLegacyEstimatedMinutes(data, { repairUnidentifiedAgenda: true }).state
     hydratingStateRef.current = true
     serviceDefaultsRef.current = new Map()
     remoteConflictRevisionRef.current = null

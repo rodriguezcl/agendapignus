@@ -98,7 +98,7 @@ test('el servidor registra, conserva y limpia la hora real según la transición
   assert.throws(() => assertServiceCanBeCompleted({ date: '2026-08-31', time: '08:00' }, now), /antes de su fecha y hora/)
 })
 
-test('copia el valor del catálogo a registros antiguos y conserva ajustes particulares', () => {
+test('asigna 15 minutos a registros antiguos sin duración y conserva ajustes particulares', () => {
   const service = { id: 's1', code: 's1', name: 'Instalación de cámaras', description: '', estimatedMinutes: 180, status: 'Activo' }
   const base = {
     roles: [], employees: [], services: [service], vehicles: [], customers: [], reviews: [],
@@ -106,11 +106,11 @@ test('copia el valor del catálogo a registros antiguos y conserva ajustes parti
     agenda: { teams: [{ tasks: [{ serviceId: 's1', service: service.name }, { serviceId: 's1', service: service.name, estimatedMinutes: 240 }] }], weekly: {} }
   }
   const normalized = normalizeStateForSave(base, { reviews: [] })
-  assert.equal(normalized.history[0].estimatedMinutes, 180)
+  assert.equal(normalized.history[0].estimatedMinutes, 15)
   assert.equal(normalized.history[1].estimatedMinutes, 300)
-  assert.equal(normalized.agenda.teams[0].tasks[0].estimatedMinutes, 180)
+  assert.equal(normalized.agenda.teams[0].tasks[0].estimatedMinutes, 15)
   assert.equal(normalized.agenda.teams[0].tasks[1].estimatedMinutes, 240)
-  assert.equal(normalized.history[0].estimatedMinutesCustomized, false)
+  assert.equal(normalized.history[0].estimatedMinutesCustomized, true)
   assert.equal(normalized.history[1].estimatedMinutesCustomized, true)
 })
 
@@ -151,8 +151,8 @@ test('un guardado ajeno al catálogo conserva las duraciones existentes de la ag
 test('la API rechaza duraciones inválidas y solapamientos por equipo', () => {
   const service = { id: 's1', code: 's1', name: 'Servicio', description: '', estimatedMinutes: 60, status: 'Activo' }
   const base = { roles: [], employees: [], services: [service], vehicles: [], customers: [], history: [], agenda: { weekly: {} } }
-  assert.throws(() => validateState({ ...base, agenda: { teams: [{ tasks: [{ serviceId: 's1', time: '09:00', estimatedMinutes: 0 }] }], weekly: {} } }), /tiempo estimado/)
-  assert.throws(() => validateState({ ...base, agenda: { teams: [{ tasks: [
+  assert.throws(() => validateState({ ...base, agenda: { date: '2099-01-02', teams: [{ tasks: [{ serviceId: 's1', time: '09:00', estimatedMinutes: 0 }] }], weekly: {} } }), /tiempo estimado/)
+  assert.throws(() => validateState({ ...base, agenda: { date: '2099-01-02', teams: [{ tasks: [
     { serviceId: 's1', time: '09:00', estimatedMinutes: 120 },
     { serviceId: 's1', time: '10:30', estimatedMinutes: 60 }
   ] }], weekly: {} } }), /conflicto de horarios/)
