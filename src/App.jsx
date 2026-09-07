@@ -27,6 +27,7 @@ import { serviceCode } from './domain/services/service.mjs'
 import { normalizeCustomerName, normalizeSearchText, normalizeServiceName } from './domain/shared/normalization.mjs'
 import { DEFAULT_FEATURE_PERMISSIONS, DEFAULT_MODULE_PERMISSIONS, FEATURE_PERMISSIONS, MODULE_PERMISSIONS, normalizeRoleName, resolvedRolePermissions, roleCode } from './domain/access/permissions.mjs'
 import { stateRepository } from './infrastructure/repositories/state-repository.mjs'
+import { agendaRescheduleRepairCandidates } from './domain/agenda/reschedule-repair.mjs'
 import { auditRepository } from './infrastructure/repositories/audit-repository.mjs'
 import { customerImportRepository } from './infrastructure/repositories/customer-import-repository.mjs'
 import { useSessionLifecycle } from './features/auth/application/useSessionLifecycle.js'
@@ -1422,7 +1423,10 @@ export default function App() {
     // Repara reprogramaciones anteriores que pudieron quedar copiadas en ambos
     // dias. La identidad del servicio (historyId/taskId) permite quitar solamente
     // el origen sin alterar los restantes equipos ni sus visitas.
-    const rescheduled = history.filter(record => record.rescheduledFrom && record.date && record.rescheduledFrom !== record.date)
+    // Las agendas vencidas son snapshots cerrados. Una modificación cualquiera
+    // de Historial no debe intentar reconstruir allí reprogramaciones antiguas:
+    // además de ser innecesario, el servidor lo detecta como un alta tardía.
+    const rescheduled = agendaRescheduleRepairCandidates(history, currentLocalDate())
     if (!rescheduled.length) return
     setWeekly(previous => {
       const next = rescheduled.reduce(

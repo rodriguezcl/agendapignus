@@ -20,6 +20,21 @@ test('permite conservar jornadas pasadas y agregar servicios en fechas vigentes'
   assert.doesNotThrow(() => assertNoPastWeeklyServiceAdditions(current, { weekly: {} }, now))
 })
 
+test('la reparación de reprogramaciones no modifica agendas históricas por cambios ajenos', async () => {
+  const { agendaRescheduleRepairCandidates } = await import('../src/domain/agenda/reschedule-repair.mjs')
+  const records = [
+    { id: 'old', date: '2026-08-14', rescheduledFrom: '2026-08-13' },
+    { id: 'today', date: '2026-09-07', rescheduledFrom: '2026-09-04' },
+    { id: 'future', date: '2026-09-09', rescheduledFrom: '2026-09-08' },
+    { id: 'ordinary', date: '2026-09-07' }
+  ]
+
+  assert.deepEqual(
+    agendaRescheduleRepairCandidates(records, '2026-09-07').map(record => record.id),
+    ['today', 'future']
+  )
+})
+
 test('la agenda semanal bloquea días finalizados, amortigua Detalle y eleva errores de modales', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
