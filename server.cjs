@@ -11,6 +11,7 @@ const { fetchNationalHolidays, validHolidayYear } = require('./api/_lib/holidays
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./api/_lib/vehicle-control-window.cjs')
 const { ensureVehicleControlService } = require('./api/_lib/vehicle-control-service.cjs')
 const { assertNoPastWeeklyServiceAdditions } = require('./api/_lib/past-agenda.cjs')
+const { applyServiceCatalogOperation } = require('./api/_lib/service-catalog-operation.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
 const { concurrentStateChanged, mergeConcurrentState } = require('./api/_lib/state-merge.cjs')
@@ -1268,6 +1269,29 @@ function saveState(state, user) {
   }
 }
 
+function serviceOperationForRequest(method, pathname) {
+  if (method === 'POST' && pathname === '/api/services') return { operation: 'create', serviceId: '' }
+  const match = pathname.match(/^\/api\/services\/([^/]+)(\/status)?$/)
+  if (!match) return null
+  if (method === 'PUT' && !match[2]) return { operation: 'update', serviceId: decodeURIComponent(match[1]) }
+  if (method === 'PATCH' && match[2]) return { operation: 'toggle-status', serviceId: decodeURIComponent(match[1]) }
+  if (method === 'DELETE' && !match[2]) return { operation: 'delete', serviceId: decodeURIComponent(match[1]) }
+  return null
+}
+
+function saveServiceCatalogOperation(input, requestOperation, user) {
+  const current = readState()
+  const operation = applyServiceCatalogOperation(current, { ...input, ...requestOperation })
+  const result = saveState({ ...current, services: operation.services, revision: current.revision, base: { services: current.services } }, user)
+  const persisted = readState()
+  return {
+    revision: result.revision,
+    services: persisted.services,
+    service: operation.service ? persisted.services.find(service => String(service.id) === String(operation.service.id)) || operation.service : null,
+    outcome: operation.outcome
+  }
+}
+
 function send(res, status, data) {
   setSecurityHeaders(res)
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
@@ -1894,6 +1918,17 @@ const server = http.createServer((req, res) => {
     if (!userCan(user, 'agenda')) return send(res, 403, { error: 'No tenés permiso para limpiar la agenda del día.' })
     try { return send(res, 200, { ok: true, revision: clearDailyAgenda(user) }) }
     catch (error) { console.error(error); return send(res, 500, { error: 'No se pudo limpiar la agenda del día.' }) }
+  }
+  const serviceOperation = serviceOperationForRequest(req.method, url.pathname)
+  if (serviceOperation) {
+    const user = requireSession(req, res)
+    if (!user) return
+    if (!userCan(user, 'services')) return send(res, 403, { error: 'No tenés permiso para administrar tipos de servicio.' })
+    readJson(req, 100_000).then(input => send(res, 200, saveServiceCatalogOperation(input, serviceOperation, user))).catch(error => {
+      console.error(error)
+      send(res, error?.statusCode || 400, { error: error?.message || 'No se pudo guardar el tipo de servicio.', ...(error?.code ? { code: error.code } : {}) })
+    })
+    return
   }
   if (req.method === 'PUT' && req.url === '/api/state') {
     const user = requireSession(req, res)

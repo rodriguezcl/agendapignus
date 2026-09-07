@@ -65,18 +65,24 @@ domain ──X──> React, DOM, fetch, infrastructure
 
 ## Flujo de ejemplo: catálogo de servicios
 
-1. `ServiceTypes.jsx` recibe estado y acciones desde la raíz de composición.
+1. `ServiceTypes.jsx` recibe el catálogo visible desde la raíz de composición.
 2. `buildServiceRecord` valida y crea la entidad con sus invariantes.
-3. `serviceIsReferenced` decide si corresponde eliminar o desactivar.
-4. React presenta el resultado y solicita confirmación.
-5. La persistencia global se realiza mediante `stateRepository`.
+3. `serviceCatalogRepository` envía una operación HTTP de un solo registro.
+4. `service-catalog-operation.cjs` controla concurrencia sobre ese registro y
+   decide si una baja referenciada debe convertirse en desactivación.
+5. El servidor normaliza las referencias relacionadas dentro de una transacción,
+   incrementa la revisión y devuelve solamente el catálogo actualizado.
+6. Durante la transición, la interfaz recarga el estado remoto para reflejar las
+   referencias normalizadas; esa lectura global se dividirá en una etapa posterior.
 
 ## Estrategia de migración
 
 La migración es incremental para conservar el comportamiento productivo:
 
 1. Extraer reglas puras a `domain` y cubrirlas con pruebas.
-2. Encapsular cada endpoint en un repositorio de `infrastructure`.
+2. Encapsular cada endpoint en un repositorio de `infrastructure`. El catálogo de
+   servicios ya usa `POST/PUT/PATCH/DELETE /api/services` en lugar del `PUT`
+   global para sus escrituras.
 3. Mover una pantalla completa por vez a `features/<módulo>/presentation`.
 4. Eliminar su versión histórica de `App.jsx` cuando no existan importadores.
 5. Retirar los puertos raíz de compatibilidad al actualizar consumidores externos.
