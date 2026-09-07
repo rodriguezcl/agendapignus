@@ -190,6 +190,36 @@ test('tipos de servicio usa operaciones pequeñas con concurrencia por registro'
   assert.equal((await state(administratorCookie)).services.some(service => service.id === created.id), false)
 })
 
+test('vehículos usa operaciones pequeñas con matrícula y concurrencia por registro', async () => {
+  const administratorCookie = await login('qa-admin@pignus.test')
+  const weeklyCookie = await login('qa-weekly@pignus.test')
+  const createdVehicle = { id: 'qa-small-vehicle', brand: 'Toyota', model: 'Hilux', year: 2026, mileage: 100, plate: 'QA999ZZ', insuranceExpiresOn: '' }
+  let response = await api('/api/vehicles', weeklyCookie, { method: 'POST', body: JSON.stringify({ vehicle: createdVehicle }) })
+  assert.equal(response.status, 403)
+  response = await api('/api/vehicles', administratorCookie, { method: 'POST', body: JSON.stringify({ vehicle: createdVehicle }) })
+  assert.equal(response.status, 200)
+  let payload = await response.json()
+  const created = payload.vehicle
+  assert.equal(created.plate, createdVehicle.plate)
+
+  response = await api(`/api/vehicles/${created.id}`, administratorCookie, { method: 'PUT', body: JSON.stringify({ base: created, vehicle: { ...created, mileage: 250 } }) })
+  assert.equal(response.status, 200)
+  payload = await response.json()
+  assert.equal(payload.vehicle.mileage, 250)
+
+  response = await api(`/api/vehicles/${created.id}`, administratorCookie, { method: 'PUT', body: JSON.stringify({ base: created, vehicle: { ...created, mileage: 300 } }) })
+  assert.equal(response.status, 409)
+  assert.equal((await response.json()).code, 'VEHICLE_WRITE_CONFLICT')
+  response = await api('/api/vehicles', administratorCookie, { method: 'POST', body: JSON.stringify({ vehicle: { ...createdVehicle, id: 'qa-duplicate-plate', plate: createdVehicle.plate.toLowerCase() } }) })
+  assert.equal(response.status, 409)
+  assert.equal((await response.json()).code, 'VEHICLE_PLATE_CONFLICT')
+
+  response = await api(`/api/vehicles/${created.id}`, administratorCookie, { method: 'DELETE', body: JSON.stringify({ base: payload.vehicle }) })
+  assert.equal(response.status, 200)
+  assert.equal((await response.json()).outcome, 'deleted')
+  assert.equal((await state(administratorCookie)).vehicles.some(vehicle => vehicle.id === created.id), false)
+})
+
 test('el seguro vehicular sólo se carga como administrador y se descarga con sesión técnica', async () => {
   const administratorCookie = await login('qa-admin@pignus.test')
   const technicianCookie = await login('qa-tech@pignus.test')

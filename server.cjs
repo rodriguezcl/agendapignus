@@ -12,6 +12,7 @@ const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./api/_lib/
 const { ensureVehicleControlService } = require('./api/_lib/vehicle-control-service.cjs')
 const { assertNoPastWeeklyServiceAdditions } = require('./api/_lib/past-agenda.cjs')
 const { applyServiceCatalogOperation } = require('./api/_lib/service-catalog-operation.cjs')
+const { applyVehicleOperation } = require('./api/_lib/vehicle-operation.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
 const { concurrentStateChanged, mergeConcurrentState } = require('./api/_lib/state-merge.cjs')
@@ -1292,6 +1293,28 @@ function saveServiceCatalogOperation(input, requestOperation, user) {
   }
 }
 
+function vehicleOperationForRequest(method, pathname) {
+  if (method === 'POST' && pathname === '/api/vehicles') return { operation: 'create', vehicleId: '' }
+  const match = pathname.match(/^\/api\/vehicles\/([^/]+)$/)
+  if (!match) return null
+  if (method === 'PUT') return { operation: 'update', vehicleId: decodeURIComponent(match[1]) }
+  if (method === 'DELETE') return { operation: 'delete', vehicleId: decodeURIComponent(match[1]) }
+  return null
+}
+
+function saveVehicleOperation(input, requestOperation, user) {
+  const current = readState()
+  const operation = applyVehicleOperation(current, { ...input, ...requestOperation })
+  const result = saveState({ ...current, vehicles: operation.vehicles, revision: current.revision, base: { vehicles: current.vehicles } }, user)
+  const persisted = readState()
+  return {
+    revision: result.revision,
+    vehicles: persisted.vehicles,
+    vehicle: operation.vehicle ? persisted.vehicles.find(vehicle => String(vehicle.id) === String(operation.vehicle.id)) || operation.vehicle : null,
+    outcome: operation.outcome
+  }
+}
+
 function send(res, status, data) {
   setSecurityHeaders(res)
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
@@ -1927,6 +1950,17 @@ const server = http.createServer((req, res) => {
     readJson(req, 100_000).then(input => send(res, 200, saveServiceCatalogOperation(input, serviceOperation, user))).catch(error => {
       console.error(error)
       send(res, error?.statusCode || 400, { error: error?.message || 'No se pudo guardar el tipo de servicio.', ...(error?.code ? { code: error.code } : {}) })
+    })
+    return
+  }
+  const vehicleOperation = vehicleOperationForRequest(req.method, url.pathname)
+  if (vehicleOperation) {
+    const user = requireSession(req, res)
+    if (!user) return
+    if (!userCan(user, 'vehicles')) return send(res, 403, { error: 'No tenés permiso para administrar vehículos.' })
+    readJson(req, 100_000).then(input => send(res, 200, saveVehicleOperation(input, vehicleOperation, user))).catch(error => {
+      console.error(error)
+      send(res, error?.statusCode || 400, { error: error?.message || 'No se pudo guardar el vehículo.', ...(error?.code ? { code: error.code } : {}) })
     })
     return
   }

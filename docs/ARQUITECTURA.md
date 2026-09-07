@@ -82,7 +82,9 @@ La migración es incremental para conservar el comportamiento productivo:
 1. Extraer reglas puras a `domain` y cubrirlas con pruebas.
 2. Encapsular cada endpoint en un repositorio de `infrastructure`. El catálogo de
    servicios ya usa `POST/PUT/PATCH/DELETE /api/services` en lugar del `PUT`
-   global para sus escrituras.
+   global para sus escrituras. El ABM de vehículos usa de la misma forma
+   `POST/PUT/DELETE /api/vehicles`, mientras los seguros conservan su endpoint
+   documental independiente.
 3. Mover una pantalla completa por vez a `features/<módulo>/presentation`.
 4. Eliminar su versión histórica de `App.jsx` cuando no existan importadores.
 5. Retirar los puertos raíz de compatibilidad al actualizar consumidores externos.

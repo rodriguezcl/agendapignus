@@ -30,6 +30,7 @@ import { stateRepository } from './infrastructure/repositories/state-repository.
 import { agendaRescheduleRepairCandidates } from './domain/agenda/reschedule-repair.mjs'
 import { auditRepository } from './infrastructure/repositories/audit-repository.mjs'
 import { customerImportRepository } from './infrastructure/repositories/customer-import-repository.mjs'
+import { vehicleRepository } from './infrastructure/repositories/vehicle-repository.mjs'
 import { useSessionLifecycle } from './features/auth/application/useSessionLifecycle.js'
 import { readSettledLoginCredentials } from './features/auth/application/login-autofill.mjs'
 import { serviceAdvanceRepository } from './infrastructure/repositories/service-advance-repository.mjs'
@@ -4778,14 +4779,23 @@ function Vehicles({ vehicles, setVehicles, setNotice, ask, isAdministrator, stat
         if (refreshRemoteState) await refreshRemoteState()
         else setVehicles(previous => editing ? previous.map(vehicle => vehicle.id === editing ? record : vehicle) : [...previous, record])
       } else {
-        setVehicles(previous => editing ? previous.map(vehicle => vehicle.id === editing ? record : vehicle) : [...previous, record])
+        const payload = editing
+          ? await vehicleRepository.update(record, previousVehicle, stateRevision)
+          : await vehicleRepository.create(record, stateRevision)
+        if (refreshRemoteState) await refreshRemoteState()
+        else setVehicles(payload.vehicles || [])
       }
       setOpen(false)
       setNotice(editing ? 'Los datos del vehículo fueron actualizados.' : 'El vehículo fue agregado a la flota.')
     } catch (error) { setNotice(error.message) }
     finally { setSaving(false) }
   }
-  const remove = vehicle => ask('Eliminar vehículo', `¿Querés eliminar ${vehicle.brand} ${vehicle.model} · ${vehicle.plate}?`, () => { setVehicles(previous => previous.filter(item => item.id !== vehicle.id)); setNotice('El vehículo fue eliminado de la flota.') }, true)
+  const remove = vehicle => ask('Eliminar vehículo', `¿Querés eliminar ${vehicle.brand} ${vehicle.model} · ${vehicle.plate}?`, async () => {
+    const payload = await vehicleRepository.remove(vehicle, stateRevision)
+    if (refreshRemoteState) await refreshRemoteState()
+    else setVehicles(payload.vehicles || [])
+    setNotice('El vehículo fue eliminado de la flota.')
+  }, true)
   return <>
     <div className="module-intro"><div><p className="eyebrow">FLOTA DE LA EMPRESA</p><h1>Vehículos</h1><p>Administrá la flota y mantené disponible la documentación vigente.</p></div><button className="primary" onClick={startCreate}><Icon name="plus" />Nuevo vehículo</button></div>
     {open && <form className="vehicle-form" onSubmit={save}>

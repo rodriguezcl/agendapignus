@@ -7,6 +7,7 @@ const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance }
 const { concurrentStateChanged, mergeConcurrentState } = require('./_lib/state-merge.cjs')
 const { logStateConcurrencyEvent } = require('./_lib/concurrency-observability.cjs')
 const { applyServiceCatalogOperation } = require('./_lib/service-catalog-operation.cjs')
+const { applyVehicleOperation } = require('./_lib/vehicle-operation.cjs')
 const {
   assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
@@ -433,6 +434,43 @@ async function handleServiceCatalog(req, res, sql, user, requestOperation) {
   }
 }
 
+function vehicleOperationForRequest(method, route) {
+  if (method === 'POST' && route === '/vehicles') return { operation: 'create', vehicleId: '' }
+  const match = route.match(/^\/vehicles\/([^/]+)$/)
+  if (!match) return null
+  if (method === 'PUT') return { operation: 'update', vehicleId: decodeURIComponent(match[1]) }
+  if (method === 'DELETE') return { operation: 'delete', vehicleId: decodeURIComponent(match[1]) }
+  return null
+}
+
+async function handleVehicles(req, res, sql, user, requestOperation) {
+  if (!userCan(user, 'vehicles')) return send(res, 403, { error: 'No tenés permiso para administrar vehículos.' })
+  const incoming = requestBody(req)
+  try {
+    const result = await sql.begin(async transaction => {
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const currentRevision = Number(revisionRows[0]?.value || 0)
+      const current = await readState(transaction)
+      const operation = applyVehicleOperation(current, { ...incoming, ...requestOperation })
+      let next = normalizeStateForSave({ ...current, vehicles: operation.vehicles }, current)
+      next.employees = secureEmployees(next.employees, current.employees)
+      validateState(next, current)
+      if (!statePersistenceChanged(current, next)) return { revision: currentRevision, vehicles: current.vehicles, ...operation }
+      await replaceCollections(transaction, next)
+      await appendAudit(transaction, auditChanges(current.vehicles, next.vehicles, 'id', 'Vehículo', user))
+      const revision = currentRevision + 1
+      await transaction`update pignus_preferences set value = ${String(revision)}, updated_at = now() where key = 'state_revision'`
+      const persistedVehicle = operation.vehicle ? next.vehicles.find(vehicle => String(vehicle.id) === String(operation.vehicle.id)) || operation.vehicle : null
+      return { revision, vehicles: next.vehicles, vehicle: persistedVehicle, outcome: operation.outcome }
+    })
+    return send(res, 200, result)
+  } catch (error) {
+    const status = error.statusCode || 400
+    return send(res, status, { error: error.message || 'No se pudo guardar el vehículo.', ...(error.code ? { code: error.code } : {}) })
+  }
+}
+
 function alarmCategory(record) {
   if (record.installationZone) return record.installationZone
   const address = `${record.address || ''} ${record.client || ''}`.toLowerCase()
@@ -689,6 +727,8 @@ module.exports = async function handler(req, res) {
     if (req.method === 'GET' && route === '/state') return send(res, 200, visibleStateForUser(await readState(sql), session.user))
     const serviceOperation = serviceOperationForRequest(req.method, route)
     if (serviceOperation) return await handleServiceCatalog(req, res, sql, session.user, serviceOperation)
+    const vehicleOperation = vehicleOperationForRequest(req.method, route)
+    if (vehicleOperation) return await handleVehicles(req, res, sql, session.user, vehicleOperation)
     if (req.method === 'GET' && route === '/holidays') {
       const year = validHolidayYear(req.query.year)
       if (!year) return send(res, 400, { error: 'El año solicitado no es válido.' })
