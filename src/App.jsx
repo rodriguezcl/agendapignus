@@ -1335,7 +1335,10 @@ export default function App() {
     }).then(data => {
       initialRemoteStateRef.current = data?.state || null
       setAuthUser(data?.user || null)
-    }).catch(() => setAuthUser(null)).finally(() => setAuthLoading(false))
+    }).catch(error => {
+      setSessionEndedMessage(error.message || 'No se pudo verificar la sesión. Volvé a intentarlo.')
+      setAuthUser(null)
+    }).finally(() => setAuthLoading(false))
   }, [])
   useEffect(() => {
     const brand = document.querySelector('.brand')

@@ -180,7 +180,7 @@ test('el acceso cancela solicitudes bloqueadas y permite reintentar', async () =
   assert.equal(attempts, 1)
 })
 
-test('el acceso reutiliza el estado inicial y el cierre normal evita una limpieza adicional', () => {
+test('el acceso reutiliza el estado del login y recupera por F5 con una verificación liviana', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const api = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
   const server = fs.readFileSync(path.resolve(__dirname, '../server.cjs'), 'utf8')
@@ -191,6 +191,8 @@ test('el acceso reutiliza el estado inicial y el cierre normal evita una limpiez
   assert.doesNotMatch(source.slice(source.indexOf('const logout = async'), source.indexOf('const requestLogout')), /\/api\/agenda\/daily\/clear/)
   assert.match(api, /state: visibleStateForUser\(await readState\(sql\), user\)/)
   assert.match(server, /state: readStateForUser\(user\)/)
+  assert.match(api, /route === '\/auth\/session'[\s\S]*?send\(res, 200, \{ user: session\.user \}\)/)
+  assert.match(server, /url\.pathname === '\/api\/auth\/session'[\s\S]*?send\(res, 200, \{ user \}\)/)
 })
 
 test('la agenda técnica usa una descripción neutral sin la palabra únicamente', () => {

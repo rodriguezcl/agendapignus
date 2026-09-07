@@ -1626,7 +1626,7 @@ const server = http.createServer((req, res) => {
     const user = sessionUser(req)
     const hadSessionCookie = Boolean(parseCookies(req.headers.cookie).pignus_session)
     return user
-      ? send(res, 200, { user, state: readStateForUser(user) })
+      ? send(res, 200, { user })
       : send(res, 401, hadSessionCookie
         ? { code: 'SESSION_ENDED', error: 'Esta sesión ya no está activa. La cuenta pudo haberse abierto en otro dispositivo o la sesión pudo haber vencido.' }
         : { code: 'SESSION_REQUIRED', error: 'Sin sesión activa.' })

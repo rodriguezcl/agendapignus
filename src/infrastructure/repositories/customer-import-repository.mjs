@@ -6,7 +6,8 @@ const timedRequest = (url, options, message) => requestJson(
   url,
   options,
   message,
-  (resource, requestOptions) => fetchWithTimeout(resource, requestOptions, IMPORT_TIMEOUT_MS)
+  (resource, requestOptions) => fetchWithTimeout(resource, requestOptions, IMPORT_TIMEOUT_MS),
+  IMPORT_TIMEOUT_MS
 )
 
 export const customerImportRepository = {
