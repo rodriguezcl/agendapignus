@@ -102,9 +102,9 @@ const scheduleSignature = (teams, serviceMap, date, history) => JSON.stringify((
 
 const agendaPlans = agenda => {
   const plans = new Map()
-  if (agenda?.date || agenda?.teams?.length) plans.set(`daily:${agenda?.date || ''}`, { date: agenda?.date || '', scope: 'Agenda del día', teams: agenda?.teams || [] })
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(agenda?.date || ''))) plans.set(`daily:${agenda.date}`, { date: agenda.date, scope: 'Agenda del día', teams: agenda?.teams || [] })
   Object.entries(agenda?.weekly || {}).forEach(([date, plan]) => {
-    if (!date.startsWith('_')) plans.set(`weekly:${date}`, { date, scope: 'Agenda semanal', teams: plan?.teams || [] })
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) plans.set(`weekly:${date}`, { date, scope: 'Agenda semanal', teams: plan?.teams || [] })
   })
   return plans
 }

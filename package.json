@@ -13,6 +13,7 @@
     "check:supabase": "node --env-file-if-exists=.env.local scripts/check-supabase-connection.cjs",
     "schema:supabase": "node --env-file-if-exists=.env.local scripts/apply-supabase-schema.cjs",
     "migrate:supabase": "node --env-file-if-exists=.env.local scripts/migrate-sqlite-to-supabase.cjs",
+    "migrate:legacy-durations": "node --env-file-if-exists=.env.local scripts/migrate-legacy-estimated-minutes.cjs",
     "test": "node --test tests/*.test.cjs",
     "test:concurrency": "node --test tests/state-concurrency-hardening.test.cjs tests/security.integration.test.cjs",
     "build": "vite build",
