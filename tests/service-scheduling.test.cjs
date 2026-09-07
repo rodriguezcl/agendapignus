@@ -134,6 +134,20 @@ test('un cambio del catálogo actualiza pendientes heredados y conserva tiempos 
   assert.deepEqual(normalized.agenda.teams[0].tasks.map(task => task.estimatedMinutes), [60, 120, 60])
 })
 
+test('un guardado ajeno al catálogo conserva las duraciones existentes de la agenda', () => {
+  const service = { id: 's1', code: 's1', name: 'Service de alarma', estimatedMinutes: 60, status: 'Activo' }
+  const task = { taskId: 'task-1', serviceId: 's1', service: service.name, status: 'Pendiente', time: '11:30', estimatedMinutes: 30, estimatedMinutesCustomized: false }
+  const nextTask = { taskId: 'task-2', serviceId: 's1', service: service.name, status: 'Pendiente', time: '12:00', estimatedMinutes: 60, estimatedMinutesCustomized: false }
+  const previous = {
+    roles: [], employees: [], services: [service], vehicles: [], customers: [], reviews: [], history: [],
+    agenda: { date: '', teams: [{ teamId: 'team-1', members: ['Pascual Gonzalez'], tasks: [task, nextTask] }], weekly: {} }
+  }
+  const normalized = normalizeStateForSave({ ...previous, customers: [{ customerId: 'customer-1', account: 'CLI-0001', name: 'CLIENTE', kind: 'client' }] }, previous)
+  assert.equal(normalized.agenda.teams[0].tasks[0].estimatedMinutes, 30)
+  assert.equal(normalized.agenda.teams[0].tasks[0].estimatedMinutesCustomized, false)
+  assert.doesNotThrow(() => validateState(normalized, previous))
+})
+
 test('la API rechaza duraciones inválidas y solapamientos por equipo', () => {
   const service = { id: 's1', code: 's1', name: 'Servicio', description: '', estimatedMinutes: 60, status: 'Activo' }
   const base = { roles: [], employees: [], services: [service], vehicles: [], customers: [], history: [], agenda: { weekly: {} } }

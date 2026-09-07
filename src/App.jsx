@@ -1248,15 +1248,22 @@ export default function App() {
     const normalizeReference = item => {
       const matched = services.find(service => String(service.id) === String(item.serviceId)) || services.find(service => normalizeServiceName(service.name) === normalizeServiceName(item.service))
       if (!matched) return item
-      const previousDefault = previousDefaults.get(String(matched.id)) ?? normalizeServiceEstimatedMinutes(matched.estimatedMinutes)
+      const serviceKey = String(matched.id)
+      const hasPreviousDefault = previousDefaults.has(serviceKey)
+      const currentDefault = normalizeServiceEstimatedMinutes(matched.estimatedMinutes)
+      const previousDefault = previousDefaults.get(serviceKey) ?? currentDefault
+      const serviceDefaultChanged = hasPreviousDefault && previousDefault !== currentDefault
       const closed = ['Completado', 'Cancelado', 'Reprogramado'].includes(item.status)
       const customized = item.estimatedMinutesCustomized === true || (
         item.estimatedMinutesCustomized !== false && item.estimatedMinutes != null && Number(item.estimatedMinutes) !== Number(previousDefault)
       )
-      const estimatedMinutes = closed || customized
-        ? normalizeServiceEstimatedMinutes(item.estimatedMinutes, matched.estimatedMinutes)
-        : normalizeServiceEstimatedMinutes(matched.estimatedMinutes)
-      const next = { ...item, serviceId: matched.id, service: matched.name, estimatedMinutes, estimatedMinutesCustomized: closed ? (item.estimatedMinutesCustomized ?? true) : customized }
+      const estimatedMinutes = serviceDefaultChanged
+        ? (closed || customized ? normalizeServiceEstimatedMinutes(item.estimatedMinutes, currentDefault) : currentDefault)
+        : normalizeServiceEstimatedMinutes(item.estimatedMinutes, currentDefault)
+      const estimatedMinutesCustomized = closed
+        ? (item.estimatedMinutesCustomized ?? true)
+        : (serviceDefaultChanged ? customized : (item.estimatedMinutesCustomized ?? customized))
+      const next = { ...item, serviceId: matched.id, service: matched.name, estimatedMinutes, estimatedMinutesCustomized }
       return JSON.stringify(next) === JSON.stringify(item) ? item : next
     }
     const normalizeTeams = value => (value || []).map(team => ({ ...team, tasks: (team.tasks || []).map(normalizeReference) }))
