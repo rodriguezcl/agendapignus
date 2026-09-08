@@ -206,6 +206,13 @@ test('cerrar sesión fuerza el guardado del último cambio aunque siga dentro de
   assert.ok(logout.indexOf('await stateRepository.save') < logout.indexOf("fetchWithTimeout('/api/auth/logout'"))
 })
 
+test('una sesión nueva no hereda avisos de guardado de la sesión anterior', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+
+  assert.match(source, /setAuthUser\(null\); setDatabaseReady\(false\); setDatabaseError\(''\); setStateRevision\(null\); setModule\('dashboard'\); setNotice\(''\)/)
+  assert.match(source, /onLogin=\{\(user, initialState\) => \{ setSessionEndedMessage\(''\); setNotice\(''\); initialRemoteStateRef\.current/)
+})
+
 test('la agenda técnica usa una descripción neutral sin la palabra únicamente', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
@@ -586,7 +593,7 @@ test('la agenda diaria renderiza sus acciones inmediatamente y separa hora de se
 
 test('la agenda diaria respeta espacios quitados y no copia servicios vacíos', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
-  assert.match(source, /const visibleWeeklyTeams = applyRemovedWeeklySlots\(applyRemovedWeeklyTasks\(weeklyDay\?\.teams \|\| \[\], weeklyDay\?\.removedTaskIds \|\| \[\]\), weeklyDay\?\.removedSlots \|\| \[\]\)/)
+  assert.match(source, /const visibleWeeklyTeams = applyRemovedWeeklyTeams\(applyRemovedWeeklySlots\(applyRemovedWeeklyTasks\(weeklyDay\?\.teams \|\| \[\], weeklyDay\?\.removedTaskIds \|\| \[\]\), weeklyDay\?\.removedSlots \|\| \[\]\), weeklyDay\?\.removedTeams \|\| \[\]\)/)
   assert.match(source, /const agendaTeamsWithRealServices = \(agendaTeams = teams\) => agendaTeams\.map\(team => \(\{[\s\S]*?tasks: \(team\.tasks \|\| \[\]\)\.filter\(task => taskHasContent\(task\) && !taskIsResolvedForPlanning\(task, date, history\)\)/)
   assert.match(source, /const messageSections = teams\.flatMap\(\(team, index\) => team\.tasks\.some\(taskHasContent\)/)
   assert.match(source, /agendaTeams = agendaTeamsWithRealServices\(agendaTeams\)/)
@@ -599,6 +606,15 @@ test('eliminar un servicio semanal deja una baja persistente y limpia su copia d
   assert.match(source, /const removedTaskIds = \[\.\.\.new Set\(\[\.\.\.\(plan\.removedTaskIds \|\| \[\]\), \.\.\.weeklyTaskRemovalAliases\(\{ taskId, historyId \}\)\]\)\]/)
   assert.match(source, /detail: \{ day, teamId, teamIndex, taskIndex, taskId, historyId \}/)
   assert.match(source, /currentTaskIndex !== taskIndex/)
+})
+
+test('eliminar un equipo semanal deja una excepción persistente y limpia agenda e historial', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+
+  assert.match(source, /const applyRemovedWeeklyTeams = \(teams = \[\], removedTeams = \[\]\) =>/)
+  assert.match(source, /removedTeams: \[\.\.\.\(plan\.removedTeams \|\| \[\]\)\.filter\(item => item\.id !== marker\.id\), marker\]/)
+  assert.match(source, /new CustomEvent\('pignus:remove-weekly-team'/)
+  assert.match(source, /historyIdSet\.has\(String\(record\.id \|\| ''\)\) \|\| taskIdSet\.has\(String\(record\.sourceTaskId \|\| ''\)\)/)
 })
 
 test('las agendas diaria y semanal renderizan directamente el estado de cada servicio', () => {
