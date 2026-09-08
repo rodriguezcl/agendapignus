@@ -12,8 +12,14 @@ function equivalent(left, right) {
   return JSON.stringify(canonical(left)) === JSON.stringify(canonical(right))
 }
 
-function itemIdentity(item) {
+function itemIdentity(item, path = '') {
   if (!item || typeof item !== 'object' || Array.isArray(item)) return ''
+  // Foreign keys are shared by many records. Collection identity must never
+  // depend on a customer's, team's or source task's identity.
+  const collectionKey = path === 'customers' ? 'customerId'
+    : ['history', 'reviews', 'roles', 'employees', 'services', 'vehicles'].includes(path) ? 'id' : null
+  if (collectionKey) return item[collectionKey] != null && String(item[collectionKey]).trim()
+    ? `${collectionKey}:${String(item[collectionKey])}` : ''
   if (item.taskId != null && String(item.taskId).trim()) return `task:${String(item.taskId)}`
   if (item.historyId != null && String(item.historyId).trim()) return `history:${String(item.historyId)}`
   if (item.teamId != null && String(item.teamId).trim()) return `team:${String(item.teamId)}`
@@ -23,9 +29,10 @@ function itemIdentity(item) {
   return ''
 }
 
-function keyedArray(values) {
+function keyedArray(values, path) {
   const present = values.filter(value => value !== ABSENT).flat()
-  return present.length > 0 && present.every(item => itemIdentity(item))
+  return present.length > 0 && present.every(item => itemIdentity(item, path)) &&
+    values.filter(value => value !== ABSENT).every(value => new Set(value.map(item => itemIdentity(item, path))).size === value.length)
 }
 
 function conflict(path) {
@@ -37,9 +44,10 @@ function conflict(path) {
 }
 
 function mergeArray(base, current, incoming, path) {
-  if (!keyedArray([base, current, incoming])) return conflict(path)
-  const maps = [base, current, incoming].map(value => new Map((value === ABSENT ? [] : value).map(item => [itemIdentity(item), item])))
-  const order = [...new Set([...(current === ABSENT ? [] : current).map(itemIdentity), ...(incoming === ABSENT ? [] : incoming).map(itemIdentity)])]
+  if (!keyedArray([base, current, incoming], path)) return conflict(path)
+  const identityForItem = item => itemIdentity(item, path)
+  const maps = [base, current, incoming].map(value => new Map((value === ABSENT ? [] : value).map(item => [identityForItem(item), item])))
+  const order = [...new Set([...(current === ABSENT ? [] : current).map(identityForItem), ...(incoming === ABSENT ? [] : incoming).map(identityForItem)])]
   return order.flatMap(identity => {
     const merged = mergeValue(
       maps[0].has(identity) ? maps[0].get(identity) : ABSENT,
