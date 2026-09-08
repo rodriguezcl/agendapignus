@@ -17,8 +17,8 @@ function itemIdentity(item) {
   if (item.taskId != null && String(item.taskId).trim()) return `task:${String(item.taskId)}`
   if (item.historyId != null && String(item.historyId).trim()) return `history:${String(item.historyId)}`
   if (item.teamId != null && String(item.teamId).trim()) return `team:${String(item.teamId)}`
-  if (item.customerId != null && String(item.customerId).trim()) return `customer:${String(item.customerId)}`
   if (item.id != null && String(item.id).trim()) return `id:${String(item.id)}`
+  if (item.customerId != null && String(item.customerId).trim()) return `customer:${String(item.customerId)}`
   if (item.account != null && String(item.account).trim()) return `account:${String(item.account)}`
   return ''
 }

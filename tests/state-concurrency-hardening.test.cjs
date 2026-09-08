@@ -96,6 +96,28 @@ test('fusiona campos distintos del mismo servicio y rechaza el mismo campo', () 
   assert.throws(() => mergeConcurrentState(base, current, conflicting), error => error.statusCode === 409 && error.code === 'STATE_WRITE_CONFLICT' && error.conflictPath.includes('.time'))
 })
 
+test('preserva todos los trabajos de un mismo cliente durante una fusión concurrente', () => {
+  const base = {
+    history: [
+      { id: 'record-1', customerId: 'customer-1', status: 'Pendiente', detail: 'Visita 1' },
+      { id: 'record-2', customerId: 'customer-1', status: 'Pendiente', detail: 'Visita 2' },
+      { id: 'record-3', customerId: 'customer-2', status: 'Pendiente', detail: 'Visita 3' }
+    ]
+  }
+  const current = {
+    history: base.history.map(record => record.id === 'record-1' ? { ...record, detail: 'Actualizado en servidor' } : record)
+  }
+  const incoming = {
+    history: base.history.map(record => record.id === 'record-2' ? { ...record, status: 'Completado' } : record)
+  }
+
+  const merged = mergeConcurrentState(base, current, incoming)
+
+  assert.deepEqual(merged.history.map(record => record.id), ['record-1', 'record-2', 'record-3'])
+  assert.equal(merged.history[0].detail, 'Actualizado en servidor')
+  assert.equal(merged.history[1].status, 'Completado')
+})
+
 test('rechaza eliminar un registro que fue modificado en otra sesión', () => {
   const base = { history: [{ id: 'record-1', detail: 'Original' }] }
   const current = { history: [{ id: 'record-1', detail: 'Actualizado' }] }
