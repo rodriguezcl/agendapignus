@@ -1930,7 +1930,27 @@ export default function App() {
       stateSaveTimerRef.current = null
       pendingStateSaves.current = 0
     }
-    await stateSaveQueue.current.catch(() => {})
+    try {
+      // El debounce puede seguir pendiente cuando se confirma el cierre de
+      // sesión. Esperamos cualquier PUT ya iniciado y luego guardamos de forma
+      // explícita la instantánea más reciente antes de invalidar la sesión.
+      await stateSaveQueue.current.catch(() => {})
+      const latestSerializedSnapshot = currentSnapshotRef.current
+      const canPersistLatestSnapshot = databaseReady && stateRevisionRef.current !== null && authUser && authUser.roleCode !== 'technician' && (authUser.roleCode || normalizeRoleName(authUser.role) !== 'tecnico')
+      if (canPersistLatestSnapshot && latestSerializedSnapshot && latestSerializedSnapshot !== lastPersistedSnapshotRef.current) {
+        const snapshot = JSON.parse(latestSerializedSnapshot)
+        let base = null
+        try { base = lastPersistedSnapshotRef.current ? JSON.parse(lastPersistedSnapshotRef.current) : null } catch { base = null }
+        const changedBase = base ? compactStateBase(base, snapshot) : null
+        const payload = await stateRepository.save({ revision: stateRevisionRef.current, ...(changedBase && Object.keys(changedBase).length ? { base: changedBase } : {}), ...snapshot })
+        stateRevisionRef.current = Number(payload.revision)
+        lastPersistedSnapshotRef.current = latestSerializedSnapshot
+      }
+    } catch (error) {
+      loggingOutRef.current = false
+      setLoggingOut(false)
+      throw new Error(`No se pudo guardar la agenda antes de cerrar sesión. La sesión sigue abierta para que puedas reintentar. ${error.message || ''}`.trim())
+    }
 
     // La limpieza sólo se solicita cuando el usuario confirmó que desea
     // descartar una agenda sin guardar. El cierre normal no modifica la agenda.

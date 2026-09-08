@@ -195,6 +195,17 @@ test('el acceso reutiliza el estado del login y recupera por F5 con una verifica
   assert.match(server, /url\.pathname === '\/api\/auth\/session'[\s\S]*?send\(res, 200, \{ user \}\)/)
 })
 
+test('cerrar sesión fuerza el guardado del último cambio aunque siga dentro del debounce', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const logout = source.slice(source.indexOf('const logout = async'), source.indexOf('const requestLogout'))
+  assert.match(logout, /await stateSaveQueue\.current\.catch\(\(\) => \{\}\)/)
+  assert.match(logout, /const latestSerializedSnapshot = currentSnapshotRef\.current/)
+  assert.match(logout, /latestSerializedSnapshot !== lastPersistedSnapshotRef\.current/)
+  assert.match(logout, /await stateRepository\.save\(\{ revision: stateRevisionRef\.current,[\s\S]*?\.\.\.snapshot \}\)/)
+  assert.match(logout, /No se pudo guardar la agenda antes de cerrar sesión\. La sesión sigue abierta/)
+  assert.ok(logout.indexOf('await stateRepository.save') < logout.indexOf("fetchWithTimeout('/api/auth/logout'"))
+})
+
 test('la agenda técnica usa una descripción neutral sin la palabra únicamente', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
