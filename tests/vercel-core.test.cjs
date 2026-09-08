@@ -705,10 +705,19 @@ test('el administrador configura dos horarios predeterminados para cada mes', ()
   assert.match(source, /defaultTimes: monthlyTimesSetup\.times, defaultTimePeriods/)
   assert.match(source, /applyMonthlyDefaultTimes\(previous, monthlyTimesSetup\.month, monthlyTimesSetup\.effectiveFrom, monthlyTimesSetup\.times\)/)
   assert.match(source, /key < effectiveFrom/)
-  assert.match(source, /Este mes ya terminó\. Sus horarios quedan bloqueados/)
+  assert.match(source, /La configuración mensual sólo está disponible para el mes vigente y los meses futuros/)
   assert.match(source, /Los cambios regirán desde \$\{prettyDate\(key\)\}/)
   assert.match(source, /Los días anteriores y todos los servicios ya cargados conservarán su horario/)
   assert.match(styles, /\.monthly-time-grid \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/)
+})
+
+test('los meses finalizados no solicitan ni permiten configuraciones mensuales', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  assert.match(source, /const pastMonthSelected = monthKey < currentMonthKey/)
+  assert.match(source, /if \(pastMonthSelected\) \{[\s\S]*?setMonthlySetup\(null\)[\s\S]*?setMonthlyTimesSetup\(null\)[\s\S]*?setMonthlyVehicleSetup\(null\)[\s\S]*?return/)
+  assert.match(source, /disabled=\{pastMonthSelected\}[\s\S]*?Equipos del mes/)
+  assert.match(source, /disabled=\{pastMonthSelected\}[\s\S]*?Horarios del mes/)
+  assert.match(source, /disabled=\{pastMonthSelected\}[\s\S]*?Vehículos del mes/)
 })
 
 test('equipos del mes escala la rotación según técnicos y vehículos', () => {
