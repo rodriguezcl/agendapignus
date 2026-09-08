@@ -66,23 +66,38 @@ async function readExportState(sql) {
   return { services: state?.services || [], history: state?.history || [] }
 }
 
-async function replaceCollections(sql, state) {
+async function replaceCollections(sql, state, previous = null) {
+  const changed = key => !previous || JSON.stringify(previous[key]) !== JSON.stringify(state[key])
+  if (changed('roles')) {
   await sql`delete from pignus_roles`
   if (state.roles.length) await sql`insert into pignus_roles ${sql(state.roles.map(record => ({ id: String(record.id), data: sql.json(record) })))}`
+  }
 
+  if (changed('employees')) {
   await sql`delete from pignus_employees`
   if (state.employees.length) await sql`insert into pignus_employees ${sql(state.employees.map(record => ({ id: String(record.id), email: String(record.email).trim().toLowerCase(), data: sql.json(record) })))}`
+  }
 
+  if (changed('services')) {
   await sql`delete from pignus_services`
   if (state.services.length) await sql`insert into pignus_services ${sql(state.services.map(record => ({ id: String(record.id), data: sql.json(record) })))}`
+  }
 
-  await sql`insert into pignus_preferences (key, value, updated_at) values ('vehicles', ${JSON.stringify(state.vehicles || [])}, now()) on conflict (key) do update set value = excluded.value, updated_at = now()`
+  if (changed('vehicles')) await sql`insert into pignus_preferences (key, value, updated_at) values ('vehicles', ${JSON.stringify(state.vehicles || [])}, now()) on conflict (key) do update set value = excluded.value, updated_at = now()`
 
+  if (changed('customers')) {
   await sql`delete from pignus_customers`
   if (state.customers.length) await sql`insert into pignus_customers ${sql(state.customers.map(record => ({ account: String(record.account), customer_id: String(record.customerId), data: sql.json(record) })))}`
+  }
 
-  await sql`delete from pignus_work_history`
-  if (state.history.length) await sql`insert into pignus_work_history ${sql(state.history.map(record => ({ id: String(record.id), work_date: record.date || null, status: record.status || 'Pendiente', service_id: record.serviceId == null ? null : String(record.serviceId), customer_id: record.customerId == null ? null : String(record.customerId), data: sql.json(record) })))}`
+  const { recordChanges } = require('./record-changes.cjs')
+  // With a baseline, only explicit removed IDs can produce DELETEs. All
+  // remaining records keep their physical rows and concurrent metadata.
+  if (!previous) await sql`delete from pignus_work_history`
+  const historyDelta = recordChanges(previous?.history, state.history)
+  if (historyDelta.removed.length) await sql`delete from pignus_work_history where id in ${sql(historyDelta.removed)}`
+  if (historyDelta.changed.length) await sql`insert into pignus_work_history ${sql(historyDelta.changed.map(record => ({ id: String(record.id), work_date: record.date || null, status: record.status || 'Pendiente', service_id: record.serviceId == null ? null : String(record.serviceId), customer_id: record.customerId == null ? null : String(record.customerId), data: sql.json(record) })))} on conflict (id) do update set work_date = excluded.work_date, status = excluded.status, service_id = excluded.service_id, customer_id = excluded.customer_id, data = excluded.data`
+  if (!previous || historyDelta.removed.length || changed('vehicles')) {
   await sql`create table if not exists pignus_vehicle_control_photos (record_id text primary key, vehicle_id text not null, mime_type text not null, photo_data bytea not null, created_at timestamptz not null default now())`
   await sql`alter table pignus_vehicle_control_photos enable row level security`
   await sql`revoke all on table pignus_vehicle_control_photos from anon, authenticated`
@@ -90,12 +105,15 @@ async function replaceCollections(sql, state) {
   await sql`create table if not exists pignus_vehicle_insurance_documents (vehicle_id text primary key, file_name text not null, pdf_data bytea not null, uploaded_at timestamptz not null default now())`
   await sql`alter table pignus_vehicle_insurance_documents enable row level security`
   await sql`revoke all on table pignus_vehicle_insurance_documents from anon, authenticated`
+  }
 
+  if (changed('reviews')) {
   await sql`delete from pignus_reviews`
   if (state.reviews.length) await sql`insert into pignus_reviews ${sql(state.reviews.map(record => ({ id: String(record.id), data: sql.json(record) })))}`
+  }
 
-  await sql`insert into pignus_agendas (id, data, updated_at) values ('current', ${sql.json(state.agenda || {})}, now()) on conflict (id) do update set data = excluded.data, updated_at = now()`
-  await sql`insert into pignus_preferences (key, value, updated_at) values ('theme', ${state.preferences?.theme || 'light'}, now()) on conflict (key) do update set value = excluded.value, updated_at = now()`
+  if (changed('agenda')) await sql`insert into pignus_agendas (id, data, updated_at) values ('current', ${sql.json(state.agenda || {})}, now()) on conflict (id) do update set data = excluded.data, updated_at = now()`
+  if (changed('preferences')) await sql`insert into pignus_preferences (key, value, updated_at) values ('theme', ${state.preferences?.theme || 'light'}, now()) on conflict (key) do update set value = excluded.value, updated_at = now()`
 }
 
 async function appendAudit(sql, entries) {

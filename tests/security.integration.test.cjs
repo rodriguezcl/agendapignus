@@ -892,3 +892,41 @@ test('conserva un solo horario disponible por equipo al normalizar', () => {
   ])
   assert.deepEqual(teams[0].tasks.map(task => task.time), ['08:30', '13:00'])
 })
+
+test('PATCH registra servicios concurrentes, conserva historial y rechaza conflictos sin escrituras parciales', async () => {
+  const { weeklyServiceOperations } = await import('../src/features/state/application/weekly-service-save.mjs')
+  const { stateOperations } = await import('../src/features/state/application/state-operations.mjs')
+  const cookieA = await login('qa-admin@pignus.test'), cookieB = await login('qa-admin-secondary@pignus.test')
+  const base = await state(cookieA)
+  const date = '2096-10-15'
+  const makeCommand = (suffix, time) => {
+    const team = { teamId: 'qa-concurrent-team', label: 'Equipo 1', memberIds: ['qa-tech'], members: ['QA Técnico'], tasks: [] }
+    const task = { taskId: `qa-operation-${suffix}`, historyId: `work-qa-operation-${suffix}`, time, serviceId: 'qa-service', service: 'Service técnico', estimatedMinutes: 60, estimatedMinutesCustomized: true, customerId: 'qa-customer-a', client: 'PIG-9001 CLIENTE INCLUIDO QA', clientAccount: 'PIG-9001', address: 'Calle QA 100', phone: '3510000001', detail: 'Prueba aislada', status: 'Pendiente' }
+    return { day: date, team, task, baseRecord: null, record: { ...task, id: task.historyId, sourceTaskId: task.taskId, date, teamId: team.teamId, team: team.label, technicianIds: team.memberIds, technicians: team.members } }
+  }
+  const submit = (cookie, operations) => api('/api/state', cookie, { method: 'PATCH', body: JSON.stringify({ revision: base.revision, operations }) })
+  const first = weeklyServiceOperations(base, makeCommand('one', '09:00'))
+  const second = weeklyServiceOperations(base, makeCommand('two', '11:00'))
+  const responses = await Promise.all([submit(cookieA, first), submit(cookieB, second)])
+  for (const response of responses) assert.equal(response.status, 200, JSON.stringify(await response.json()))
+  const saved = await state(cookieA)
+  assert.equal(saved.history.length, base.history.length + 2)
+  assert.equal(saved.agenda.weekly[date].teams[0].tasks.length, 2)
+  const overlap = await submit(cookieB, weeklyServiceOperations(saved, makeCommand('overlap', '09:30')))
+  assert.equal(overlap.status, 400, JSON.stringify(await overlap.json()))
+  const unchanged = await state(cookieA)
+  assert.equal(unchanged.history.length, saved.history.length)
+  assert.equal(unchanged.agenda.weekly[date].teams[0].tasks.length, 2)
+  const one = saved.history.find(item => item.id === 'work-qa-operation-one')
+  const operationA = stateOperations({ history: [one] }, { history: [{ ...one, internalNote: 'Sesión A' }] })
+  const operationB = stateOperations({ history: [one] }, { history: [{ ...one, detail: 'Sesión B' }] })
+  assert.equal((await submit(cookieA, operationA)).status, 200)
+  const conflict = await submit(cookieB, operationB)
+  assert.equal(conflict.status, 409)
+  assert.equal((await conflict.json()).code, 'RECORD_WRITE_CONFLICT')
+  const after = await state(cookieA)
+  assert.equal(after.history.find(item => item.id === one.id).internalNote, 'Sesión A')
+  assert.equal(after.history.find(item => item.id === one.id).detail, one.detail)
+  const tech = await login('qa-tech@pignus.test')
+  assert.equal((await submit(tech, operationB)).status, 403)
+})
