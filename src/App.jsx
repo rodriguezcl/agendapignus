@@ -2926,11 +2926,13 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
   const weeklyTechnicianName = fullName => activeTechs.find(tech => tech.name === fullName)?.firstName || String(fullName || '').split(' ')[0]
   const monthKey = anchor.slice(0, 7)
   const anchorYear = anchor.slice(0, 4)
+  const currentMonthKey = today.slice(0, 7)
+  const pastMonthSelected = monthKey < currentMonthKey
+  const pastMonthConfigurationMessage = 'La configuración mensual sólo está disponible para el mes vigente y los meses futuros. Los meses finalizados son de solo lectura.'
   const monthlyTeams = weekly._monthlyTeams || {}
   const monthlyTimesWindow = month => {
-    const currentMonth = today.slice(0, 7)
-    if (month < currentMonth) return { effectiveFrom: '', lockedReason: 'Este mes ya terminó. Sus horarios quedan bloqueados para proteger el historial y las agendas guardadas.' }
-    if (month > currentMonth) return { effectiveFrom: `${month}-01`, scopeLabel: 'Los cambios se aplicarán durante todo el mes.' }
+    if (month < currentMonthKey) return { effectiveFrom: '', lockedReason: pastMonthConfigurationMessage }
+    if (month > currentMonthKey) return { effectiveFrom: `${month}-01`, scopeLabel: 'Los cambios se aplicarán durante todo el mes.' }
     const candidate = new Date(`${today}T12:00:00`)
     while (true) {
       candidate.setDate(candidate.getDate() + 1)
@@ -3383,10 +3385,12 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
   }
   const openMonthlySetup = () => {
     if (!canConfigureWeekly('weeklyTeams')) { setNotice('No tenés permiso para definir los equipos mensuales.'); return }
+    if (pastMonthSelected) { setNotice(pastMonthConfigurationMessage); return }
     setMonthlySetup({ month: monthKey, teams: baseTeams ? baseTeams.map(team => ({ teamId: team.teamId || createTeamId(), label: team.label, memberIds: team.memberIds || [], members: team.members || [] })) : suggestedMonthlyTeams() })
   }
   const openMonthlyTimesSetup = () => {
     if (!canConfigureWeekly('weeklyHours')) { setNotice('No tenés permiso para definir los horarios mensuales.'); return }
+    if (pastMonthSelected) { setNotice(pastMonthConfigurationMessage); return }
     setMonthlyTimesSetup({ month: monthKey, times: [...suggestedMonthlyTimes()], ...monthlyTimesWindow(monthKey) })
   }
   const updateMonthlyTeam = (index, memberIds) => { const selected = activeTechs.filter(tech => memberIds.some(id => String(id) === String(tech.id))); setMonthlySetup(previous => ({ ...previous, teams: previous.teams.map((team, teamIndex) => teamIndex === index ? { ...team, memberIds: selected.map(tech => tech.id), members: selected.map(tech => tech.name) } : team) })) }
@@ -3441,6 +3445,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
   }
   const openMonthlyVehicleSetup = () => {
     if (!canConfigureWeekly('weeklyVehicles')) { setNotice('No tenés permiso para asignar los vehículos mensuales.'); return }
+    if (pastMonthSelected) { setNotice(pastMonthConfigurationMessage); return }
     if (!vehicles.length) { setNotice('Primero cargá los vehículos de la flota en el módulo Vehículos.'); return }
     const teams = monthlyTeams[monthKey]?.teams || suggestedMonthlyTeams()
     const saved = monthlyTeams[monthKey]?.vehicleAssignments
@@ -3586,6 +3591,12 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     // Al comenzar un mes el administrador confirma primero los equipos y luego
     // los dos turnos que se usarán como horarios predeterminados.
     if (!isAdministrator) return
+    if (pastMonthSelected) {
+      setMonthlySetup(null)
+      setMonthlyTimesSetup(null)
+      setMonthlyVehicleSetup(null)
+      return
+    }
     const config = monthlyTeams[monthKey]
     const expectedTeamCount = Math.min(activeTechs.length, vehicles.length || 3)
     if ((!config?.teams?.length || config.teams.length !== expectedTeamCount) && monthlySetup?.month !== monthKey) {
@@ -3601,7 +3612,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     if (config?.teams?.length && validDefaultServiceTimes(config.defaultTimes) && vehicles.length && !assignmentsMatchFleet && !monthlySetup && !monthlyTimesSetup && monthlyVehicleSetup?.month !== monthKey) {
       setMonthlyVehicleSetup({ month: monthKey, assignments: suggestedVehicleAssignments(vehicles, config.teams, { month: monthKey, assignmentHistory: priorVehicleAssignmentHistory }) })
     }
-  }, [isAdministrator, monthKey, monthlyTeams[monthKey], monthlySetup, monthlyTimesSetup, monthlyVehicleSetup, vehicles, activeTechs.length, priorVehicleAssignmentHistory])
+  }, [isAdministrator, monthKey, pastMonthSelected, monthlyTeams[monthKey], monthlySetup, monthlyTimesSetup, monthlyVehicleSetup, vehicles, activeTechs.length, priorVehicleAssignmentHistory])
   const openDay = day => {
     if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
     const hours = hoursForDay(day)
@@ -3760,7 +3771,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
         return <div className="annual-guard-row" key={`${guard.technicianId || guard.name}-${index}`}><span>{index + 1}</span><select aria-label={`Técnico ${index + 1} de la rotación`} value={guard.technicianId || ''} onChange={event => updateAnnualGuardTechnician(index, event.target.value)}>{legacyGuard && <option value={guard.technicianId || ''}>{guard.name} (no activo)</option>}{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select><button type="button" className="secondary" title="Subir" aria-label={`Subir a ${guard.name}`} disabled={index === 0} onClick={() => moveAnnualGuardTechnician(index, -1)}>↑</button><button type="button" className="secondary" title="Bajar" aria-label={`Bajar a ${guard.name}`} disabled={index === annualGuardSetup.rotation.length - 1} onClick={() => moveAnnualGuardTechnician(index, 1)}>↓</button><button type="button" className="icon-btn delete" title="Quitar de la rotación" aria-label={`Quitar a ${guard.name}`} onClick={() => removeAnnualGuardTechnician(index)}><Icon name="trash" size={15} /></button></div>
       })}</div><button type="button" className="secondary annual-guard-add" disabled={!activeTechs.length || !validYear} onClick={addAnnualGuardTechnician}><Icon name="plus" size={15} />Agregar técnico</button>{!validYear && <p className="field-error">Ingresá un año válido.</p>}{duplicated && <p className="field-error">Cada técnico puede aparecer una sola vez en la rotación.</p>}{validYear && !annualGuardSetup.rotation.length && <p className="field-error">Agregá al menos un técnico para generar el cronograma.</p>}<p className="annual-guard-help">Los cambios manuales realizados en un sábado específico se conservan como excepción.</p><ConfigurationHistoryPanel history={weekly._annualGuards?.[annualGuardSetup.year]?.configurationHistory} type="guards" /><div className="modal-actions"><button className="secondary" onClick={() => setAnnualGuardSetup(null)}>Cancelar</button><button className="primary" disabled={!validYear || !annualGuardSetup.rotation.length || duplicated} onClick={saveAnnualGuardSetup}>Guardar guardias del año</button></div></section></div>
     })()}
-    <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Prepará las visitas de cada equipo y luego abrí el día para terminar de validar y guardar la agenda del día.</p></div><div className="weekly-actions">{canConfigureWeekly('weeklyTeams') && <button className="secondary" onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button>}{canConfigureWeekly('weeklyHours') && <button className="secondary" onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button>}{canConfigureWeekly('weeklyVehicles') && <button className="secondary" onClick={openMonthlyVehicleSetup}><Icon name="vehicle" size={16} />Vehículos del mes</button>}{canConfigureWeekly('weeklyGuards') && <button className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button>}<label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
+    <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Prepará las visitas de cada equipo y luego abrí el día para terminar de validar y guardar la agenda del día.</p></div><div className="weekly-actions">{canConfigureWeekly('weeklyTeams') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button>}{canConfigureWeekly('weeklyHours') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button>}{canConfigureWeekly('weeklyVehicles') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlyVehicleSetup}><Icon name="vehicle" size={16} />Vehículos del mes</button>}{canConfigureWeekly('weeklyGuards') && <button className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button>}<label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
     {taskEditor && (() => {
       const { day, teamIndex, taskIndex } = taskEditor
       const task = taskEditor.draft
