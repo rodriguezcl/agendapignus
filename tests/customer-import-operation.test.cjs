@@ -1,0 +1,36 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers } = require('../api/_lib/customer-import.cjs')
+
+const customer = (account, customerId, name = account) => ({ account, customerId, name, fields: {} })
+
+test('la importación escribe solamente los clientes que cambiaron', () => {
+  const unchanged = customer('PIG-0001', 'customer-1', 'CLIENTE UNO')
+  const changed = customer('PIG-0002', 'customer-2', 'CLIENTE DOS')
+  const created = customer('PIG-0003', 'customer-3', 'CLIENTE TRES')
+  const changes = customerImportChanges([unchanged, changed], [unchanged, { ...changed, phone: '3510000000' }, created])
+
+  assert.deepEqual(changes.upsert.map(item => item.account), ['PIG-0002', 'PIG-0003'])
+  assert.deepEqual(changes.remove, [])
+  assert.deepEqual(changes.backup.before, [changed])
+  assert.deepEqual(changes.backup.createdAccounts, ['PIG-0003'])
+})
+
+test('el respaldo incremental restaura modificaciones, altas y bajas', () => {
+  const before = [customer('PIG-0001', 'customer-1', 'ANTERIOR'), customer('PIG-0002', 'customer-2')]
+  const after = [customer('PIG-0001', 'customer-1', 'NUEVO'), customer('PIG-0003', 'customer-3')]
+  const changes = customerImportChanges(before, after)
+
+  assert.deepEqual(restoreCustomerImportBackup(after, changes.backup), normalizeImportedCustomers(before))
+})
+
+test('se mantienen compatibles los respaldos completos anteriores', () => {
+  const previous = [customer('PIG-0001', 'customer-1', ' nombre  anterior ')]
+  assert.deepEqual(restoreCustomerImportBackup([], { customers: previous })[0], { ...previous[0], kind: 'subscriber', name: 'NOMBRE ANTERIOR' })
+})
+
+test('la validación rechaza cuentas e identificadores repetidos', () => {
+  assert.throws(() => validateImportedCustomers([customer('PIG-0001', 'customer-1'), customer('PIG-0001', 'customer-2')]), /duplicados/)
+  assert.throws(() => validateImportedCustomers([customer('PIG-0001', 'customer-1'), customer('PIG-0002', 'customer-1')]), /duplicados/)
+  assert.equal(normalizeImportedCustomers([customer('PIG-0001', 'customer-1', ' cliente   uno ')])[0].name, 'CLIENTE UNO')
+})

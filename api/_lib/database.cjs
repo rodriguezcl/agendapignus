@@ -50,6 +50,11 @@ async function readRevision(sql) {
   return Number(rows[0]?.value || 0)
 }
 
+async function readCustomers(sql) {
+  const rows = await sql`select data from pignus_customers order by created_at, account`
+  return rows.map(row => row.data)
+}
+
 async function readExportState(sql) {
   // Los reportes solamente necesitan estas dos colecciones. Evita descargar
   // clientes, agenda, empleados y preferencias antes de generar cada archivo.
@@ -99,4 +104,4 @@ async function appendAudit(sql, entries) {
   await sql`delete from pignus_audit_log where id in (select id from pignus_audit_log order by occurred_at desc offset 100)`
 }
 
-module.exports = { appendAudit, database, readExportState, readRevision, readState, replaceCollections }
+module.exports = { appendAudit, database, readCustomers, readExportState, readRevision, readState, replaceCollections }

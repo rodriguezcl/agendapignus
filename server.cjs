@@ -16,6 +16,7 @@ const { applyVehicleOperation } = require('./api/_lib/vehicle-operation.cjs')
 const { migrateLegacyEstimatedMinutes } = require('./api/_lib/legacy-estimated-minutes.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
+const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers } = require('./api/_lib/customer-import.cjs')
 const { concurrentStateChanged, mergeConcurrentState } = require('./api/_lib/state-merge.cjs')
 const { logStateConcurrencyEvent } = require('./api/_lib/concurrency-observability.cjs')
 
@@ -1597,7 +1598,7 @@ function handleCustomerImport(req, res, user) {
   const execute = body => {
     db.exec('BEGIN IMMEDIATE')
     try {
-      const current = readState()
+      const currentCustomers = rows('customers')
       const currentRevision = currentStateRevision()
       let nextCustomers
       if (undo) {
@@ -1605,18 +1606,21 @@ function handleCustomerImport(req, res, user) {
         if (!stored) { const error = new Error('No hay una importación pendiente para deshacer.'); error.statusCode = 409; throw error }
         let backup
         try { backup = JSON.parse(stored) } catch { backup = null }
-        if (!Array.isArray(backup?.customers)) throw new Error('La copia de seguridad de la importación no es válida.')
-        nextCustomers = backup.customers
+        nextCustomers = restoreCustomerImportBackup(currentCustomers, backup)
       } else {
         if (!Number.isInteger(Number(body.revision)) || Number(body.revision) !== currentRevision) { const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de importar.'); error.statusCode = 409; throw error }
         if (!Array.isArray(body.customers)) throw new Error('La importación no contiene una lista válida de abonados.')
-        nextCustomers = body.customers
-        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run(CUSTOMER_IMPORT_BACKUP_KEY, JSON.stringify({ customers: current.customers, importedAt: new Date().toISOString(), importedBy: { id: user.id, name: user.name, email: user.email } }))
+        nextCustomers = normalizeImportedCustomers(body.customers)
       }
-      validateState({ ...current, customers: nextCustomers }, current)
-      replaceRows('customers', nextCustomers, 'account')
+      validateImportedCustomers(nextCustomers)
+      const changes = customerImportChanges(currentCustomers, nextCustomers)
+      if (!undo) db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run(CUSTOMER_IMPORT_BACKUP_KEY, JSON.stringify({ ...changes.backup, importedAt: new Date().toISOString(), importedBy: { id: user.id, name: user.name, email: user.email } }))
+      const removeCustomer = db.prepare('DELETE FROM customers WHERE account = ?')
+      changes.remove.forEach(customer => removeCustomer.run(String(customer.account)))
+      const upsertCustomer = db.prepare('INSERT INTO customers (account, data) VALUES (?, ?) ON CONFLICT(account) DO UPDATE SET data = excluded.data')
+      changes.upsert.forEach(customer => upsertCustomer.run(String(customer.account), JSON.stringify(customer)))
       if (undo) db.prepare('DELETE FROM preferences WHERE key = ?').run(CUSTOMER_IMPORT_BACKUP_KEY)
-      writeAudit(user, undo ? 'Deshizo importación' : 'Importó', 'Abonados / Clientes', 'importacion-maestra', { total: current.customers.length }, { total: nextCustomers.length })
+      writeAudit(user, undo ? 'Deshizo importación' : 'Importó', 'Abonados / Clientes', 'importacion-maestra', { total: currentCustomers.length }, { total: nextCustomers.length, modified: changes.upsert.length, removed: changes.remove.length })
       const revision = currentRevision + 1
       db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
       db.exec('COMMIT')
