@@ -605,6 +605,11 @@ const applyRemovedWeeklyTeams = (teams = [], removedTeams = []) => {
   if (!removedTeams.length) return teams
   return teams.filter((team, teamIndex) => !removedTeams.some(marker => removedWeeklyTeamMatches(marker, team, teamIndex)))
 }
+
+const renumberVisibleWeeklyTeams = (teams = []) => teams.map((team, teamIndex) => ({
+  ...team,
+  label: /^Equipo \d+$/.test(team?.label || '') ? `Equipo ${teamIndex + 1}` : team?.label
+}))
 const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?.rescheduledFrom || record?.date, activeTechs = []) => {
   if (!record?.id || !sourceDate || !nextDate) return weekly
   const matchesRecord = task => String(task.historyId || '') === String(record.id) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
@@ -2479,7 +2484,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       return
     }
     const byTeam = new Map()
-    const visibleWeeklyTeams = applyRemovedWeeklyTeams(applyRemovedWeeklySlots(applyRemovedWeeklyTasks(weeklyDay?.teams || [], weeklyDay?.removedTaskIds || []), weeklyDay?.removedSlots || []), weeklyDay?.removedTeams || [])
+    const visibleWeeklyTeams = renumberVisibleWeeklyTeams(applyRemovedWeeklyTeams(applyRemovedWeeklySlots(applyRemovedWeeklyTasks(weeklyDay?.teams || [], weeklyDay?.removedTaskIds || []), weeklyDay?.removedSlots || []), weeklyDay?.removedTeams || []))
       .map(team => ({ ...team, tasks: removeUnavailableDefaultSlots((team.tasks || []).map(task => taskWithServiceEstimate(task, resolveServiceForTask(task, services)))) }))
     ;visibleWeeklyTeams.forEach((team, index) => {
       const position = Number(String(team.label || '').match(/\d+/)?.[0]) || index + 1
@@ -3104,7 +3109,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     const plan = stored
       ? { ...stored, teams: mergeStoredTeamsWithDefaults(defaults.teams, storedTeams) }
       : defaults
-    const visiblePlan = { ...plan, teams: applyRemovedWeeklyTeams(applyRemovedWeeklySlots(applyRemovedWeeklyTasks(plan.teams, plan.removedTaskIds || []), plan.removedSlots || []), plan.removedTeams || []) }
+    const visiblePlan = { ...plan, teams: renumberVisibleWeeklyTeams(applyRemovedWeeklyTeams(applyRemovedWeeklySlots(applyRemovedWeeklyTasks(plan.teams, plan.removedTaskIds || []), plan.removedSlots || []), plan.removedTeams || [])) }
     const normalized = isSaturday(day) ? { ...visiblePlan, teams: assignGuardToEmptySaturday(normalizeSaturdayTeams(visiblePlan.teams, day, weekly), day, weekly, activeTechs) } : visiblePlan
     const availablePlan = { ...normalized, teams: normalized.teams.map(team => ({ ...team, tasks: removeUnavailableDefaultSlots(team.tasks || []) })) }
     return sortPlanTasksByTime(availablePlan)
@@ -3124,7 +3129,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     const stored = saved
       ? { ...saved, teams: mergeStoredTeamsWithDefaults(defaults.teams, savedTeams) }
       : defaults
-    const visibleStored = { ...stored, teams: applyRemovedWeeklyTeams(applyRemovedWeeklySlots(applyRemovedWeeklyTasks(stored.teams, stored.removedTaskIds || []), stored.removedSlots || []), stored.removedTeams || []) }
+    const visibleStored = { ...stored, teams: renumberVisibleWeeklyTeams(applyRemovedWeeklyTeams(applyRemovedWeeklySlots(applyRemovedWeeklyTasks(stored.teams, stored.removedTaskIds || []), stored.removedSlots || []), stored.removedTeams || [])) }
     const base = isSaturday(day) ? { ...visibleStored, teams: assignGuardToEmptySaturday(normalizeSaturdayTeams(visibleStored.teams, day, previous), day, previous, activeTechs) } : visibleStored
     const next = mutate(base)
     const normalized = isSaturday(day) ? { ...next, teams: assignGuardToEmptySaturday(normalizeSaturdayTeams(next.teams, day, previous), day, previous, activeTechs) } : next
@@ -3352,10 +3357,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     updateDay(day, plan => ({
       ...plan,
       removedTeams: [...(plan.removedTeams || []).filter(item => item.id !== marker.id), marker],
-      teams: plan.teams.filter((team, index) => !removedWeeklyTeamMatches(marker, team, index)).map((team, index) => ({
-        ...team,
-        label: /^Equipo \d+$/.test(team.label || '') ? `Equipo ${index + 1}` : team.label
-      }))
+      teams: renumberVisibleWeeklyTeams(plan.teams.filter((team, index) => !removedWeeklyTeamMatches(marker, team, index)))
     }))
     window.dispatchEvent(new CustomEvent('pignus:remove-weekly-team', {
       detail: { day, teamId: removedTeam.teamId, teamIndex, historyIds, taskIds }
