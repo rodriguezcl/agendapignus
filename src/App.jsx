@@ -583,6 +583,28 @@ const applyRemovedWeeklyTasks = (teams = [], removedTaskIds = []) => {
     tasks: (team.tasks || []).filter(task => !weeklyTaskRemovalAliases(task).some(alias => removed.has(alias)))
   }))
 }
+
+const weeklyTeamRemovalMarker = (team, teamIndex) => {
+  const teamId = String(team?.teamId || '').trim()
+  const teamNumber = teamLabelNumber(team) || teamIndex + 1
+  return {
+    id: teamId ? `team:${teamId}` : `number:${teamNumber}`,
+    teamId,
+    teamNumber
+  }
+}
+
+const removedWeeklyTeamMatches = (marker, team, teamIndex) => {
+  const markerTeamId = String(marker?.teamId || '').trim()
+  const teamId = String(team?.teamId || '').trim()
+  if (markerTeamId && teamId && markerTeamId === teamId) return true
+  return Number(marker?.teamNumber || 0) === (teamLabelNumber(team) || teamIndex + 1)
+}
+
+const applyRemovedWeeklyTeams = (teams = [], removedTeams = []) => {
+  if (!removedTeams.length) return teams
+  return teams.filter((team, teamIndex) => !removedTeams.some(marker => removedWeeklyTeamMatches(marker, team, teamIndex)))
+}
 const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?.rescheduledFrom || record?.date, activeTechs = []) => {
   if (!record?.id || !sourceDate || !nextDate) return weekly
   const matchesRecord = task => String(task.historyId || '') === String(record.id) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
@@ -1502,6 +1524,22 @@ export default function App() {
     return () => window.removeEventListener('pignus:remove-weekly-task', removeWeeklyService)
   }, [date])
   useEffect(() => {
+    const removeWeeklyTeam = event => {
+      const { day, teamId, teamIndex, historyIds = [], taskIds = [] } = event.detail || {}
+      if (!day) return
+      const historyIdSet = new Set(historyIds.map(String))
+      const taskIdSet = new Set(taskIds.map(String))
+      if (day === date) setTeams(previous => previous.filter((team, currentTeamIndex) => !(
+        (teamId && String(team.teamId || '') === String(teamId)) || currentTeamIndex === teamIndex
+      )))
+      if (historyIdSet.size || taskIdSet.size) setHistory(previous => previous.filter(record => !(
+        historyIdSet.has(String(record.id || '')) || taskIdSet.has(String(record.sourceTaskId || ''))
+      )))
+    }
+    window.addEventListener('pignus:remove-weekly-team', removeWeeklyTeam)
+    return () => window.removeEventListener('pignus:remove-weekly-team', removeWeeklyTeam)
+  }, [date])
+  useEffect(() => {
     // Una agenda diaria ya abierta/guardada comparte los mismos taskId que la
     // planificación semanal. Toda corrección semanal debe reflejarse también
     // en esa copia y en su registro pendiente del Historial.
@@ -1735,7 +1773,7 @@ export default function App() {
     hydratingStateRef.current = true
     clearOperationalStorage()
     setRoles([]); setEmployees([]); setServices([]); setVehicles([]); setHistory([]); setCustomers([]); setWeekly({})
-    setAuthUser(null); setDatabaseReady(false); setDatabaseError(''); setStateRevision(null); setModule('dashboard')
+    setAuthUser(null); setDatabaseReady(false); setDatabaseError(''); setStateRevision(null); setModule('dashboard'); setNotice('')
     setSessionEndedMessage(message || 'Esta sesión se cerró porque la cuenta fue abierta en otro dispositivo. Iniciá sesión nuevamente para continuar acá.')
   }
   useEffect(() => {
@@ -1989,7 +2027,7 @@ export default function App() {
     } finally {
       clearOperationalStorage()
       setRoles([]); setEmployees([]); setServices([]); setVehicles([]); setHistory([]); setCustomers([]); setWeekly({})
-      setAuthUser(null); setDatabaseReady(false); setDatabaseError(''); setStateRevision(null); setModule('dashboard')
+      setAuthUser(null); setDatabaseReady(false); setDatabaseError(''); setStateRevision(null); setModule('dashboard'); setNotice('')
       loggingOutRef.current = false
       setLoggingOut(false)
     }
@@ -2015,7 +2053,7 @@ export default function App() {
   })
   if (loggingOut) return <main className="login-page"><div className="login-loading">Cerrando sesión segura…</div></main>
   if (authLoading) return <main className="login-page"><div className="login-loading">Verificando sesión segura…</div></main>
-  if (!authUser) return <Login initialError={sessionEndedMessage} onLogin={(user, initialState) => { setSessionEndedMessage(''); initialRemoteStateRef.current = initialState || null; setAuthUser(user) }} />
+  if (!authUser) return <Login initialError={sessionEndedMessage} onLogin={(user, initialState) => { setSessionEndedMessage(''); setNotice(''); initialRemoteStateRef.current = initialState || null; setAuthUser(user) }} />
   if (!databaseReady) return <main className="login-page"><div className="login-card"><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">DATOS PROTEGIDOS</p><h1>{databaseError ? 'No se pudo cargar la agenda' : 'Cargando información autorizada…'}</h1>{databaseError && <><p className="login-error" role="alert">{databaseError}</p><button className="primary" type="button" onClick={() => { setDatabaseError(''); setAuthUser(current => current ? { ...current } : current) }}>Reintentar</button><button className="secondary" type="button" onClick={logout}>Cerrar sesión</button></>}</div></main>
   if (authUser.roleCode === 'technician' || normalizeRoleName(authUser.role) === 'tecnico') return <TechnicianPortalErrorBoundary logout={logout}><TechnicianPortal user={authUser} history={history} setHistory={setHistory} vehicles={vehicles} setVehicles={setVehicles} logout={logout} sessionInvalidated={endInvalidatedSession} /></TechnicianPortalErrorBoundary>
   if (module === 'help') return <HelpShell user={authUser} onNavigate={setModule} logout={logout} theme={theme} setTheme={setTheme} isAdministrator={isAdministrator} navigation={nav} />
@@ -2441,7 +2479,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       return
     }
     const byTeam = new Map()
-    const visibleWeeklyTeams = applyRemovedWeeklySlots(applyRemovedWeeklyTasks(weeklyDay?.teams || [], weeklyDay?.removedTaskIds || []), weeklyDay?.removedSlots || [])
+    const visibleWeeklyTeams = applyRemovedWeeklyTeams(applyRemovedWeeklySlots(applyRemovedWeeklyTasks(weeklyDay?.teams || [], weeklyDay?.removedTaskIds || []), weeklyDay?.removedSlots || []), weeklyDay?.removedTeams || [])
       .map(team => ({ ...team, tasks: removeUnavailableDefaultSlots((team.tasks || []).map(task => taskWithServiceEstimate(task, resolveServiceForTask(task, services)))) }))
     ;visibleWeeklyTeams.forEach((team, index) => {
       const position = Number(String(team.label || '').match(/\d+/)?.[0]) || index + 1
@@ -3066,7 +3104,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     const plan = stored
       ? { ...stored, teams: mergeStoredTeamsWithDefaults(defaults.teams, storedTeams) }
       : defaults
-    const visiblePlan = { ...plan, teams: applyRemovedWeeklySlots(applyRemovedWeeklyTasks(plan.teams, plan.removedTaskIds || []), plan.removedSlots || []) }
+    const visiblePlan = { ...plan, teams: applyRemovedWeeklyTeams(applyRemovedWeeklySlots(applyRemovedWeeklyTasks(plan.teams, plan.removedTaskIds || []), plan.removedSlots || []), plan.removedTeams || []) }
     const normalized = isSaturday(day) ? { ...visiblePlan, teams: assignGuardToEmptySaturday(normalizeSaturdayTeams(visiblePlan.teams, day, weekly), day, weekly, activeTechs) } : visiblePlan
     const availablePlan = { ...normalized, teams: normalized.teams.map(team => ({ ...team, tasks: removeUnavailableDefaultSlots(team.tasks || []) })) }
     return sortPlanTasksByTime(availablePlan)
@@ -3086,7 +3124,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     const stored = saved
       ? { ...saved, teams: mergeStoredTeamsWithDefaults(defaults.teams, savedTeams) }
       : defaults
-    const visibleStored = { ...stored, teams: applyRemovedWeeklySlots(applyRemovedWeeklyTasks(stored.teams, stored.removedTaskIds || []), stored.removedSlots || []) }
+    const visibleStored = { ...stored, teams: applyRemovedWeeklyTeams(applyRemovedWeeklySlots(applyRemovedWeeklyTasks(stored.teams, stored.removedTaskIds || []), stored.removedSlots || []), stored.removedTeams || []) }
     const base = isSaturday(day) ? { ...visibleStored, teams: assignGuardToEmptySaturday(normalizeSaturdayTeams(visibleStored.teams, day, previous), day, previous, activeTechs) } : visibleStored
     const next = mutate(base)
     const normalized = isSaturday(day) ? { ...next, teams: assignGuardToEmptySaturday(normalizeSaturdayTeams(next.teams, day, previous), day, previous, activeTechs) } : next
@@ -3296,15 +3334,31 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
   const addTeam = day => {
     if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
     if (isSaturday(day)) { setNotice('Los sábados trabaja un solo técnico, por lo que la agenda admite únicamente un equipo.'); return }
-    updateDay(day, plan => ({ ...plan, teams: [...plan.teams, createTeam(plan.teams.length, null, day)] }))
+    updateDay(day, plan => {
+      const team = createTeam(plan.teams.length, null, day)
+      return {
+        ...plan,
+        removedTeams: (plan.removedTeams || []).filter(marker => !removedWeeklyTeamMatches(marker, team, plan.teams.length)),
+        teams: [...plan.teams, team]
+      }
+    })
   }
   const removeWeeklyTeam = (day, teamIndex) => {
+    const removedTeam = dayPlan(day).teams[teamIndex]
+    if (!removedTeam) return
+    const marker = weeklyTeamRemovalMarker(removedTeam, teamIndex)
+    const historyIds = (removedTeam.tasks || []).map(task => task.historyId).filter(Boolean)
+    const taskIds = (removedTeam.tasks || []).map(task => task.taskId).filter(Boolean)
     updateDay(day, plan => ({
       ...plan,
-      teams: plan.teams.filter((_, index) => index !== teamIndex).map((team, index) => ({
+      removedTeams: [...(plan.removedTeams || []).filter(item => item.id !== marker.id), marker],
+      teams: plan.teams.filter((team, index) => !removedWeeklyTeamMatches(marker, team, index)).map((team, index) => ({
         ...team,
         label: /^Equipo \d+$/.test(team.label || '') ? `Equipo ${index + 1}` : team.label
       }))
+    }))
+    window.dispatchEvent(new CustomEvent('pignus:remove-weekly-team', {
+      detail: { day, teamId: removedTeam.teamId, teamIndex, historyIds, taskIds }
     }))
     setTechPicker(null)
     setNotice('El equipo fue eliminado.')
