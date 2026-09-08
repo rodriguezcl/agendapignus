@@ -9,7 +9,7 @@ const { logStateConcurrencyEvent } = require('./_lib/concurrency-observability.c
 const { applyServiceCatalogOperation } = require('./_lib/service-catalog-operation.cjs')
 const { applyVehicleOperation } = require('./_lib/vehicle-operation.cjs')
 const {
-  assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
+  assertNoAccidentalHistoryWipe, assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
   reportDate, secureEmployees, statePersistenceChanged, userCan, userForEmployee, validateState, verifyPassword,
   technicianSafeRecord, visibleStateForUser
@@ -345,6 +345,7 @@ async function handleSaveState(req, res, sql, user) {
       next = normalizeStateForSave(next, current)
       next.employees = secureEmployees(next.employees, current.employees)
       validateState(next, current)
+      assertNoAccidentalHistoryWipe(current.history, next.history)
       // Un estado idéntico no es una nueva versión. Esto permite que dos
       // sesiones se hidraten simultáneamente sin generarse conflictos entre sí.
       if (!statePersistenceChanged(current, next)) return { revision: currentRevision, state: current, merged }
