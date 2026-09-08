@@ -593,7 +593,7 @@ test('la agenda diaria renderiza sus acciones inmediatamente y separa hora de se
 
 test('la agenda diaria respeta espacios quitados y no copia servicios vacíos', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
-  assert.match(source, /const visibleWeeklyTeams = applyRemovedWeeklyTeams\(applyRemovedWeeklySlots\(applyRemovedWeeklyTasks\(weeklyDay\?\.teams \|\| \[\], weeklyDay\?\.removedTaskIds \|\| \[\]\), weeklyDay\?\.removedSlots \|\| \[\]\), weeklyDay\?\.removedTeams \|\| \[\]\)/)
+  assert.match(source, /const visibleWeeklyTeams = renumberVisibleWeeklyTeams\(applyRemovedWeeklyTeams\(applyRemovedWeeklySlots\(applyRemovedWeeklyTasks\(weeklyDay\?\.teams \|\| \[\], weeklyDay\?\.removedTaskIds \|\| \[\]\), weeklyDay\?\.removedSlots \|\| \[\]\), weeklyDay\?\.removedTeams \|\| \[\]\)\)/)
   assert.match(source, /const agendaTeamsWithRealServices = \(agendaTeams = teams\) => agendaTeams\.map\(team => \(\{[\s\S]*?tasks: \(team\.tasks \|\| \[\]\)\.filter\(task => taskHasContent\(task\) && !taskIsResolvedForPlanning\(task, date, history\)\)/)
   assert.match(source, /const messageSections = teams\.flatMap\(\(team, index\) => team\.tasks\.some\(taskHasContent\)/)
   assert.match(source, /agendaTeams = agendaTeamsWithRealServices\(agendaTeams\)/)
@@ -615,6 +615,14 @@ test('eliminar un equipo semanal deja una excepción persistente y limpia agenda
   assert.match(source, /removedTeams: \[\.\.\.\(plan\.removedTeams \|\| \[\]\)\.filter\(item => item\.id !== marker\.id\), marker\]/)
   assert.match(source, /new CustomEvent\('pignus:remove-weekly-team'/)
   assert.match(source, /historyIdSet\.has\(String\(record\.id \|\| ''\)\) \|\| taskIdSet\.has\(String\(record\.sourceTaskId \|\| ''\)\)/)
+})
+
+test('los equipos visibles se renumeran consecutivamente después de una baja', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+
+  assert.match(source, /const renumberVisibleWeeklyTeams = \(teams = \[\]\) => teams\.map\(\(team, teamIndex\) =>/)
+  assert.match(source, /label: \/\^Equipo \\d\+\$\/\.test\(team\?\.label \|\| ''\) \? `Equipo \$\{teamIndex \+ 1\}`/)
+  assert.match(source, /teams: renumberVisibleWeeklyTeams\(plan\.teams\.filter\(\(team, index\) => !removedWeeklyTeamMatches\(marker, team, index\)\)\)/)
 })
 
 test('las agendas diaria y semanal renderizan directamente el estado de cada servicio', () => {
