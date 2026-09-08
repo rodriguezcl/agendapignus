@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const { deduplicateScheduledTasks, normalizeStateForSave } = require('../api/_lib/core.cjs')
+const { assertNoAccidentalHistoryWipe, deduplicateScheduledTasks, normalizeStateForSave } = require('../api/_lib/core.cjs')
 const { concurrentStateChanged, mergeConcurrentState } = require('../api/_lib/state-merge.cjs')
 const { stateConcurrencyEvent } = require('../api/_lib/concurrency-observability.cjs')
 
@@ -42,6 +42,15 @@ test('la base compacta incluye sólo las secciones modificadas', async () => {
 
   assert.deepEqual(Object.keys(compact), ['agenda'])
   assert.equal(JSON.stringify(compact).length < JSON.stringify(base).length / 10, true)
+})
+
+test('bloquea una eliminación masiva accidental del historial', () => {
+  const current = Array.from({ length: 20 }, (_, index) => ({ id: `work-${index}` }))
+  assert.throws(
+    () => assertNoAccidentalHistoryWipe(current, current.slice(0, 5)),
+    error => error.code === 'HISTORY_BULK_DELETE_BLOCKED' && error.statusCode === 409
+  )
+  assert.doesNotThrow(() => assertNoAccidentalHistoryWipe(current, current.slice(0, 11)))
 })
 
 test('una base parcial fusiona lo modificado y preserva las demás colecciones', () => {
