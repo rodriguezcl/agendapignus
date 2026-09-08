@@ -517,7 +517,10 @@ const mergeStoredTeamsWithDefaults = (defaults, storedTeams) => {
     const storedId = String(stored?.teamId || '')
     const storedNumber = teamLabelNumber(stored)
     let targetIndex = storedId ? merged.findIndex(team => String(team.teamId || '') === storedId) : -1
-    if (targetIndex < 0 && storedNumber) targetIndex = merged.findIndex(team => teamLabelNumber(team) === storedNumber)
+    // Un ID desconocido representa un equipo agregado específicamente al día.
+    // No debe absorber un equipo mensual sólo porque ambos muestran el mismo
+    // número; la coincidencia por etiqueta queda reservada a datos legados sin ID.
+    if (targetIndex < 0 && !storedId && storedNumber) targetIndex = merged.findIndex(team => teamLabelNumber(team) === storedNumber)
     // Compatibilidad con planes antiguos que no tenian ni ID ni numero de equipo.
     if (targetIndex < 0 && !storedId && !storedNumber && merged[storedIndex]) targetIndex = storedIndex
     if (targetIndex < 0) {
@@ -597,7 +600,9 @@ const weeklyTeamRemovalMarker = (team, teamIndex) => {
 const removedWeeklyTeamMatches = (marker, team, teamIndex) => {
   const markerTeamId = String(marker?.teamId || '').trim()
   const teamId = String(team?.teamId || '').trim()
-  if (markerTeamId && teamId && markerTeamId === teamId) return true
+  // Si la baja tiene identidad interna, el número visible es sólo descriptivo:
+  // después de renumerar puede pertenecer legítimamente a un equipo nuevo.
+  if (markerTeamId) return Boolean(teamId && markerTeamId === teamId)
   return Number(marker?.teamNumber || 0) === (teamLabelNumber(team) || teamIndex + 1)
 }
 

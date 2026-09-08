@@ -625,6 +625,14 @@ test('los equipos visibles se renumeran consecutivamente después de una baja', 
   assert.match(source, /teams: renumberVisibleWeeklyTeams\(plan\.teams\.filter\(\(team, index\) => !removedWeeklyTeamMatches\(marker, team, index\)\)\)/)
 })
 
+test('un equipo nuevo no es absorbido ni ocultado por el equipo mensual eliminado', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+
+  assert.match(source, /if \(targetIndex < 0 && !storedId && storedNumber\) targetIndex = merged\.findIndex/)
+  assert.match(source, /if \(markerTeamId\) return Boolean\(teamId && markerTeamId === teamId\)/)
+  assert.match(source, /removedTeams: \(plan\.removedTeams \|\| \[\]\)\.filter\(marker => !removedWeeklyTeamMatches\(marker, team, plan\.teams\.length\)\)/)
+})
+
 test('las agendas diaria y semanal renderizan directamente el estado de cada servicio', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const polishStyles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
