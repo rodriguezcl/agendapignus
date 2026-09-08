@@ -1,6 +1,6 @@
 const crypto = require('node:crypto')
 const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
-const { appendAudit, database, readExportState, readRevision, readState, replaceCollections } = require('./_lib/database.cjs')
+const { appendAudit, database, readCustomers, readExportState, readRevision, readState, replaceCollections } = require('./_lib/database.cjs')
 const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./_lib/service-advance.cjs')
@@ -8,6 +8,7 @@ const { concurrentStateChanged, mergeConcurrentState } = require('./_lib/state-m
 const { logStateConcurrencyEvent } = require('./_lib/concurrency-observability.cjs')
 const { applyServiceCatalogOperation } = require('./_lib/service-catalog-operation.cjs')
 const { applyVehicleOperation } = require('./_lib/vehicle-operation.cjs')
+const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers } = require('./_lib/customer-import.cjs')
 const {
   assertNoAccidentalHistoryWipe, assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
@@ -659,27 +660,30 @@ async function handleCustomerImport(req, res, sql, user) {
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
       const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const currentRevision = Number(revisionRows[0]?.value || 0)
-      const current = await readState(transaction)
+      const currentCustomers = await readCustomers(transaction)
       let nextCustomers
       if (undo) {
         const backupRows = await transaction`select value from pignus_preferences where key = ${CUSTOMER_IMPORT_BACKUP_KEY} for update`
         if (!backupRows[0]?.value) { const error = new Error('No hay una importación pendiente para deshacer.'); error.statusCode = 409; throw error }
         let backup
         try { backup = JSON.parse(backupRows[0].value) } catch { backup = null }
-        if (!Array.isArray(backup?.customers)) throw new Error('La copia de seguridad de la importación no es válida.')
-        nextCustomers = backup.customers
+        nextCustomers = restoreCustomerImportBackup(currentCustomers, backup)
       } else {
         const body = requestBody(req)
         if (!Number.isInteger(Number(body.revision)) || Number(body.revision) !== currentRevision) { const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de importar.'); error.statusCode = 409; throw error }
         if (!Array.isArray(body.customers)) throw new Error('La importación no contiene una lista válida de abonados.')
-        nextCustomers = normalizeStateForSave({ ...current, customers: body.customers }, current).customers
-        await transaction`insert into pignus_preferences (key, value, updated_at) values (${CUSTOMER_IMPORT_BACKUP_KEY}, ${JSON.stringify({ customers: current.customers, importedAt: new Date().toISOString(), importedBy: { id: user.id, name: user.name, email: user.email } })}, now()) on conflict (key) do update set value = excluded.value, updated_at = now()`
+        nextCustomers = normalizeImportedCustomers(body.customers)
       }
-      validateState({ ...current, customers: nextCustomers }, current)
-      await transaction`delete from pignus_customers`
-      if (nextCustomers.length) await transaction`insert into pignus_customers ${transaction(nextCustomers.map(record => ({ account: String(record.account), customer_id: String(record.customerId), data: transaction.json(record) })))}`
+      validateImportedCustomers(nextCustomers)
+      const changes = customerImportChanges(currentCustomers, nextCustomers)
+      if (!undo) {
+        const backup = { ...changes.backup, importedAt: new Date().toISOString(), importedBy: { id: user.id, name: user.name, email: user.email } }
+        await transaction`insert into pignus_preferences (key, value, updated_at) values (${CUSTOMER_IMPORT_BACKUP_KEY}, ${JSON.stringify(backup)}, now()) on conflict (key) do update set value = excluded.value, updated_at = now()`
+      }
+      if (changes.remove.length) await transaction`delete from pignus_customers where account in ${transaction(changes.remove.map(record => String(record.account)))}`
+      if (changes.upsert.length) await transaction`insert into pignus_customers ${transaction(changes.upsert.map(record => ({ account: String(record.account), customer_id: String(record.customerId), data: transaction.json(record) })))} on conflict (account) do update set customer_id = excluded.customer_id, data = excluded.data`
       if (undo) await transaction`delete from pignus_preferences where key = ${CUSTOMER_IMPORT_BACKUP_KEY}`
-      await appendAudit(transaction, [auditEntry(user, undo ? 'Deshizo importación' : 'Importó', 'Abonados / Clientes', 'importacion-maestra', { total: current.customers.length }, { total: nextCustomers.length })])
+      await appendAudit(transaction, [auditEntry(user, undo ? 'Deshizo importación' : 'Importó', 'Abonados / Clientes', 'importacion-maestra', { total: currentCustomers.length }, { total: nextCustomers.length, modified: changes.upsert.length, removed: changes.remove.length })])
       const nextRevision = currentRevision + 1
       await transaction`update pignus_preferences set value = ${String(nextRevision)}, updated_at = now() where key = 'state_revision'`
       return { revision: nextRevision, customers: nextCustomers, canUndo: !undo }
