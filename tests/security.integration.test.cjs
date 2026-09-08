@@ -157,6 +157,29 @@ test('protege rutas y agrega cabeceras de seguridad', async () => {
   assert.match(response.headers.get('content-security-policy'), /default-src 'none'/)
 })
 
+test('gestiona un servicio individual sin reenviar ni reducir el historial completo', async () => {
+  const administratorCookie = await login('qa-admin@pignus.test')
+  const before = await state(administratorCookie)
+  const base = before.history.find(record => record.id === 'qa-history-included')
+  const record = { ...base, detail: 'Actualización individual QA' }
+
+  let response = await api(`/api/history/${encodeURIComponent(record.id)}`, administratorCookie, {
+    method: 'PATCH',
+    body: JSON.stringify({ base, record })
+  })
+  assert.equal(response.status, 200)
+  const payload = await response.json()
+  assert.equal(payload.state.history.length, before.history.length)
+  assert.equal(payload.state.history.find(item => item.id === record.id).detail, 'Actualización individual QA')
+  assert.equal(payload.state.history.find(item => item.id === 'qa-history-excluded').status, 'Completado')
+
+  response = await api(`/api/history/${encodeURIComponent(record.id)}`, administratorCookie, {
+    method: 'PATCH',
+    body: JSON.stringify({ base, record: { ...record, detail: 'Escritura obsoleta' } })
+  })
+  assert.equal(response.status, 409)
+})
+
 test('tipos de servicio usa operaciones pequeñas con concurrencia por registro', async () => {
   const administratorCookie = await login('qa-admin@pignus.test')
   const coordinatorCookie = await login('qa-weekly@pignus.test')

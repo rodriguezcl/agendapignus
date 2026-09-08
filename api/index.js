@@ -8,6 +8,7 @@ const { concurrentStateChanged, mergeConcurrentState } = require('./_lib/state-m
 const { logStateConcurrencyEvent } = require('./_lib/concurrency-observability.cjs')
 const { applyServiceCatalogOperation } = require('./_lib/service-catalog-operation.cjs')
 const { applyVehicleOperation } = require('./_lib/vehicle-operation.cjs')
+const { synchronizeAgendaHistoryRecord } = require('./_lib/history-record-operation.cjs')
 const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers } = require('./_lib/customer-import.cjs')
 const {
   assertNoAccidentalHistoryWipe, assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
@@ -608,6 +609,59 @@ async function clearDailyAgenda(sql, user) {
   })
 }
 
+async function handleHistoryRecordUpdate(req, res, sql, user, recordId) {
+  if (!userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
+  const { base, record: proposed } = requestBody(req)
+  if (!base || !proposed || String(base.id || '') !== String(recordId) || String(proposed.id || '') !== String(recordId)) return send(res, 400, { error: 'El servicio solicitado no es válido.' })
+  try {
+    const result = await sql.begin(async transaction => {
+      await transaction`set local lock_timeout = '5s'`
+      await transaction`set local statement_timeout = '15s'`
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const rows = await transaction`select data from pignus_work_history where id = ${String(recordId)} for update`
+      const current = rows[0]?.data
+      if (!current) { const error = new Error('El servicio ya no existe.'); error.statusCode = 404; throw error }
+      if (JSON.stringify(current) !== JSON.stringify(base)) { const error = new Error('Este servicio cambió desde otra sesión. Recargá la página y revisá su versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
+      const allowedStatuses = ['Pendiente', 'Completado', 'Cancelado', 'Reprogramado', 'Requiere revisión']
+      if (!allowedStatuses.includes(proposed.status || 'Pendiente')) throw new Error('El estado solicitado no es válido.')
+      const now = new Date().toISOString()
+      let next = { ...current, ...proposed, id: current.id, status: proposed.status || 'Pendiente' }
+      if (next.status === 'Completado' && current.status !== 'Completado') {
+        assertServiceCanBeCompleted(next, now)
+        next = { ...next, completedAt: next.completedAt || now }
+      } else if (next.status !== 'Completado') {
+        const { completedAt: _discardedCompletion, ...withoutCompletion } = next
+        next = withoutCompletion
+      }
+      await transaction`update pignus_work_history set work_date = ${next.date || null}, status = ${next.status}, service_id = ${next.serviceId == null ? null : String(next.serviceId)}, customer_id = ${next.customerId == null ? null : String(next.customerId)}, data = ${transaction.json(next)} where id = ${String(recordId)}`
+      const agendaRows = await transaction`select data from pignus_agendas where id = 'current' for update`
+      const currentAgenda = agendaRows[0]?.data
+      if (currentAgenda) {
+        const nextAgenda = synchronizeAgendaHistoryRecord(currentAgenda, current, next)
+        if (JSON.stringify(nextAgenda) !== JSON.stringify(currentAgenda)) await transaction`update pignus_agendas set data = ${transaction.json(nextAgenda)}, updated_at = now() where id = 'current'`
+      }
+      const entries = [auditEntry(user, 'Modificó', 'Servicio / historial', String(recordId), current, next)]
+      if (next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo')) {
+        const state = await readState(transaction)
+        const normalized = normalizeRetirementCustomers(state)
+        if (normalized.conversions.length) {
+          await replaceCollections(transaction, normalized.state)
+          normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
+        }
+      }
+      await appendAudit(transaction, entries)
+      const revisionRows = await transaction`update pignus_preferences set value = (value::integer + 1)::text, updated_at = now() where key = 'state_revision' returning value`
+      const state = await readState(transaction)
+      return { revision: Number(revisionRows[0]?.value || 0), state }
+    })
+    return send(res, 200, { ok: true, revision: result.revision, state: visibleStateForUser({ ...result.state, revision: result.revision }, user) })
+  } catch (error) {
+    const databaseBusy = error.code === '55P03' || error.code === '57014'
+    return send(res, databaseBusy ? 503 : (error.statusCode || 400), { code: error.code, error: databaseBusy ? 'La base de datos está ocupada. Intentá nuevamente.' : (error.message || 'No se pudo actualizar el servicio.') })
+  }
+}
+
 async function handleServiceAdvance(req, res, sql, user, decision = '') {
   const { recordId } = requestBody(req)
   const administratorDecision = Boolean(decision)
@@ -752,6 +806,7 @@ module.exports = async function handler(req, res) {
       if (session.user.roleCode !== 'technician' && !userCan(session.user, 'history')) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
       return await handleExport(req, res, sql, session.user)
     }
+    if (req.method === 'PATCH' && route.startsWith('/history/')) return await handleHistoryRecordUpdate(req, res, sql, session.user, decodeURIComponent(route.slice('/history/'.length)))
     if (req.method === 'GET' && route === '/audit') {
       if (session.user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
       const limit = Math.min(Math.max(Number(req.query.limit) || AUDIT_LOG_LIMIT, 1), AUDIT_LOG_LIMIT)

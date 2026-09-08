@@ -13,6 +13,7 @@ const { ensureVehicleControlService } = require('./api/_lib/vehicle-control-serv
 const { assertNoPastWeeklyServiceAdditions } = require('./api/_lib/past-agenda.cjs')
 const { applyServiceCatalogOperation } = require('./api/_lib/service-catalog-operation.cjs')
 const { applyVehicleOperation } = require('./api/_lib/vehicle-operation.cjs')
+const { synchronizeAgendaHistoryRecord } = require('./api/_lib/history-record-operation.cjs')
 const { migrateLegacyEstimatedMinutes } = require('./api/_lib/legacy-estimated-minutes.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
@@ -1754,6 +1755,50 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     return send(res, 200, readStateForUser(user))
+  }
+  if (req.method === 'PATCH' && url.pathname.startsWith('/api/history/')) {
+    const user = requireSession(req, res)
+    if (!user) return
+    if (!userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
+    const recordId = decodeURIComponent(url.pathname.slice('/api/history/'.length))
+    return readJson(req, 500_000).then(({ base, record: proposed }) => {
+      if (!base || !proposed || String(base.id || '') !== recordId || String(proposed.id || '') !== recordId) return send(res, 400, { error: 'El servicio solicitado no es válido.' })
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const stored = db.prepare('SELECT data FROM work_history WHERE id = ?').get(recordId)
+        const current = stored?.data ? JSON.parse(stored.data) : null
+        if (!current) { const error = new Error('El servicio ya no existe.'); error.statusCode = 404; throw error }
+        if (JSON.stringify(current) !== JSON.stringify(base)) { const error = new Error('Este servicio cambió desde otra sesión. Recargá la página y revisá su versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
+        const allowedStatuses = ['Pendiente', 'Completado', 'Cancelado', 'Reprogramado', 'Requiere revisión']
+        if (!allowedStatuses.includes(proposed.status || 'Pendiente')) throw new Error('El estado solicitado no es válido.')
+        const now = new Date().toISOString()
+        let next = { ...current, ...proposed, id: current.id, status: proposed.status || 'Pendiente' }
+        if (next.status === 'Completado' && current.status !== 'Completado') {
+          assertServiceCanBeCompleted(next, now)
+          next = { ...next, completedAt: next.completedAt || now }
+        } else if (next.status !== 'Completado') {
+          const { completedAt: _discardedCompletion, ...withoutCompletion } = next
+          next = withoutCompletion
+        }
+        db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(next), recordId)
+        const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+        if (agendaRow?.data) {
+          const currentAgenda = JSON.parse(agendaRow.data)
+          const nextAgenda = synchronizeAgendaHistoryRecord(currentAgenda, current, next)
+          if (JSON.stringify(nextAgenda) !== JSON.stringify(currentAgenda)) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(nextAgenda), 'current')
+        }
+        const convertedCustomer = next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo') ? convertCompletedRetirementSubscriber(next) : null
+        writeAudit(user, 'Modificó', 'Servicio / historial', recordId, current, next)
+        if (convertedCustomer) writeAudit(user, 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(convertedCustomer.customerId), { account: convertedCustomer.convertedFromAccount, kind: 'subscriber' }, convertedCustomer)
+        const revision = currentStateRevision() + 1
+        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
+        db.exec('COMMIT')
+        return send(res, 200, { ok: true, revision, state: readStateForUser(user) })
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+    }).catch(error => send(res, error.statusCode || 400, { code: error.code, error: error.message || 'No se pudo actualizar el servicio.' }))
   }
   if (['GET', 'POST', 'DELETE'].includes(req.method) && url.pathname === '/api/customers/import') {
     const user = requireSession(req, res)
