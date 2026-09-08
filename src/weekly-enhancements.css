@@ -1806,3 +1806,18 @@ body.dark .week-task-summary.available-slot:focus-visible {
     width: 12px;
   }
 }
+.confirmed-save-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: grid;
+  place-items: center;
+  background: rgb(10 35 25 / 35%);
+}
+.confirmed-save-overlay > p {
+  background: #fff;
+  color: #173d2c;
+  border-radius: 12px;
+  padding: 24px 32px;
+  box-shadow: 0 8px 40px #0003;
+}

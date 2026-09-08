@@ -38,6 +38,8 @@ import { serviceRecordFingerprint } from './domain/history/service-concurrency.m
 import { recoverStateRevisionConflict } from './features/state/application/state-save-conflict.mjs'
 import { compactStateBase } from './features/state/application/compact-state-base.mjs'
 import { historyRecordRepository } from './infrastructure/repositories/history-record-repository.mjs'
+import { weeklyServiceOperations } from './features/state/application/weekly-service-save.mjs'
+import { stateOperations } from './features/state/application/state-operations.mjs'
 import { migrateLegacyEstimatedMinutes } from './domain/state/legacy-estimated-minutes.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
@@ -1168,6 +1170,8 @@ export default function App() {
   const stateSaveQueue = useRef(Promise.resolve())
   const stateSaveGenerationRef = useRef(0)
   const stateSaveTimerRef = useRef(null)
+  const confirmedSaveRef = useRef(false)
+  const [confirmedSaving, setConfirmedSaving] = useState(false)
   const loggingOutRef = useRef(false)
   const initialRemoteStateRef = useRef(null)
   const hydratingStateRef = useRef(false)
@@ -1524,9 +1528,9 @@ export default function App() {
       if (!day || (!taskId && !historyId && !Number.isInteger(taskIndex))) return
       const matches = task => (taskId && String(task.taskId || '') === String(taskId)) || (historyId && String(task.historyId || '') === String(historyId))
       if (day === date) setTeams(previous => previous.map((team, currentTeamIndex) => {
-        const sameTeam = (teamId && String(team.teamId || '') === String(teamId)) || currentTeamIndex === teamIndex
+        const sameTeam = teamId ? String(team.teamId || '') === String(teamId) : currentTeamIndex === teamIndex
         if (!sameTeam) return team
-        return { ...team, tasks: (team.tasks || []).filter((task, currentTaskIndex) => !matches(task) && currentTaskIndex !== taskIndex) }
+        return { ...team, tasks: (team.tasks || []).filter((task, currentTaskIndex) => taskId || historyId ? !matches(task) : currentTaskIndex !== taskIndex) }
       }))
       if (historyId) setHistory(previous => previous.filter(record => String(record.id) !== String(historyId)))
     }
@@ -1540,7 +1544,7 @@ export default function App() {
       const historyIdSet = new Set(historyIds.map(String))
       const taskIdSet = new Set(taskIds.map(String))
       if (day === date) setTeams(previous => previous.filter((team, currentTeamIndex) => !(
-        (teamId && String(team.teamId || '') === String(teamId)) || currentTeamIndex === teamIndex
+        teamId ? String(team.teamId || '') === String(teamId) : currentTeamIndex === teamIndex
       )))
       if (historyIdSet.size || taskIdSet.size) setHistory(previous => previous.filter(record => !(
         historyIdSet.has(String(record.id || '')) || taskIdSet.has(String(record.sourceTaskId || ''))
@@ -1752,10 +1756,44 @@ export default function App() {
   const refreshRemoteState = async () => {
     applyRemoteState(await stateRepository.load())
   }
+  const persistStateCommand = async buildOperations => {
+    if (confirmedSaveRef.current) throw new Error('Ya hay un guardado en curso.')
+    confirmedSaveRef.current = true
+    setConfirmedSaving(true)
+    if (stateSaveTimerRef.current) pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1)
+    pendingStateSaves.current += 1
+    stateSaveGenerationRef.current += 1
+    window.clearTimeout(stateSaveTimerRef.current)
+    stateSaveTimerRef.current = null
+    try {
+      // The modal draft has not been published to React state: a debounce
+      // cannot submit it prematurely or announce success before confirmation.
+      await stateSaveQueue.current
+      const serialized = currentSnapshotRef.current
+      const local = JSON.parse(serialized)
+      const base = JSON.parse(lastPersistedSnapshotRef.current || 'null')
+      if (!base) throw new Error('Esperá a que termine de cargar la agenda.')
+      let snapshot = local
+      if (serialized !== lastPersistedSnapshotRef.current) {
+        const flushed = await stateRepository.save({ ...local, base, revision: stateRevisionRef.current })
+        stateRevisionRef.current = Number(flushed.revision)
+        lastPersistedSnapshotRef.current = serialized
+        snapshot = flushed.state
+      }
+      const payload = await buildOperations(snapshot)
+      applyRemoteState(payload.state)
+      return payload
+    } finally {
+      confirmedSaveRef.current = false
+      setConfirmedSaving(false)
+      pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1)
+    }
+  }
+  const persistWeeklyService = command => persistStateCommand(snapshot => stateRepository.commit(weeklyServiceOperations(snapshot, command), stateRevisionRef.current))
+  const persistAgendaRecords = (before, records) => persistStateCommand(() => stateRepository.commit(stateOperations({ history: before }, { history: records }), stateRevisionRef.current))
   const persistHistoryRecord = async (base, record) => {
     try {
-      const payload = await historyRecordRepository.update(base, record)
-      applyRemoteState(payload.state)
+      const payload = await persistStateCommand(() => historyRecordRepository.update(base, record))
       setNotice('El servicio se actualizó correctamente.')
       return payload
     } catch (error) {
@@ -1821,7 +1859,7 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [databaseReady, serializedStateSnapshot])
   useEffect(() => {
-    if (loggingOutRef.current || hydratingStateRef.current || serializedStateSnapshot === lastPersistedSnapshotRef.current || !databaseReady || stateRevision === null || !authUser || authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return
+    if (confirmedSaveRef.current || loggingOutRef.current || hydratingStateRef.current || serializedStateSnapshot === lastPersistedSnapshotRef.current || !databaseReady || stateRevision === null || !authUser || authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return
     // Desde que existe un cambio local pendiente (incluido el debounce) se
     // bloquea la recarga periódica para que no restaure la versión anterior.
     pendingStateSaves.current += 1
@@ -1837,6 +1875,7 @@ export default function App() {
       const snapshot = stateSnapshot
       stateSaveQueue.current = stateSaveQueue.current.catch(() => {}).then(async () => {
         if (saveGeneration !== stateSaveGenerationRef.current) return
+        if (confirmedSaveRef.current) return
         let base = null
         try { base = lastPersistedSnapshotRef.current ? JSON.parse(lastPersistedSnapshotRef.current) : null } catch { base = null }
         const changedBase = base ? compactStateBase(base, snapshot) : null
@@ -1882,7 +1921,7 @@ export default function App() {
       // Un PUT de esta misma pestaña aumenta la revisión del servidor antes de
       // que React alcance a actualizar stateRevision. No debe tratarse como un
       // cambio externo durante esa pequeña ventana.
-      if (loggingOutRef.current || refreshing || pendingStateSaves.current > 0 || document.visibilityState === 'hidden') return
+      if (confirmedSaveRef.current || loggingOutRef.current || refreshing || pendingStateSaves.current > 0 || document.visibilityState === 'hidden') return
       if (document.activeElement?.closest('.weekly-board input, .weekly-board select, .weekly-board textarea, .team-card input, .team-card select, .team-card textarea')) return
       refreshing = true
       try {
@@ -2068,14 +2107,14 @@ export default function App() {
   if (authUser.roleCode === 'technician' || normalizeRoleName(authUser.role) === 'tecnico') return <TechnicianPortalErrorBoundary logout={logout}><TechnicianPortal user={authUser} history={history} setHistory={setHistory} vehicles={vehicles} setVehicles={setVehicles} logout={logout} sessionInvalidated={endInvalidatedSession} /></TechnicianPortalErrorBoundary>
   if (module === 'help') return <HelpShell user={authUser} onNavigate={setModule} logout={logout} theme={theme} setTheme={setTheme} isAdministrator={isAdministrator} navigation={nav} />
   if (module === 'audit' && isAdministrator) return <AuditShell user={authUser} onNavigate={setModule} logout={logout} theme={theme} setTheme={setTheme} navigation={nav} />
-  return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><div className="profile-menu"><button className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span></button>{profileOpen && <div className="profile-popover"><b>{authUser.name}</b><span>{authUser.email}</span><small>{authUser.role}</small></div>}</div><button className="logout-button" onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrar sesión"><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} services={services} />}{module === 'weekly' && <WeeklyPlanner {...{ weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, authUser, vehicles }} permissions={modulePermissions} openDaily={(nextDate, nextTeams) => { setDate(nextDate); setTeams(nextTeams); setModule('agenda') }} />}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady, authUser }} />}{module === 'history' && <History history={history} setHistory={setHistory} customers={customers} services={services} employees={employees} authUser={authUser} canManage={isAdministrator || modulePermissions.historyManage} persistHistoryRecord={persistHistoryRecord} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask, history, teams, weekly, stateRevision, refreshRemoteState, applyCustomerImportState }} permissions={modulePermissions} isAdministrator={isAdministrator} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask, history, teams, weekly }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask, history, teams, weekly }} />}{module === 'vehicles' && <Vehicles {...{ vehicles, setVehicles, setNotice, ask, isAdministrator, stateRevision, refreshRemoteState }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask, employees }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
+  return <div className="app-shell" data-theme={theme}>{confirmedSaving && <div className="confirmed-save-overlay" role="status" aria-live="polite"><p>Guardando cambios… Esperá la confirmación.</p></div>}<aside inert={confirmedSaving ? "" : undefined} className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main inert={confirmedSaving ? "" : undefined}><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><div className="profile-menu"><button className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span></button>{profileOpen && <div className="profile-popover"><b>{authUser.name}</b><span>{authUser.email}</span><small>{authUser.role}</small></div>}</div><button className="logout-button" onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrar sesión"><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} services={services} />}{module === 'weekly' && <WeeklyPlanner {...{ persistWeeklyService, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, authUser, vehicles }} permissions={modulePermissions} openDaily={(nextDate, nextTeams) => { setDate(nextDate); setTeams(nextTeams); setModule('agenda') }} />}{module === 'agenda' && <Agenda {...{ persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady, authUser }} />}{module === 'history' && <History history={history} setHistory={setHistory} customers={customers} services={services} employees={employees} authUser={authUser} canManage={isAdministrator || modulePermissions.historyManage} persistHistoryRecord={persistHistoryRecord} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask, history, teams, weekly, stateRevision, refreshRemoteState, applyCustomerImportState }} permissions={modulePermissions} isAdministrator={isAdministrator} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask, history, teams, weekly }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask, history, teams, weekly }} />}{module === 'vehicles' && <Vehicles {...{ vehicles, setVehicles, setNotice, ask, isAdministrator, stateRevision, refreshRemoteState }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask, employees }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} services={services} />}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }} />}{module === 'history' && <History history={history} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }} />}{module === 'history' && <History history={history} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, updateTask, setNotice }} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { setModule(id); setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} title={theme === 'light' ? 'Activar modo oscuro' : 'Activar modo claro'}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, updateTask, setNotice }} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
 }
 
-function Agenda({ date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady, authUser }) {
+function Agenda({ persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady, authUser }) {
   const SERVICES = sortServicesAlphabetically(services.filter(service => service.status === 'Activo')).map(service => service.name)
   useEffect(() => {
     const tasks = teams.flatMap(team => team.tasks || [])
@@ -2104,14 +2143,14 @@ function Agenda({ date, setDate, teams, setTeams, activeTechs, customers, setCus
   const chooseCustomer = (ti, i, value) => { const c = customers.find(x => x.account === value || x.name === value || `${x.name} · ${x.account}` === value); updateTask(ti, i, c ? { client: c.name, address: c.address, phone: c.phone } : { client: value }) }
   const toggleTech = (ti, name) => setTeams(prev => prev.map((t, i) => i !== ti ? t : { ...t, members: t.members.includes(name) ? t.members.filter(x => x !== name) : [...t.members, name] }))
   const addTask = ti => setTeams(prev => prev.map((t, i) => i === ti ? { ...t, tasks: [...t.tasks, blankTask()] } : t))
-  return <AgendaLayout {...{ date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }} />
+  return <AgendaLayout {...{ persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }} />
   return <>{techOpen !== null && <button className="picker-backdrop" aria-label="Cerrar selector de técnicos" onClick={() => setTechOpen(null)} />}<div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Organizá los trabajos del día</h1><p>Asigná técnicos y servicios para armar la agenda de cada equipo.</p></div><div className="action-group"><button className="secondary" onClick={() => setPreview(true)}><Icon name="eye" />Vista previa</button><button className="primary" onClick={() => { navigator.clipboard?.writeText(agendaText); setNotice('La agenda fue copiada al portapapeles.') }}><Icon name="copy" />Copiar agenda</button></div></div>{!customers.length && <p className="helper">Todavía no hay clientes importados. Podés cargarlos desde <b>Administrador de cuentas</b>.</p>}<div className="agenda-toolbar"><label>Fecha de trabajo<input type="date" value={date} onChange={e => setDate(e.target.value)} /></label><span>{prettyDate(date)}</span></div>{teams.map((team, ti) => <article className="team-card" key={ti}><div className="team-header"><div><span className="team-number">{ti + 1}</span><strong>Equipo {ti + 1}</strong></div><div className="technicians-picker"><span>{team.members.length ? `${team.members.length} técnico(s) asignado(s)` : 'Sin técnicos asignados'}</span><button className="secondary small" onClick={() => { setTechOpen(techOpen === ti ? null : ti); setTechFilter('') }}><Icon name="users" size={16} />Agregar técnicos</button>{techOpen === ti && <div className="tech-popover"><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={e => setTechFilter(e.target.value)} /><div className="tech-list">{activeTechs.filter(t => t.name.toLowerCase().includes(techFilter.toLowerCase())).map(t => <label key={t.id}><input type="checkbox" checked={team.members.includes(t.name)} onChange={() => toggleTech(ti, t.name)} />{t.name}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div></div>}</div></div><div className="tasks">{team.tasks.map((task, i) => <div className="task-row" key={i}><div className="task-title"><span>{i + 1}</span><b>Servicio</b></div><label>Hora<input type="time" value={task.time} onChange={e => updateTask(ti, i, { time: e.target.value })} /></label><label>Tipo de servicio<select value={task.service} onChange={e => updateTask(ti, i, { service: e.target.value })}><option value="">Seleccionar</option>{SERVICES.map(x => <option key={x}>{x}</option>)}</select></label>
 <label>Cliente o cuenta<input list="customer-options" placeholder="Buscá por nombre o cuenta" value={task.client} onChange={e => chooseCustomer(ti, i, e.target.value)} /><datalist id="customer-options">{customers.map(c => <option key={c.account} value={`${c.name} · ${c.account}`} />)}</datalist></label>
 <label>Dirección<input value={task.address} onChange={e => updateTask(ti, i, { address: e.target.value })} /></label><label>Contacto<input value={task.phone} onChange={e => updateTask(ti, i, { phone: e.target.value })} /></label><label className="observations">Observaciones<textarea value={task.detail} onChange={e => updateTask(ti, i, { detail: e.target.value })} /></label>{team.tasks.length > 1 && <button className="icon-btn delete" onClick={() => setTeams(prev => prev.map((t, x) => x !== ti ? t : { ...t, tasks: t.tasks.filter((_, y) => y !== i) }))}><Icon name="trash" size={16} /></button>}</div>)}</div><button className="link-button" onClick={() => addTask(ti)}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={agendaText} close={() => setPreview(false)} />}</>
 }
 
-function AgendaLayout({ date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }) {
-  return <AgendaWorkspace {...{ date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }} />
+function AgendaLayout({ persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }) {
+  return <AgendaWorkspace {...{ persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }} />
   const [preview, setPreview] = useState(false)
   const [techOpen, setTechOpen] = useState(null)
   const [filter, setFilter] = useState('')
@@ -2127,8 +2166,8 @@ function AgendaLayout({ date, setDate, teams, setTeams, activeTechs, customers, 
 <label>Dirección<input value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label>Contacto<input value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations">Observaciones<textarea value={task.detail} onChange={event => updateTask(teamIndex, taskIndex, { detail: event.target.value })} /></label>{team.tasks.length > 1 && <button className="icon-btn delete" onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.filter((_, index) => index !== taskIndex) }))}><Icon name="trash" size={16} /></button>}</div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}</>
 }
 
-function AgendaWorkspace({ date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }) {
-  return <AgendaWorkspaceForm {...{ date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }} />
+function AgendaWorkspace({ persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }) {
+  return <AgendaWorkspaceForm {...{ persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }} />
   const [preview, setPreview] = useState(false)
   const [techOpen, setTechOpen] = useState(null)
   const [filter, setFilter] = useState('')
@@ -2389,7 +2428,7 @@ function ConfigurationHistoryPanel({ history, type }) {
   return <details className="configuration-history"><summary><Icon name="history" size={17} />Historial de cambios <span>{entries.length}</span></summary>{entries.length ? <div className="configuration-history-list">{entries.map(entry => <article key={entry.id}><header><b>{prettyReportDateTime(entry.at)}</b><span>{entry.user?.name || 'Administrador'}{entry.user?.email ? ` · ${entry.user.email}` : ''}</span></header><div><section><strong>Antes</strong>{configurationSnapshotLines(entry.before, type).map((line, index) => <p key={`before-${index}`}>{line}</p>)}</section><section><strong>Después</strong>{configurationSnapshotLines(entry.after, type).map((line, index) => <p key={`after-${index}`}>{line}</p>)}</section></div></article>)}</div> : <p className="configuration-history-empty">Todavía no se registraron cambios para este período.</p>}</details>
 }
 
-function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }) {
+function AgendaWorkspaceForm({ persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }) {
   setCustomers = setCustomers || globalThis.__pignusSetCustomers
   const authUser = globalThis.__pignusCurrentUser || null
   const holidayCalendar = useNationalHolidays([authUser ? String(date || '').slice(0, 4) : ''])
@@ -2608,7 +2647,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
     showAgendaValidationModal(missing)
     return false
   }
-  const clearAgenda = () => { if (confirmation !== 'clear') { if (!registerHistory()) return; setNotice('La agenda fue copiada al portapapeles y registrada en el historial.'); return }; const today = currentLocalDate(); setTeams([{ teamId: createTeamId(), memberIds: [], members: [], tasks: isSaturday(today) ? defaultServiceTasksForDate(today, weekly).slice(0, 1) : defaultServiceTasksForDate(today, weekly) }]); setDate(today); setNotice('La agenda quedó limpia y lista para una nueva planificación.') }
+  const clearAgenda = async () => { if (confirmation !== 'clear') { if (!await registerHistory()) return; setNotice('La agenda fue copiada al portapapeles y registrada en el historial.'); return }; const today = currentLocalDate(); setTeams([{ teamId: createTeamId(), memberIds: [], members: [], tasks: isSaturday(today) ? defaultServiceTasksForDate(today, weekly).slice(0, 1) : defaultServiceTasksForDate(today, weekly) }]); setDate(today); setNotice('La agenda quedó limpia y lista para una nueva planificación.') }
   const previewValue = value => String(value || '').trim() || 'Sin información'
   const previewDetails = task => {
     const service = serviceForTask(task)
@@ -2633,7 +2672,7 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       ? `El servicio ${taskIndex + 1} del Equipo ${teamIndex + 1} fue copiado al portapapeles.`
       : 'No se pudo acceder al portapapeles. Revisá los permisos del navegador e intentá nuevamente.')
   }
-  const registerHistory = (agendaTeams = teams) => {
+  const registerHistory = async (agendaTeams = teams) => {
     agendaTeams = agendaTeamsWithRealServices(agendaTeams)
     if (pastDayBlocked) {
       setNotice(`La jornada del ${prettyDate(date)} ya finalizó. Consultá o corregí sus servicios desde Historial.`)
@@ -2652,7 +2691,8 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
       return false
     }
     if (!validateAgenda(agendaTeams)) return false
-    setHistory(previous => {
+    const previous = history
+    try {
       const records = agendaTeams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({
         // historyId se conserva al recuperar o editar una agenda ya registrada.
         // Para un servicio nuevo se usa el taskId, que permanece aunque cambien sus datos.
@@ -2687,12 +2727,15 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
         return existing ? { ...existing, ...record, id: existing.id } : { ...record, status: 'Pendiente' }
       })
       const replacedIds = new Set(replacements.map(record => record.id))
-      return [...replacements, ...previous.filter(record => !replacedIds.has(record.id))]
-    })
+      await persistAgendaRecords(previous.filter(record => replacedIds.has(record.id)), replacements)
+    } catch (error) {
+      setNotice(`No se guardaron los servicios. ${error.message}`)
+      return false
+    }
     return true
   }
-  const finishAgendaAction = (action, agendaTeams = teams) => {
-    if (!registerHistory(agendaTeams)) return
+  const finishAgendaAction = async (action, agendaTeams = teams) => {
+    if (!await registerHistory(agendaTeams)) return
     if (action === 'copy') navigator.clipboard?.writeText(message)
     setNotice(action === 'copy' ? 'La agenda fue copiada al portapapeles y registrada en el historial.' : 'La agenda fue guardada en el historial.')
   }
@@ -2931,14 +2974,14 @@ function AgendaWorkspaceForm({ date, setDate, teams, setTeams, activeTechs, cust
 <TaskStatusBadge task={task} date={date} history={history} />
 {dailyCustomerField(task, teamIndex, taskIndex)}
 {serviceCode(serviceForTask(task)) === 'alarm-installation' && <label className="daily-unmonitored-zone"><input type="radio" aria-required="true" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === 'no-monitoreada'} onChange={() => { const nextTask = { ...task, installationZone: 'no-monitoreada' }; updateTask(teamIndex, taskIndex, { installationZone: 'no-monitoreada', ...applicableServiceExtras(nextTask, serviceForTask(task)) }) }} />No monitoreada</label>}
-<label className="daily-field-address"><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label className="daily-field-contact"><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations daily-field-observations">Observaciones<BufferedTextarea value={task.detail} onCommit={value => updateTask(teamIndex, taskIndex, { detail: value })} /></label>{serviceCode(serviceForTask(task)) === 'alarm-installation' && <fieldset className="installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" aria-required="true" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForTask(task)) }) }} />{label}</label>)}</fieldset>}<ServiceExtraFields className="daily-extra-fields" task={task} service={serviceForTask(task)} buffered onChange={patch => updateTask(teamIndex, taskIndex, patch)} /></>}<div className="daily-task-actions">{!task.vehicleControl && <><button type="button" className="icon-btn daily-copy-button" title="Copiar este servicio" aria-label={`Copiar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => copySingleTask(task, team, teamIndex, taskIndex)}><Icon name="copy" size={16} /><span>Copiar</span></button>{teams.length > 1 && <button type="button" className="icon-btn move daily-move-button" title="Reasignar a otro equipo" aria-label={`Reasignar servicio ${taskIndex + 1} a otro equipo`} onClick={() => openTaskMove(teamIndex, taskIndex)}><span aria-hidden="true">⇄</span><span>Reasignar</span></button>}{taskHasContent(task) && <button type="button" className="icon-btn delete daily-delete-button" title="Eliminar servicio" aria-label={`Eliminar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.length > 1 ? item.tasks.filter((_, index) => index !== taskIndex) : [blankTask()] }))}><Icon name="trash" size={16} /><span>Eliminar</span></button>}</>}</div></div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== teamIndex)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
+<label className="daily-field-address"><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label className="daily-field-contact"><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations daily-field-observations">Observaciones<BufferedTextarea value={task.detail} onCommit={value => updateTask(teamIndex, taskIndex, { detail: value })} /></label>{serviceCode(serviceForTask(task)) === 'alarm-installation' && <fieldset className="installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" aria-required="true" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForTask(task)) }) }} />{label}</label>)}</fieldset>}<ServiceExtraFields className="daily-extra-fields" task={task} service={serviceForTask(task)} buffered onChange={patch => updateTask(teamIndex, taskIndex, patch)} /></>}<div className="daily-task-actions">{!task.vehicleControl && <><button type="button" className="icon-btn daily-copy-button" title="Copiar este servicio" aria-label={`Copiar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => copySingleTask(task, team, teamIndex, taskIndex)}><Icon name="copy" size={16} /><span>Copiar</span></button>{teams.length > 1 && <button type="button" className="icon-btn move daily-move-button" title="Reasignar a otro equipo" aria-label={`Reasignar servicio ${taskIndex + 1} a otro equipo`} onClick={() => openTaskMove(teamIndex, taskIndex)}><span aria-hidden="true">⇄</span><span>Reasignar</span></button>}{taskHasContent(task) && <button type="button" className="icon-btn delete daily-delete-button" title="Eliminar servicio" aria-label={`Eliminar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.length > 1 ? item.tasks.filter((_, index) => index !== taskIndex) : [blankTask()] }))}><Icon name="trash" size={16} /><span>Eliminar</span></button>}</>}</div></div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
 }
 
 /**
  * Planificador semanal: es el espacio de preparación previa. Sus tarjetas no
  * impactan en el Historial hasta que el operador abre y guarda la agenda diaria.
  */
-function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, openDaily, authUser, vehicles, permissions = {} }) {
+function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, openDaily, authUser, vehicles, permissions = {} }) {
   authUser = authUser || globalThis.__pignusCurrentUser || null
   vehicles = vehicles || globalThis.__pignusVehicles || []
   setHistory = setHistory || globalThis.__pignusSetHistory
@@ -3146,9 +3189,9 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     setTaskEditorSaving(false)
     const teamSnapshot = dayPlan(day).teams[teamIndex]
     const task = teamSnapshot?.tasks[taskIndex]
-    if (task) setTaskEditor({ day, teamIndex, taskIndex, teamId: teamSnapshot.teamId, teamSnapshot: { ...teamSnapshot, tasks: [...(teamSnapshot.tasks || [])] }, taskId: task.taskId, draft: taskWithServiceEstimate(task, serviceForWeeklyTask(task)) })
+    if (task) setTaskEditor({ persistedTeam: Boolean(weekly[day]?.teams?.some(team => String(team.teamId) === String(teamSnapshot.teamId))), baseRecord: historyRecordForTask(task, day, operationalHistory) || null, baseTask: weekly[day]?.teams?.flatMap(team => team.tasks || []).find(item => String(item.taskId) === String(task.taskId)) || null, day, teamIndex, taskIndex, teamId: teamSnapshot.teamId, teamSnapshot: { ...teamSnapshot, tasks: [...(teamSnapshot.tasks || [])] }, taskId: task.taskId, draft: taskWithServiceEstimate(task, serviceForWeeklyTask(task)) })
   }
-  const updateTaskDraft = patch => setTaskEditor(previous => previous ? { ...previous, draft: { ...previous.draft, ...patch } } : previous)
+  const updateTaskDraft = patch => !taskEditorSaveGuardRef.current && setTaskEditor(previous => previous ? { ...previous, draft: { ...previous.draft, ...patch } } : previous)
   const selectDraftService = selectedId => {
     const selected = services.find(service => String(service.id) === String(selectedId))
     const currentTask = taskEditor?.draft || blankTask()
@@ -3161,7 +3204,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
   const selectDraftCustomer = customer => updateTaskDraft(customerLinkPatch(taskEditor?.draft, customer, authUser))
   const beginDraftNewCustomer = value => updateTaskDraft({ newCustomer: true, subscriberReservation: false, customerId: '', client: value, clientAccount: '', clientNameAtService: normalizeCustomerName(value), address: '', phone: '' })
   const beginDraftSubscriberReservation = value => updateTaskDraft(subscriberReservationPatch(value, authUser))
-  const saveTaskEditor = () => {
+  const saveTaskEditor = async () => {
     if (!taskEditor || taskEditorSaveGuardRef.current) return
     taskEditorSaveGuardRef.current = true
     setTaskEditorSaving(true)
@@ -3173,6 +3216,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     const { day, teamIndex, taskIndex, teamId, teamSnapshot, taskId } = taskEditor
     if (dayHasFinished(day)) { rejectSave(finishedDayMessage(day)); return }
     let draft = taskEditor.draft
+    let newCustomer = null
     const advance = advancedGuardForDay(day)
     if (advance) {
       setTaskEditor(null)
@@ -3189,7 +3233,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
       const created = createQuickClient(draft, customers)
       if (!created) { rejectSave('Completá nombre, dirección y contacto del cliente nuevo.'); return }
       draft = created.task
-      setCustomers(previous => previous.some(customer => customer.customerId === created.customer.customerId) ? previous : [...previous, created.customer])
+      newCustomer = created.customer
     }
     const draftStart = serviceTimeInMinutes(draft.time)
     if (day === currentLocalDate() && !historyRecordForTask(draft, day, operationalHistory) && draftStart !== null && draftStart < nextLiveScheduleMinute()) {
@@ -3203,7 +3247,8 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
       return
     }
     const editedPlan = dayPlan(day)
-    const editedTeam = editedPlan.teams.find(team => teamId && String(team.teamId || '') === String(teamId)) || editedPlan.teams[teamIndex]
+    const editedTeam = editedPlan.teams.find(team => teamId && String(team.teamId || '') === String(teamId)) || (!taskEditor.persistedTeam ? teamSnapshot : null)
+    if (!editedTeam) { rejectSave('El equipo fue eliminado desde otra sesión. Revisá la planificación antes de guardar.'); return }
     const peerTasks = (editedTeam?.tasks || []).filter((task, index) => !((taskId && String(task.taskId || '') === String(taskId)) || (!taskId && index === taskIndex)))
     const gapConflict = minimumServiceGapConflicts([{ tasks: [...peerTasks, draft].map(task => {
       const occupancyTask = taskForScheduleOccupancy(task, day, operationalHistory)
@@ -3214,36 +3259,24 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
       return
     }
     const tracedDraft = stampServiceRecord({ ...draft, ...applicableServiceExtras(draft, serviceForWeeklyTask(draft)) }, authUser)
-    updateDay(day, plan => {
-      const nextTeams = [...plan.teams]
-      let destinationIndex = nextTeams.findIndex(team => teamId && String(team.teamId || '') === String(teamId))
-      // Los días aún no persistidos se construyen visualmente con IDs
-      // temporales. La posición capturada por el modal es la referencia segura
-      // si esos IDs cambiaron antes de presionar Guardar.
-      if (destinationIndex < 0 && nextTeams[teamIndex]) destinationIndex = teamIndex
-      if (destinationIndex < 0) {
-        const restoredTasks = (teamSnapshot?.tasks || []).map(task => String(task.taskId || '') === String(taskId || '') ? { ...task, ...tracedDraft } : task)
-        if (!restoredTasks.some(task => String(task.taskId || '') === String(taskId || ''))) restoredTasks.push(tracedDraft)
-        nextTeams.push({ ...teamSnapshot, teamId: teamId || teamSnapshot?.teamId || createTeamId(), label: teamSnapshot?.label || `Equipo ${teamIndex + 1}`, tasks: sortTasksByTime(restoredTasks) })
-      } else {
-        const destination = nextTeams[destinationIndex]
-        const existingTaskIndex = (destination.tasks || []).findIndex((task, index) => (taskId && String(task.taskId || '') === String(taskId)) || (!taskId && index === taskIndex))
-        const tasks = existingTaskIndex >= 0
-          ? destination.tasks.map((task, index) => index === existingTaskIndex ? { ...task, ...tracedDraft } : task)
-          : [...(destination.tasks || []), tracedDraft]
-        nextTeams[destinationIndex] = { ...destination, tasks: sortTasksByTime(tasks) }
-      }
-      return { ...plan, teams: nextTeams }
-    })
-    if (tracedDraft.vehicleControl) {
-      setHistory(previous => previous.map(record => (
-        String(record.id || '') === String(tracedDraft.historyId || '') || String(record.sourceTaskId || '') === String(tracedDraft.taskId || '')
-      ) ? { ...record, technicianIds: tracedDraft.technicianIds || [], technicians: tracedDraft.technicians || [] } : record))
+    const savedTeam = editedTeam || teamSnapshot
+    if (!savedTeam?.members?.length && !tracedDraft.vehicleControl) { rejectSave('Asigná al menos un técnico antes de guardar el servicio.'); return }
+    const previousRecord = taskEditor.baseRecord
+    const record = { ...previousRecord, ...weeklyHistoryRecord(day, savedTeam, teamIndex, tracedDraft, taskIndex), status: previousRecord?.status || 'Pendiente' }
+    if (previousRecord) record.id = previousRecord.id
+    const savedTask = { ...tracedDraft, historyId: record.id, status: record.status }
+    try {
+      await persistWeeklyService({ day, team: savedTeam, task: savedTask, record, baseRecord: previousRecord, baseTask: taskEditor.baseTask, customer: newCustomer })
+      setTaskEditor(null)
+      setNotice('Servicio guardado correctamente en la agenda y el Historial.')
+    } catch (error) {
+      rejectSave(`No se guardó el servicio. ${error.message || 'Comprobá la conexión e intentá nuevamente.'}`)
+    } finally {
+      taskEditorSaveGuardRef.current = false
+      setTaskEditorSaving(false)
     }
-    window.dispatchEvent(new CustomEvent('pignus:sync-weekly-task', { detail: { day, teamId, teamIndex, taskIndex, taskId, draft: tracedDraft, teamSnapshot } }))
-    setTaskEditor(null)
-    setNotice('Servicio actualizado y ordenado por horario.')
   }
+
   const openWeeklyTaskMove = (event, day, teamIndex, taskIndex) => {
     event.stopPropagation()
     const plan = dayPlan(day)
@@ -3747,82 +3780,6 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
     installationZone: task.installationZone || '',
     ...serviceTrace(task)
   })
-  const recordMatchesWeeklyTask = (record, expected) => {
-    if (!record) return false
-    const comparable = value => String(value || '').trim()
-    const sameList = (left, right) => JSON.stringify((left || []).map(String)) === JSON.stringify((right || []).map(String))
-    return ['date', 'time', 'estimatedMinutes', 'estimatedMinutesCustomized', 'teamId', 'serviceId', 'service', 'customerId', 'clientAccount', 'client', 'detail', 'internalNote', 'address', 'phone', 'installationZone', 'paymentMethod', 'amount', 'monthlyFee', 'form'].every(key => comparable(record[key]) === comparable(expected[key])) &&
-      JSON.stringify(normalizeInternalChecklist(record.internalChecklist)) === JSON.stringify(normalizeInternalChecklist(expected.internalChecklist)) &&
-      sameList(record.technicianIds, expected.technicianIds) && sameList(record.technicians, expected.technicians)
-  }
-  const dayNeedsSave = day => dayPlan(day).teams.some((team, teamIndex) => (team.tasks || []).some((task, taskIndex) => {
-    if (taskIsResolvedForPlanning(task, day, operationalHistory)) return false
-    if (!weeklyTaskReadyToSave(task, team, serviceForWeeklyTask(task))) return false
-    return !recordMatchesWeeklyTask(historyRecordForTask(task, day, operationalHistory), weeklyHistoryRecord(day, team, teamIndex, task, taskIndex))
-  }))
-  const saveWeeklyDay = day => {
-    if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
-    const hours = hoursForDay(day)
-    if (!hours) { setNotice('Los domingos no están habilitados para programar servicios.'); return }
-    const holidayState = holidayStateForDay(day)
-    if (holidayState.blocked) { setNotice(holidayState.decision?.status === 'closed' ? 'La fecha fue definida como día no operativo.' : 'Primero definí si el feriado será laboral o no operativo.'); return }
-    const advance = advancedGuardForDay(day)
-    if (advance) { setNotice(advancedSaturdayGuardMessage(advance)); return }
-    let plan = dayPlan(day)
-    const addedCustomers = []
-    plan = { ...plan, teams: plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).map(task => {
-      if (!task.newCustomer) return task
-      const created = createQuickClient(task, [...customers, ...addedCustomers])
-      if (!created) return task
-      addedCustomers.push(created.customer)
-      return created.task
-    }) })) }
-    if (addedCustomers.length) {
-      setCustomers(previous => [...previous, ...addedCustomers.filter(customer => !previous.some(item => item.customerId === customer.customerId))])
-      updateDay(day, () => plan)
-    }
-    const scheduledTasks = plan.teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, team, teamIndex, taskIndex }))).filter(({ task }) => taskHasContent(task) && !taskIsResolvedForPlanning(task, day, operationalHistory))
-    if (!scheduledTasks.length) { setNotice('No hay servicios pendientes para guardar en este día.'); return }
-    const readyTasks = scheduledTasks.filter(({ task, team }) => weeklyTaskReadyToSave(task, team, serviceForWeeklyTask(task)))
-    if (!readyTasks.length) {
-      const incompleteTask = scheduledTasks[0]
-      const { task, teamIndex, taskIndex } = incompleteTask
-      const missing = weeklyTaskMissingFields(task, serviceForWeeklyTask(task))
-      if (!(incompleteTask.team.members || []).length) missing.push('técnicos asignados')
-      setNotice(`Completá los campos obligatorios de Equipo ${teamIndex + 1}, tarjeta ${taskIndex + 1}: ${missing.join(', ')}.`)
-      return
-    }
-    const invalidTime = readyTasks.find(({ task }) => task.time < hours.min || task.time > hours.max)
-    if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
-    const taskOutsideHours = readyTasks.find(({ task }) => taskOccupiedInterval(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))?.serviceEnd > serviceTimeInMinutes(hours.max))
-    if (taskOutsideHours) { const interval = taskOccupiedInterval(taskWithServiceEstimate(taskOutsideHours.task, serviceForWeeklyTask(taskOutsideHours.task))); setNotice(`Hay una franja que termina a las ${interval.serviceEndTime}, fuera del horario habilitado (${hours.label}).`); return }
-    const readyTaskSet = new Set(readyTasks.map(({ task }) => task))
-    const gapConflicts = minimumServiceGapConflicts(plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).map(task => {
-      if (!readyTaskSet.has(task) && !taskIsResolvedForPlanning(task, day, operationalHistory)) return null
-      const occupancyTask = taskForScheduleOccupancy(task, day, operationalHistory)
-      return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(task)) : null
-    }).filter(Boolean) })))
-    if (gapConflicts.length) { const conflict = gapConflicts[0]; setNotice(planningConflictMessage(day, plan.teams[conflict.teamIndex], conflict.teamIndex, conflict)); return }
-    const conflicts = technicianTimeConflicts(plan.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => readyTaskSet.has(task)) })), activeTechs)
-    if (conflicts.length) { setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`); return }
-    const records = readyTasks.map(({ task, team, teamIndex, taskIndex }) => weeklyHistoryRecord(day, team, teamIndex, task, taskIndex))
-    const setOperationalHistory = setHistory || globalThis.__pignusSetHistory
-    if (typeof setOperationalHistory !== 'function') { setNotice('No se pudo acceder al Historial. Recargá la página e intentá nuevamente.'); return }
-    setOperationalHistory(previous => {
-      const replacements = records.map(record => {
-        const existing = previous.find(item => item.id === record.id || (record.sourceTaskId && String(item.sourceTaskId || '') === String(record.sourceTaskId)))
-        return existing ? { ...existing, ...record, id: existing.id } : { ...record, status: 'Pendiente' }
-      })
-      const replacedIds = new Set(replacements.map(record => record.id))
-      return [...replacements, ...previous.filter(record => !replacedIds.has(record.id))]
-    })
-    const historyIds = new Map(records.map(record => [String(record.sourceTaskId || record.id), record.id]))
-    updateDay(day, current => ({ ...current, teams: current.teams.map(team => ({ ...team, tasks: team.tasks.map(task => ({ ...task, historyId: historyIds.get(String(task.taskId || task.historyId)) || task.historyId })) })) }))
-    const skipped = scheduledTasks.length - readyTasks.length
-    setNotice(skipped
-      ? `Se guardaron ${records.length} servicio(s) del ${prettyDate(day)}. ${skipped} servicio(s) incompleto(s) quedaron sin guardar.`
-      : `La agenda del ${prettyDate(day)} fue guardada y sus servicios quedaron pendientes en el Historial.`)
-  }
   const displayDate = day => new Date(`${day}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).replace('.', '')
   return <>
     {techPicker && <button className="picker-backdrop" aria-label="Cerrar selector de técnicos" onClick={() => setTechPicker(null)} />}
@@ -3844,16 +3801,16 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
         return <div className="annual-guard-row" key={`${guard.technicianId || guard.name}-${index}`}><span>{index + 1}</span><select aria-label={`Técnico ${index + 1} de la rotación`} value={guard.technicianId || ''} onChange={event => updateAnnualGuardTechnician(index, event.target.value)}>{legacyGuard && <option value={guard.technicianId || ''}>{guard.name} (no activo)</option>}{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select><button type="button" className="secondary" title="Subir" aria-label={`Subir a ${guard.name}`} disabled={index === 0} onClick={() => moveAnnualGuardTechnician(index, -1)}>↑</button><button type="button" className="secondary" title="Bajar" aria-label={`Bajar a ${guard.name}`} disabled={index === annualGuardSetup.rotation.length - 1} onClick={() => moveAnnualGuardTechnician(index, 1)}>↓</button><button type="button" className="icon-btn delete" title="Quitar de la rotación" aria-label={`Quitar a ${guard.name}`} onClick={() => removeAnnualGuardTechnician(index)}><Icon name="trash" size={15} /></button></div>
       })}</div><button type="button" className="secondary annual-guard-add" disabled={!activeTechs.length || !validYear} onClick={addAnnualGuardTechnician}><Icon name="plus" size={15} />Agregar técnico</button>{!validYear && <p className="field-error">Ingresá un año válido.</p>}{duplicated && <p className="field-error">Cada técnico puede aparecer una sola vez en la rotación.</p>}{validYear && !annualGuardSetup.rotation.length && <p className="field-error">Agregá al menos un técnico para generar el cronograma.</p>}<p className="annual-guard-help">Los cambios manuales realizados en un sábado específico se conservan como excepción.</p><ConfigurationHistoryPanel history={weekly._annualGuards?.[annualGuardSetup.year]?.configurationHistory} type="guards" /><div className="modal-actions"><button className="secondary" onClick={() => setAnnualGuardSetup(null)}>Cancelar</button><button className="primary" disabled={!validYear || !annualGuardSetup.rotation.length || duplicated} onClick={saveAnnualGuardSetup}>Guardar guardias del año</button></div></section></div>
     })()}
-    <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Prepará las visitas de cada equipo y luego abrí el día para terminar de validar y guardar la agenda del día.</p></div><div className="weekly-actions">{canConfigureWeekly('weeklyTeams') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button>}{canConfigureWeekly('weeklyHours') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button>}{canConfigureWeekly('weeklyVehicles') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlyVehicleSetup}><Icon name="vehicle" size={16} />Vehículos del mes</button>}{canConfigureWeekly('weeklyGuards') && <button className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button>}<label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
+    <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Guardá cada servicio desde su formulario. Los cambios confirmados se comparten con todos los usuarios.</p></div><div className="weekly-actions">{canConfigureWeekly('weeklyTeams') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button>}{canConfigureWeekly('weeklyHours') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button>}{canConfigureWeekly('weeklyVehicles') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlyVehicleSetup}><Icon name="vehicle" size={16} />Vehículos del mes</button>}{canConfigureWeekly('weeklyGuards') && <button className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button>}<label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
     {taskEditor && (() => {
       const { day, teamIndex, taskIndex } = taskEditor
       const task = taskEditor.draft
       const hours = hoursForDay(day)
       const taskConflict = conflictForWeeklyTask(day, teamIndex, taskIndex, task)
       if (!task || !hours) return null
-      return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskEditor(null)}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button type="button" className="modal-close" aria-label="Cerrar edición del servicio" title="Cerrar" onClick={() => setTaskEditor(null)}><Icon name="close" size={18} /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>{task.vehicleControl ? 'Control semanal de vehículo' : `Servicio ${taskIndex + 1}`}</h2><p className="weekly-modal-team">{taskEditor.teamSnapshot?.label || `Equipo ${teamIndex + 1}`} · {taskEditor.teamSnapshot?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTaskDraft({ time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" disabled={task.vehicleControl} value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectDraftService(event.target.value)}>{task.vehicleControl && serviceForWeeklyTask(task) ? <option value={serviceForWeeklyTask(task).id}>{serviceForWeeklyTask(task).name}</option> : <><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</>}</select></label></div>{task.vehicleControl ? <label className="vehicle-control-fixed-duration"><span><RequiredLabel>Tiempo estimado</RequiredLabel></span><input value="15 minutos" readOnly /></label> : <ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTaskDraft({ estimatedMinutes, estimatedMinutesCustomized: true })} />}{task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))}</small>}{taskConflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>{scheduleConflictForTaskMessage(taskConflict, taskIndex)}</span></p>}{task.vehicleControl ? <div className="vehicle-control-planning-fields"><label>Vehículo<input value={task.client || vehicleLabel(task)} readOnly /></label><label><RequiredLabel>Técnico a cargo</RequiredLabel><select value={task.technicianIds?.[0] || ''} onChange={event => { const technician = activeTechs.find(item => String(item.id) === event.target.value); updateTaskDraft({ technicianIds: technician ? [technician.id] : [], technicians: technician ? [technician.name] : [] }) }}><option value="">Seleccionar técnico</option>{activeTechs.map(technician => <option key={technician.id} value={technician.id}>{technician.name}</option>)}</select></label><p>Podés reemplazar al responsable para este control ante una contingencia. La asignación mensual predeterminada no se modifica.</p></div> : <>{serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input aria-required="true" type="radio" name={`weekly-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTaskDraft({ installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
+      return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => { if (!taskEditorSaving) setTaskEditor(null) }}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button type="button" className="modal-close" aria-label="Cerrar edición del servicio" title="Cerrar" onClick={() => { if (!taskEditorSaving) setTaskEditor(null) }}><Icon name="close" size={18} /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>{task.vehicleControl ? 'Control semanal de vehículo' : `Servicio ${taskIndex + 1}`}</h2><p className="weekly-modal-team">{taskEditor.teamSnapshot?.label || `Equipo ${teamIndex + 1}`} · {taskEditor.teamSnapshot?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTaskDraft({ time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" disabled={task.vehicleControl} value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectDraftService(event.target.value)}>{task.vehicleControl && serviceForWeeklyTask(task) ? <option value={serviceForWeeklyTask(task).id}>{serviceForWeeklyTask(task).name}</option> : <><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</>}</select></label></div>{task.vehicleControl ? <label className="vehicle-control-fixed-duration"><span><RequiredLabel>Tiempo estimado</RequiredLabel></span><input value="15 minutos" readOnly /></label> : <ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTaskDraft({ estimatedMinutes, estimatedMinutesCustomized: true })} />}{task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))}</small>}{taskConflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>{scheduleConflictForTaskMessage(taskConflict, taskIndex)}</span></p>}{task.vehicleControl ? <div className="vehicle-control-planning-fields"><label>Vehículo<input value={task.client || vehicleLabel(task)} readOnly /></label><label><RequiredLabel>Técnico a cargo</RequiredLabel><select value={task.technicianIds?.[0] || ''} onChange={event => { const technician = activeTechs.find(item => String(item.id) === event.target.value); updateTaskDraft({ technicianIds: technician ? [technician.id] : [], technicians: technician ? [technician.name] : [] }) }}><option value="">Seleccionar técnico</option>{activeTechs.map(technician => <option key={technician.id} value={technician.id}>{technician.name}</option>)}</select></label><p>Podés reemplazar al responsable para este control ante una contingencia. La asignación mensual predeterminada no se modifica.</p></div> : <>{serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input aria-required="true" type="radio" name={`weekly-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTaskDraft({ installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
 <CustomerAutocomplete className="weekly-customer-search" value={task.client} customerId={task.customerId} customers={customers} subscriberReservation={task.subscriberReservation} onTextCommit={commitDraftCustomerText} onCustomerSelect={selectDraftCustomer} onAddCustomer={beginDraftNewCustomer} onReserveSubscriber={beginDraftSubscriberReservation} />
-<label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.address} onChange={event => updateTaskDraft({ address: event.target.value })} /></label><label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.phone} onChange={event => updateTaskDraft({ phone: event.target.value })} /></label><p className="weekly-customer-data-note">{task.subscriberReservation ? 'Estos datos son provisorios y no crean un CLI. Vinculá el PIG importado cuando esté disponible.' : task.newCustomer ? 'Completá dirección y contacto para crear el cliente CLI al guardar.' : 'Dirección y contacto se administran desde el módulo Abonados y clientes.'}</p><label><RequiredLabel>Detalle</RequiredLabel><BufferedTextarea aria-required="true" value={task.detail} onCommit={value => updateTaskDraft({ detail: value })} /></label><ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} onChange={updateTaskDraft} /></>}</div><div className="modal-actions"><button className="secondary" disabled={taskEditorSaving} onClick={() => setTaskEditor(null)}>Cancelar</button><button className="primary" disabled={taskEditorSaving} onClick={saveTaskEditor}><Icon name="check" size={16} />{taskEditorSaving ? 'Guardando…' : 'Guardar servicio'}</button></div></section></div>
+<label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.address} onChange={event => updateTaskDraft({ address: event.target.value })} /></label><label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.phone} onChange={event => updateTaskDraft({ phone: event.target.value })} /></label><p className="weekly-customer-data-note">{task.subscriberReservation ? 'Estos datos son provisorios y no crean un CLI. Vinculá el PIG importado cuando esté disponible.' : task.newCustomer ? 'Completá dirección y contacto para crear el cliente CLI al guardar.' : 'Dirección y contacto se administran desde el módulo Abonados y clientes.'}</p><label><RequiredLabel>Detalle</RequiredLabel><BufferedTextarea aria-required="true" value={task.detail} onCommit={value => updateTaskDraft({ detail: value })} /></label><ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} onChange={updateTaskDraft} /></>}</div><div className="modal-actions"><button className="secondary" disabled={taskEditorSaving} onClick={() => { if (!taskEditorSaving) setTaskEditor(null) }}>Cancelar</button><button className="primary" disabled={taskEditorSaving} onClick={saveTaskEditor}><Icon name="check" size={16} />{taskEditorSaving ? 'Guardando…' : 'Guardar servicio'}</button></div></section></div>
     })()}
     <div className="weekly-scroll-top" ref={weeklyTopScrollRef} tabIndex={0} aria-label="Desplazamiento horizontal superior" onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyBoardRef.current)}><div style={{ width: `${weeklyScrollWidth}px` }} /></div>
     <div className="weekly-board" ref={weeklyBoardRef} onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyTopScrollRef.current)}>
@@ -3868,7 +3825,7 @@ function WeeklyPlanner({ weekly, setWeekly, customers, setCustomers, services, a
         const gapConflicts = gapConflictsForDay(day)
         const finishedDay = dayHasFinished(day)
         return <section className={`week-day ${!hours || holidayState.decision?.status === 'closed' ? 'closed-day' : ''} ${finishedDay ? 'finished-day' : ''}`} data-day={day} key={day}>
-          <header><div><b>{displayDate(day)}</b><small>{!hours ? 'No operativo' : finishedDay ? 'Jornada finalizada · solo lectura' : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : day === today ? 'Hoy' : prettyDate(day)}</small></div><div className="weekly-day-actions">{!finishedDay && hours && !advancedGuard && !calendarUnavailable && !holidayState.blocked && dayNeedsSave(day) && <button className="primary small weekly-save-day" title="Guardado pendiente: guardar agenda" onClick={() => saveWeeklyDay(day)}><Icon name="check" size={15} />Guardar</button>}<button className="secondary small" disabled={finishedDay || !hours || Boolean(advancedGuard) || calendarUnavailable || holidayState.blocked} title={finishedDay ? 'La jornada ya finalizó y es de solo lectura' : advancedGuard ? advancedSaturdayGuardMessage(advancedGuard) : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : ''} onClick={() => openDay(day)}>Abrir día</button></div></header>
+          <header><div><b>{displayDate(day)}</b><small>{!hours ? 'No operativo' : finishedDay ? 'Jornada finalizada · solo lectura' : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : day === today ? 'Hoy' : prettyDate(day)}</small></div><div className="weekly-day-actions"><button className="secondary small" disabled={finishedDay || !hours || Boolean(advancedGuard) || calendarUnavailable || holidayState.blocked} title={finishedDay ? 'La jornada ya finalizó y es de solo lectura' : advancedGuard ? advancedSaturdayGuardMessage(advancedGuard) : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : ''} onClick={() => openDay(day)}>Abrir día</button></div></header>
           {!hours ? <p className="closed-day-note">Domingo · sin programación</p> : <>
             <small className="weekly-hours">Horario habilitado: {hours.label}</small>
             {calendarUnavailable ? <div className={`weekly-calendar-state ${holidayCalendar.error ? 'error' : ''}`}>{holidayCalendar.error ? 'No se pudo verificar el calendario de feriados.' : 'Verificando feriados nacionales…'}</div> : holidayState.holiday && <HolidayDecisionPanel compact holiday={holidayState.holiday} decision={holidayState.decision} canDecide={authUser?.roleCode === 'administrator'} onDecision={status => recordHolidayDecision(setWeekly, setNotice, day, holidayState.holiday, status, { weekly, history: operationalHistory, setHistory, holidays: holidayCalendar.records })} />}

@@ -5,6 +5,7 @@ const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./_lib/service-advance.cjs')
 const { concurrentStateChanged, mergeConcurrentState } = require('./_lib/state-merge.cjs')
+const { applyStateOperations } = require('./_lib/state-operations.cjs')
 const { logStateConcurrencyEvent } = require('./_lib/concurrency-observability.cjs')
 const { applyServiceCatalogOperation } = require('./_lib/service-catalog-operation.cjs')
 const { applyVehicleOperation } = require('./_lib/vehicle-operation.cjs')
@@ -335,11 +336,12 @@ async function handleSaveState(req, res, sql, user) {
       const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const currentRevision = Number(revisionRows[0]?.value || 0)
       const current = await readState(transaction)
-      let next = authorizeIncomingState(incoming, current, user)
+      const individual = req.method === 'PATCH'
+      let next = authorizeIncomingState(individual ? applyStateOperations(visibleStateForUser(current, user), incoming.operations) : incoming, current, user)
       const base = incoming.base && typeof incoming.base === 'object' ? incoming.base : null
       const merged = Boolean(base && concurrentStateChanged(base, current))
-      if (base) next = mergeConcurrentState(base, current, next)
-      else if (!Number.isInteger(Number(incoming.revision)) || Number(incoming.revision) !== currentRevision) {
+      if (!individual && base) next = mergeConcurrentState(base, current, next)
+      else if (!individual && (!Number.isInteger(Number(incoming.revision)) || Number(incoming.revision) !== currentRevision)) {
         const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de volver a guardar.')
         error.statusCode = 409
         throw error
@@ -361,7 +363,7 @@ async function handleSaveState(req, res, sql, user) {
         ...auditChanges(current.reviews, next.reviews, 'id', 'Reseña', user)
       ]
       if (JSON.stringify(current.agenda) !== JSON.stringify(next.agenda)) entries.push(auditEntry(user, 'Modificó', 'Agenda técnica', 'agenda-actual', current.agenda, next.agenda))
-      await replaceCollections(transaction, next)
+      await replaceCollections(transaction, next, current)
       if (JSON.stringify(current.customers) !== JSON.stringify(next.customers)) await transaction`delete from pignus_preferences where key = ${CUSTOMER_IMPORT_BACKUP_KEY}`
       await appendAudit(transaction, entries)
       const nextRevision = currentRevision + 1
@@ -798,7 +800,7 @@ module.exports = async function handler(req, res) {
         return send(res, 503, { error: error.message })
       }
     }
-    if (req.method === 'PUT' && route === '/state') {
+    if (['PUT', 'PATCH'].includes(req.method) && route === '/state') {
       if (session.user.roleCode === 'technician') return send(res, 403, { error: 'El rol técnico no puede modificar la agenda.' })
       return await handleSaveState(req, res, sql, session.user)
     }

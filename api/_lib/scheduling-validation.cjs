@@ -93,10 +93,11 @@ const rawEstimatedMinutesFor = (task, serviceMap) => {
 
 const scheduleSignature = (teams, serviceMap, date, history) => JSON.stringify((teams || []).map(team => ({
   teamId: String(team.teamId || ''),
+  memberIds: team.memberIds || [], members: team.members || [],
   tasks: (team.tasks || []).map((task, taskIndex) => ({ task: agendaTaskForScheduleOccupancy(task, date, history), taskIndex })).filter(({ task }) => task && (task.serviceId || task.service)).map(({ task, taskIndex }) => ({
     id: String(task.taskId || task.historyId || task.id || taskIndex), time: String(task.time || task.scheduledTime || ''),
     serviceId: String(task.serviceId || task.service || ''), estimatedMinutes: String(rawEstimatedMinutesFor(task, serviceMap) ?? ''),
-    status: String(task.status || task.technicalStatus || ''), completedAt: String(task.completedAt || task.technicalReportedAt || '')
+    status: String(task.status || task.technicalStatus || ''), completedAt: String(task.completedAt || task.technicalReportedAt || ''), technicianIds: task.technicianIds || [], technicians: task.technicians || []
   }))
 })))
 

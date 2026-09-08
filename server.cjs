@@ -14,6 +14,7 @@ const { assertNoPastWeeklyServiceAdditions } = require('./api/_lib/past-agenda.c
 const { applyServiceCatalogOperation } = require('./api/_lib/service-catalog-operation.cjs')
 const { applyVehicleOperation } = require('./api/_lib/vehicle-operation.cjs')
 const { synchronizeAgendaHistoryRecord } = require('./api/_lib/history-record-operation.cjs')
+const { applyStateOperations } = require('./api/_lib/state-operations.cjs')
 const { migrateLegacyEstimatedMinutes } = require('./api/_lib/legacy-estimated-minutes.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
@@ -1129,6 +1130,7 @@ function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now
 }
 
 function saveState(state, user) {
+  if (Object.hasOwn(state, 'operations')) state = { ...applyStateOperations(readStateForUser(user), state.operations), revision: currentStateRevision() }
   const expectedRevision = Number(state.revision)
   const actualRevision = currentStateRevision()
   const base = state.base && typeof state.base === 'object' ? state.base : null
@@ -1232,7 +1234,7 @@ function saveState(state, user) {
   const storedAgenda = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
   const previousAgenda = storedAgenda ? JSON.parse(storedAgenda.data) : {}
   state = stampStateServiceTrace(state, previousAgenda, previousHistory, user)
-  validateState(state, { agenda: previousAgenda })
+  validateState(state, previousState)
   const previousEmployees = new Map(rows('employees').map(employee => [String(employee.id), employee]))
   const nextAgenda = state.agenda || {}
   // Evita que un cliente con datos anteriores vuelva a guardar abreviaturas históricas.
@@ -1265,7 +1267,9 @@ function saveState(state, user) {
     replaceRows('roles', state.roles, 'id')
     replaceRows('employees', securedEmployees, 'id')
     replaceRows('services', state.services, 'id')
-    replaceRows('work_history', normalizedHistory, 'id')
+    const historyDelta = require('./api/_lib/record-changes.cjs').recordChanges(previousHistory, normalizedHistory)
+    for (const id of historyDelta.removed) db.prepare('DELETE FROM work_history WHERE id = ?').run(id)
+    for (const record of historyDelta.changed) db.prepare('INSERT INTO work_history (id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data').run(String(record.id), JSON.stringify(record))
     replaceRows('customers', state.customers, 'account')
     if (JSON.stringify(previousState.customers) !== JSON.stringify(state.customers)) db.prepare('DELETE FROM preferences WHERE key = ?').run(CUSTOMER_IMPORT_BACKUP_KEY)
     replaceRows('reviews', state.reviews, 'id')
@@ -2023,12 +2027,13 @@ const server = http.createServer((req, res) => {
     })
     return
   }
-  if (req.method === 'PUT' && req.url === '/api/state') {
+  if (['PUT', 'PATCH'].includes(req.method) && req.url === '/api/state') {
     const user = requireSession(req, res)
     if (!user) return
     if (user.roleCode === 'technician') return send(res, 403, { error: 'El rol técnico no puede modificar la agenda.' })
     let attemptedRevision = null
     readJson(req, 15_000_000).then(state => {
+      if (req.method === 'PATCH' && !Array.isArray(state.operations)) throw new Error('Faltan las operaciones de guardado.')
       attemptedRevision = state.revision
       const result = saveState(state, user)
       if (result.merged) logStateConcurrencyEvent('state_write_merged', {

@@ -650,7 +650,7 @@ test('los servicios cerrados no ofrecen guardado y una finalización anticipada 
   assert.match(source, /const taskIsResolvedForPlanning = \(task, date, history\) => \{[\s\S]*?status === 'Completado' \|\| \(status === 'Cancelado' && String\(date \|\| ''\) < currentLocalDate\(\)\)/)
   assert.match(source, /const showSaveAgenda = hasPendingAgendaServices \|\| !hasResolvedAgendaServices/)
   assert.match(source, /\{showSaveAgenda && <button type="button" className="secondary save-agenda-button"/)
-  assert.match(source, /if \(taskIsResolvedForPlanning\(task, day, operationalHistory\)\) return false[\s\S]*?weeklyTaskReadyToSave/)
+  assert.doesNotMatch(source, /weekly-save-day/)
   assert.match(source, /conflictsForDay = day =>[\s\S]*?taskForScheduleOccupancy\(task, day, operationalHistory\)/)
   assert.match(source, /status === 'Completado' && String\(date \|\| ''\) !== currentLocalDate\(\)/)
 })
@@ -775,18 +775,11 @@ test('el administrador configura una rotación anual editable para las guardias 
   assert.match(styles, /\.annual-guard-row/)
 })
 
-test('la agenda semanal permite guardar un día directamente en el historial', () => {
+test('la agenda semanal confirma cada servicio desde el modal sin guardar la columna', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
-  const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
-  assert.match(source, /const saveWeeklyDay = day =>/)
-  assert.match(source, /const readyTasks = scheduledTasks\.filter\(\(\{ task, team \}\) => weeklyTaskReadyToSave/)
-  assert.match(source, /const records = readyTasks\.map/)
-  assert.match(source, /servicio\(s\) incompleto\(s\) quedaron sin guardar/)
-  assert.match(source, /status: 'Pendiente'/)
-  assert.match(source, /Guardado pendiente: guardar agenda/)
-  assert.match(source, /dayNeedsSave\(day\)/)
-  assert.match(styles, /\.weekly-day-actions \{/)
-  assert.match(styles, /\.weekly-day-actions > button \{[\s\S]*?width: 92px;[\s\S]*?height: 40px;[\s\S]*?justify-content: center;/)
+  assert.match(source, /const saveTaskEditor = async/)
+  assert.match(source, /await persistWeeklyService/)
+  assert.doesNotMatch(source, /const saveWeeklyDay|dayNeedsSave\(day\)|weekly-save-day/)
 })
 
 test('el sábado conserva el identificador del equipo después de guardar', () => {
