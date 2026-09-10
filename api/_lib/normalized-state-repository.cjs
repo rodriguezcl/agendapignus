@@ -58,6 +58,7 @@ function canonical(value) {
 const equivalent = (left, right) => JSON.stringify(canonical(left)) === JSON.stringify(canonical(right))
 const rowKey = (row, keys) => JSON.stringify(keys.map(key => row[key] == null ? null : String(row[key])))
 const MAX_BATCH_PARAMETERS = 30_000
+const MAX_DELETE_BATCH_ROWS = 1_000
 
 async function bulkUpsertRows(sql, table, keys, rows) {
   if (!rows.length) return 0
@@ -82,6 +83,24 @@ async function bulkUpsertRows(sql, table, keys, rows) {
       const values = batch.map(() => `(${columns.map(() => `$${++parameterIndex}`).join(',')})`).join(',')
       await queryRows(sql, `insert into normalized_shadow.${table} (${columns.join(',')}) values ${values} on conflict (${keys.join(',')}) do ${assignments.length ? `update set ${assignments.join(',')}` : 'nothing'}`, parameters)
     }
+  }
+  return rows.length
+}
+
+async function bulkDeleteRows(sql, table, keys, rows) {
+  if (!rows.length) return 0
+  const batchSize = Math.max(1, Math.min(MAX_DELETE_BATCH_ROWS, Math.floor(MAX_BATCH_PARAMETERS / keys.length)))
+  for (let offset = 0; offset < rows.length; offset += batchSize) {
+    const batch = rows.slice(offset, offset + batchSize)
+    const parameters = batch.flatMap(row => keys.map(key => row[key]))
+    if (keys.length === 1) {
+      const placeholders = batch.map((_, index) => `$${index + 1}`).join(',')
+      await queryRows(sql, `delete from normalized_shadow.${table} where ${keys[0]} in (${placeholders})`, parameters)
+      continue
+    }
+    let parameterIndex = 0
+    const tuples = batch.map(() => `(${keys.map(() => `$${++parameterIndex}`).join(',')})`).join(',')
+    await queryRows(sql, `delete from normalized_shadow.${table} where (${keys.join(',')}) in (${tuples})`, parameters)
   }
   return rows.length
 }
@@ -136,11 +155,8 @@ async function synchronizeNormalizedStateInTransaction(sql, previousState, nextS
   // obsolete parents can be removed in reverse dependency order.
   for (const table of [...tableNames].reverse()) {
     const keys = TABLE_KEYS[table], before = new Map((previous.tables[table] || []).map(row => [rowKey(row, keys), row])), after = new Map((next.tables[table] || []).map(row => [rowKey(row, keys), row]))
-    for (const [identity, row] of before) if (!after.has(identity)) {
-      const parameters = keys.map(key => row[key])
-      await queryRows(sql, `delete from normalized_shadow.${table} where ${keys.map((key, index) => `${key} = $${index + 1}`).join(' and ')}`, parameters)
-      changedRows++
-    }
+    const removed = [...before].filter(([identity]) => !after.has(identity)).map(([, row]) => row)
+    changedRows += await bulkDeleteRows(sql, table, keys, removed)
   }
   await queryRows(sql, "update normalized_shadow.import_batch set source_fingerprint = $1, source_revision = $2, status = case when (select active_model from normalized_shadow.storage_control where id = 1) = 'normalized' then 'active' else 'shadow' end, report = $3 where id = 1",
     [next.analysis.sourceFingerprint, next.analysis.revision, next.analysis.summary])
@@ -167,4 +183,4 @@ async function synchronizeNormalizedState(sql, previousState, nextState) {
   }
 }
 
-module.exports = { bulkUpsertRows, readNormalizedState, synchronizeNormalizedState, synchronizeNormalizedStateInTransaction }
+module.exports = { bulkDeleteRows, bulkUpsertRows, readNormalizedState, synchronizeNormalizedState, synchronizeNormalizedStateInTransaction }

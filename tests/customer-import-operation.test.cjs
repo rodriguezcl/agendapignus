@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('../api/_lib/customer-import.cjs')
-const { bulkUpsertRows } = require('../api/_lib/normalized-state-repository.cjs')
+const { bulkDeleteRows, bulkUpsertRows } = require('../api/_lib/normalized-state-repository.cjs')
 
 test('la sincronización secundaria agrupa más de mil abonados en una escritura masiva', async () => {
   const queries = []
@@ -18,6 +18,22 @@ test('la sincronización secundaria agrupa más de mil abonados en una escritura
   assert.equal(queries[0].parameters.length, 4112)
   assert.match(queries[0].statement, /insert into normalized_shadow\.customers/)
   assert.match(queries[0].statement, /on conflict \(id\) do update/)
+})
+
+test('la sincronización secundaria elimina miles de campos residuales en pocos lotes', async () => {
+  const queries = []
+  const sql = { query: async (statement, parameters) => { queries.push({ statement, parameters }); return { rows: [] } } }
+  const rows = Array.from({ length: 12_324 }, (_, index) => ({
+    customer_id: `customer-${Math.floor(index / 12)}`,
+    field_name: `residual-${index % 12}`
+  }))
+
+  assert.equal(await bulkDeleteRows(sql, 'customer_import_fields', ['customer_id', 'field_name'], rows), 12_324)
+  assert.equal(queries.length, 13)
+  assert.equal(queries.reduce((total, query) => total + query.parameters.length, 0), 24_648)
+  assert.ok(queries.every(query => query.parameters.length <= 2_000))
+  assert.match(queries[0].statement, /delete from normalized_shadow\.customer_import_fields/)
+  assert.match(queries[0].statement, /where \(customer_id,field_name\) in/)
 })
 
 const customer = (account, customerId, name = account) => ({ account, customerId, name, fields: {} })

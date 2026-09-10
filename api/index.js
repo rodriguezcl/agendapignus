@@ -733,6 +733,7 @@ async function handleCustomerImport(req, res, sql, user) {
     return send(res, 200, { canUndo: Boolean(rows[0]?.value) })
   }
   const undo = req.method === 'DELETE'
+  let responseMode = ''
   if (undo ? user.roleCode !== 'administrator' : !userCan(user, 'accountsImport')) return send(res, 403, { error: undo ? 'Solamente un administrador puede deshacer una importación.' : 'No tenés permiso para importar abonados.' })
   try {
     const result = await sql.begin(async transaction => {
@@ -752,6 +753,7 @@ async function handleCustomerImport(req, res, sql, user) {
         nextCustomers = restoreCustomerImportBackup(currentCustomers, backup)
       } else {
         const body = requestBody(req)
+        responseMode = String(body.responseMode || '')
         if (!Number.isInteger(Number(body.revision)) || Number(body.revision) !== currentRevision) { const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de importar.'); error.statusCode = 409; throw error }
         if (!Array.isArray(body.customers)) throw new Error('La importación no contiene una lista válida de abonados.')
         nextCustomers = normalizeImportedCustomers(body.customers)
@@ -767,13 +769,17 @@ async function handleCustomerImport(req, res, sql, user) {
       const nextRevision = currentRevision + 1
       await persistStateCollections(transaction, currentState, { ...currentState, customers: nextCustomers }, nextRevision)
       await appendAudit(transaction, [auditEntry(user, undo ? 'Deshizo importación' : 'Importó', 'Abonados / Clientes', 'importacion-maestra', { total: currentCustomers.length }, { total: nextCustomers.length, modified: changes.upsert.length, removed: changes.remove.length })])
-      // La respuesta conserva compatibilidad con pestañas que ya estaban
-      // abiertas durante un despliegue. Omitir customers podía ser interpretado
-      // por una versión anterior del navegador como una colección vacía.
-      return { revision: nextRevision, customers: nextCustomers, canUndo: !undo }
+      // Las pestañas nuevas ya conservan localmente la colección validada y no
+      // necesitan descargarla otra vez. Las anteriores siguen recibiéndola para
+      // no interpretar una respuesta compacta como una colección vacía.
+      return responseMode === 'compact-v1' && !undo
+        ? { revision: nextRevision, customerCount: nextCustomers.length, canUndo: true }
+        : { revision: nextRevision, customers: nextCustomers, canUndo: !undo }
     })
     return send(res, 200, result)
   } catch (error) {
+    if (error.code === '55P03') return send(res, 503, { error: 'Hay otra operación guardándose en este momento. Esperá unos segundos y volvé a confirmar una sola vez.' })
+    if (error.code === '57014') return send(res, 503, { error: 'La importación excedió el tiempo de procesamiento. No se aplicaron cambios; volvé a intentarlo una sola vez.' })
     return send(res, error.statusCode || 400, { error: error.message || 'No se pudo procesar la importación.' })
   }
 }

@@ -836,6 +836,7 @@ test('la importación requiere permiso, pide una revisión vigente y el administ
   const importPayload = await response.json()
   assert.equal(importPayload.customers.length, before.customers.length + 1)
   assert.ok((await state(administratorCookie)).customers.some(customer => customer.customerId === importedCustomer.customerId))
+
   response = await api('/api/customers/import', administratorCookie)
   assert.equal((await response.json()).canUndo, true)
 
@@ -844,6 +845,16 @@ test('la importación requiere permiso, pide una revisión vigente y el administ
   assert.ok(!(await state(administratorCookie)).customers.some(customer => customer.customerId === importedCustomer.customerId))
   response = await api('/api/customers/import', administratorCookie)
   assert.equal((await response.json()).canUndo, false)
+
+  const afterUndo = await state(administratorCookie)
+  response = await api('/api/customers/import', administratorCookie, { method: 'POST', body: JSON.stringify({ revision: afterUndo.revision, customers: [...afterUndo.customers, importedCustomer], responseMode: 'compact-v1' }) })
+  assert.equal(response.status, 200)
+  const compactPayload = await response.json()
+  assert.equal(compactPayload.customerCount, before.customers.length + 1)
+  assert.equal(Object.hasOwn(compactPayload, 'customers'), false)
+  response = await api('/api/customers/import', administratorCookie, { method: 'DELETE' })
+  assert.equal(response.status, 200)
+  assert.ok(!(await state(administratorCookie)).customers.some(customer => customer.customerId === importedCustomer.customerId))
 })
 
 test('elimina copias de una misma tarea sin confundir servicios distintos', () => {
