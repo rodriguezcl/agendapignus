@@ -1,6 +1,24 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers } = require('../api/_lib/customer-import.cjs')
+const { bulkUpsertRows } = require('../api/_lib/normalized-state-repository.cjs')
+
+test('la sincronización secundaria agrupa más de mil abonados en una escritura masiva', async () => {
+  const queries = []
+  const sql = { query: async (statement, parameters) => { queries.push({ statement, parameters }); return { rows: [] } } }
+  const rows = Array.from({ length: 1028 }, (_, index) => ({
+    id: `customer-${index}`,
+    account: `PIG-${index}`,
+    name: `ABONADO ${index}`,
+    original_payload: { customerId: `customer-${index}`, account: `PIG-${index}` }
+  }))
+
+  assert.equal(await bulkUpsertRows(sql, 'customers', ['id'], rows), 1028)
+  assert.equal(queries.length, 1)
+  assert.equal(queries[0].parameters.length, 4112)
+  assert.match(queries[0].statement, /insert into normalized_shadow\.customers/)
+  assert.match(queries[0].statement, /on conflict \(id\) do update/)
+})
 
 const customer = (account, customerId, name = account) => ({ account, customerId, name, fields: {} })
 

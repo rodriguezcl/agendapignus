@@ -4883,7 +4883,7 @@ function Accounts({ customers, setCustomers, setNotice, ask, history, teams, wee
   const applyImport = async nextCustomers => {
     const payload = await customerImportRepository.apply(stateRevision, nextCustomers)
     setCanUndoImport(Boolean(payload.canUndo)); setImportOpen(false)
-    if (applyCustomerImportState) applyCustomerImportState(payload)
+    if (applyCustomerImportState) applyCustomerImportState({ ...payload, customers: nextCustomers })
     else if (refreshRemoteState) await refreshRemoteState()
     else setCustomers(payload.customers || nextCustomers)
     setNotice('Importación confirmada y guardada. Administración puede deshacerla mientras no haya otra importación o modificación de clientes.')

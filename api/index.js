@@ -736,6 +736,8 @@ async function handleCustomerImport(req, res, sql, user) {
   if (undo ? user.roleCode !== 'administrator' : !userCan(user, 'accountsImport')) return send(res, 403, { error: undo ? 'Solamente un administrador puede deshacer una importación.' : 'No tenés permiso para importar abonados.' })
   try {
     const result = await sql.begin(async transaction => {
+      await transaction`set local lock_timeout = '10s'`
+      await transaction`set local statement_timeout = '50s'`
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
       const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const currentRevision = Number(revisionRows[0]?.value || 0)
@@ -764,7 +766,9 @@ async function handleCustomerImport(req, res, sql, user) {
       const nextRevision = currentRevision + 1
       await persistStateCollections(transaction, currentState, { ...currentState, customers: nextCustomers }, nextRevision)
       await appendAudit(transaction, [auditEntry(user, undo ? 'Deshizo importación' : 'Importó', 'Abonados / Clientes', 'importacion-maestra', { total: currentCustomers.length }, { total: nextCustomers.length, modified: changes.upsert.length, removed: changes.remove.length })])
-      return { revision: nextRevision, customers: nextCustomers, canUndo: !undo }
+      // The browser already owns the imported snapshot. Avoid serializing and
+      // downloading the same thousand-row payload again after a successful POST.
+      return { revision: nextRevision, ...(undo ? { customers: nextCustomers } : {}), canUndo: !undo }
     })
     return send(res, 200, result)
   } catch (error) {

@@ -57,6 +57,34 @@ function canonical(value) {
 }
 const equivalent = (left, right) => JSON.stringify(canonical(left)) === JSON.stringify(canonical(right))
 const rowKey = (row, keys) => JSON.stringify(keys.map(key => row[key] == null ? null : String(row[key])))
+const MAX_BATCH_PARAMETERS = 30_000
+
+async function bulkUpsertRows(sql, table, keys, rows) {
+  if (!rows.length) return 0
+  const groups = new Map()
+  for (const row of rows) {
+    const columns = Object.keys(row)
+    const signature = columns.join('\u0000')
+    const group = groups.get(signature) || { columns, rows: [] }
+    group.rows.push(row)
+    groups.set(signature, group)
+  }
+  for (const { columns, rows: groupRows } of groups.values()) {
+    const updates = columns.filter(column => !keys.includes(column))
+    const assignments = updates.map(column => table === 'jobs' && column === 'version'
+      ? 'version = normalized_shadow.jobs.version + 1'
+      : `${column} = excluded.${column}`)
+    const batchSize = Math.max(1, Math.floor(MAX_BATCH_PARAMETERS / columns.length))
+    for (let offset = 0; offset < groupRows.length; offset += batchSize) {
+      const batch = groupRows.slice(offset, offset + batchSize)
+      const parameters = batch.flatMap(row => columns.map(column => row[column]))
+      let parameterIndex = 0
+      const values = batch.map(() => `(${columns.map(() => `$${++parameterIndex}`).join(',')})`).join(',')
+      await queryRows(sql, `insert into normalized_shadow.${table} (${columns.join(',')}) values ${values} on conflict (${keys.join(',')}) do ${assignments.length ? `update set ${assignments.join(',')}` : 'nothing'}`, parameters)
+    }
+  }
+  return rows.length
+}
 
 async function synchronizeCredentials(sql, employees) {
   let changedRows = 0
@@ -96,14 +124,13 @@ async function synchronizeNormalizedStateInTransaction(sql, previousState, nextS
   // their new parents before obsolete parent rows are removed.
   for (const table of tableNames) {
     const keys = TABLE_KEYS[table], before = new Map((previous.tables[table] || []).map(row => [rowKey(row, keys), row]))
+    const changed = []
     for (const row of next.tables[table] || []) {
       const old = before.get(rowKey(row, keys))
       if (old && equivalent(old, row)) continue
-      const columns = Object.keys(row), parameters = columns.map(column => row[column]), updates = columns.filter(column => !keys.includes(column))
-      const assignments = updates.map(column => table === 'jobs' && column === 'version' ? 'version = normalized_shadow.jobs.version + 1' : `${column} = excluded.${column}`)
-      await queryRows(sql, `insert into normalized_shadow.${table} (${columns.join(',')}) values (${columns.map((_, index) => `$${index + 1}`).join(',')}) on conflict (${keys.join(',')}) do ${assignments.length ? `update set ${assignments.join(',')}` : 'nothing'}`, parameters)
-      changedRows++
+      changed.push(row)
     }
+    changedRows += await bulkUpsertRows(sql, table, keys, changed)
   }
   // Once every surviving row points at its final parent, children and then
   // obsolete parents can be removed in reverse dependency order.
@@ -140,4 +167,4 @@ async function synchronizeNormalizedState(sql, previousState, nextState) {
   }
 }
 
-module.exports = { readNormalizedState, synchronizeNormalizedState, synchronizeNormalizedStateInTransaction }
+module.exports = { bulkUpsertRows, readNormalizedState, synchronizeNormalizedState, synchronizeNormalizedStateInTransaction }
