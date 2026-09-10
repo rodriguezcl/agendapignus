@@ -69,3 +69,31 @@ test('al actualizar elimina campos residuales y cuenta solo cambios reales', asy
   assert.equal(unchanged.updated, 0)
   assert.equal(unchanged.created, 0)
 })
+
+test('reconcilia una referencia CLI incompleta después de importar sin usar la dirección como identidad', async () => {
+  const { buildCustomerReferenceIndex, reconcileCustomerReference } = await import('../src/customer-import.mjs')
+  const customers = [{ customerId: 'cli-current', account: 'CLI-0081', name: 'TOTEM EDIFICIO MAPA 06', address: 'Rondeau 347, Córdoba', phone: '351' }]
+  const index = buildCustomerReferenceIndex(customers)
+
+  const repaired = reconcileCustomerReference({ taskId: 'task-1', customerId: 'stale-id', clientAccount: 'CLI-0081', client: '', address: '', phone: '' }, index)
+  const addressOnly = reconcileCustomerReference({ taskId: 'task-2', address: 'Rondeau 347, Córdoba' }, index)
+
+  assert.deepEqual(repaired, {
+    taskId: 'task-1', customerId: 'cli-current', clientAccount: 'CLI-0081', client: 'CLI-0081 TOTEM EDIFICIO MAPA 06',
+    clientNameAtService: 'TOTEM EDIFICIO MAPA 06', address: 'Rondeau 347, Córdoba', phone: '351'
+  })
+  assert.deepEqual(addressOnly, { taskId: 'task-2', address: 'Rondeau 347, Córdoba' })
+})
+
+test('reconcilia de la misma manera las referencias PIG y conserva la instantánea ya registrada', async () => {
+  const { buildCustomerReferenceIndex, reconcileCustomerReference } = await import('../src/customer-import.mjs')
+  const index = buildCustomerReferenceIndex([{ customerId: 'pig-current', account: 'PIG-6232', name: 'ABONADO ACTUAL', address: 'Calle nueva, Córdoba', phone: '222' }])
+
+  const repaired = reconcileCustomerReference({ customerId: 'pig-current', client: 'PIG-6232 TITULAR ORIGINAL', clientNameAtService: 'TITULAR ORIGINAL', address: 'Calle histórica, Córdoba', phone: '111' }, index)
+
+  assert.equal(repaired.clientAccount, 'PIG-6232')
+  assert.equal(repaired.client, 'PIG-6232 TITULAR ORIGINAL')
+  assert.equal(repaired.clientNameAtService, 'TITULAR ORIGINAL')
+  assert.equal(repaired.address, 'Calle histórica, Córdoba')
+  assert.equal(repaired.phone, '111')
+})

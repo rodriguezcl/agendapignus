@@ -624,6 +624,11 @@ body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #34
   line-height: 1.25;
 }
 
+.agenda-task-status > .unsaved-service-help {
+  color: #6b756e;
+  font-weight: 600;
+}
+
 .weekly-agenda-task-status {
   flex-wrap: wrap;
 }

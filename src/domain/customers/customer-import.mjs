@@ -1,5 +1,32 @@
 const normalizedAccount = value => String(value || '').trim().toUpperCase().replace(/\s+/g, '')
 
+export function buildCustomerReferenceIndex(customers = []) {
+  return {
+    byId: new Map(customers.filter(customer => customer?.customerId).map(customer => [String(customer.customerId), customer])),
+    byAccount: new Map(customers.filter(customer => customer?.account).map(customer => [normalizedAccount(customer.account), customer]))
+  }
+}
+
+export function reconcileCustomerReference(item = {}, customerIndex = buildCustomerReferenceIndex()) {
+  const accountFromLabel = String(item.client || '').trim().split(/\s+/)[0]
+  const matched = customerIndex.byId.get(String(item.customerId || '')) ||
+    customerIndex.byAccount.get(normalizedAccount(item.clientAccount || item.account || accountFromLabel))
+  if (!matched) return item
+
+  const client = [matched.account, matched.name].filter(Boolean).join(' ').trim()
+  const address = matched.address || [matched.street, matched.locality].filter(Boolean).join(', ')
+  const next = {
+    ...item,
+    customerId: matched.customerId,
+    clientAccount: matched.account,
+    client: String(item.client || '').trim() || client,
+    clientNameAtService: String(item.clientNameAtService || '').trim() || matched.name || '',
+    address: String(item.address || '').trim() || address || '',
+    phone: String(item.phone || '').trim() || matched.phone || ''
+  }
+  return JSON.stringify(next) === JSON.stringify(item) ? item : next
+}
+
 const normalizeHeader = value => String(value || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
