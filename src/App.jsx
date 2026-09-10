@@ -39,6 +39,7 @@ import { recoverStateRevisionConflict } from './features/state/application/state
 import { compactStateBase } from './features/state/application/compact-state-base.mjs'
 import { historyRecordRepository } from './infrastructure/repositories/history-record-repository.mjs'
 import { weeklyServiceOperations } from './features/state/application/weekly-service-save.mjs'
+import { weeklyTeamMemberOperations } from './features/state/application/weekly-team-members-save.mjs'
 import { stateOperations } from './features/state/application/state-operations.mjs'
 import { migrateLegacyEstimatedMinutes } from './domain/state/legacy-estimated-minutes.mjs'
 import './weekly.css'
@@ -1789,7 +1790,12 @@ export default function App() {
       pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1)
     }
   }
-  const persistWeeklyService = command => persistStateCommand(snapshot => stateRepository.commit(weeklyServiceOperations(snapshot, command), stateRevisionRef.current))
+  const persistWeeklyService = command => persistStateCommand(snapshot => stateRepository.commit(
+    command.operation === 'team-members'
+      ? weeklyTeamMemberOperations(snapshot, command)
+      : weeklyServiceOperations(snapshot, command),
+    stateRevisionRef.current
+  ))
   const persistAgendaRecords = (before, records) => persistStateCommand(() => stateRepository.commit(stateOperations({ history: before }, { history: records }), stateRevisionRef.current))
   const persistHistoryRecord = async (base, record) => {
     try {
@@ -3395,7 +3401,7 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
     }
   }
   const updateTeam = (day, teamIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, ...patch } : team) }))
-  const toggleWeeklyTech = (day, teamIndex, technician) => {
+  const toggleWeeklyTech = async (day, teamIndex, technician) => {
     const advance = advancedGuardForDay(day)
     if (advance) {
       setTechPicker(null)
@@ -3404,28 +3410,43 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
     }
     technician = typeof technician === 'string' ? activeTechs.find(item => item.name === technician) : technician
     if (!technician) return
-    updateDay(day, plan => {
-      const actualIndex = isSaturday(day) ? 0 : teamIndex
-      const target = plan.teams[actualIndex] || {}
-      const selected = (target.memberIds || []).some(id => String(id) === String(technician.id))
-      const teams = plan.teams.map((team, index) => {
-        if (index !== actualIndex) return team
-        if (isSaturday(day)) {
-          // Un sábado admite una sola persona: elegir otro nombre crea una
-          // excepción puntual sin modificar la rotación anual.
-          if (selected) return team
-          return { ...team, teamId: team.teamId || createTeamId(), guardOverride: true, memberIds: [technician.id], members: [technician.name], tasks: (team.tasks || []).map(task => stampServiceRecord(task, authUser)) }
-        }
-        const memberIds = (team.memberIds || []).filter(id => String(id) !== String(technician.id))
-        const members = (team.members || []).filter(name => name !== technician.name)
-        if (!selected) {
-          memberIds.push(technician.id)
-          members.push(technician.name)
-        }
-        return { ...team, teamId: team.teamId || createTeamId(), memberIds, members, tasks: (team.tasks || []).map(task => stampServiceRecord(task, authUser)) }
+    const plan = dayPlan(day)
+    const actualIndex = isSaturday(day) ? 0 : teamIndex
+    const target = plan.teams[actualIndex]
+    if (!target) { setNotice('El equipo cambió o fue eliminado. Recargá la planificación antes de reintentar.'); return }
+    const selected = (target.memberIds || []).some(id => String(id) === String(technician.id))
+    let memberIds = [...(target.memberIds || [])]
+    let members = [...(target.members || [])]
+    if (isSaturday(day)) {
+      // Un sábado admite una sola persona: elegir otro nombre crea una
+      // excepción puntual sin modificar la rotación anual.
+      if (selected) return
+      memberIds = [technician.id]
+      members = [technician.name]
+    } else if (selected) {
+      memberIds = memberIds.filter(id => String(id) !== String(technician.id))
+      members = members.filter(name => name !== technician.name)
+    } else {
+      memberIds.push(technician.id)
+      members.push(technician.name)
+    }
+    try {
+      await persistWeeklyService({
+        operation: 'team-members',
+        day,
+        teamId: target.teamId,
+        teamIndex: actualIndex,
+        baseMemberIds: target.memberIds || [],
+        baseMembers: target.members || [],
+        memberIds,
+        members,
+        guardOverride: isSaturday(day) ? true : undefined,
+        fallbackPlan: plan
       })
-      return { ...plan, teams }
-    })
+      setNotice('La asignación de técnicos se guardó correctamente.')
+    } catch (error) {
+      setNotice(`No se guardó la asignación de técnicos. ${error.message || 'Recargá la planificación e intentá nuevamente.'}`)
+    }
   }
   const updateTask = (day, teamIndex, taskIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index !== teamIndex ? team : { ...team, tasks: team.tasks.map((task, index) => index === taskIndex ? stampServiceRecord({ ...task, ...patch }, authUser) : task) }) }))
   const addTeam = day => {

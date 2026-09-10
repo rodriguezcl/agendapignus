@@ -664,7 +664,7 @@ test('una reprogramación al sábado conserva el equipo estable y adopta la guar
   assert.match(move, /normalizedSaturdayDestination\?\.\[0\]\?\.guardOverride/)
   assert.match(move, /memberIds: \[\], members: \[\]/)
   assert.match(move, /assignGuardToEmptySaturday\(saturdayDestinationForGuard, nextDate, weekly, activeTechs\)/)
-  assert.match(source, /guardOverride: true, memberIds: \[technician\.id\], members: \[technician\.name\]/)
+  assert.match(source, /guardOverride: isSaturday\(day\) \? true : undefined/)
   assert.match(source, /moveRecordInWeeklyAgenda\(previous, record, nextDate, sourceDate, activeTechs\)/)
 })
 
@@ -1027,6 +1027,9 @@ test('la interfaz ofrece equipos semanales editables, permisos por función e im
   const weeklyToggle = source.slice(source.indexOf('const toggleWeeklyTech'), source.indexOf('const updateTask', source.indexOf('const toggleWeeklyTech')))
   assert.match(weeklyToggle, /activeTechs\.find\(item => item\.name === technician\)/)
   assert.doesNotMatch(weeklyToggle, /destinationTeam|movedTask/)
+  assert.match(weeklyToggle, /operation: 'team-members'/)
+  assert.match(weeklyToggle, /await persistWeeklyService/)
+  assert.doesNotMatch(weeklyToggle, /tasks: .*stampServiceRecord/)
   for (const permission of ['weeklyTeams', 'weeklyHours', 'weeklyVehicles', 'weeklyGuards', 'historyManage', 'accountsEdit', 'accountsDelete', 'accountsImport']) assert.match(source, new RegExp(permission))
   assert.match(source, /Consulta de solo lectura\. Las modificaciones requieren permisos adicionales/)
   assert.match(source, /Confirmar importación/)
