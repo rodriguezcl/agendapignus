@@ -1,4 +1,4 @@
-const { readState: readLegacyState } = require('./database.cjs')
+const { readRevision: readLegacyRevision, readState: readLegacyState } = require('./database.cjs')
 const { fingerprint } = require('./normalization-analysis.cjs')
 const { readNormalizedState } = require('./normalized-state-repository.cjs')
 const { normalizedShadowIsPrepared } = require('./operational-storage.cjs')
@@ -63,8 +63,17 @@ async function readApplicationState(sql, options = {}) {
 }
 
 async function readApplicationRevision(sql, options = {}) {
-  const state = await readApplicationState(sql, options)
-  return Number(state.revision || 0)
+  const mode = storageMode(options.environment)
+  const readLegacy = options.readLegacyRevision || readLegacyRevision
+  // Revision checks are the hot path used by every open administrator session.
+  // Never rebuild customers, history and agendas just to compare one number.
+  if (mode !== 'persistent') return Number(await readLegacy(sql) || 0)
+  const shadowPrepared = options.shadowPrepared == null
+    ? await (options.isShadowPrepared || normalizedShadowIsPrepared)(sql)
+    : options.shadowPrepared
+  if (!shadowPrepared) return Number(await readLegacy(sql) || 0)
+  const control = await (options.readControl || readStorageControl)(sql)
+  return control.model === 'normalized' ? Number(control.revision || 0) : Number(await readLegacy(sql) || 0)
 }
 
 module.exports = { compareApplicationStates, readApplicationRevision, readApplicationState, storageMode }

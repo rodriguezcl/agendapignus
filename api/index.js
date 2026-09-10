@@ -350,6 +350,10 @@ async function handleSaveState(req, res, sql, user) {
   const incoming = requestBody(req)
   try {
     const result = await sql.begin(async transaction => {
+      // Do not occupy a request until the browser aborts when another writer is
+      // holding the global revision. PATCH writes are safe to retry.
+      await transaction`set local lock_timeout = '5s'`
+      await transaction`set local statement_timeout = '15s'`
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
       const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const currentRevision = Number(revisionRows[0]?.value || 0)
@@ -395,8 +399,9 @@ async function handleSaveState(req, res, sql, user) {
     return send(res, 200, { ok: true, revision: result.revision, merged: result.merged, state: visibleStateForUser(result.state, user) })
   } catch (error) {
     console.error('No se pudo guardar el estado:', error.message)
-    const status = error.statusCode || 400
-    const payload = { error: error.message || 'No se pudieron guardar los datos.' }
+    const databaseBusy = error.code === '55P03' || error.code === '57014'
+    const status = databaseBusy ? 503 : (error.statusCode || 400)
+    const payload = { error: databaseBusy ? 'La base de datos está ocupada. El sistema volverá a intentarlo automáticamente.' : (error.message || 'No se pudieron guardar los datos.') }
     if (status === 409) {
       payload.code = error.code || 'STATE_REVISION_CONFLICT'
       if (error.conflictPath) payload.conflictPath = error.conflictPath
