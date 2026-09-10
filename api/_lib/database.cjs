@@ -4,7 +4,7 @@ let client
 
 function databasePoolSize(environment = process.env) {
   const configured = Number.parseInt(environment.PIGNUS_DB_POOL_MAX, 10)
-  return Number.isInteger(configured) ? Math.min(10, Math.max(2, configured)) : 4
+  return Number.isInteger(configured) ? Math.min(10, Math.max(2, configured)) : 6
 }
 
 function vehicleCollection(value) {
@@ -55,6 +55,40 @@ async function readState(sql) {
 async function readRevision(sql) {
   const rows = await sql`select value from pignus_preferences where key = 'state_revision'`
   return Number(rows[0]?.value || 0)
+}
+
+async function readTechnicianState(sql, technicianId, today) {
+  // Technicians refresh frequently from mobile devices. Return only their own
+  // jobs, the customer context needed for active jobs, vehicles and revision;
+  // never aggregate the administrative catalog or the complete agenda.
+  const [state] = await sql`
+    with active_customers as (
+      select
+        nullif(data->>'customerId', '') as customer_id,
+        upper(coalesce(nullif(data->>'clientAccount', ''), split_part(coalesce(data->>'client', ''), ' ', 1))) as account
+      from pignus_work_history
+      where coalesce(data->'technicianIds', '[]'::jsonb) ? ${String(technicianId)}
+        and coalesce(data->>'date', '') >= ${String(today)}
+        and coalesce(data->>'technicalStatus', '') = ''
+        and coalesce(data->>'status', 'Pendiente') not in ('Completado', 'Cancelado', 'Reprogramado')
+    )
+    select
+      coalesce((
+        select jsonb_agg(history.data order by history.work_date, history.created_at, history.id)
+        from pignus_work_history history
+        where coalesce(history.data->'technicianIds', '[]'::jsonb) ? ${String(technicianId)}
+          or nullif(history.data->>'customerId', '') in (select customer_id from active_customers where customer_id is not null)
+          or upper(coalesce(nullif(history.data->>'clientAccount', ''), split_part(coalesce(history.data->>'client', ''), ' ', 1))) in (select account from active_customers where account <> '')
+      ), '[]'::jsonb) as history,
+      coalesce((select jsonb_object_agg(key, value) from pignus_preferences where key in ('state_revision', 'vehicles')), '{}'::jsonb) as preferences
+  `
+  return {
+    revision: Number(state.preferences?.state_revision || 0),
+    roles: [], employees: [], services: [], customers: [], reviews: [], agenda: null,
+    history: state.history || [],
+    vehicles: vehicleCollection(state.preferences?.vehicles),
+    preferences: {}
+  }
 }
 
 async function readCustomers(sql) {
@@ -129,4 +163,4 @@ async function appendAudit(sql, entries) {
   await sql`delete from pignus_audit_log where id in (select id from pignus_audit_log order by occurred_at desc offset 100)`
 }
 
-module.exports = { appendAudit, database, databasePoolSize, readCustomers, readExportState, readRevision, readState, replaceCollections }
+module.exports = { appendAudit, database, databasePoolSize, readCustomers, readExportState, readRevision, readState, readTechnicianState, replaceCollections }
