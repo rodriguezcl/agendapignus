@@ -21,7 +21,7 @@ import { appendConfigurationHistory, guardConfigurationSnapshot, teamConfigurati
 import { compactVehiclePhoto } from './infrastructure/media/image-upload.mjs'
 import { serviceHasStarted } from './domain/agenda/service-start.mjs'
 import { DEFAULT_SERVICE_ESTIMATED_MINUTES, MAX_SERVICE_ESTIMATED_MINUTES, normalizeServiceEstimatedMinutes, removeOverlappingDefaultSlots, serviceScheduleConflicts, taskOccupiedInterval } from './domain/agenda/service-scheduling.mjs'
-import { customerFromImportRow, mergeImportedCustomers } from './domain/customers/customer-import.mjs'
+import { buildCustomerReferenceIndex, customerFromImportRow, mergeImportedCustomers, reconcileCustomerReference } from './domain/customers/customer-import.mjs'
 import { sortServicesAlphabetically } from './domain/services/service-order.mjs'
 import { serviceCode } from './domain/services/service.mjs'
 import { normalizeCustomerName, normalizeSearchText, normalizeServiceName } from './domain/shared/normalization.mjs'
@@ -372,7 +372,7 @@ const historyRecordForTask = (task, date, history = globalThis.__pignusHistory |
 const taskStatus = (task, date, history) => {
   if (!taskHasContent(task)) return ''
   const record = historyRecordForTask(task, date, history)
-  return record?.status || record?.technicalStatus || 'Pendiente'
+  return record ? (record.status || record.technicalStatus || 'Pendiente') : 'Sin guardar'
 }
 const taskIsResolvedForPlanning = (task, date, history) => {
   const status = taskStatus(task, date, history)
@@ -401,7 +401,7 @@ function TaskStatusBadge({ task, date, history, weekly = false }) {
   const occupancyTask = taskForScheduleOccupancy(task, date, history)
   const interval = occupancyTask ? taskOccupiedInterval(occupancyTask) : null
   const releaseLabel = interval?.actualCompletion ? `Finalizó ${interval.completedTime} · equipo disponible ${interval.releaseTime}` : ''
-  return <div className={`agenda-task-status ${weekly ? 'weekly-agenda-task-status' : 'daily-agenda-task-status'}`}><em className={`work-status ${statusClassName(status)}`}>{status}</em>{task?.subscriberReservation && <em className="role-chip subscriber-reservation-chip">Reserva · PIG pendiente</em>}{weekly && <em className={`role-chip agenda-service-chip ${serviceColorClass(service)}`} title={service}>{service}</em>}{releaseLabel && <small title="La disponibilidad se redondea al siguiente bloque de 15 minutos.">{releaseLabel}</small>}</div>
+  return <div className={`agenda-task-status ${weekly ? 'weekly-agenda-task-status' : 'daily-agenda-task-status'}`}><em className={`work-status ${statusClassName(status)}`}>{status}</em>{status === 'Sin guardar' && <small className="unsaved-service-help">Guardá la agenda para habilitarlo al técnico.</small>}{task?.subscriberReservation && <em className="role-chip subscriber-reservation-chip">Reserva · PIG pendiente</em>}{weekly && <em className={`role-chip agenda-service-chip ${serviceColorClass(service)}`} title={service}>{service}</em>}{releaseLabel && <small title="La disponibilidad se redondea al siguiente bloque de 15 minutos.">{releaseLabel}</small>}</div>
 }
 const serviceActor = user => {
   const current = user || globalThis.__pignusCurrentUser
@@ -1318,14 +1318,8 @@ export default function App() {
       setCustomers(normalizedCustomers)
       return
     }
-    const byId = new Map(normalizedCustomers.map(customer => [String(customer.customerId), customer]))
-    const byAccount = new Map(normalizedCustomers.map(customer => [normalizeAccountKey(customer.account), customer]))
-    const normalizeReference = item => {
-      const matched = byId.get(String(item.customerId || '')) || byAccount.get(normalizeAccountKey(item.clientAccount))
-      return matched && (String(item.customerId) !== String(matched.customerId) || item.clientAccount !== matched.account)
-        ? { ...item, customerId: matched.customerId, clientAccount: matched.account }
-        : item
-    }
+    const customerIndex = buildCustomerReferenceIndex(normalizedCustomers)
+    const normalizeReference = item => reconcileCustomerReference(item, customerIndex)
     const normalizeTeams = value => (value || []).map(team => ({ ...team, tasks: (team.tasks || []).map(normalizeReference) }))
     setTeams(previous => { const next = normalizeTeams(previous); return JSON.stringify(next) === JSON.stringify(previous) ? previous : next })
     setWeekly(previous => { const next = Object.fromEntries(Object.entries(previous || {}).map(([key, value]) => [key, key.startsWith('_') ? value : { ...value, teams: normalizeTeams(value?.teams) }])); return JSON.stringify(next) === JSON.stringify(previous) ? previous : next })
@@ -2742,7 +2736,13 @@ function AgendaWorkspaceForm({ persistAgendaRecords, date, setDate, teams, setTe
         return existing ? { ...existing, ...record, id: existing.id } : { ...record, status: 'Pendiente' }
       })
       const replacedIds = new Set(replacements.map(record => record.id))
-      await persistAgendaRecords(previous.filter(record => replacedIds.has(record.id)), replacements)
+      const payload = await persistAgendaRecords(previous.filter(record => replacedIds.has(record.id)), replacements)
+      const persistedHistory = Array.isArray(payload?.state?.history) ? payload.state.history : []
+      const missingRecords = replacements.filter(record => !persistedHistory.some(item => (
+        String(item.id || '') === String(record.id || '') ||
+        (record.sourceTaskId && String(item.sourceTaskId || '') === String(record.sourceTaskId))
+      )))
+      if (missingRecords.length) throw new Error('El servidor no confirmó todos los servicios en el historial. Intentá guardar nuevamente.')
     } catch (error) {
       setNotice(`No se guardaron los servicios. ${error.message}`)
       return false

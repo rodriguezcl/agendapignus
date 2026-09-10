@@ -22,3 +22,11 @@ test('daily and weekly components render through their actual prop forwarding ch
   assert.match(weekly, /Agenda semanal/)
   assert.doesNotMatch(weekly, /weekly-save-day/)
 })
+
+test('la agenda distingue servicios sin persistir y confirma su alta en historial', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+
+  assert.match(source, /record \? \(record\.status \|\| record\.technicalStatus \|\| 'Pendiente'\) : 'Sin guardar'/)
+  assert.match(source, /Guardá la agenda para habilitarlo al técnico\./)
+  assert.match(source, /El servidor no confirmó todos los servicios en el historial\./)
+})
