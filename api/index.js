@@ -1,6 +1,6 @@
 const crypto = require('node:crypto')
 const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
-const { database, replaceCollections } = require('./_lib/database.cjs')
+const { database, readTechnicianState, replaceCollections } = require('./_lib/database.cjs')
 const { readApplicationRevision: readRevision, readApplicationState: readState } = require('./_lib/storage-router.cjs')
 const { coordinateStateWrite } = require('./_lib/state-write-coordinator.cjs')
 const { appendOperationalAudit: appendAudit, setAuxiliaryPreference, upsertVehicleControlPhoto, upsertVehicleInsuranceDocument } = require('./_lib/operational-storage.cjs')
@@ -808,7 +808,12 @@ module.exports = async function handler(req, res) {
       if (req.method === 'DELETE') return await resolvePasswordResetRequest(req, res, sql, session.user)
     }
     if (req.method === 'GET' && route === '/state/revision') return send(res, 200, { revision: await readRevision(sql) })
-    if (req.method === 'GET' && route === '/state') return send(res, 200, visibleStateForUser(await readState(sql), session.user))
+    if (req.method === 'GET' && route === '/state') {
+      const state = session.user.roleCode === 'technician'
+        ? await readTechnicianState(sql, session.user.id, new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date()))
+        : await readState(sql)
+      return send(res, 200, visibleStateForUser(state, session.user))
+    }
     const serviceOperation = serviceOperationForRequest(req.method, route)
     if (serviceOperation) return await handleServiceCatalog(req, res, sql, session.user, serviceOperation)
     const vehicleOperation = vehicleOperationForRequest(req.method, route)

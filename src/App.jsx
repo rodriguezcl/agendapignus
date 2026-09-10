@@ -31,7 +31,7 @@ import { agendaRescheduleRepairCandidates } from './domain/agenda/reschedule-rep
 import { auditRepository } from './infrastructure/repositories/audit-repository.mjs'
 import { customerImportRepository } from './infrastructure/repositories/customer-import-repository.mjs'
 import { vehicleRepository } from './infrastructure/repositories/vehicle-repository.mjs'
-import { SESSION_IDLE_TIMEOUT_MS, TECHNICIAN_SESSION_IDLE_TIMEOUT_MS, useSessionLifecycle } from './features/auth/application/useSessionLifecycle.js'
+import { SESSION_IDLE_TIMEOUT_MS, SESSION_STATUS_INTERVAL_MS, TECHNICIAN_SESSION_IDLE_TIMEOUT_MS, TECHNICIAN_SESSION_STATUS_INTERVAL_MS, useSessionLifecycle } from './features/auth/application/useSessionLifecycle.js'
 import { readSettledLoginCredentials } from './features/auth/application/login-autofill.mjs'
 import { serviceAdvanceRepository } from './infrastructure/repositories/service-advance-repository.mjs'
 import { serviceRecordFingerprint } from './domain/history/service-concurrency.mjs'
@@ -2093,6 +2093,7 @@ export default function App() {
   useSessionLifecycle({
     enabled: Boolean(authUser),
     idleTimeoutMs: authUser?.roleCode === 'technician' ? TECHNICIAN_SESSION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS,
+    statusIntervalMs: authUser?.roleCode === 'technician' ? TECHNICIAN_SESSION_STATUS_INTERVAL_MS : SESSION_STATUS_INTERVAL_MS,
     onInvalidated: endInvalidatedSession,
     onIdle: async () => {
       setSessionEndedMessage(authUser?.roleCode === 'technician'

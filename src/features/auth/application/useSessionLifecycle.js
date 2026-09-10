@@ -4,10 +4,11 @@ import { sessionRepository } from '../../../infrastructure/repositories/session-
 export const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000
 export const TECHNICIAN_SESSION_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000
 export const SESSION_STATUS_INTERVAL_MS = 5 * 1000
+export const TECHNICIAN_SESSION_STATUS_INTERVAL_MS = 15 * 1000
 const ACTIVITY_SYNC_INTERVAL_MS = 60 * 1000
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'scroll']
 
-export function useSessionLifecycle({ enabled, idleTimeoutMs = SESSION_IDLE_TIMEOUT_MS, onInvalidated, onIdle }) {
+export function useSessionLifecycle({ enabled, idleTimeoutMs = SESSION_IDLE_TIMEOUT_MS, statusIntervalMs = SESSION_STATUS_INTERVAL_MS, onInvalidated, onIdle }) {
   const invalidatedRef = useRef(onInvalidated)
   const idleRef = useRef(onIdle)
   invalidatedRef.current = onInvalidated
@@ -80,7 +81,7 @@ export function useSessionLifecycle({ enabled, idleTimeoutMs = SESSION_IDLE_TIME
     document.addEventListener('visibilitychange', checkWhenVisible)
     void syncActivity()
     void checkStatus()
-    const statusTimer = window.setInterval(checkWhenVisible, SESSION_STATUS_INTERVAL_MS)
+    const statusTimer = window.setInterval(checkWhenVisible, statusIntervalMs)
     return () => {
       stopped = true
       window.clearInterval(statusTimer)
@@ -91,5 +92,5 @@ export function useSessionLifecycle({ enabled, idleTimeoutMs = SESSION_IDLE_TIME
       window.removeEventListener('online', checkWhenVisible)
       document.removeEventListener('visibilitychange', checkWhenVisible)
     }
-  }, [enabled, idleTimeoutMs])
+  }, [enabled, idleTimeoutMs, statusIntervalMs])
 }

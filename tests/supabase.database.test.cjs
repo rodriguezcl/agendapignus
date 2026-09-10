@@ -1,13 +1,33 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { databasePoolSize, readExportState, readRevision, readState } = require('../api/_lib/database.cjs')
+const { databasePoolSize, readExportState, readRevision, readState, readTechnicianState } = require('../api/_lib/database.cjs')
 
 test('permite varias operaciones de base simultáneas con un límite acotado', () => {
-  assert.equal(databasePoolSize({}), 4)
+  assert.equal(databasePoolSize({}), 6)
   assert.equal(databasePoolSize({ PIGNUS_DB_POOL_MAX: '6' }), 6)
   assert.equal(databasePoolSize({ PIGNUS_DB_POOL_MAX: '1' }), 2)
   assert.equal(databasePoolSize({ PIGNUS_DB_POOL_MAX: '99' }), 10)
+})
+
+test('consulta sólo historial relacionado y vehículos para refrescar la agenda técnica', async () => {
+  const queries = []
+  const sql = async (strings, ...values) => {
+    queries.push({ statement: strings.join('?'), values })
+    return [{
+      history: [{ id: 'job-1', technicianIds: ['tech-1'] }],
+      preferences: { state_revision: '14', vehicles: JSON.stringify([{ id: 'vehicle-1' }]) }
+    }]
+  }
+
+  const state = await readTechnicianState(sql, 'tech-1', '2026-09-10')
+
+  assert.equal(queries.length, 1)
+  assert.equal(state.revision, 14)
+  assert.deepEqual(state.history, [{ id: 'job-1', technicianIds: ['tech-1'] }])
+  assert.deepEqual(state.vehicles, [{ id: 'vehicle-1' }])
+  assert.match(queries[0].statement, /active_customers/)
+  assert.doesNotMatch(queries[0].statement, /pignus_customers|pignus_agendas|pignus_employees|pignus_roles/)
 })
 
 test('reconstruye el estado de Supabase en una única consulta agregada', async () => {

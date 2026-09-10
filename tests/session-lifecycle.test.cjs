@@ -33,6 +33,8 @@ test('la verificación liviana expulsa la sesión desplazada sin descargar el es
   const hook = read('src/features/auth/application/useSessionLifecycle.js')
   assert.match(app, /useSessionLifecycle\(\{/)
   assert.match(hook, /SESSION_STATUS_INTERVAL_MS = 5 \* 1000/)
+  assert.match(hook, /TECHNICIAN_SESSION_STATUS_INTERVAL_MS = 15 \* 1000/)
+  assert.match(app, /statusIntervalMs: authUser\?\.roleCode === 'technician' \? TECHNICIAN_SESSION_STATUS_INTERVAL_MS : SESSION_STATUS_INTERVAL_MS/)
   assert.match(hook, /error\.status === 401/)
   assert.doesNotMatch(read('src/infrastructure/repositories/session-repository.mjs'), /\/api\/state/)
 })
