@@ -352,7 +352,7 @@ test('el último ingreso invalida cualquier sesión anterior del mismo correo', 
 
   const activityResponse = await api('/api/auth/activity', firstCookie, { method: 'POST' })
   assert.equal(activityResponse.status, 200)
-  assert.match(activityResponse.headers.get('set-cookie'), /Max-Age=1800/)
+  assert.match(activityResponse.headers.get('set-cookie'), /Max-Age=86400/)
 
   const secondCookie = await login('qa-tech@pignus.test')
   assert.notEqual(firstCookie, secondCookie)

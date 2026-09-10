@@ -2,11 +2,12 @@ import { useEffect, useRef } from 'react'
 import { sessionRepository } from '../../../infrastructure/repositories/session-repository.mjs'
 
 export const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000
+export const TECHNICIAN_SESSION_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000
 export const SESSION_STATUS_INTERVAL_MS = 5 * 1000
 const ACTIVITY_SYNC_INTERVAL_MS = 60 * 1000
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'scroll']
 
-export function useSessionLifecycle({ enabled, onInvalidated, onIdle }) {
+export function useSessionLifecycle({ enabled, idleTimeoutMs = SESSION_IDLE_TIMEOUT_MS, onInvalidated, onIdle }) {
   const invalidatedRef = useRef(onInvalidated)
   const idleRef = useRef(onIdle)
   invalidatedRef.current = onInvalidated
@@ -54,7 +55,7 @@ export function useSessionLifecycle({ enabled, onInvalidated, onIdle }) {
     }
     const checkStatus = async () => {
       if (stopped || checking || document.visibilityState === 'hidden') return
-      if (Date.now() - lastActivityAt >= SESSION_IDLE_TIMEOUT_MS) {
+      if (Date.now() - lastActivityAt >= idleTimeoutMs) {
         stopped = true
         await idleRef.current()
         return
@@ -90,5 +91,5 @@ export function useSessionLifecycle({ enabled, onInvalidated, onIdle }) {
       window.removeEventListener('online', checkWhenVisible)
       document.removeEventListener('visibilitychange', checkWhenVisible)
     }
-  }, [enabled])
+  }, [enabled, idleTimeoutMs])
 }

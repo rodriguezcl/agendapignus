@@ -36,6 +36,8 @@ const db = new DatabaseSync(path.join(dataDir, 'agenda-tecnica.db'))
 const sessions = new Map()
 const loginAttempts = new Map()
 const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000
+const TECHNICIAN_SESSION_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000
+const sessionIdleTimeoutFor = user => user?.roleCode === 'technician' ? TECHNICIAN_SESSION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS
 const LOGIN_WINDOW = 15 * 60 * 1000
 const LOGIN_MAX_ATTEMPTS = 5
 const AUDIT_LOG_LIMIT = 100
@@ -1682,15 +1684,16 @@ const server = http.createServer((req, res) => {
         sessions.delete(activeToken)
         replacedSessions += 1
       }
-      sessions.set(token, { user, expiresAt: Date.now() + SESSION_IDLE_TIMEOUT_MS })
+      const sessionIdleTimeoutMs = sessionIdleTimeoutFor(user)
+      sessions.set(token, { user, expiresAt: Date.now() + sessionIdleTimeoutMs })
       // Un bloqueo momentáneo del registro de auditoría no debe impedir que una
       // credencial válida abra sesión. El acceso sigue quedando aislado en memoria.
       try {
-        writeAudit(user, 'Inició sesión', 'Sesión', String(user.id), null, { sessionExpiresAt: new Date(Date.now() + SESSION_IDLE_TIMEOUT_MS).toISOString(), replacedSessions })
+        writeAudit(user, 'Inició sesión', 'Sesión', String(user.id), null, { sessionExpiresAt: new Date(Date.now() + sessionIdleTimeoutMs).toISOString(), replacedSessions })
       } catch (auditError) {
         console.error('No se pudo registrar la auditoría del inicio de sesión:', auditError)
       }
-      res.setHeader('Set-Cookie', `pignus_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_IDLE_TIMEOUT_MS / 1000}${secureCookies ? '; Secure' : ''}`)
+      res.setHeader('Set-Cookie', `pignus_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${sessionIdleTimeoutMs / 1000}${secureCookies ? '; Secure' : ''}`)
       return send(res, 200, { user, state: readStateForUser(user) })
     }).catch(error => {
       console.error('Error al procesar el acceso:', error)
@@ -1730,8 +1733,9 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/auth/activity') {
     const context = localSessionContext(req)
     if (!context) return send(res, 401, { code: 'SESSION_ENDED', error: 'Esta sesión ya no está activa. La cuenta pudo haberse abierto en otro dispositivo o la sesión pudo haber vencido.' })
-    context.session.expiresAt = Date.now() + SESSION_IDLE_TIMEOUT_MS
-    res.setHeader('Set-Cookie', `pignus_session=${context.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_IDLE_TIMEOUT_MS / 1000}${secureCookies ? '; Secure' : ''}`)
+    const sessionIdleTimeoutMs = sessionIdleTimeoutFor(context.user)
+    context.session.expiresAt = Date.now() + sessionIdleTimeoutMs
+    res.setHeader('Set-Cookie', `pignus_session=${context.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${sessionIdleTimeoutMs / 1000}${secureCookies ? '; Secure' : ''}`)
     return send(res, 200, { active: true, expiresAt: new Date(context.session.expiresAt).toISOString() })
   }
   if (url.pathname === '/api/auth/password-reset-requests' && ['GET', 'DELETE'].includes(req.method)) {
