@@ -21,7 +21,7 @@ import { appendConfigurationHistory, guardConfigurationSnapshot, teamConfigurati
 import { compactVehiclePhoto } from './infrastructure/media/image-upload.mjs'
 import { serviceHasStarted } from './domain/agenda/service-start.mjs'
 import { DEFAULT_SERVICE_ESTIMATED_MINUTES, MAX_SERVICE_ESTIMATED_MINUTES, normalizeServiceEstimatedMinutes, removeOverlappingDefaultSlots, serviceScheduleConflicts, taskOccupiedInterval } from './domain/agenda/service-scheduling.mjs'
-import { mergeImportedCustomers } from './domain/customers/customer-import.mjs'
+import { customerFromImportRow, mergeImportedCustomers } from './domain/customers/customer-import.mjs'
 import { sortServicesAlphabetically } from './domain/services/service-order.mjs'
 import { serviceCode } from './domain/services/service.mjs'
 import { normalizeCustomerName, normalizeSearchText, normalizeServiceName } from './domain/shared/normalization.mjs'
@@ -4899,7 +4899,7 @@ function Accounts({ customers, setCustomers, setNotice, ask, history, teams, wee
   const save = e => {
     e.preventDefault()
     const kind = customerKind(form)
-    const customer = { ...form, customerId: form.customerId || createCustomerId(), kind, account: normalizeAccountKey(form.account || nextCustomerCode(customers, kind)), name: normalizeCustomerName(form.name), address: [form.street, form.locality, form.province].filter(Boolean).join(', ') }
+    const customer = { ...form, customerId: form.customerId || createCustomerId(), kind, account: normalizeAccountKey(form.account || nextCustomerCode(customers, kind)), name: normalizeCustomerName(form.name), address: [form.street, form.locality].filter(Boolean).join(', ') }
     ask(editing ? 'Confirmar edición' : 'Confirmar alta', `¿Querés guardar los cambios de ${customer.name}?`, () => {
       setCustomers(previous => editing ? previous.map(item => item.customerId === editing ? customer : item) : [...previous, customer])
       setShowForm(false); setEditing(null); setNotice(`${customerKindLabel(customer)} guardado correctamente.`)
@@ -5033,16 +5033,8 @@ function ImportModal({ customers, close, onImport }) {
       .map(r => [...r.querySelectorAll('th,td')].map(c => c.textContent.replace(/\s+/g, ' ').trim()))
       .filter(r => r.length)
     const headers = rows.shift()
-    const get = (row, label) => row[headers.findIndex(x => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === label)] || ''
-
-    const imported = rows.map(row => {
-      const account = normalizeAccountKey(get(row, 'dealercuenta'))
-      const street = get(row, 'calle'), locality = get(row, 'localidad'), province = get(row, 'provinciaestado')
-      const name = normalizeCustomerName(get(row, 'nombre')) || '-'
-      const requiredStreet = street || '-'
-      const phone = get(row, 'telefono') || '-'
-      return account ? { customerId: '', kind: 'subscriber', account, name, type: get(row, 'tipodecuenta'), street: requiredStreet, locality, province, phone, address: [requiredStreet, locality, province].filter(Boolean).join(', '), fields: Object.fromEntries(headers.map((h, i) => [h, row[i] || ''])) } : null
-    }).filter(Boolean)
+    const imported = rows.map(row => customerFromImportRow(headers, row)).filter(Boolean)
+      .map(customer => ({ ...customer, name: normalizeCustomerName(customer.name) }))
     if (!imported.length) return setMessage('El archivo no contiene registros válidos.')
 
     // The report is incremental: accounts not included in the file stay intact.
