@@ -33,6 +33,7 @@ const {
 } = require('./_lib/core.cjs')
 
 const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000
+const TECHNICIAN_SESSION_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000
 const LOGIN_WINDOW = 15 * 60 * 1000
 const LOGIN_MAX_ATTEMPTS = 5
 const AUDIT_LOG_LIMIT = 100
@@ -155,6 +156,8 @@ async function requireSession(req, res, sql = database()) {
   return session
 }
 
+const sessionIdleTimeoutFor = user => user?.roleCode === 'technician' ? TECHNICIAN_SESSION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS
+
 async function ensureVehicleInsuranceSchema(sql) {
   await sql`create table if not exists pignus_vehicle_insurance_documents (vehicle_id text primary key, file_name text not null, pdf_data bytea not null, uploaded_at timestamptz not null default now())`
   await sql`alter table pignus_vehicle_insurance_documents enable row level security`
@@ -251,7 +254,8 @@ async function handleLogin(req, res, sql) {
   const user = userForEmployee(employee, roles)
   if (!user) return send(res, 401, { error: 'El usuario no tiene un rol válido.' })
   const token = crypto.randomBytes(32).toString('hex')
-  const expiresAt = new Date(Date.now() + SESSION_IDLE_TIMEOUT_MS)
+  const sessionIdleTimeoutMs = sessionIdleTimeoutFor(user)
+  const expiresAt = new Date(Date.now() + sessionIdleTimeoutMs)
   await sql.begin(async transaction => {
     await transaction`delete from pignus_login_attempts where fingerprint = ${fingerprint}`
     await transaction`delete from pignus_sessions where expires_at <= now()`
@@ -262,7 +266,7 @@ async function handleLogin(req, res, sql) {
     await transaction`insert into pignus_sessions (token_hash, employee_id, expires_at) values (${tokenHash(token)}, ${String(user.id)}, ${expiresAt})`
     await appendAudit(transaction, [auditEntry(user, 'Inició sesión', 'Sesión', String(user.id), null, { sessionExpiresAt: expiresAt.toISOString(), replacedSessions: revoked.length })])
   })
-  res.setHeader('Set-Cookie', `pignus_session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_IDLE_TIMEOUT_MS / 1000}`)
+  res.setHeader('Set-Cookie', `pignus_session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${sessionIdleTimeoutMs / 1000}`)
   return send(res, 200, { user, state: visibleStateForUser(await readState(sql), user) })
 }
 
@@ -786,10 +790,11 @@ module.exports = async function handler(req, res) {
       return send(res, 200, { active: true, expiresAt: session.expiresAt.toISOString() })
     }
     if (req.method === 'POST' && route === '/auth/activity') {
-      const expiresAt = new Date(Date.now() + SESSION_IDLE_TIMEOUT_MS)
+      const sessionIdleTimeoutMs = sessionIdleTimeoutFor(session.user)
+      const expiresAt = new Date(Date.now() + sessionIdleTimeoutMs)
       const renewed = await sql`update pignus_sessions set expires_at = ${expiresAt} where token_hash = ${session.hash} returning token_hash`
       if (!renewed.length) return send(res, 401, { code: 'SESSION_ENDED', error: 'Esta sesión ya no está activa. La cuenta pudo haberse abierto en otro dispositivo o la sesión pudo haber vencido.' })
-      res.setHeader('Set-Cookie', `pignus_session=${session.token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_IDLE_TIMEOUT_MS / 1000}`)
+      res.setHeader('Set-Cookie', `pignus_session=${session.token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${sessionIdleTimeoutMs / 1000}`)
       return send(res, 200, { active: true, expiresAt: expiresAt.toISOString() })
     }
     if (route === '/auth/password-reset-requests') {

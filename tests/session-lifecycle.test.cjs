@@ -5,11 +5,16 @@ const path = require('node:path')
 
 const read = relativePath => fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
 
-test('la sesión vence tras 30 minutos de inactividad real en ambos servidores', () => {
+test('la sesión técnica dura 24 horas y los demás roles conservan 30 minutos en ambos servidores', () => {
   for (const source of [read('api/index.js'), read('server.cjs')]) {
     assert.match(source, /SESSION_IDLE_TIMEOUT_MS = 30 \* 60 \* 1000/)
-    assert.match(source, /Max-Age=\$\{SESSION_IDLE_TIMEOUT_MS \/ 1000\}/)
+    assert.match(source, /TECHNICIAN_SESSION_IDLE_TIMEOUT_MS = 24 \* 60 \* 60 \* 1000/)
+    assert.match(source, /sessionIdleTimeoutFor/)
+    assert.match(source, /Max-Age=\$\{sessionIdleTimeoutMs \/ 1000\}/)
   }
+  const hook = read('src/features/auth/application/useSessionLifecycle.js')
+  assert.match(hook, /TECHNICIAN_SESSION_IDLE_TIMEOUT_MS = 24 \* 60 \* 60 \* 1000/)
+  assert.match(read('src/App.jsx'), /idleTimeoutMs: authUser\?\.roleCode === 'technician' \? TECHNICIAN_SESSION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS/)
 })
 
 test('la actividad humana renueva la sesión y las comprobaciones automáticas no lo hacen', () => {
@@ -18,7 +23,7 @@ test('la actividad humana renueva la sesión y las comprobaciones automáticas n
   assert.match(hook, /ACTIVITY_EVENTS = \['pointerdown', 'keydown', 'touchstart', 'scroll'\]/)
   assert.match(hook, /sessionRepository\.touch\(\)/)
   assert.match(hook, /sessionRepository\.status\(\)/)
-  assert.match(hook, /Date\.now\(\) - lastActivityAt >= SESSION_IDLE_TIMEOUT_MS/)
+  assert.match(hook, /Date\.now\(\) - lastActivityAt >= idleTimeoutMs/)
   assert.match(repository, /\/api\/auth\/session-status/)
   assert.match(repository, /\/api\/auth\/activity/)
 })

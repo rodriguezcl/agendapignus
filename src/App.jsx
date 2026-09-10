@@ -31,7 +31,7 @@ import { agendaRescheduleRepairCandidates } from './domain/agenda/reschedule-rep
 import { auditRepository } from './infrastructure/repositories/audit-repository.mjs'
 import { customerImportRepository } from './infrastructure/repositories/customer-import-repository.mjs'
 import { vehicleRepository } from './infrastructure/repositories/vehicle-repository.mjs'
-import { useSessionLifecycle } from './features/auth/application/useSessionLifecycle.js'
+import { SESSION_IDLE_TIMEOUT_MS, TECHNICIAN_SESSION_IDLE_TIMEOUT_MS, useSessionLifecycle } from './features/auth/application/useSessionLifecycle.js'
 import { readSettledLoginCredentials } from './features/auth/application/login-autofill.mjs'
 import { serviceAdvanceRepository } from './infrastructure/repositories/service-advance-repository.mjs'
 import { serviceRecordFingerprint } from './domain/history/service-concurrency.mjs'
@@ -2086,9 +2086,12 @@ export default function App() {
     : { title: 'Cerrar sesión', detail: '¿Querés cerrar sesión?', action: logout, confirmLabel: 'Sí, cerrar sesión' })
   useSessionLifecycle({
     enabled: Boolean(authUser),
+    idleTimeoutMs: authUser?.roleCode === 'technician' ? TECHNICIAN_SESSION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS,
     onInvalidated: endInvalidatedSession,
     onIdle: async () => {
-      setSessionEndedMessage('La sesión se cerró por seguridad después de 30 minutos sin actividad. Iniciá sesión nuevamente para continuar.')
+      setSessionEndedMessage(authUser?.roleCode === 'technician'
+        ? 'La sesión técnica se cerró por seguridad después de 24 horas sin actividad. Iniciá sesión nuevamente para continuar.'
+        : 'La sesión se cerró por seguridad después de 30 minutos sin actividad. Iniciá sesión nuevamente para continuar.')
       await logout()
     }
   })
