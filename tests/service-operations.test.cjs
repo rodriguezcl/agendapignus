@@ -13,6 +13,7 @@ const fixture = () => ({
 })
 const builder = () => import('../src/features/state/application/state-operations.mjs')
 const weeklyBuilder = () => import('../src/features/state/application/weekly-service-save.mjs')
+const weeklyTeamBuilder = () => import('../src/features/state/application/weekly-team-members-save.mjs')
 test('581 records / 39 teams: independent edits send and persist exactly one record each', async () => {
   const { stateOperations } = await builder()
   const base = fixture(), a = clone(base), b = clone(base)
@@ -93,6 +94,41 @@ test('weekly reassignment keeps same-day team moves atomic', async () => {
   assert.deepEqual(saved.agenda.weekly[day].teams.map(team => team.tasks.map(task => task.taskId)), [[], ['move-team']])
   assert.deepEqual(saved.agenda.teams.map(team => team.tasks.map(task => task.taskId)), [[], ['move-team']])
   assert.equal(saved.history.find(item => item.id === record.id).teamId, 'team-2')
+})
+test('weekly team membership changes do not rewrite services or vehicle controls', async () => {
+  const { weeklyTeamMemberOperations } = await weeklyTeamBuilder()
+  const base = fixture()
+  const control = { taskId: 'vehicle-control', historyId: 'vehicle-control', service: 'Control semanal de vehículo', time: '15:30', vehicleControl: true, status: 'Pendiente' }
+  base.agenda.weekly[day].teams[0] = { teamId: 'team-1', memberIds: ['tech-1', 'tech-2'], members: ['Técnico 1', 'Técnico 2'], tasks: [control] }
+  const operations = weeklyTeamMemberOperations(base, {
+    operation: 'team-members', day, teamId: 'team-1', teamIndex: 0,
+    baseMemberIds: ['tech-1', 'tech-2'], baseMembers: ['Técnico 1', 'Técnico 2'],
+    memberIds: ['tech-1'], members: ['Técnico 1'], fallbackPlan: base.agenda.weekly[day]
+  })
+  assert.deepEqual(operations.map(operation => operation.path.at(-1)).sort(), ['memberIds', 'members'])
+  assert.doesNotMatch(JSON.stringify(operations), /createdBy|vehicle-control/)
+  const saved = applyStateOperations(base, operations)
+  assert.deepEqual(saved.agenda.weekly[day].teams[0].memberIds, ['tech-1'])
+  assert.deepEqual(saved.agenda.weekly[day].teams[0].tasks, [control])
+})
+test('a weekly membership change coexists with a concurrent service edit but conflicts on the same crew', async () => {
+  const { weeklyTeamMemberOperations } = await weeklyTeamBuilder()
+  const base = fixture()
+  base.agenda.weekly[day].teams[0] = { teamId: 'team-1', memberIds: ['tech-1', 'tech-2'], members: ['Técnico 1', 'Técnico 2'], tasks: [{ taskId: 'task-1', service: 'Service', detail: 'original' }] }
+  const command = {
+    operation: 'team-members', day, teamId: 'team-1', teamIndex: 0,
+    baseMemberIds: ['tech-1', 'tech-2'], baseMembers: ['Técnico 1', 'Técnico 2'],
+    memberIds: ['tech-1'], members: ['Técnico 1'], fallbackPlan: base.agenda.weekly[day]
+  }
+  const current = clone(base)
+  current.agenda.weekly[day].teams[0].tasks[0].detail = 'editado en simultáneo'
+  const saved = applyStateOperations(current, weeklyTeamMemberOperations(base, command))
+  assert.equal(saved.agenda.weekly[day].teams[0].tasks[0].detail, 'editado en simultáneo')
+  assert.deepEqual(saved.agenda.weekly[day].teams[0].members, ['Técnico 1'])
+  const conflicting = clone(base)
+  conflicting.agenda.weekly[day].teams[0].memberIds = ['tech-2']
+  conflicting.agenda.weekly[day].teams[0].members = ['Técnico 2']
+  assert.throws(() => applyStateOperations(conflicting, weeklyTeamMemberOperations(base, command)), { code: 'RECORD_WRITE_CONFLICT' })
 })
 test('cross-day reassignment preserves services concurrently added at source and destination', async () => {
   const { weeklyServiceOperations } = await weeklyBuilder()
