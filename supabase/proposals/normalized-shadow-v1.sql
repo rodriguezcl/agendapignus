@@ -1,5 +1,5 @@
--- REHEARSAL ONLY. Not part of the production migration runner.
--- No legacy table is changed. This schema must not serve the application yet.
+-- Additive normalized storage contract. The production runner applies it only
+-- after validating the certified revision and fingerprint. No legacy table is changed.
 create schema if not exists normalized_shadow;
 revoke all on schema normalized_shadow from public;
 

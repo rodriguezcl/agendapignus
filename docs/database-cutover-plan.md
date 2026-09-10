@@ -108,3 +108,14 @@ El ensayo de staging exige `STAGING_DATABASE_URL`, rechaza que coincida con prod
 requiere una base aislada y revierte por completo DDL, datos, activación y escrituras. La
 certificación obtenida queda invalidada automáticamente si cambian la revisión o la huella
 de producción.
+
+El corte productivo se ejecuta únicamente con la huella exacta del manifiesto certificado:
+
+```powershell
+npm run cutover:normalized-production -- --activate-production=HUELLA_DEL_MANIFIESTO
+```
+
+El ejecutor bloquea la revisión, vuelve a validar la certificación, prepara el esquema de
+forma aditiva, verifica la proyección y los adjuntos, activa el selector e invalida sesiones
+en una única transacción. El modo de reversión sólo cambia el selector después de demostrar
+que legado y normalizado continúan siendo idénticos.
