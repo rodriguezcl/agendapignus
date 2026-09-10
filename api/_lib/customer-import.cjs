@@ -28,6 +28,16 @@ function validateImportedCustomers(customers) {
   unique('customerId', 'Cliente')
 }
 
+function validateIncrementalCustomerImport(currentCustomers = [], nextCustomers = []) {
+  const nextAccounts = new Set(nextCustomers.map(customer => String(customer?.account || '').trim().toUpperCase()))
+  const missing = currentCustomers.filter(customer => !nextAccounts.has(String(customer?.account || '').trim().toUpperCase()))
+  if (missing.length) {
+    const error = new Error(`La importación no puede eliminar abonados ni clientes existentes (${missing.length} registro(s) ausente(s)). Recargá la página y volvé a seleccionar el archivo.`)
+    error.statusCode = 409
+    throw error
+  }
+}
+
 const sameCustomer = (left, right) => isDeepStrictEqual(left, right)
 
 function customerImportChanges(currentCustomers = [], nextCustomers = []) {
@@ -52,4 +62,4 @@ function restoreCustomerImportBackup(currentCustomers = [], backup) {
   return [...restoredByAccount.values()]
 }
 
-module.exports = { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers }
+module.exports = { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport }

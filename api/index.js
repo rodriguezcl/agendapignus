@@ -24,7 +24,7 @@ const { logStateConcurrencyEvent } = require('./_lib/concurrency-observability.c
 const { applyServiceCatalogOperation } = require('./_lib/service-catalog-operation.cjs')
 const { applyVehicleOperation } = require('./_lib/vehicle-operation.cjs')
 const { synchronizeAgendaHistoryRecord } = require('./_lib/history-record-operation.cjs')
-const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers } = require('./_lib/customer-import.cjs')
+const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('./_lib/customer-import.cjs')
 const {
   assertNoAccidentalHistoryWipe, assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
@@ -757,6 +757,7 @@ async function handleCustomerImport(req, res, sql, user) {
         nextCustomers = normalizeImportedCustomers(body.customers)
       }
       validateImportedCustomers(nextCustomers)
+      if (!undo) validateIncrementalCustomerImport(currentCustomers, nextCustomers)
       const changes = customerImportChanges(currentCustomers, nextCustomers)
       if (!undo) {
         const backup = { ...changes.backup, importedAt: new Date().toISOString(), importedBy: { id: user.id, name: user.name, email: user.email } }
@@ -766,9 +767,10 @@ async function handleCustomerImport(req, res, sql, user) {
       const nextRevision = currentRevision + 1
       await persistStateCollections(transaction, currentState, { ...currentState, customers: nextCustomers }, nextRevision)
       await appendAudit(transaction, [auditEntry(user, undo ? 'Deshizo importación' : 'Importó', 'Abonados / Clientes', 'importacion-maestra', { total: currentCustomers.length }, { total: nextCustomers.length, modified: changes.upsert.length, removed: changes.remove.length })])
-      // The browser already owns the imported snapshot. Avoid serializing and
-      // downloading the same thousand-row payload again after a successful POST.
-      return { revision: nextRevision, ...(undo ? { customers: nextCustomers } : {}), canUndo: !undo }
+      // La respuesta conserva compatibilidad con pestañas que ya estaban
+      // abiertas durante un despliegue. Omitir customers podía ser interpretado
+      // por una versión anterior del navegador como una colección vacía.
+      return { revision: nextRevision, customers: nextCustomers, canUndo: !undo }
     })
     return send(res, 200, result)
   } catch (error) {
