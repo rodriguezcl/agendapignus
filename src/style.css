@@ -121,9 +121,6 @@
 .customer-reservation-button { border-color: #d39a12; color: #785600; background: #fff9e9; }
 .subscriber-reservation-note { display: block; margin-top: 6px; color: #785600; font-weight: 650; line-height: 1.35; }
 .subscriber-reservation-chip { color: #785600; background: #fff3c8; border-color: #e8c85c; }
-.daily-unmonitored-zone { grid-column: 2 / -1; display: flex !important; flex-direction: row !important; align-items: center; gap: 7px; padding: 8px 11px; border: 1px solid #d7e3d7; border-radius: 7px; background: #f4f8f3; color: #385843; }
-.daily-unmonitored-zone::before { content: 'Ubicación:'; font-size: 11px; font-weight: 700; color: #526a59; }
-.daily-unmonitored-zone input { width: auto !important; min-height: auto !important; }
 .vehicle-insurance-reminders { display: grid; gap: 10px; margin-bottom: 18px; }
 .vehicle-insurance-reminders article { display: flex; gap: 12px; align-items: center; padding: 14px 16px; border: 1px solid #e4b044; border-radius: 12px; background: #fff4d7; color: #6c4c00; }
 .vehicle-insurance-reminders article div { display: grid; gap: 3px; }

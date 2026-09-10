@@ -782,6 +782,19 @@ test('la agenda semanal confirma cada servicio desde el modal sin guardar la col
   assert.doesNotMatch(source, /const saveWeeklyDay|dayNeedsSave\(day\)|weekly-save-day/)
 })
 
+test('la agenda semanal reasigna un servicio por equipo o fecha con guardado puntual', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const operations = fs.readFileSync(path.resolve(__dirname, '../src/features/state/application/weekly-service-save.mjs'), 'utf8')
+  const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
+  assert.match(source, /Cambiar equipo o fecha/)
+  assert.match(source, /type="date" min=\{today\}/)
+  assert.match(source, /await persistWeeklyService\(\{[\s\S]*?sourceDay: day,[\s\S]*?sourceTeamId: sourceTeam\.teamId/)
+  assert.match(source, /status: changedDate \? 'Pendiente'/)
+  assert.doesNotMatch(source.slice(source.indexOf('const confirmWeeklyTaskMove'), source.indexOf('const updateTeam', source.indexOf('const confirmWeeklyTaskMove'))), /setWeekly\(/)
+  assert.match(operations, /const removeFromTeams/)
+  assert.match(help, /otro equipo del mismo día o una fecha diferente/)
+})
+
 test('el sábado conserva el identificador del equipo después de guardar', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /const storedSaturday = sourceWeekly\?\.\[day\]\?\.teams\?\.\[0\]/)
@@ -1067,11 +1080,14 @@ test('normaliza el control semanal como servicio de sistema de 15 minutos', () =
   assert.equal(control?.system, true)
 })
 
-test('las agendas distinguen reservas PIG, clientes CLI y ubicación no monitoreada', () => {
+test('las agendas comparten las ubicaciones de instalación y distinguen reservas PIG de clientes CLI', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const api = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
   const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
-  assert.match(source, /\['no-monitoreada', 'No monitoreada'\]/)
+  assert.match(source, /\['residencial', 'Residencial con monitoreo'\]/)
+  assert.match(source, /\['no-monitoreada', 'Residencial sin monitoreo'\]/)
+  assert.match(source, /<fieldset className="installation-zone">.*?\{INSTALLATION_ZONES\.map/s)
+  assert.doesNotMatch(source, /daily-unmonitored-zone/)
   assert.match(source, />Reservar nuevo abonado<\/button>/)
   assert.match(source, />Agregar cliente CLI<\/button>/)
   assert.match(source, /const createQuickClient/)
