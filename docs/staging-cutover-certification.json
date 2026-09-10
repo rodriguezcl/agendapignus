@@ -1,0 +1,20 @@
+{
+  "schemaContract": "normalized-v1-2026-09-09",
+  "executedAt": "2026-09-09T21:08:31.3705868-03:00",
+  "sourceRevision": 7290,
+  "sourceFingerprint": "692ad3384f7f5623dd9d317db5d4783b5de6a9ba6882a7977a79269698c9764c",
+  "sourceCounts": {
+    "history": 598,
+    "customers": 1209,
+    "credentials": 12,
+    "auditEvents": 100,
+    "insuranceDocuments": 3
+  },
+  "activation": true,
+  "operationalWrite": true,
+  "restoration": true,
+  "rollback": true,
+  "stagingModified": false,
+  "productionModified": false,
+  "passed": true
+}

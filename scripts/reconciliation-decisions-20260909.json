@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "confirmedAt": "2026-09-09",
+  "source": "Confirmaciones individuales del usuario y campos coincidentes entre historial actual e historiales locales",
+  "records": [
+    { "id": "work-14e093df-7516-44b8-9551-192552c66d8f", "expected": { "date": "2026-04-18", "technicianIds": ["1786104022157"] }, "set": { "date": "2026-08-18", "technicianIds": ["1786104022157"] }, "alignAgenda": true },
+    { "id": "work-43736285-56e0-4496-998e-0504abc29403", "expected": { "date": "2026-04-18", "technicianIds": ["1"] }, "set": { "date": "2026-08-18", "technicianIds": ["1"] }, "alignAgenda": true },
+    { "id": "work-4839da25-5cbc-4b80-9796-bd8d4cc3e671", "expected": { "date": "2026-04-18", "technicianIds": ["1786104022157"] }, "set": { "date": "2026-08-18", "technicianIds": ["1786104022157"] }, "alignAgenda": true },
+    { "id": "work-602586e7-b75e-49d8-b12e-f009bf7ee4b6", "expected": { "date": "2026-04-18", "technicianIds": ["1786104022157"] }, "set": { "date": "2026-08-18", "technicianIds": ["1786104022157"] }, "alignAgenda": true },
+    { "id": "work-72744d2c-9ed4-40d2-8dce-9d4999810c6c", "expected": { "date": "2026-04-18", "technicianIds": ["1786103936809"] }, "set": { "date": "2026-08-18", "technicianIds": ["1786103936809"] }, "alignAgenda": true },
+    { "id": "work-8e0c31ee-c86a-44b2-806c-4a8eb2565a95", "expected": { "date": "2026-04-18", "technicianIds": ["1"] }, "set": { "date": "2026-08-18", "technicianIds": ["1"] }, "alignAgenda": true },
+    { "id": "work-e2fe3e7a-0983-4910-a958-b8d4fdddfb21", "expected": { "date": "2026-04-18", "technicianIds": ["1"] }, "set": { "date": "2026-08-18", "technicianIds": ["1"] }, "alignAgenda": true },
+    { "id": "work-07a865f8-4fc2-44ac-94e2-24ce0f80fef9", "expected": { "date": "2026-08-14", "status": "Completado" }, "set": { "date": "2026-08-14", "status": "Completado" }, "alignAgenda": true },
+    { "id": "work-04e224b8-fbc8-4cce-b172-fd6c8c8b290f", "expected": { "date": "2026-08-14", "status": "Completado", "technicianIds": ["3"] }, "set": { "date": "2026-08-14", "status": "Completado", "technicianIds": ["3"] }, "alignAgenda": true },
+    { "id": "work-07225fb2-69a8-43f2-b306-ac2d0ba6d8f7", "expected": { "date": "2026-08-14", "status": "Completado", "technicianIds": ["2", "3"] }, "set": { "date": "2026-08-14", "status": "Completado", "technicianIds": ["2", "3"] }, "alignAgenda": true },
+    { "id": "work-20cc9bad-0c17-473b-96c4-1c37f7210834", "expected": { "date": "2026-08-14", "status": "Completado", "technicianIds": ["1786104022157"] }, "set": { "date": "2026-08-14", "status": "Completado", "technicianIds": ["1786104022157"] }, "alignAgenda": true },
+    { "id": "work-23dd7bea-677b-479f-b0fc-533bb434dae5", "expected": { "date": "2026-08-14", "status": "Completado", "technicianIds": ["3"] }, "set": { "date": "2026-08-14", "status": "Completado", "technicianIds": ["3"] }, "alignAgenda": true },
+    { "id": "work-2d0101a0-50f0-4b19-aac0-ede94a8e5b73", "expected": { "date": "2026-08-14", "status": "Completado", "technicianIds": ["1786104022157"] }, "set": { "date": "2026-08-14", "status": "Completado", "technicianIds": ["1786104022157"] }, "alignAgenda": true },
+    { "id": "work-8e8f1b5c-ac92-461c-afb2-e501fb1fcc46", "expected": { "date": "2026-08-14", "status": "Completado", "technicianIds": ["1786104022157"] }, "set": { "date": "2026-08-14", "status": "Completado", "technicianIds": ["1786104022157"] }, "alignAgenda": true },
+    { "id": "work-cf5ccf59-7114-44f5-8eca-40b78f3158d9", "expected": { "date": "2026-08-14", "status": "Completado", "technicianIds": ["2", "3"] }, "set": { "date": "2026-08-14", "status": "Completado", "technicianIds": ["2", "3"] }, "alignAgenda": true },
+    { "id": "import-2026-04-01-PIG-6880---EMILIANO-MONACO-Luis-Jos--de-Tejeda-4531-Local-7-Cerro-de-las-Rosas-Instalaci-n-nueva-Alarma", "expected": { "date": "2026-04-01", "technicianIds": ["2", "1786104022157", "1"] }, "set": { "technicianIds": ["1"] }, "alignAgenda": true },
+    { "id": "vehicle-control-2026-09-04-554005fd-c929-4beb-a628-390c78c3e0fb", "expected": { "date": "2026-09-04", "technicianIds": ["2"] }, "set": { "technicianIds": ["2"] }, "alignAgenda": false },
+    { "id": "vehicle-control-2026-09-04-72475e95-daf2-450e-861e-ab0fc3b079fd", "expected": { "date": "2026-09-04", "technicianIds": ["3"] }, "set": { "technicianIds": ["3"] }, "alignAgenda": false },
+    { "id": "vehicle-control-2026-09-04-9ab3ede9-942e-4513-86c2-741f903bffbc", "expected": { "date": "2026-09-04", "technicianIds": ["1786104022157"] }, "set": { "technicianIds": ["1786104022157"] }, "alignAgenda": false }
+  ]
+}
