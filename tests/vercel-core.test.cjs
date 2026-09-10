@@ -975,6 +975,22 @@ test('los permisos granulares no se heredan del módulo y sólo se habilitan de 
   assert.equal(userCan({ roleCode: 'administrator', permissions: {} }, 'accountsImport'), true)
 })
 
+test('sólo Administración puede omitir o eliminar un control vehicular', () => {
+  const control = { id: 'control-history', sourceTaskId: 'control-task', vehicleControl: true, status: 'Pendiente' }
+  const task = { taskId: 'control-task', historyId: control.id, vehicleControl: true }
+  const current = { roles, employees: [employee], services: [], vehicles: [], customers: [], history: [control], reviews: [], agenda: { weekly: { '2026-09-11': { teams: [{ teamId: 'team', tasks: [task] }], removedTaskIds: [] } } } }
+  const omitted = structuredClone(current)
+  omitted.agenda.weekly['2026-09-11'].teams[0].tasks = []
+  omitted.agenda.weekly['2026-09-11'].removedTaskIds = ['task:control-task', 'history:control-history']
+  omitted.history = []
+  const planner = { roleCode: 'user', permissions: { weekly: true, history: true } }
+  const historyManager = { roleCode: 'user', permissions: { weekly: true, history: true, historyManage: true } }
+
+  assert.throws(() => authorizeIncomingState(omitted, current, planner), error => error.statusCode === 403 && /administrador.*control vehicular/i.test(error.message))
+  assert.throws(() => authorizeIncomingState({ ...current, history: [] }, current, historyManager), error => error.statusCode === 403 && /administrador.*control vehicular/i.test(error.message))
+  assert.doesNotThrow(() => authorizeIncomingState(omitted, current, { roleCode: 'administrator', permissions: {} }))
+})
+
 test('vehículos del mes recibe la flota sin habilitar el módulo completo de vehículos', () => {
   const role = { id: 'weekly-vehicles-role', code: 'user', name: 'Usuario', permissions: { weekly: true, weeklyVehicles: true, vehicles: false } }
   const user = userForEmployee({ ...employee, roleId: role.id, role: role.name }, [...roles, role])
@@ -1092,6 +1108,10 @@ test('las agendas comparten las ubicaciones de instalación y distinguen reserva
   assert.match(source, /<fieldset className="installation-zone">.*?\{INSTALLATION_ZONES\.map/s)
   assert.doesNotMatch(source, /daily-unmonitored-zone/)
   assert.match(source, />Reservar nuevo abonado<\/button>/)
+  assert.match(source, /onReserveSubscriber=\{serviceCode\(serviceForTask\(task\)\) === 'alarm-installation' \? beginSubscriberReservation : undefined\}/)
+  assert.match(source, /onReserveSubscriber=\{serviceCode\(serviceForWeeklyTask\(task\)\) === 'alarm-installation'/)
+  assert.match(source, /const exact = availableCustomers\.find\(customer => \[customer\.account, `\$\{customer\.account\} \$\{customer\.name\}`\]/)
+  assert.doesNotMatch(source, /const exact = availableCustomers\.find\(customer => \[customer\.account, customer\.name/)
   assert.match(source, />Agregar cliente CLI<\/button>/)
   assert.match(source, /const createQuickClient/)
   assert.match(source, /const subscriberReservationPatch/)
@@ -1102,6 +1122,7 @@ test('las agendas comparten las ubicaciones de instalación y distinguen reserva
   assert.match(source, /kind: 'client'/)
   assert.match(source, /zoneOf\(record\) !== 'no-monitoreada'/)
   assert.match(api, /!record\.subscriberReservation && installationCategory !== 'no-monitoreada'/)
+  assert.match(api, /allowEarlyCompletion: user\.roleCode === 'administrator'/)
   assert.match(help, /La reserva ocupa el turno sin crear un CLI/)
 })
 

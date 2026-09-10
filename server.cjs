@@ -359,6 +359,7 @@ function migrateCustomerReferences() {
     return sameName || Boolean(itemAddress && targetStreet && (itemAddress.includes(targetStreet) || targetStreet.includes(itemAddress)))
   }
   const matchCustomer = item => {
+    if (item?.subscriberReservation) return null
     const account = String(item.clientAccount || item.account || customerCodeFromText(item.client)).trim().toUpperCase()
     const clientText = normalizedCustomerValue(item.client)
     const embeddedAccount = customerCodeFromText(item.client)
@@ -375,6 +376,7 @@ function migrateCustomerReferences() {
   const insertCustomer = db.prepare('INSERT INTO customers (account, data) VALUES (?, ?)')
   const pendingByName = new Map()
   references.forEach(item => {
+    if (item?.subscriberReservation) return
     if (matchCustomer(item)) return
     const name = String(item.clientNameAtService || item.client || '').replace(/^CLI-\d+\s+/i, '').trim()
     const key = normalizedCustomerValue(name)
@@ -854,12 +856,39 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
   return result
 }
 
+function assertVehicleControlOmissionAuthorized(incoming, current, user) {
+  if (user?.roleCode === 'administrator') return
+  const deny = () => {
+    const error = new Error('Solamente un administrador puede omitir o eliminar un control vehicular.')
+    error.statusCode = 403
+    throw error
+  }
+  const currentWeekly = current?.agenda?.weekly || {}
+  const incomingWeekly = incoming?.agenda?.weekly || {}
+  for (const [day, currentPlan] of Object.entries(currentWeekly)) {
+    if (day.startsWith('_')) continue
+    const controls = (currentPlan?.teams || []).flatMap(team => team.tasks || []).filter(task => task?.vehicleControl)
+    if (!controls.length) continue
+    const previousRemoved = new Set((currentPlan?.removedTaskIds || []).map(String))
+    const newlyRemoved = (incomingWeekly?.[day]?.removedTaskIds || []).map(String).filter(id => !previousRemoved.has(id))
+    if (controls.some(task => {
+      const aliases = [task.taskId && `task:${task.taskId}`, task.historyId && `history:${task.historyId}`].filter(Boolean)
+      return aliases.some(alias => newlyRemoved.includes(alias))
+    })) deny()
+  }
+  if (userCan(user, 'historyManage')) {
+    const incomingHistoryIds = new Set((incoming?.history || []).map(record => String(record.id)))
+    if ((current?.history || []).some(record => record?.vehicleControl && !incomingHistoryIds.has(String(record.id)))) deny()
+  }
+}
+
 // La interfaz conserva un estado amplio, pero el servidor nunca acepta cambios
 // sobre colecciones para las que el rol autenticado no tiene permiso.
 function authorizedIncomingState(state, user) {
   const current = readState()
   const administrator = user?.roleCode === 'administrator'
   const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
+  assertVehicleControlOmissionAuthorized(state, current, user)
   let employees = current.employees
   if (administrator) employees = state.employees
   else if (userCan(user, 'employees')) {
@@ -986,7 +1015,13 @@ function validateState(state, previousState = null) {
   const roleIds = new Set(state.roles.map(role => String(role.id)))
   const employeeIds = new Set(state.employees.map(employee => String(employee.id)))
   const serviceIds = new Set(state.services.map(service => String(service.id)))
+  const serviceById = new Map(state.services.map(service => [String(service.id), service]))
   const customerIds = new Set(state.customers.map(customer => String(customer.customerId)))
+  const previousHistoryById = new Map((previousState?.history || []).map(item => [String(item.id), item]))
+  const reservationUsesAlarmInstallation = record => {
+    const service = serviceById.get(String(record.serviceId || ''))
+    return service?.code === 'alarm-installation' || normalizedServiceName(service?.name || record.service) === 'instalacion de alarma'
+  }
   state.roles.forEach((role, index) => {
     if (!String(role.name ?? '').trim() || !text(role.name, 80) || !String(role.code ?? '').trim() || !text(role.code, 80) || typeof role.permissions !== 'object' || !role.permissions) throw new Error(`Rol ${index + 1}: datos incompletos.`)
   })
@@ -1036,6 +1071,11 @@ function validateState(state, previousState = null) {
   state.history.forEach((record, index) => {
     if (String(record.customerId || '').trim() && !customerIds.has(String(record.customerId))) throw new Error(`Historial ${index + 1}: el cliente vinculado no existe.`)
     if (record.subscriberReservation && String(record.customerId || '').trim()) throw new Error(`Historial ${index + 1}: una reserva PIG pendiente no puede estar vinculada a un cliente.`)
+    if (record.subscriberReservation && !reservationUsesAlarmInstallation(record)) {
+      const previous = previousHistoryById.get(String(record.id))
+      const legacyUnchangedReservation = previous?.subscriberReservation && String(previous.serviceId || previous.service || '') === String(record.serviceId || record.service || '')
+      if (!legacyUnchangedReservation) throw new Error(`Historial ${index + 1}: Reserva PIG sólo está disponible para Instalación de alarma.`)
+    }
     if (record.subscriberReservation && ![record.clientNameAtService || record.client, record.address, record.phone].every(value => String(value || '').trim())) throw new Error(`Historial ${index + 1}: la reserva PIG debe incluir nombre, dirección y contacto provisorios.`)
     if (!serviceIds.has(String(record.serviceId))) throw new Error(`Historial ${index + 1}: el tipo de servicio vinculado no existe.`)
     if ((record.technicianIds || []).some(id => !employeeIds.has(String(id)))) throw new Error(`Historial ${index + 1}: contiene un técnico inexistente.`)
@@ -1110,7 +1150,7 @@ function assertServiceCanBeCompleted(record, now = new Date().toISOString()) {
   const current = Number(parts.hour) * 60 + Number(parts.minute)
   if (scheduled > current) { const error = new Error('No se puede completar un servicio antes de su fecha y hora programadas.'); error.statusCode = 409; throw error }
 }
-function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now = new Date().toISOString()) {
+function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now = new Date().toISOString(), { allowEarlyCompletion = false } = {}) {
   const previousById = new Map((previousHistory || []).map(record => [String(record.id), record]))
   return (history || []).map(record => {
     const previous = previousById.get(String(record.id))
@@ -1122,7 +1162,7 @@ function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now
       return withoutCompletion
     }
     if (!previous || !wasCompleted) {
-      assertServiceCanBeCompleted(record, now)
+      if (!allowEarlyCompletion) assertServiceCanBeCompleted(record, now)
       return { ...record, completedAt: now }
     }
     if (previous.completedAt) return { ...record, completedAt: previous.completedAt }
@@ -1205,7 +1245,7 @@ function saveState(state, user) {
   normalizedCustomers.forEach(customer => { const key = normalizedCustomerValue(customer.name); customerByName.set(key, customerByName.has(key) ? null : customer) })
   const normalizeCustomerReference = item => {
     const clientText = normalizedCustomerValue(item.client)
-    const matched = customerById.get(String(item.customerId || '')) || customerByAccount.get(String(item.clientAccount || item.account || customerCodeFromText(item.client)).trim().toUpperCase()) ||
+    const matched = item.subscriberReservation ? null : customerById.get(String(item.customerId || '')) || customerByAccount.get(String(item.clientAccount || item.account || customerCodeFromText(item.client)).trim().toUpperCase()) ||
       normalizedCustomers.find(customer => normalizedCustomerValue(`${customer.account} ${customer.name}`) === clientText) || customerByName.get(clientText)
     return matched ? { ...item, customerId: matched.customerId, clientAccount: matched.account, clientNameAtService: matched.name, client: `${matched.account} ${matched.name}` } : item
   }
@@ -1231,7 +1271,7 @@ function saveState(state, user) {
     return { ...base, status: base.status || 'Pendiente', teamId: base.teamId ?? (teamIndex >= 0 ? stableTeamId(String(base.date || '').slice(0, 7), teamIndex) : null), technicianIds: technicians.map(employee => employee.id), technicians: technicians.map(employee => employee.name) }
   }
   const previousHistory = rows('work_history')
-  const normalizedIncomingHistory = normalizeHistoryCompletionTimes((state.history || []).map(normalizeHistoryRecord), previousHistory)
+  const normalizedIncomingHistory = normalizeHistoryCompletionTimes((state.history || []).map(normalizeHistoryRecord), previousHistory, new Date().toISOString(), { allowEarlyCompletion: user.roleCode === 'administrator' })
   state = { ...state, roles: normalizedRoles, employees: normalizedEmployees, services: normalizedServices, vehicles: normalizedVehicles, customers: normalizedCustomers, history: normalizedIncomingHistory, agenda: { ...incomingAgenda, teams: normalizeTeams(incomingAgenda.teams, String(incomingAgenda.date || '').slice(0, 7)), weekly: normalizedWeekly } }
   const storedAgenda = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
   const previousAgenda = storedAgenda ? JSON.parse(storedAgenda.data) : {}
@@ -1785,7 +1825,7 @@ const server = http.createServer((req, res) => {
         const now = new Date().toISOString()
         let next = { ...current, ...proposed, id: current.id, status: proposed.status || 'Pendiente' }
         if (next.status === 'Completado' && current.status !== 'Completado') {
-          assertServiceCanBeCompleted(next, now)
+          if (user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
           next = { ...next, completedAt: next.completedAt || now }
         } else if (next.status !== 'Completado') {
           const { completedAt: _discardedCompletion, ...withoutCompletion } = next

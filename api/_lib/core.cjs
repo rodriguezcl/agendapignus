@@ -94,6 +94,32 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
   return result
 }
 
+function assertVehicleControlOmissionAuthorized(incoming, current, user) {
+  if (user?.roleCode === 'administrator') return
+  const deny = () => {
+    const error = new Error('Solamente un administrador puede omitir o eliminar un control vehicular.')
+    error.statusCode = 403
+    throw error
+  }
+  const currentWeekly = current?.agenda?.weekly || {}
+  const incomingWeekly = incoming?.agenda?.weekly || {}
+  for (const [day, currentPlan] of Object.entries(currentWeekly)) {
+    if (day.startsWith('_')) continue
+    const controls = (currentPlan?.teams || []).flatMap(team => team.tasks || []).filter(task => task?.vehicleControl)
+    if (!controls.length) continue
+    const previousRemoved = new Set((currentPlan?.removedTaskIds || []).map(String))
+    const newlyRemoved = (incomingWeekly?.[day]?.removedTaskIds || []).map(String).filter(id => !previousRemoved.has(id))
+    if (controls.some(task => {
+      const aliases = [task.taskId && `task:${task.taskId}`, task.historyId && `history:${task.historyId}`].filter(Boolean)
+      return aliases.some(alias => newlyRemoved.includes(alias))
+    })) deny()
+  }
+  if (userCan(user, 'historyManage')) {
+    const incomingHistoryIds = new Set((incoming?.history || []).map(record => String(record.id)))
+    if ((current?.history || []).some(record => record?.vehicleControl && !incomingHistoryIds.has(String(record.id)))) deny()
+  }
+}
+
 function publicEmployee(employee = {}) {
   const { password, passwordHash, ...safe } = employee
   return safe
@@ -196,6 +222,7 @@ function visibleStateForUser(state, user) {
 function authorizeIncomingState(incoming, current, user) {
   const administrator = user.roleCode === 'administrator'
   const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
+  assertVehicleControlOmissionAuthorized(incoming, current, user)
   let employees = current.employees
   if (administrator) employees = incoming.employees
   else if (userCan(user, 'employees')) {
@@ -287,7 +314,7 @@ function assertServiceCanBeCompleted(record, now = new Date().toISOString()) {
   if (scheduled > current) { const error = new Error('No se puede completar un servicio antes de su fecha y hora programadas.'); error.statusCode = 409; throw error }
 }
 
-function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now = new Date().toISOString()) {
+function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now = new Date().toISOString(), { allowEarlyCompletion = false } = {}) {
   const previousById = new Map((previousHistory || []).map(record => [String(record.id), record]))
   return (history || []).map(record => {
     const previous = previousById.get(String(record.id))
@@ -299,7 +326,7 @@ function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now
       return withoutCompletion
     }
     if (!previous || !wasCompleted) {
-      assertServiceCanBeCompleted(record, now)
+      if (!allowEarlyCompletion) assertServiceCanBeCompleted(record, now)
       return { ...record, completedAt: now }
     }
     if (previous.completedAt) return { ...record, completedAt: previous.completedAt }
@@ -308,7 +335,7 @@ function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now
   })
 }
 
-function normalizeStateForSave(state, current) {
+function normalizeStateForSave(state, current, { allowEarlyCompletion = false } = {}) {
   current ||= { roles: [], employees: [], services: [], vehicles: [], customers: [], history: [], reviews: [], agenda: {} }
   state = migrateLegacyEstimatedMinutes(state).state
   const roles = (state.roles || []).map(role => ({ ...role, code: role.code || legacyRoleCode(role) }))
@@ -348,7 +375,9 @@ function normalizeStateForSave(state, current) {
   const customers = (state.customers || []).map(customer => ({ ...customer, kind: customerKind(customer), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }))
   const history = normalizeHistoryCompletionTimes(
     (state.history || []).map(record => ({ ...normalizeScheduledService(record), status: record.status || 'Pendiente' })),
-    current.history
+    current.history,
+    new Date().toISOString(),
+    { allowEarlyCompletion }
   )
   const incomingAgenda = state.agenda || {}
   const weekly = Object.fromEntries(Object.entries(incomingAgenda.weekly || {}).map(([key, value]) => key === '_monthlyTeams'
@@ -461,8 +490,14 @@ function validateState(state, previousState = null) {
   unique(state.history, 'id', 'Registro de historial')
   const roleIds = new Set(state.roles.map(item => String(item.id)))
   const serviceIds = new Set(state.services.map(item => String(item.id)))
+  const serviceById = new Map(state.services.map(item => [String(item.id), item]))
   const customerIds = new Set(state.customers.map(item => String(item.customerId)))
   const employeeIds = new Set(state.employees.map(item => String(item.id)))
+  const previousHistoryById = new Map((previousState?.history || []).map(item => [String(item.id), item]))
+  const reservationUsesAlarmInstallation = record => {
+    const service = serviceById.get(String(record.serviceId || ''))
+    return service?.code === 'alarm-installation' || normalizedServiceName(service?.name || record.service) === 'instalacion de alarma'
+  }
   state.employees.forEach((employee, index) => {
     if (!employee.firstName || !employee.lastName || !/^\S+@\S+\.\S+$/.test(String(employee.email || '')) || !roleIds.has(String(employee.roleId))) throw new Error(`Empleado ${index + 1}: datos incompletos.`)
   })
@@ -487,6 +522,11 @@ function validateState(state, previousState = null) {
     if (record.serviceId != null && !serviceIds.has(String(record.serviceId))) throw new Error(`Historial ${index + 1}: el tipo de servicio no existe.`)
     if (record.customerId != null && String(record.customerId).trim() && !customerIds.has(String(record.customerId))) throw new Error(`Historial ${index + 1}: el cliente no existe.`)
     if (record.subscriberReservation && String(record.customerId || '').trim()) throw new Error(`Historial ${index + 1}: una reserva PIG pendiente no puede estar vinculada a un cliente.`)
+    if (record.subscriberReservation && !reservationUsesAlarmInstallation(record)) {
+      const previous = previousHistoryById.get(String(record.id))
+      const legacyUnchangedReservation = previous?.subscriberReservation && String(previous.serviceId || previous.service || '') === String(record.serviceId || record.service || '')
+      if (!legacyUnchangedReservation) throw new Error(`Historial ${index + 1}: Reserva PIG sólo está disponible para Instalación de alarma.`)
+    }
     if (record.subscriberReservation && ![record.clientNameAtService || record.client, record.address, record.phone].every(value => String(value || '').trim())) throw new Error(`Historial ${index + 1}: la reserva PIG debe incluir nombre, dirección y contacto provisorios.`)
     if ((record.technicianIds || []).some(id => !employeeIds.has(String(id)))) throw new Error(`Historial ${index + 1}: contiene un técnico inexistente.`)
     if (record.serviceId != null && (!Number.isInteger(Number(record.estimatedMinutes)) || Number(record.estimatedMinutes) < 15 || Number(record.estimatedMinutes) > 720)) throw new Error(`Historial ${index + 1}: el tiempo estimado debe estar entre 15 minutos y 12 horas.`)
