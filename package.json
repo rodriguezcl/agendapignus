@@ -14,6 +14,17 @@
     "schema:supabase": "node --env-file-if-exists=.env.local scripts/apply-supabase-schema.cjs",
     "migrate:supabase": "node --env-file-if-exists=.env.local scripts/migrate-sqlite-to-supabase.cjs",
     "migrate:legacy-durations": "node --env-file-if-exists=.env.local scripts/migrate-legacy-estimated-minutes.cjs",
+    "analyze:normalization": "node --env-file-if-exists=.env.local scripts/analyze-normalization.cjs",
+    "inventory:normalization": "node --env-file-if-exists=.env.local scripts/inventory-normalization-fields.cjs --production-read-only",
+    "inventory:database-schema": "node --env-file-if-exists=.env.local scripts/inventory-database-schema.cjs --production-read-only",
+    "plan:normalization-cutover": "node --env-file-if-exists=.env.local scripts/plan-normalization-cutover.cjs --production-read-only",
+    "rehearse:physical-cutover": "node --env-file-if-exists=.env.local scripts/rehearse-physical-cutover.cjs --production-read-only",
+    "rehearse:staging-postgres": "node --env-file-if-exists=.env.local scripts/rehearse-staging-postgres.cjs --staging-postgres-rollback",
+    "reconcile:normalization": "node --env-file-if-exists=.env.local scripts/reconcile-normalization.cjs",
+    "preview:confirmed-reconciliation": "node --env-file-if-exists=.env.local scripts/preview-confirmed-reconciliation.cjs",
+    "preview:projection-reconciliation": "node --env-file-if-exists=.env.local scripts/preview-projection-reconciliation.cjs",
+    "preview:scheduled-vehicle-controls": "node --env-file-if-exists=.env.local scripts/preview-scheduled-vehicle-controls.cjs",
+    "test:normalization": "node --test tests/normalization.test.cjs",
     "test": "node --test tests/*.test.cjs",
     "test:concurrency": "node --test tests/state-concurrency-hardening.test.cjs tests/security.integration.test.cjs",
     "build": "vite build",
@@ -26,6 +37,7 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@vitejs/plugin-react": "^4.0.0",
     "vite": "^5.0.0"
   }

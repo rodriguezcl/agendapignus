@@ -1,9 +1,23 @@
 const crypto = require('node:crypto')
 const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
-const { appendAudit, database, readCustomers, readExportState, readRevision, readState, replaceCollections } = require('./_lib/database.cjs')
+const { database, replaceCollections } = require('./_lib/database.cjs')
+const { readApplicationRevision: readRevision, readApplicationState: readState } = require('./_lib/storage-router.cjs')
+const { coordinateStateWrite } = require('./_lib/state-write-coordinator.cjs')
+const { appendOperationalAudit: appendAudit, setAuxiliaryPreference, upsertVehicleControlPhoto, upsertVehicleInsuranceDocument } = require('./_lib/operational-storage.cjs')
 const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./_lib/service-advance.cjs')
+
+async function persistStateCollections(transaction, current, next, nextRevision) {
+  const versionedNext = { ...next, revision: Number(nextRevision) }
+  return coordinateStateWrite(transaction, current, versionedNext, {
+    mode: 'controlled',
+    writeLegacy: async (sql, state, previous) => {
+      await replaceCollections(sql, state, previous)
+      await sql`update pignus_preferences set value = ${String(state.revision)}, updated_at = now() where key = 'state_revision'`
+    }
+  })
+}
 const { concurrentStateChanged, mergeConcurrentState } = require('./_lib/state-merge.cjs')
 const { applyStateOperations } = require('./_lib/state-operations.cjs')
 const { logStateConcurrencyEvent } = require('./_lib/concurrency-observability.cjs')
@@ -194,13 +208,13 @@ async function handleVehicleInsurance(req, res, sql, user, vehicleId) {
       const nextVehicles = previousVehicle
         ? current.vehicles.map(vehicle => String(vehicle.id) === String(vehicleId) ? nextVehicle : vehicle)
         : [...current.vehicles, nextVehicle]
-      validateState({ ...current, vehicles: nextVehicles }, current)
-      await transaction`insert into pignus_vehicle_insurance_documents (vehicle_id, file_name, pdf_data, uploaded_at) values (${String(vehicleId)}, ${safeName}, ${data}, ${uploadedAt}) on conflict (vehicle_id) do update set file_name = excluded.file_name, pdf_data = excluded.pdf_data, uploaded_at = excluded.uploaded_at`
-      await transaction`insert into pignus_preferences (key, value, updated_at) values ('vehicles', ${JSON.stringify(nextVehicles)}, now()) on conflict (key) do update set value = excluded.value, updated_at = now()`
+      const next = { ...current, vehicles: nextVehicles }
+      validateState(next, current)
       const entries = [auditEntry(user, 'Cargó seguro', 'Vehículo', String(vehicleId), previousVehicle || null, nextVehicle)]
-      await appendAudit(transaction, entries)
       const revision = currentRevision + 1
-      await transaction`update pignus_preferences set value = ${String(revision)}, updated_at = now() where key = 'state_revision'`
+      await persistStateCollections(transaction, current, next, revision)
+      await upsertVehicleInsuranceDocument(transaction, { vehicleId, fileName: safeName, data, uploadedAt })
+      await appendAudit(transaction, entries)
       return { vehicle: nextVehicle, revision, fileName: safeName, uploadedAt, documentUrl }
     })
     return send(res, 200, result)
@@ -274,7 +288,7 @@ async function handlePasswordResetRequest(req, res, sql) {
     const existing = requests.find(item => item.email === email)
     const request = { id: existing?.id || crypto.randomUUID(), employeeId: String(employee.id), email, requestedAt: new Date().toISOString() }
     const next = [request, ...requests.filter(item => item.email !== email)].slice(0, PASSWORD_RESET_REQUESTS_LIMIT)
-    await transaction`update pignus_preferences set value = ${JSON.stringify(next)}, updated_at = now() where key = ${PASSWORD_RESET_REQUESTS_KEY}`
+    await setAuxiliaryPreference(transaction, PASSWORD_RESET_REQUESTS_KEY, JSON.stringify(next))
   })
   return send(res, 200, { ok: true, message: 'La solicitud fue enviada al Administrador.' })
 }
@@ -293,7 +307,7 @@ async function resolvePasswordResetRequest(req, res, sql, user) {
     const rows = await transaction`select value from pignus_preferences where key = ${PASSWORD_RESET_REQUESTS_KEY} for update`
     const requests = parsePasswordResetRequests(rows[0]?.value)
     resolved = requests.find(item => item.id === id) || null
-    await transaction`update pignus_preferences set value = ${JSON.stringify(requests.filter(item => item.id !== id))}, updated_at = now() where key = ${PASSWORD_RESET_REQUESTS_KEY}`
+    await setAuxiliaryPreference(transaction, PASSWORD_RESET_REQUESTS_KEY, JSON.stringify(requests.filter(item => item.id !== id)))
     if (resolved) await appendAudit(transaction, [auditEntry(user, 'Resolvió', 'Solicitud de contraseña', id, resolved, null)])
   })
   return resolved ? send(res, 200, { ok: true }) : send(res, 404, { error: 'La solicitud ya no está pendiente.' })
@@ -363,11 +377,10 @@ async function handleSaveState(req, res, sql, user) {
         ...auditChanges(current.reviews, next.reviews, 'id', 'Reseña', user)
       ]
       if (JSON.stringify(current.agenda) !== JSON.stringify(next.agenda)) entries.push(auditEntry(user, 'Modificó', 'Agenda técnica', 'agenda-actual', current.agenda, next.agenda))
-      await replaceCollections(transaction, next, current)
-      if (JSON.stringify(current.customers) !== JSON.stringify(next.customers)) await transaction`delete from pignus_preferences where key = ${CUSTOMER_IMPORT_BACKUP_KEY}`
-      await appendAudit(transaction, entries)
       const nextRevision = currentRevision + 1
-      await transaction`update pignus_preferences set value = ${String(nextRevision)}, updated_at = now() where key = 'state_revision'`
+      await persistStateCollections(transaction, current, next, nextRevision)
+      if (JSON.stringify(current.customers) !== JSON.stringify(next.customers)) await setAuxiliaryPreference(transaction, CUSTOMER_IMPORT_BACKUP_KEY, null)
+      await appendAudit(transaction, entries)
       return { revision: nextRevision, state: { ...next, revision: nextRevision }, merged }
     })
     if (result.merged) logStateConcurrencyEvent('state_write_merged', {
@@ -425,10 +438,9 @@ async function handleServiceCatalog(req, res, sql, user, requestOperation) {
         ...auditChanges(current.history, next.history, 'id', 'Servicio / historial', user)
       ]
       if (JSON.stringify(current.agenda) !== JSON.stringify(next.agenda)) entries.push(auditEntry(user, 'Modificó', 'Agenda técnica', 'agenda-actual', current.agenda, next.agenda))
-      await replaceCollections(transaction, next)
-      await appendAudit(transaction, entries)
       const revision = currentRevision + 1
-      await transaction`update pignus_preferences set value = ${String(revision)}, updated_at = now() where key = 'state_revision'`
+      await persistStateCollections(transaction, current, next, revision)
+      await appendAudit(transaction, entries)
       const persistedService = operation.service ? next.services.find(service => String(service.id) === String(operation.service.id)) || operation.service : null
       return { revision, services: next.services, service: persistedService, outcome: operation.outcome }
     })
@@ -462,10 +474,9 @@ async function handleVehicles(req, res, sql, user, requestOperation) {
       next.employees = secureEmployees(next.employees, current.employees)
       validateState(next, current)
       if (!statePersistenceChanged(current, next)) return { revision: currentRevision, vehicles: current.vehicles, ...operation }
-      await replaceCollections(transaction, next)
-      await appendAudit(transaction, auditChanges(current.vehicles, next.vehicles, 'id', 'Vehículo', user))
       const revision = currentRevision + 1
-      await transaction`update pignus_preferences set value = ${String(revision)}, updated_at = now() where key = 'state_revision'`
+      await persistStateCollections(transaction, current, next, revision)
+      await appendAudit(transaction, auditChanges(current.vehicles, next.vehicles, 'id', 'Vehículo', user))
       const persistedVehicle = operation.vehicle ? next.vehicles.find(vehicle => String(vehicle.id) === String(operation.vehicle.id)) || operation.vehicle : null
       return { revision, vehicles: next.vehicles, vehicle: persistedVehicle, outcome: operation.outcome }
     })
@@ -489,7 +500,8 @@ async function handleExport(req, res, sql, user) {
   const category = String(req.query.category || 'residencial')
   const format = String(req.query.format || 'excel')
   const isRetirement = category === 'retirements'
-  const state = await readExportState(sql)
+  const applicationState = await readState(sql)
+  const state = { services: applicationState.services || [], history: applicationState.history || [] }
   const alarmService = state.services.find(service => service.code === 'alarm-installation')
   const records = state.history.filter(record => {
     if (!record.date?.startsWith(month) || (user.roleCode === 'technician' && !record.technicianIds?.some(id => String(id) === String(user.id)))) return false
@@ -529,7 +541,8 @@ async function handleTechnicianStatus(req, res, sql, user) {
       await transaction`set local lock_timeout = '5s'`
       await transaction`set local statement_timeout = '15s'`
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
-      await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const currentRevision = Number(revisionRows[0]?.value || 0)
       const rows = await transaction`select data from pignus_work_history where id = ${String(recordId)} for update`
       const record = rows[0]?.data
       if (!record) { const error = new Error('El servicio no existe.'); error.statusCode = 404; throw error }
@@ -547,15 +560,16 @@ async function handleTechnicianStatus(req, res, sql, user) {
       }
       const completingVehicleControl = Boolean(record.vehicleControl && type === 'Completado')
       let vehicleChange = null
+      let photo = null
+      const currentState = await readState(transaction)
+      const workingState = structuredClone(currentState)
       if (completingVehicleControl) {
         const mileage = Number(vehicleMileage)
         if (!Number.isInteger(mileage) || mileage < 1 || mileage > 99999999) throw new Error('Ingresá un kilometraje válido.')
         const photoMatch = String(vehiclePhoto || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([a-z0-9+/=]+)$/i)
         const photoBuffer = photoMatch ? Buffer.from(photoMatch[2], 'base64') : null
         if (!photoBuffer?.length || photoBuffer.length > 1_000_000) throw new Error('Cargá una foto válida del interior del vehículo.')
-        const vehicleRows = await transaction`select value from pignus_preferences where key = 'vehicles' for update`
-        let vehicles
-        try { vehicles = JSON.parse(vehicleRows[0]?.value || '[]') } catch { vehicles = [] }
+        const vehicles = structuredClone(currentState.vehicles || [])
         const vehicleIndex = vehicles.findIndex(vehicle => String(vehicle.id) === String(record.vehicleId))
         if (vehicleIndex < 0) { const error = new Error('El vehículo asignado ya no existe.'); error.statusCode = 409; throw error }
         const previousVehicle = vehicles[vehicleIndex]
@@ -563,30 +577,30 @@ async function handleTechnicianStatus(req, res, sql, user) {
         if (mileage <= currentMileage) { const error = new Error(`El kilometraje debe ser superior a ${currentMileage.toLocaleString('es-AR')} km.`); error.statusCode = 409; throw error }
         const nextVehicle = { ...previousVehicle, mileage, mileageUpdatedAt: new Date().toISOString(), mileageUpdatedById: user.id, mileageUpdatedByName: user.name || user.email || 'Técnico' }
         vehicles[vehicleIndex] = nextVehicle
-        await transaction`update pignus_preferences set value = ${JSON.stringify(vehicles)}, updated_at = now() where key = 'vehicles'`
         await transaction`create table if not exists pignus_vehicle_control_photos (record_id text primary key, vehicle_id text not null, mime_type text not null, photo_data bytea not null, created_at timestamptz not null default now())`
         await transaction`alter table pignus_vehicle_control_photos enable row level security`
         await transaction`revoke all on table pignus_vehicle_control_photos from anon, authenticated`
-        await transaction`insert into pignus_vehicle_control_photos (record_id, vehicle_id, mime_type, photo_data, created_at) values (${String(record.id)}, ${String(record.vehicleId)}, ${photoMatch[1].toLowerCase()}, ${photoBuffer}, now()) on conflict (record_id) do update set vehicle_id = excluded.vehicle_id, mime_type = excluded.mime_type, photo_data = excluded.photo_data, created_at = excluded.created_at`
         vehicleChange = { before: previousVehicle, after: nextVehicle, mileage }
+        photo = { recordId: record.id, vehicleId: record.vehicleId, mimeType: photoMatch[1].toLowerCase(), data: photoBuffer, createdAt: new Date().toISOString() }
+        workingState.vehicles = vehicles
       } else if (!String(observation || '').trim()) throw new Error('La observación es obligatoria para informar el servicio.')
       if (type === 'Completado' && !record.vehicleControl) assertServiceCanBeCompleted(record)
       const now = new Date().toISOString()
       const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
-      await transaction`update pignus_work_history set status = ${next.status}, data = ${transaction.json(next)} where id = ${String(record.id)}`
       const entries = [auditEntry(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, next)]
       if (vehicleChange) entries.push(auditEntry(user, 'Actualizó kilometraje por control semanal', 'Vehículo', String(record.vehicleId), vehicleChange.before, vehicleChange.after))
+      workingState.history = workingState.history.map(item => String(item.id) === String(next.id) ? next : item)
+      let nextState = workingState
       if (next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo')) {
-        const state = await readState(transaction)
-        state.history = state.history.map(item => String(item.id) === String(next.id) ? next : item)
-        const normalized = normalizeRetirementCustomers(state)
+        const normalized = normalizeRetirementCustomers(nextState)
         if (normalized.conversions.length) {
-          await replaceCollections(transaction, normalized.state)
+          nextState = normalized.state
           normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
         }
       }
+      await persistStateCollections(transaction, currentState, nextState, currentRevision + 1)
+      if (photo) await upsertVehicleControlPhoto(transaction, photo)
       await appendAudit(transaction, entries)
-      await transaction`update pignus_preferences set value = (value::integer + 1)::text, updated_at = now() where key = 'state_revision'`
       return next
     })
     return send(res, 200, { record: technicianSafeRecord(updated) })
@@ -598,16 +612,18 @@ async function handleTechnicianStatus(req, res, sql, user) {
 
 async function clearDailyAgenda(sql, user) {
   return sql.begin(async transaction => {
-    await transaction`select value from pignus_preferences where key = 'state_revision' for update`
-    const rows = await transaction`select data from pignus_agendas where id = 'current' for update`
-    const previous = rows[0]?.data || {}
+    await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+    const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+    const currentRevision = Number(revisionRows[0]?.value || 0)
+    await transaction`select data from pignus_agendas where id = 'current' for update`
+    const current = await readState(transaction)
+    const previous = current.agenda || {}
     const date = new Date().toISOString().slice(0, 10)
     const teamId = `team-${crypto.createHash('sha256').update(`${date.slice(0, 7)}:0`).digest('hex').slice(0, 20)}`
     const next = { ...previous, date, teams: [{ teamId, memberIds: [], members: [], tasks: [] }] }
-    await transaction`insert into pignus_agendas (id, data, updated_at) values ('current', ${transaction.json(next)}, now()) on conflict (id) do update set data = excluded.data, updated_at = now()`
+    await persistStateCollections(transaction, current, { ...current, agenda: next }, currentRevision + 1)
     await appendAudit(transaction, [auditEntry(user, 'Limpió', 'Agenda del día', 'agenda-diaria', previous, next)])
-    const result = await transaction`update pignus_preferences set value = (value::integer + 1)::text, updated_at = now() where key = 'state_revision' returning value`
-    return Number(result[0].value)
+    return currentRevision + 1
   })
 }
 
@@ -620,7 +636,8 @@ async function handleHistoryRecordUpdate(req, res, sql, user, recordId) {
       await transaction`set local lock_timeout = '5s'`
       await transaction`set local statement_timeout = '15s'`
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
-      await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const lockedRevision = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const currentRevision = Number(lockedRevision[0]?.value || 0)
       const rows = await transaction`select data from pignus_work_history where id = ${String(recordId)} for update`
       const current = rows[0]?.data
       if (!current) { const error = new Error('El servicio ya no existe.'); error.statusCode = 404; throw error }
@@ -636,26 +653,23 @@ async function handleHistoryRecordUpdate(req, res, sql, user, recordId) {
         const { completedAt: _discardedCompletion, ...withoutCompletion } = next
         next = withoutCompletion
       }
-      await transaction`update pignus_work_history set work_date = ${next.date || null}, status = ${next.status}, service_id = ${next.serviceId == null ? null : String(next.serviceId)}, customer_id = ${next.customerId == null ? null : String(next.customerId)}, data = ${transaction.json(next)} where id = ${String(recordId)}`
-      const agendaRows = await transaction`select data from pignus_agendas where id = 'current' for update`
-      const currentAgenda = agendaRows[0]?.data
-      if (currentAgenda) {
-        const nextAgenda = synchronizeAgendaHistoryRecord(currentAgenda, current, next)
-        if (JSON.stringify(nextAgenda) !== JSON.stringify(currentAgenda)) await transaction`update pignus_agendas set data = ${transaction.json(nextAgenda)}, updated_at = now() where id = 'current'`
-      }
+      await transaction`select data from pignus_agendas where id = 'current' for update`
+      const currentState = await readState(transaction)
+      let nextState = structuredClone(currentState)
+      nextState.history = nextState.history.map(item => String(item.id) === String(recordId) ? next : item)
+      if (nextState.agenda) nextState.agenda = synchronizeAgendaHistoryRecord(nextState.agenda, current, next)
       const entries = [auditEntry(user, 'Modificó', 'Servicio / historial', String(recordId), current, next)]
       if (next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo')) {
-        const state = await readState(transaction)
-        const normalized = normalizeRetirementCustomers(state)
+        const normalized = normalizeRetirementCustomers(nextState)
         if (normalized.conversions.length) {
-          await replaceCollections(transaction, normalized.state)
+          nextState = normalized.state
           normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
         }
       }
+      await persistStateCollections(transaction, currentState, nextState, currentRevision + 1)
       await appendAudit(transaction, entries)
-      const revisionRows = await transaction`update pignus_preferences set value = (value::integer + 1)::text, updated_at = now() where key = 'state_revision' returning value`
       const state = await readState(transaction)
-      return { revision: Number(revisionRows[0]?.value || 0), state }
+      return { revision: currentRevision + 1, state }
     })
     return send(res, 200, { ok: true, revision: result.revision, state: visibleStateForUser({ ...result.state, revision: result.revision }, user) })
   } catch (error) {
@@ -674,21 +688,21 @@ async function handleServiceAdvance(req, res, sql, user, decision = '') {
       await transaction`set local lock_timeout = '5s'`
       await transaction`set local statement_timeout = '15s'`
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
-      await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const currentRevision = Number(revisionRows[0]?.value || 0)
       const rows = await transaction`select data from pignus_work_history where id = ${String(recordId || '')} for update`
       const previous = rows[0]?.data
       const next = administratorDecision ? resolveServiceAdvance(previous, user, decision) : requestServiceAdvance(previous, user)
       if (next === previous) return { record: previous, revision: await readRevision(transaction) }
-      await transaction`update pignus_work_history set data = ${transaction.json(next)} where id = ${String(next.id)}`
-      const agendaRows = await transaction`select data from pignus_agendas where id = 'current' for update`
-      if (agendaRows[0]?.data) {
-        const nextAgenda = synchronizeAgendaAdvance(agendaRows[0].data, next)
-        await transaction`update pignus_agendas set data = ${transaction.json(nextAgenda)}, updated_at = now() where id = 'current'`
-      }
+      await transaction`select data from pignus_agendas where id = 'current' for update`
+      const currentState = await readState(transaction)
+      const nextState = structuredClone(currentState)
+      nextState.history = nextState.history.map(item => String(item.id) === String(next.id) ? next : item)
+      if (nextState.agenda) nextState.agenda = synchronizeAgendaAdvance(nextState.agenda, next)
       const action = administratorDecision ? (decision === 'approved' ? 'Aprobó adelanto de servicio' : 'Denegó adelanto de servicio') : 'Solicitó adelanto de servicio'
+      await persistStateCollections(transaction, currentState, nextState, currentRevision + 1)
       await appendAudit(transaction, [auditEntry(user, action, 'Servicio / historial', String(next.id), previous, next)])
-      const revisionRows = await transaction`update pignus_preferences set value = (value::integer + 1)::text, updated_at = now() where key = 'state_revision' returning value`
-      return { record: next, revision: Number(revisionRows[0]?.value || 0) }
+      return { record: next, revision: currentRevision + 1 }
     })
     return send(res, 200, { record: user.roleCode === 'technician' ? technicianSafeRecord(result.record) : result.record, revision: result.revision })
   } catch (error) {
@@ -716,7 +730,8 @@ async function handleCustomerImport(req, res, sql, user) {
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
       const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const currentRevision = Number(revisionRows[0]?.value || 0)
-      const currentCustomers = await readCustomers(transaction)
+      const currentState = await readState(transaction)
+      const currentCustomers = currentState.customers || []
       let nextCustomers
       if (undo) {
         const backupRows = await transaction`select value from pignus_preferences where key = ${CUSTOMER_IMPORT_BACKUP_KEY} for update`
@@ -734,14 +749,12 @@ async function handleCustomerImport(req, res, sql, user) {
       const changes = customerImportChanges(currentCustomers, nextCustomers)
       if (!undo) {
         const backup = { ...changes.backup, importedAt: new Date().toISOString(), importedBy: { id: user.id, name: user.name, email: user.email } }
-        await transaction`insert into pignus_preferences (key, value, updated_at) values (${CUSTOMER_IMPORT_BACKUP_KEY}, ${JSON.stringify(backup)}, now()) on conflict (key) do update set value = excluded.value, updated_at = now()`
+        await setAuxiliaryPreference(transaction, CUSTOMER_IMPORT_BACKUP_KEY, JSON.stringify(backup))
       }
-      if (changes.remove.length) await transaction`delete from pignus_customers where account in ${transaction(changes.remove.map(record => String(record.account)))}`
-      if (changes.upsert.length) await transaction`insert into pignus_customers ${transaction(changes.upsert.map(record => ({ account: String(record.account), customer_id: String(record.customerId), data: transaction.json(record) })))} on conflict (account) do update set customer_id = excluded.customer_id, data = excluded.data`
-      if (undo) await transaction`delete from pignus_preferences where key = ${CUSTOMER_IMPORT_BACKUP_KEY}`
-      await appendAudit(transaction, [auditEntry(user, undo ? 'Deshizo importación' : 'Importó', 'Abonados / Clientes', 'importacion-maestra', { total: currentCustomers.length }, { total: nextCustomers.length, modified: changes.upsert.length, removed: changes.remove.length })])
+      if (undo) await setAuxiliaryPreference(transaction, CUSTOMER_IMPORT_BACKUP_KEY, null)
       const nextRevision = currentRevision + 1
-      await transaction`update pignus_preferences set value = ${String(nextRevision)}, updated_at = now() where key = 'state_revision'`
+      await persistStateCollections(transaction, currentState, { ...currentState, customers: nextCustomers }, nextRevision)
+      await appendAudit(transaction, [auditEntry(user, undo ? 'Deshizo importación' : 'Importó', 'Abonados / Clientes', 'importacion-maestra', { total: currentCustomers.length }, { total: nextCustomers.length, modified: changes.upsert.length, removed: changes.remove.length })])
       return { revision: nextRevision, customers: nextCustomers, canUndo: !undo }
     })
     return send(res, 200, result)
