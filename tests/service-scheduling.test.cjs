@@ -98,6 +98,17 @@ test('el servidor registra, conserva y limpia la hora real según la transición
   assert.throws(() => assertServiceCanBeCompleted({ date: '2026-08-31', time: '08:00' }, now), /antes de su fecha y hora/)
 })
 
+test('sólo el guardado administrativo puede completar antes del horario programado', () => {
+  const now = '2026-08-30T15:00:00.000Z'
+  const pending = { id: 'h1', date: '2026-08-31', time: '10:00', status: 'Pendiente' }
+  const proposed = { ...pending, status: 'Completado' }
+
+  assert.throws(() => normalizeHistoryCompletionTimes([proposed], [pending], now), /antes de su fecha y hora/)
+  const completed = normalizeHistoryCompletionTimes([proposed], [pending], now, { allowEarlyCompletion: true })[0]
+  assert.equal(completed.status, 'Completado')
+  assert.equal(completed.completedAt, now)
+})
+
 test('asigna 15 minutos a registros antiguos sin duración y conserva ajustes particulares', () => {
   const service = { id: 's1', code: 's1', name: 'Instalación de cámaras', description: '', estimatedMinutes: 180, status: 'Activo' }
   const base = {
@@ -185,6 +196,11 @@ test('la API admite una reserva PIG sin crear un cliente y exige sus datos provi
   assert.doesNotThrow(() => validateState(base))
   assert.throws(() => validateState({ ...base, history: [{ ...reservation, phone: '' }] }), /reserva PIG debe incluir nombre, dirección y contacto provisorios/)
   assert.throws(() => validateState({ ...base, customers: [{ customerId: 'c1', account: 'PIG-9000' }], history: [{ ...reservation, customerId: 'c1' }] }), /reserva PIG pendiente no puede estar vinculada/)
+
+  const cameras = { ...service, id: 's2', code: 'camera-installation', name: 'Instalación de cámaras' }
+  const invalid = { ...reservation, serviceId: cameras.id, service: cameras.name }
+  assert.throws(() => validateState({ ...base, services: [service, cameras], history: [invalid] }), /Reserva PIG sólo está disponible para Instalación de alarma/)
+  assert.doesNotThrow(() => validateState({ ...base, services: [service, cameras], history: [invalid] }, { ...base, services: [service, cameras], history: [invalid] }))
 })
 
 test('los servicios completados y los cancelados de fechas pasadas no participan en conflictos de agenda', () => {

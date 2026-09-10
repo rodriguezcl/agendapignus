@@ -230,6 +230,17 @@ test('el control vehicular es autónomo y no muestra dirección, contacto ni avi
   assert.match(source, /Reemplazos por contingencia/)
 })
 
+test('el administrador puede omitir un control semanal sin que se regenere ni llegue al técnico', () => {
+  const fs = require('node:fs')
+  const path = require('node:path')
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+
+  assert.match(source, /selectedTask\?\.vehicleControl && !isAdministrator/)
+  assert.match(source, /\(!task\.vehicleControl \|\| isAdministrator\) && <button type="button" className="weekly-task-delete"/)
+  assert.match(source, /buildVehicleControlRecords[\s\S]*?\.filter\(record => !weeklyTaskRemovalAliases\(vehicleControlTask\(record\)\)/)
+  assert.match(source, /El control vehicular fue omitido para esta semana y ya no se mostrará al técnico\./)
+})
+
 test('la captura vehicular admite imágenes del teléfono y solicita la cámara trasera', () => {
   const fs = require('node:fs')
   const path = require('node:path')

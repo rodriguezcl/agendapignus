@@ -368,7 +368,7 @@ async function handleSaveState(req, res, sql, user) {
         error.statusCode = 409
         throw error
       }
-      next = normalizeStateForSave(next, current)
+      next = normalizeStateForSave(next, current, { allowEarlyCompletion: user.roleCode === 'administrator' })
       next.employees = secureEmployees(next.employees, current.employees)
       validateState(next, current)
       assertNoAccidentalHistoryWipe(current.history, next.history)
@@ -656,7 +656,7 @@ async function handleHistoryRecordUpdate(req, res, sql, user, recordId) {
       const now = new Date().toISOString()
       let next = { ...current, ...proposed, id: current.id, status: proposed.status || 'Pendiente' }
       if (next.status === 'Completado' && current.status !== 'Completado') {
-        assertServiceCanBeCompleted(next, now)
+        if (user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
         next = { ...next, completedAt: next.completedAt || now }
       } else if (next.status !== 'Completado') {
         const { completedAt: _discardedCompletion, ...withoutCompletion } = next

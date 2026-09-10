@@ -751,6 +751,18 @@ const subscriberReservationPatch = (value, user) => ({
   reservationCreatedAt: new Date().toISOString(),
   reservationCreatedBy: serviceActor(user)
 })
+const clearSubscriberReservationPatch = task => task?.subscriberReservation ? {
+  newCustomer: false,
+  subscriberReservation: false,
+  customerId: '',
+  client: '',
+  clientAccount: '',
+  clientNameAtService: '',
+  address: '',
+  phone: '',
+  reservationCreatedAt: '',
+  reservationCreatedBy: null
+} : {}
 const customerLinkPatch = (task, customer, user) => ({
   newCustomer: false,
   subscriberReservation: false,
@@ -814,7 +826,10 @@ function CustomerAutocomplete({ value = '', customerId = '', customers = [], sub
   }
   const commitText = () => {
     const availableCustomers = subscriberReservation ? customers.filter(customer => customerKind(customer) === 'subscriber') : customers
-    const exact = availableCustomers.find(customer => [customer.account, customer.name, `${customer.account} ${customer.name}`, `${customer.name} ${customer.account}`]
+    // El nombre por sí solo no identifica una cuenta: dos personas pueden ser
+    // homónimas. La selección automática sólo es segura con el código o con la
+    // etiqueta completa; por nombre se exige elegir una sugerencia.
+    const exact = availableCustomers.find(customer => [customer.account, `${customer.account} ${customer.name}`]
       .some(label => normalizeSearchText(label) === normalizedQuery))
     if (exact) choose(exact)
     else if (query !== value) onTextCommit(query)
@@ -957,6 +972,7 @@ const weeklyTaskMissingFields = (task, service) => {
     .filter(([, value]) => !String(value || '').trim())
     .map(([label]) => label)
   if (serviceCode(service) === 'alarm-installation' && !task?.installationZone) missing.push('ubicación de la instalación')
+  if (task?.subscriberReservation && serviceCode(service) !== 'alarm-installation') missing.push('una cuenta CLI o PIG registrada (Reserva PIG sólo está disponible para Instalación de alarma)')
   if (requiresPaymentAmount(task, service)) missing.push('monto')
   return missing
 }
@@ -2251,7 +2267,9 @@ function DailyCustomerField({ task, customers, teamIndex, taskIndex, onTextCommi
     onTextCommit={value => onTextCommit(teamIndex, taskIndex, value)}
     onCustomerSelect={customer => onCustomerSelect(teamIndex, taskIndex, customer)}
     onAddCustomer={value => onAddCustomer(teamIndex, taskIndex, value)}
-    onReserveSubscriber={value => onReserveSubscriber(teamIndex, taskIndex, value)}
+    onReserveSubscriber={onReserveSubscriber
+      ? value => onReserveSubscriber(teamIndex, taskIndex, value)
+      : undefined}
   />
 }
 
@@ -2607,7 +2625,7 @@ function AgendaWorkspaceForm({ persistAgendaRecords, date, setDate, teams, setTe
     const nextTask = selected
       ? { ...currentTask, serviceId: selected.id, service: selected.name, estimatedMinutes: normalizeServiceEstimatedMinutes(selected.estimatedMinutes), estimatedMinutesCustomized: false, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
       : { ...currentTask, serviceId: '', service: '', estimatedMinutes: undefined, estimatedMinutesCustomized: false, installationZone: '' }
-    updateTask(teamIndex, taskIndex, { ...nextTask, ...applicableServiceExtras(nextTask, selected) })
+    updateTask(teamIndex, taskIndex, { ...nextTask, ...clearSubscriberReservationPatch(selected && serviceCode(selected) === 'alarm-installation' ? null : currentTask), ...applicableServiceExtras(nextTask, selected) })
   }
   const conflictForDailyTask = (teamIndex, taskIndex) => {
     const team = teams[teamIndex]
@@ -2636,6 +2654,7 @@ function AgendaWorkspaceForm({ persistAgendaRecords, date, setDate, teams, setTe
       if (!task.time) fields.push('hora')
       if (!task.service) fields.push('tipo de servicio')
       if (!task.customerId && !task.subscriberReservation) fields.push('abonado o cliente registrado, o reserva PIG')
+      if (task.subscriberReservation && serviceCode(serviceForTask(task)) !== 'alarm-installation') fields.push('una cuenta CLI o PIG registrada; Reserva PIG sólo corresponde a Instalación de alarma')
       if (!task.address) fields.push('dirección')
       if (!task.phone) fields.push('contacto')
       if (serviceCode(serviceForTask(task)) === 'alarm-installation' && !task.installationZone) fields.push('ubicación de la instalación')
@@ -2968,7 +2987,7 @@ function AgendaWorkspaceForm({ persistAgendaRecords, date, setDate, teams, setTe
     document.body.append(layer)
     return () => layer.remove()
   }, [taskMove, teams])
-  const dailyCustomerField = (task, teamIndex, taskIndex) => <DailyCustomerField task={task} customers={customers} teamIndex={teamIndex} taskIndex={taskIndex} onTextCommit={commitCustomerText} onCustomerSelect={selectCustomerResult} onAddCustomer={beginNewCustomer} onReserveSubscriber={beginSubscriberReservation} />
+  const dailyCustomerField = (task, teamIndex, taskIndex) => <DailyCustomerField task={task} customers={customers} teamIndex={teamIndex} taskIndex={taskIndex} onTextCommit={commitCustomerText} onCustomerSelect={selectCustomerResult} onAddCustomer={beginNewCustomer} onReserveSubscriber={serviceCode(serviceForTask(task)) === 'alarm-installation' ? beginSubscriberReservation : undefined} />
   if (pastDayBlocked) {
     return <><div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA</p><h1>Jornada finalizada</h1><p>Las fechas pasadas son de solo lectura en las agendas. Consultá o corregí los servicios registrados desde Historial.</p></div></div><div className="agenda-toolbar"><label><RequiredLabel>Fecha de trabajo</RequiredLabel><input required min={currentLocalDate()} type="date" value={date} onChange={event => setDate(event.target.value)} /></label><span>{prettyDate(date)}</span></div><p className="weekly-guard-advanced"><Icon name="lock" size={16} /><span>Esta jornada ya finalizó y no admite equipos ni servicios nuevos.</span></p></>
   }
@@ -3040,7 +3059,7 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
     const nextTask = selected
       ? { ...currentTask, serviceId: selected.id, service: selected.name, estimatedMinutes: normalizeServiceEstimatedMinutes(selected.estimatedMinutes), estimatedMinutesCustomized: false, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
       : { ...currentTask, serviceId: '', service: '', estimatedMinutes: undefined, estimatedMinutesCustomized: false, installationZone: '' }
-    updateTask(day, teamIndex, taskIndex, { ...nextTask, ...applicableServiceExtras(nextTask, selected) })
+    updateTask(day, teamIndex, taskIndex, { ...nextTask, ...clearSubscriberReservationPatch(selected && serviceCode(selected) === 'alarm-installation' ? null : currentTask), ...applicableServiceExtras(nextTask, selected) })
   }
   const weeklyTechnicianName = fullName => activeTechs.find(tech => tech.name === fullName)?.firstName || String(fullName || '').split(' ')[0]
   const monthKey = anchor.slice(0, 7)
@@ -3217,7 +3236,7 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
     const nextTask = selected
       ? { ...currentTask, serviceId: selected.id, service: selected.name, estimatedMinutes: normalizeServiceEstimatedMinutes(selected.estimatedMinutes), estimatedMinutesCustomized: false, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask.installationZone || '' : '' }
       : { ...currentTask, serviceId: '', service: '', estimatedMinutes: undefined, estimatedMinutesCustomized: false, installationZone: '' }
-    updateTaskDraft({ ...nextTask, ...applicableServiceExtras(nextTask, selected) })
+    updateTaskDraft({ ...nextTask, ...clearSubscriberReservationPatch(selected && serviceCode(selected) === 'alarm-installation' ? null : currentTask), ...applicableServiceExtras(nextTask, selected) })
   }
   const commitDraftCustomerText = value => updateTaskDraft({ newCustomer: false, subscriberReservation: false, customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
   const selectDraftCustomer = customer => updateTaskDraft(customerLinkPatch(taskEditor?.draft, customer, authUser))
@@ -3527,6 +3546,9 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
     updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, tasks: [...team.tasks, { ...blankTask(), time: '', manualSlot: true }] } : team) }))
   }
   const removeWeeklyTask = ({ day, teamId, teamIndex, taskId, historyId, taskIndex, time, wasPlaceholder }) => {
+    const selectedTeam = dayPlan(day).teams.find((team, index) => (teamId && String(team.teamId || '') === String(teamId)) || index === teamIndex)
+    const selectedTask = selectedTeam?.tasks?.find((task, index) => (taskId && String(task.taskId || '') === String(taskId)) || (historyId && String(task.historyId || '') === String(historyId)) || index === taskIndex)
+    if (selectedTask?.vehicleControl && !isAdministrator) { setNotice('Sólo el rol Administrador puede omitir un control vehicular.'); setTaskRemoval(null); return }
     updateDay(day, plan => {
       let removedSlots = plan.removedSlots || []
       const removedTaskIds = [...new Set([...(plan.removedTaskIds || []), ...weeklyTaskRemovalAliases({ taskId, historyId })])]
@@ -3556,7 +3578,7 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
     })
     window.dispatchEvent(new CustomEvent('pignus:remove-weekly-task', { detail: { day, teamId, teamIndex, taskIndex, taskId, historyId } }))
     setTaskRemoval(null)
-    setNotice('El servicio fue eliminado de la planificación semanal.')
+    setNotice(selectedTask?.vehicleControl ? 'El control vehicular fue omitido para esta semana y ya no se mostrará al técnico.' : 'El servicio fue eliminado de la planificación semanal.')
   }
   const suggestedMonthlyTeams = () => {
     const rotation = monthlyTeamRotation(activeTechs, monthKey, '2026-01', vehicles.length || 3)
@@ -3673,6 +3695,7 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
       return { ...assignment, vehicle: snapshot?.vehicle || '', technician: snapshot?.technician || '' }
     })
     const records = buildVehicleControlRecords({ month: monthlyVehicleSetup.month, assignments: persistedAssignments, vehicles, technicians: activeTechs, teams, fromDate: today, holidays: holidayCalendar.records, holidayOverrides: weekly._holidayOverrides || {} })
+      .filter(record => !weeklyTaskRemovalAliases(vehicleControlTask(record)).some(alias => (weekly?.[record.date]?.removedTaskIds || []).includes(alias)))
     setHistory(previous => {
       const preserved = previous.filter(record => !(record.vehicleControl && record.monthlyVehicleAssignment === monthlyVehicleSetup.month && !record.technicalStatus))
       const preservedIds = new Set(preserved.map(record => String(record.id)))
@@ -3865,7 +3888,7 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
   return <>
     {techPicker && <button className="picker-backdrop" aria-label="Cerrar selector de técnicos" onClick={() => setTechPicker(null)} />}
     {teamRemoval && <Confirm title="Quitar equipo" detail={`¿Querés quitar ${teamRemoval.label} de la planificación del ${prettyDate(teamRemoval.day)}? Se eliminarán también sus servicios.`} destructive action={() => removeWeeklyTeam(teamRemoval.day, teamRemoval.teamIndex)} close={() => setTeamRemoval(null)} />}
-    {taskRemoval && <Confirm title="Eliminar servicio" detail={`¿Querés eliminar el Servicio ${taskRemoval.taskIndex + 1} de ${taskRemoval.label} para el ${prettyDate(taskRemoval.day)}?${taskRemoval.historyId ? ' También se quitará el registro pendiente vinculado.' : ''}`} destructive action={() => removeWeeklyTask(taskRemoval)} close={() => setTaskRemoval(null)} />}
+    {taskRemoval && <Confirm title={taskRemoval.vehicleControl ? 'Omitir control vehicular' : 'Eliminar servicio'} detail={taskRemoval.vehicleControl ? `¿Querés omitir este control para el ${prettyDate(taskRemoval.day)}? El técnico no tendrá que realizarlo y no se volverá a generar al guardar la configuración mensual.` : `¿Querés eliminar el Servicio ${taskRemoval.taskIndex + 1} de ${taskRemoval.label} para el ${prettyDate(taskRemoval.day)}?${taskRemoval.historyId ? ' También se quitará el registro pendiente vinculado.' : ''}`} destructive action={() => removeWeeklyTask(taskRemoval)} close={() => setTaskRemoval(null)} />}
     {taskMove && (() => {
       const sourcePlan = dayPlan(taskMove.day)
       const sourceTeam = sourcePlan.teams.find(team => taskMove.sourceTeamId && String(team.teamId || '') === String(taskMove.sourceTeamId)) || sourcePlan.teams[taskMove.sourceTeamIndex]
@@ -3896,7 +3919,7 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
       const taskConflict = conflictForWeeklyTask(day, teamIndex, taskIndex, task)
       if (!task || !hours) return null
       return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => { if (!taskEditorSaving) setTaskEditor(null) }}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button type="button" className="modal-close" aria-label="Cerrar edición del servicio" title="Cerrar" onClick={() => { if (!taskEditorSaving) setTaskEditor(null) }}><Icon name="close" size={18} /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>{task.vehicleControl ? 'Control semanal de vehículo' : `Servicio ${taskIndex + 1}`}</h2><p className="weekly-modal-team">{taskEditor.teamSnapshot?.label || `Equipo ${teamIndex + 1}`} · {taskEditor.teamSnapshot?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTaskDraft({ time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" disabled={task.vehicleControl} value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectDraftService(event.target.value)}>{task.vehicleControl && serviceForWeeklyTask(task) ? <option value={serviceForWeeklyTask(task).id}>{serviceForWeeklyTask(task).name}</option> : <><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</>}</select></label></div>{task.vehicleControl ? <label className="vehicle-control-fixed-duration"><span><RequiredLabel>Tiempo estimado</RequiredLabel></span><input value="15 minutos" readOnly /></label> : <ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTaskDraft({ estimatedMinutes, estimatedMinutesCustomized: true })} />}{task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))}</small>}{taskConflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>{scheduleConflictForTaskMessage(taskConflict, taskIndex)}</span></p>}{task.vehicleControl ? <div className="vehicle-control-planning-fields"><label>Vehículo<input value={task.client || vehicleLabel(task)} readOnly /></label><label><RequiredLabel>Técnico a cargo</RequiredLabel><select value={task.technicianIds?.[0] || ''} onChange={event => { const technician = activeTechs.find(item => String(item.id) === event.target.value); updateTaskDraft({ technicianIds: technician ? [technician.id] : [], technicians: technician ? [technician.name] : [] }) }}><option value="">Seleccionar técnico</option>{activeTechs.map(technician => <option key={technician.id} value={technician.id}>{technician.name}</option>)}</select></label><p>Podés reemplazar al responsable para este control ante una contingencia. La asignación mensual predeterminada no se modifica.</p></div> : <>{serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input aria-required="true" type="radio" name={`weekly-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTaskDraft({ installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
-<CustomerAutocomplete className="weekly-customer-search" value={task.client} customerId={task.customerId} customers={customers} subscriberReservation={task.subscriberReservation} onTextCommit={commitDraftCustomerText} onCustomerSelect={selectDraftCustomer} onAddCustomer={beginDraftNewCustomer} onReserveSubscriber={beginDraftSubscriberReservation} />
+<CustomerAutocomplete className="weekly-customer-search" value={task.client} customerId={task.customerId} customers={customers} subscriberReservation={task.subscriberReservation} onTextCommit={commitDraftCustomerText} onCustomerSelect={selectDraftCustomer} onAddCustomer={beginDraftNewCustomer} onReserveSubscriber={serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' ? beginDraftSubscriberReservation : undefined} />
 <label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.address} onChange={event => updateTaskDraft({ address: event.target.value })} /></label><label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.phone} onChange={event => updateTaskDraft({ phone: event.target.value })} /></label><p className="weekly-customer-data-note">{task.subscriberReservation ? 'Estos datos son provisorios y no crean un CLI. Vinculá el PIG importado cuando esté disponible.' : task.newCustomer ? 'Completá dirección y contacto para crear el cliente CLI al guardar.' : 'Dirección y contacto se administran desde el módulo Abonados y clientes.'}</p><label><RequiredLabel>Detalle</RequiredLabel><BufferedTextarea aria-required="true" value={task.detail} onCommit={value => updateTaskDraft({ detail: value })} /></label><ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} onChange={updateTaskDraft} /></>}</div><div className="modal-actions"><button className="secondary" disabled={taskEditorSaving} onClick={() => { if (!taskEditorSaving) setTaskEditor(null) }}>Cancelar</button><button className="primary" disabled={taskEditorSaving} onClick={saveTaskEditor}><Icon name="check" size={16} />{taskEditorSaving ? 'Guardando…' : 'Guardar servicio'}</button></div></section></div>
     })()}
     <div className="weekly-scroll-top" ref={weeklyTopScrollRef} tabIndex={0} aria-label="Desplazamiento horizontal superior" onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyBoardRef.current)}><div style={{ width: `${weeklyScrollWidth}px` }} /></div>
@@ -3924,14 +3947,14 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
               return <article className="week-team" key={team.teamId || teamIndex}>
                 <div className="week-team-header"><div className="week-team-identity"><strong>{team.label || `Equipo ${teamIndex + 1}`}</strong><span title={team.members?.join(' · ') || 'Sin técnicos'}>{team.members?.length ? team.members.map(weeklyTechnicianName).join(' · ') : 'Sin técnicos'}</span></div><div className="weekly-team-actions">{plan.teams.length > 1 && <button className="weekly-remove-team" title="Quitar equipo" aria-label={`Quitar ${team.label || `Equipo ${teamIndex + 1}`}`} onClick={() => setTeamRemoval({ day, teamIndex, label: team.label || `Equipo ${teamIndex + 1}` })}><Icon name="trash" size={15} /></button>}<div className="weekly-technicians-picker"><button className="secondary small weekly-add-tech-button" title="Agregar técnicos" aria-label="Agregar técnicos" onClick={() => { setTechPicker(techPicker === pickerKey ? null : pickerKey); setTechFilter('') }}><Icon name="users" size={16} /><span aria-hidden="true">+</span></button>{techPicker === pickerKey && <div className="tech-popover weekly-tech-popover"><div className="weekly-tech-popover-title"><div><strong>Asignar técnicos</strong><small>{team.label || `Equipo ${teamIndex + 1}`}</small></div><span>{team.members?.length || 0} seleccionados</span></div><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={event => setTechFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(techFilter.toLowerCase())).map(tech => <label key={tech.id} title={tech.name}><input type="checkbox" checked={(team.members || []).includes(tech.name)} onChange={() => toggleWeeklyTech(day, teamIndex, tech.name)} />{tech.firstName || tech.name.split(' ')[0]}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div></div>}</div></div></div>
                 {team.tasks.map((task, taskIndex) => <div className={`week-task week-task-summary ${!task.client ? 'available-slot' : ''}`} key={task.taskId || taskIndex} role="button" tabIndex={0} onClick={() => openTaskEditor(day, teamIndex, taskIndex)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openTaskEditor(day, teamIndex, taskIndex) } }}>
-                  <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><div className="week-task-title-actions"><small>{task.time || '--:--'} Hs</small>{(task.customerId || task.client || task.service) && !taskIsResolvedForPlanning(task, day, operationalHistory) && <button type="button" className="weekly-task-move" title="Reasignar equipo o fecha" aria-label={`Reasignar Servicio ${taskIndex + 1} a otro equipo o fecha`} onClick={event => openWeeklyTaskMove(event, day, teamIndex, taskIndex)}><span aria-hidden="true">⇄</span></button>}<button type="button" className="weekly-task-delete" title="Eliminar servicio" aria-label={`Eliminar Servicio ${taskIndex + 1}`} onClick={event => { event.stopPropagation(); setTaskRemoval({ day, teamId: team.teamId, teamIndex, taskIndex, taskId: task.taskId, historyId: task.historyId, time: task.time || task.scheduledTime || '', wasPlaceholder: !taskHasContent(task), label: team.label || `Equipo ${teamIndex + 1}` }) }}><Icon name="trash" size={14} /></button></div></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>
+                  <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><div className="week-task-title-actions"><small>{task.time || '--:--'} Hs</small>{(task.customerId || task.client || task.service) && !taskIsResolvedForPlanning(task, day, operationalHistory) && <button type="button" className="weekly-task-move" title="Reasignar equipo o fecha" aria-label={`Reasignar Servicio ${taskIndex + 1} a otro equipo o fecha`} onClick={event => openWeeklyTaskMove(event, day, teamIndex, taskIndex)}><span aria-hidden="true">⇄</span></button>}{(!task.vehicleControl || isAdministrator) && <button type="button" className="weekly-task-delete" title={task.vehicleControl ? 'Omitir control vehicular esta semana' : 'Eliminar servicio'} aria-label={task.vehicleControl ? `Omitir control vehicular del ${prettyDate(day)}` : `Eliminar Servicio ${taskIndex + 1}`} onClick={event => { event.stopPropagation(); setTaskRemoval({ day, teamId: team.teamId, teamIndex, taskIndex, taskId: task.taskId, historyId: task.historyId, time: task.time || task.scheduledTime || '', wasPlaceholder: !taskHasContent(task), vehicleControl: Boolean(task.vehicleControl), label: team.label || `Equipo ${teamIndex + 1}` }) }}><Icon name="trash" size={14} /></button>}</div></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>
                   <TaskStatusBadge task={task} date={day} history={operationalHistory} weekly />
                   {task.vehicleControl ? <div className="vehicle-control-summary"><span><b>Duración:</b> 15 minutos · 15:30–15:45</span><span><b>Técnico responsable:</b> {task.technicians?.[0] || 'Sin asignar'}</span><small>Abrí la tarjeta para cambiar excepcionalmente el técnico de este control.</small></div> : <>
                   <div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTask(day, teamIndex, taskIndex, { time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectWeeklyService(day, teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div>
                   <ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTask(day, teamIndex, taskIndex, { estimatedMinutes, estimatedMinutesCustomized: true })} />
                   {task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))}</small>}
                   {(() => { const conflict = conflictForWeeklyTask(day, teamIndex, taskIndex); return conflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={15} /><span>{scheduleConflictForTaskMessage(conflict, taskIndex)}</span></p> })()}
-                  <CustomerAutocomplete value={task.client} customerId={task.customerId} customers={customers} subscriberReservation={task.subscriberReservation} onTextCommit={value => commitWeeklyCustomerText(day, teamIndex, taskIndex, value)} onCustomerSelect={customer => selectWeeklyCustomerResult(day, teamIndex, taskIndex, customer)} onAddCustomer={value => beginWeeklyNewCustomer(day, teamIndex, taskIndex, value)} onReserveSubscriber={value => beginWeeklySubscriberReservation(day, teamIndex, taskIndex, value)} />
+                  <CustomerAutocomplete value={task.client} customerId={task.customerId} customers={customers} subscriberReservation={task.subscriberReservation} onTextCommit={value => commitWeeklyCustomerText(day, teamIndex, taskIndex, value)} onCustomerSelect={customer => selectWeeklyCustomerResult(day, teamIndex, taskIndex, customer)} onAddCustomer={value => beginWeeklyNewCustomer(day, teamIndex, taskIndex, value)} onReserveSubscriber={serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' ? value => beginWeeklySubscriberReservation(day, teamIndex, taskIndex, value) : undefined} />
                   <label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" value={task.address} onChange={event => updateTask(day, teamIndex, taskIndex, { address: event.target.value })} /></label>
                   <label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" value={task.phone} onChange={event => updateTask(day, teamIndex, taskIndex, { phone: event.target.value })} /></label>
                   {serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input aria-required="true" type="radio" name={`weekly-card-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(day, teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
