@@ -1,7 +1,9 @@
 import { fetchWithTimeout } from '../http/fetch-timeout.mjs'
 import { requestJson } from '../http/json-request.mjs'
 
-const IMPORT_TIMEOUT_MS = 60_000
+// Vercel allows this endpoint up to 60 seconds. Abort slightly earlier so a
+// transient failure can be reported cleanly instead of leaving the modal stuck.
+const IMPORT_TIMEOUT_MS = 55_000
 const timedRequest = (url, options, message) => requestJson(
   url,
   options,
