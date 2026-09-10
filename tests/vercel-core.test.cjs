@@ -615,8 +615,9 @@ test('eliminar un equipo semanal deja una excepción persistente y limpia agenda
   assert.match(source, /const applyRemovedWeeklyTeams = \(teams = \[\], removedTeams = \[\]\) =>/)
   assert.match(source, /command\.operation === 'team-remove'/)
   assert.match(source, /await persistWeeklyService\(\{ operation: 'team-remove'/)
-  assert.match(removal, /removedTeams: \[\.\.\.\(plan\.removedTeams \|\| \[\]\)\.filter\(item => item\.id !== marker\.id\), marker\]/)
-  assert.match(removal, /return stateOperations\(snapshot, next\)/)
+  assert.match(removal, /const removedTeams = \[\.\.\.\(plan\.removedTeams \|\| \[\]\)\.filter\(item => item\.id !== marker\.id\), marker\]/)
+  assert.match(removal, /operations\.push\(operation\(teamPath\(weeklyPrefix, removedTeam\.teamId\), removedTeam, undefined\)\)/)
+  assert.doesNotMatch(removal, /structuredClone\(snapshot\)|stateOperations\(snapshot, next\)/)
 })
 
 test('los equipos visibles se renumeran consecutivamente después de una baja', () => {
@@ -625,7 +626,7 @@ test('los equipos visibles se renumeran consecutivamente después de una baja', 
 
   assert.match(source, /const renumberVisibleWeeklyTeams = \(teams = \[\]\) => teams\.map\(\(team, teamIndex\) =>/)
   assert.match(source, /label: \/\^Equipo \\d\+\$\/\.test\(team\?\.label \|\| ''\) \? `Equipo \$\{teamIndex \+ 1\}`/)
-  assert.match(removal, /teams: renumberTeams\(\(plan\.teams \|\| \[\]\)\.filter\(\(_.*, index\) => index !== resolvedIndex\)\)/)
+  assert.match(removal, /operations\.push\(\.\.\.renumberOperations\(plan\.teams \|\| \[\], resolvedIndex, weeklyPrefix\)\)/)
 })
 
 test('un equipo nuevo no es absorbido ni ocultado por el equipo mensual eliminado', () => {
