@@ -1811,12 +1811,17 @@ export default function App() {
     hydratingStateRef.current = true
     stateRevisionRef.current = Number(payload?.revision ?? stateRevisionRef.current ?? 0)
     setStateRevision(stateRevisionRef.current)
-    setCustomers((Array.isArray(payload?.customers) ? payload.customers : []).map(customer => ({
+    if (!Array.isArray(payload?.customers)) {
+      hydratingStateRef.current = false
+      return false
+    }
+    setCustomers(payload.customers.map(customer => ({
       ...customer,
       customerId: customer.customerId || createCustomerId(),
       kind: customerKind(customer),
       name: normalizeCustomerName(customer.name)
     })))
+    return true
   }
   globalThis.__pignusRefreshRemoteState = refreshRemoteState
   const endInvalidatedSession = message => {
@@ -4883,7 +4888,9 @@ function Accounts({ customers, setCustomers, setNotice, ask, history, teams, wee
   const applyImport = async nextCustomers => {
     const payload = await customerImportRepository.apply(stateRevision, nextCustomers)
     setCanUndoImport(Boolean(payload.canUndo)); setImportOpen(false)
-    if (applyCustomerImportState) applyCustomerImportState({ ...payload, customers: nextCustomers })
+    if (applyCustomerImportState) {
+      if (!applyCustomerImportState(payload)) await refreshRemoteState?.()
+    }
     else if (refreshRemoteState) await refreshRemoteState()
     else setCustomers(payload.customers || nextCustomers)
     setNotice('Importación confirmada y guardada. Administración puede deshacerla mientras no haya otra importación o modificación de clientes.')

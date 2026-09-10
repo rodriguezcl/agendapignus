@@ -18,7 +18,7 @@ const { applyStateOperations } = require('./api/_lib/state-operations.cjs')
 const { migrateLegacyEstimatedMinutes } = require('./api/_lib/legacy-estimated-minutes.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
-const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers } = require('./api/_lib/customer-import.cjs')
+const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('./api/_lib/customer-import.cjs')
 const { concurrentStateChanged, mergeConcurrentState } = require('./api/_lib/state-merge.cjs')
 const { logStateConcurrencyEvent } = require('./api/_lib/concurrency-observability.cjs')
 
@@ -1620,6 +1620,7 @@ function handleCustomerImport(req, res, user) {
         nextCustomers = normalizeImportedCustomers(body.customers)
       }
       validateImportedCustomers(nextCustomers)
+      if (!undo) validateIncrementalCustomerImport(currentCustomers, nextCustomers)
       const changes = customerImportChanges(currentCustomers, nextCustomers)
       if (!undo) db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run(CUSTOMER_IMPORT_BACKUP_KEY, JSON.stringify({ ...changes.backup, importedAt: new Date().toISOString(), importedBy: { id: user.id, name: user.name, email: user.email } }))
       const removeCustomer = db.prepare('DELETE FROM customers WHERE account = ?')

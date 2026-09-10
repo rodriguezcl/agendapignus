@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers } = require('../api/_lib/customer-import.cjs')
+const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('../api/_lib/customer-import.cjs')
 const { bulkUpsertRows } = require('../api/_lib/normalized-state-repository.cjs')
 
 test('la sincronización secundaria agrupa más de mil abonados en una escritura masiva', async () => {
@@ -51,4 +51,13 @@ test('la validación rechaza cuentas e identificadores repetidos', () => {
   assert.throws(() => validateImportedCustomers([customer('PIG-0001', 'customer-1'), customer('PIG-0001', 'customer-2')]), /duplicados/)
   assert.throws(() => validateImportedCustomers([customer('PIG-0001', 'customer-1'), customer('PIG-0002', 'customer-1')]), /duplicados/)
   assert.equal(normalizeImportedCustomers([customer('PIG-0001', 'customer-1', ' cliente   uno ')])[0].name, 'CLIENTE UNO')
+})
+
+test('la importación incremental nunca puede eliminar registros existentes', () => {
+  const current = [customer('PIG-0001', 'customer-1'), customer('CLI-0001', 'customer-2')]
+  assert.throws(
+    () => validateIncrementalCustomerImport(current, [customer('PIG-0001', 'customer-1')]),
+    /no puede eliminar abonados ni clientes existentes/
+  )
+  assert.doesNotThrow(() => validateIncrementalCustomerImport(current, [...current, customer('PIG-0002', 'customer-3')]))
 })
