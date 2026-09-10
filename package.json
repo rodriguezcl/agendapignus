@@ -20,6 +20,7 @@
     "plan:normalization-cutover": "node --env-file-if-exists=.env.local scripts/plan-normalization-cutover.cjs --production-read-only",
     "rehearse:physical-cutover": "node --env-file-if-exists=.env.local scripts/rehearse-physical-cutover.cjs --production-read-only",
     "rehearse:staging-postgres": "node --env-file-if-exists=.env.local scripts/rehearse-staging-postgres.cjs --staging-postgres-rollback",
+    "cutover:normalized-production": "node --env-file-if-exists=.env.local scripts/manage-normalized-production.cjs",
     "reconcile:normalization": "node --env-file-if-exists=.env.local scripts/reconcile-normalization.cjs",
     "preview:confirmed-reconciliation": "node --env-file-if-exists=.env.local scripts/preview-confirmed-reconciliation.cjs",
     "preview:projection-reconciliation": "node --env-file-if-exists=.env.local scripts/preview-projection-reconciliation.cjs",
