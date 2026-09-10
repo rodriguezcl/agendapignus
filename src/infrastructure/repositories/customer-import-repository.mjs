@@ -17,7 +17,7 @@ export const customerImportRepository = {
   apply: (revision, customers) => timedRequest('/api/customers/import', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ revision, customers })
+    body: JSON.stringify({ revision, customers, responseMode: 'compact-v1' })
   }, 'No se pudo importar el archivo.'),
   undo: () => timedRequest('/api/customers/import', { method: 'DELETE' }, 'No se pudo deshacer la importación.')
 }

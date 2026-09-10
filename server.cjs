@@ -1632,7 +1632,9 @@ function handleCustomerImport(req, res, user) {
       const revision = currentRevision + 1
       db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
       db.exec('COMMIT')
-      return send(res, 200, { revision, customers: nextCustomers, canUndo: !undo })
+      return send(res, 200, body.responseMode === 'compact-v1' && !undo
+        ? { revision, customerCount: nextCustomers.length, canUndo: true }
+        : { revision, customers: nextCustomers, canUndo: !undo })
     } catch (error) {
       db.exec('ROLLBACK')
       return send(res, error.statusCode || 400, { error: error.message || 'No se pudo procesar la importación.' })

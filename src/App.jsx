@@ -4888,11 +4888,16 @@ function Accounts({ customers, setCustomers, setNotice, ask, history, teams, wee
   const applyImport = async nextCustomers => {
     const payload = await customerImportRepository.apply(stateRevision, nextCustomers)
     setCanUndoImport(Boolean(payload.canUndo)); setImportOpen(false)
+    const importedPayload = Array.isArray(payload.customers)
+      ? payload
+      : Number(payload.customerCount) === nextCustomers.length
+        ? { ...payload, customers: nextCustomers }
+        : payload
     if (applyCustomerImportState) {
-      if (!applyCustomerImportState(payload)) await refreshRemoteState?.()
+      if (!applyCustomerImportState(importedPayload)) await refreshRemoteState?.()
     }
     else if (refreshRemoteState) await refreshRemoteState()
-    else setCustomers(payload.customers || nextCustomers)
+    else setCustomers(importedPayload.customers || nextCustomers)
     setNotice('Importación confirmada y guardada. Administración puede deshacerla mientras no haya otra importación o modificación de clientes.')
   }
   const undoImport = () => ask('Deshacer última importación', '¿Querés restaurar exactamente los abonados y clientes existentes antes de la última importación? Esta acción no afecta servicios ni agendas.', async () => {
