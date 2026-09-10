@@ -170,8 +170,8 @@ const copyTextToClipboard = async text => {
 const INSTALLATION_ZONES = [
   ['docta', 'Docta Urbanización'],
   ['nobu-town', 'Nobu Town'],
-  ['residencial', 'Residencial'],
-  ['no-monitoreada', 'No monitoreada']
+  ['residencial', 'Residencial con monitoreo'],
+  ['no-monitoreada', 'Residencial sin monitoreo']
 ]
 // Identificador interno e inmutable del servicio. No depende del cliente, hora ni
 // equipo, que pueden cambiar durante la planificación sin crear otro historial.
@@ -2976,8 +2976,7 @@ function AgendaWorkspaceForm({ persistAgendaRecords, date, setDate, teams, setTe
 {(() => { const conflict = conflictForDailyTask(teamIndex, taskIndex); return conflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>{scheduleConflictForTaskMessage(conflict, taskIndex)}</span></p> })()}
 <TaskStatusBadge task={task} date={date} history={history} />
 {dailyCustomerField(task, teamIndex, taskIndex)}
-{serviceCode(serviceForTask(task)) === 'alarm-installation' && <label className="daily-unmonitored-zone"><input type="radio" aria-required="true" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === 'no-monitoreada'} onChange={() => { const nextTask = { ...task, installationZone: 'no-monitoreada' }; updateTask(teamIndex, taskIndex, { installationZone: 'no-monitoreada', ...applicableServiceExtras(nextTask, serviceForTask(task)) }) }} />No monitoreada</label>}
-<label className="daily-field-address"><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label className="daily-field-contact"><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations daily-field-observations">Observaciones<BufferedTextarea value={task.detail} onCommit={value => updateTask(teamIndex, taskIndex, { detail: value })} /></label>{serviceCode(serviceForTask(task)) === 'alarm-installation' && <fieldset className="installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{[['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residencial']].map(([value, label]) => <label key={value}><input type="radio" aria-required="true" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForTask(task)) }) }} />{label}</label>)}</fieldset>}<ServiceExtraFields className="daily-extra-fields" task={task} service={serviceForTask(task)} buffered onChange={patch => updateTask(teamIndex, taskIndex, patch)} /></>}<div className="daily-task-actions">{!task.vehicleControl && <><button type="button" className="icon-btn daily-copy-button" title="Copiar este servicio" aria-label={`Copiar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => copySingleTask(task, team, teamIndex, taskIndex)}><Icon name="copy" size={16} /><span>Copiar</span></button>{teams.length > 1 && <button type="button" className="icon-btn move daily-move-button" title="Reasignar a otro equipo" aria-label={`Reasignar servicio ${taskIndex + 1} a otro equipo`} onClick={() => openTaskMove(teamIndex, taskIndex)}><span aria-hidden="true">⇄</span><span>Reasignar</span></button>}{taskHasContent(task) && <button type="button" className="icon-btn delete daily-delete-button" title="Eliminar servicio" aria-label={`Eliminar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.length > 1 ? item.tasks.filter((_, index) => index !== taskIndex) : [blankTask()] }))}><Icon name="trash" size={16} /><span>Eliminar</span></button>}</>}</div></div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
+<label className="daily-field-address"><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label className="daily-field-contact"><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations daily-field-observations">Observaciones<BufferedTextarea value={task.detail} onCommit={value => updateTask(teamIndex, taskIndex, { detail: value })} /></label>{serviceCode(serviceForTask(task)) === 'alarm-installation' && <fieldset className="installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input type="radio" aria-required="true" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForTask(task)) }) }} />{label}</label>)}</fieldset>}<ServiceExtraFields className="daily-extra-fields" task={task} service={serviceForTask(task)} buffered onChange={patch => updateTask(teamIndex, taskIndex, patch)} /></>}<div className="daily-task-actions">{!task.vehicleControl && <><button type="button" className="icon-btn daily-copy-button" title="Copiar este servicio" aria-label={`Copiar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => copySingleTask(task, team, teamIndex, taskIndex)}><Icon name="copy" size={16} /><span>Copiar</span></button>{teams.length > 1 && <button type="button" className="icon-btn move daily-move-button" title="Reasignar a otro equipo" aria-label={`Reasignar servicio ${taskIndex + 1} a otro equipo`} onClick={() => openTaskMove(teamIndex, taskIndex)}><span aria-hidden="true">⇄</span><span>Reasignar</span></button>}{taskHasContent(task) && <button type="button" className="icon-btn delete daily-delete-button" title="Eliminar servicio" aria-label={`Eliminar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.length > 1 ? item.tasks.filter((_, index) => index !== taskIndex) : [blankTask()] }))}><Icon name="trash" size={16} /><span>Eliminar</span></button>}</>}</div></div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
 }
 
 /**
@@ -3005,6 +3004,8 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
   const [taskEditorSaving, setTaskEditorSaving] = useState(false)
   const taskEditorSaveGuardRef = useRef(false)
   const [taskMove, setTaskMove] = useState(null)
+  const [taskMoveSaving, setTaskMoveSaving] = useState(false)
+  const taskMoveSaveGuardRef = useRef(false)
   const [taskRemoval, setTaskRemoval] = useState(null)
   const [teamRemoval, setTeamRemoval] = useState(null)
   const weeklyBoardRef = useRef(null)
@@ -3085,7 +3086,10 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
     value.setDate(monday.getDate() + index)
     return value.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   }), [monday])
-  const holidayCalendar = useNationalHolidays(days.map(day => day.slice(0, 4)))
+  const holidayCalendar = useNationalHolidays([
+    ...days.map(day => day.slice(0, 4)),
+    taskMove?.destinationDay?.slice(0, 4) || ''
+  ])
   const holidayStateForDay = day => {
     const holiday = holidayForDate(holidayCalendar.records, day)
     const decision = holidayDecisionForDate(weekly, day)
@@ -3285,63 +3289,110 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
     const plan = dayPlan(day)
     const sourceTeam = plan.teams[teamIndex]
     const task = sourceTeam?.tasks?.[taskIndex]
-    if (!task || plan.teams.length < 2) return
+    if (!task) return
     const firstDestination = plan.teams.findIndex((_, index) => index !== teamIndex)
+    taskMoveSaveGuardRef.current = false
+    setTaskMoveSaving(false)
     setTaskMove({
       day,
+      destinationDay: day,
       sourceTeamIndex: teamIndex,
       sourceTeamId: sourceTeam.teamId,
       taskIndex,
       taskId: task.taskId,
       historyId: task.historyId,
-      destinationTeamIndex: firstDestination
+      destinationTeamIndex: firstDestination >= 0 ? firstDestination : teamIndex
     })
   }
-  const confirmWeeklyTaskMove = () => {
-    if (!taskMove) return
-    const { day, sourceTeamIndex, sourceTeamId, taskIndex, taskId, historyId, destinationTeamIndex } = taskMove
-    const plan = dayPlan(day)
-    let resolvedSourceIndex = plan.teams.findIndex(team => sourceTeamId && String(team.teamId || '') === String(sourceTeamId))
+  const selectWeeklyTaskMoveDate = destinationDay => {
+    const destinationPlan = /^\d{4}-\d{2}-\d{2}$/.test(destinationDay) ? dayPlan(destinationDay) : { teams: [] }
+    setTaskMove(previous => {
+      if (!previous) return previous
+      const firstDestination = destinationPlan.teams.findIndex((team, index) => destinationDay !== previous.day || (
+        String(team.teamId || '') !== String(previous.sourceTeamId || '') && index !== previous.sourceTeamIndex
+      ))
+      return { ...previous, destinationDay, destinationTeamIndex: firstDestination >= 0 ? firstDestination : 0 }
+    })
+  }
+  const confirmWeeklyTaskMove = async () => {
+    if (!taskMove || taskMoveSaveGuardRef.current) return
+    const { day, destinationDay, sourceTeamIndex, sourceTeamId, taskIndex, taskId, historyId, destinationTeamIndex } = taskMove
+    const sourcePlan = dayPlan(day)
+    let resolvedSourceIndex = sourcePlan.teams.findIndex(team => sourceTeamId && String(team.teamId || '') === String(sourceTeamId))
     if (resolvedSourceIndex < 0) resolvedSourceIndex = sourceTeamIndex
-    const sourceTeam = plan.teams[resolvedSourceIndex]
+    const sourceTeam = sourcePlan.teams[resolvedSourceIndex]
     const movedTask = stampServiceRecord((sourceTeam?.tasks || []).find(task => taskId && String(task.taskId || '') === String(taskId)) || sourceTeam?.tasks?.[taskIndex], authUser)
-    const destinationTeam = plan.teams[destinationTeamIndex]
-    if (!movedTask || !destinationTeam || destinationTeamIndex === resolvedSourceIndex) {
-      setTaskMove(null)
+    const destinationPlan = dayPlan(destinationDay)
+    const destinationTeam = destinationPlan.teams[destinationTeamIndex]
+    if (!movedTask || !destinationTeam) {
+      setNotice('No se encontró el servicio o el equipo de destino. Recargá la planificación e intentá nuevamente.')
       return
     }
+    if (destinationDay === day && String(destinationTeam.teamId || '') === String(sourceTeam?.teamId || '')) {
+      setNotice('Elegí otro equipo o una fecha diferente para reasignar el servicio.')
+      return
+    }
+    if (destinationDay < today) { setNotice('Elegí la fecha de hoy o una fecha futura.'); return }
+    const destinationHours = hoursForDay(destinationDay)
+    if (!destinationHours) { setNotice('Los domingos no están habilitados para programar servicios.'); return }
+    const destinationHoliday = holidayStateForDay(destinationDay)
+    if (holidayCalendar.loading) { setNotice('Esperá mientras se verifica el calendario de feriados.'); return }
+    if (holidayCalendar.error) { setNotice('No se pudo verificar el calendario de feriados. Reintentá antes de mover el servicio.'); return }
+    if (destinationHoliday.blocked) { setNotice(destinationHoliday.decision?.status === 'closed' ? 'La fecha de destino fue definida como día no operativo.' : 'Primero definí si el feriado de destino será laboral o no operativo.'); return }
+    const destinationAdvance = advancedGuardForDay(destinationDay)
+    if (destinationAdvance) { setNotice(advancedSaturdayGuardMessage(destinationAdvance)); return }
+    const destinationInterval = taskOccupiedInterval(taskWithServiceEstimate(movedTask, serviceForWeeklyTask(movedTask)))
+    if (destinationInterval && (destinationInterval.serviceStart < serviceTimeInMinutes(destinationHours.min) || destinationInterval.serviceEnd > serviceTimeInMinutes(destinationHours.max))) {
+      setNotice(`El horario del servicio queda fuera del rango habilitado para la fecha de destino (${destinationHours.label}).`)
+      return
+    }
+    if (!destinationTeam.members?.length && !movedTask.vehicleControl) { setNotice('El equipo de destino no tiene técnicos asignados.'); return }
     const matchesTask = task => (taskId && String(task.taskId || '') === String(taskId)) || (historyId && String(task.historyId || '') === String(historyId))
-    const nextTeams = plan.teams.map((team, index) => {
-      let tasks = (team.tasks || []).filter(task => !matchesTask(task))
-      if (index === destinationTeamIndex) {
-        tasks = tasks.filter(task => !(
-          task.time === movedTask.time &&
-          !String(task.client || '').trim() &&
-          !String(task.service || '').trim()
-        ))
-        tasks = sortTasksByTime([...tasks, movedTask])
-      }
-      return { ...team, tasks }
-    })
-    const nextDestination = nextTeams[destinationTeamIndex]
-    setWeekly(previous => ({ ...previous, [day]: { ...plan, teams: nextTeams } }))
-    window.dispatchEvent(new CustomEvent('pignus:move-weekly-task', {
-      detail: {
-        day,
-        taskId: movedTask.taskId || taskId,
-        historyId: movedTask.historyId || historyId,
-        destinationTeamId: nextDestination.teamId,
-        destinationTeamIndex,
-        destinationTeam: {
-          teamId: nextDestination.teamId,
-          label: nextDestination.label || `Equipo ${destinationTeamIndex + 1}`,
-          memberIds: nextDestination.memberIds || [],
-          members: nextDestination.members || []
-        }
-      }
-    }))
-    setTaskMove(null)
-    setNotice(`El servicio fue reasignado a ${nextDestination.label || `Equipo ${destinationTeamIndex + 1}`} y se conservó toda su información.`)
+    const destinationTasks = (destinationTeam.tasks || []).filter(task => !matchesTask(task) && !(
+      task.time === movedTask.time && !String(task.client || '').trim() && !String(task.service || '').trim()
+    ))
+    const destinationConflict = minimumServiceGapConflicts([{ ...destinationTeam, tasks: [...destinationTasks, movedTask].map(task => {
+      const occupancyTask = taskForScheduleOccupancy(task, destinationDay, operationalHistory)
+      return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(task)) : null
+    }).filter(Boolean) }])[0]
+    if (destinationConflict) { setNotice(planningConflictMessage(destinationDay, destinationTeam, destinationTeamIndex, destinationConflict)); return }
+    const baseRecord = historyRecordForTask(movedTask, day, operationalHistory) || null
+    const baseTask = weekly?.[day]?.teams?.flatMap(team => team.tasks || []).find(matchesTask) || null
+    const destinationRecordData = weeklyHistoryRecord(destinationDay, destinationTeam, destinationTeamIndex, movedTask, destinationTasks.length)
+    const changedDate = destinationDay !== day
+    const record = stampServiceRecord({
+      ...baseRecord,
+      ...destinationRecordData,
+      id: baseRecord?.id || destinationRecordData.id,
+      status: changedDate ? 'Pendiente' : (baseRecord?.status || movedTask.status || 'Pendiente'),
+      scheduledDate: '',
+      ...(changedDate ? { rescheduledFrom: day, reprogrammedAt: new Date().toISOString() } : {})
+    }, authUser)
+    const savedTask = { ...movedTask, historyId: record.id, status: record.status }
+    taskMoveSaveGuardRef.current = true
+    setTaskMoveSaving(true)
+    try {
+      await persistWeeklyService({
+        day: destinationDay,
+        team: destinationTeam,
+        task: savedTask,
+        record,
+        baseRecord,
+        baseTask,
+        sourceDay: day,
+        sourceTeamId: sourceTeam.teamId
+      })
+      setTaskMove(null)
+      if (changedDate) setAnchor(destinationDay)
+      setNotice(changedDate
+        ? `El servicio fue reprogramado para el ${prettyDate(destinationDay)} en ${destinationTeam.label || `Equipo ${destinationTeamIndex + 1}`}.`
+        : `El servicio fue reasignado a ${destinationTeam.label || `Equipo ${destinationTeamIndex + 1}`} y se conservó toda su información.`)
+    } catch (error) {
+      setNotice(`No se pudo reasignar el servicio. ${error.message || 'Comprobá la conexión e intentá nuevamente.'}`)
+    } finally {
+      taskMoveSaveGuardRef.current = false
+      setTaskMoveSaving(false)
+    }
   }
   const updateTeam = (day, teamIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, ...patch } : team) }))
   const toggleWeeklyTech = (day, teamIndex, technician) => {
@@ -3789,9 +3840,15 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
     {teamRemoval && <Confirm title="Quitar equipo" detail={`¿Querés quitar ${teamRemoval.label} de la planificación del ${prettyDate(teamRemoval.day)}? Se eliminarán también sus servicios.`} destructive action={() => removeWeeklyTeam(teamRemoval.day, teamRemoval.teamIndex)} close={() => setTeamRemoval(null)} />}
     {taskRemoval && <Confirm title="Eliminar servicio" detail={`¿Querés eliminar el Servicio ${taskRemoval.taskIndex + 1} de ${taskRemoval.label} para el ${prettyDate(taskRemoval.day)}?${taskRemoval.historyId ? ' También se quitará el registro pendiente vinculado.' : ''}`} destructive action={() => removeWeeklyTask(taskRemoval)} close={() => setTaskRemoval(null)} />}
     {taskMove && (() => {
-      const plan = dayPlan(taskMove.day)
-      const sourceTeam = plan.teams[taskMove.sourceTeamIndex]
-      return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => setTaskMove(null)}><section className="modal task-move-modal weekly-move-modal" role="dialog" aria-modal="true" aria-labelledby="weekly-move-title" onMouseDown={event => event.stopPropagation()}><button className="modal-close" onClick={() => setTaskMove(null)}><Icon name="close" /></button><p className="eyebrow">REASIGNAR SERVICIO</p><h2 id="weekly-move-title">Mover a otro equipo</h2><p>El servicio conservará horario, cliente, tipo de servicio y observaciones. También se actualizarán Agenda del día e Historial si ya fueron registrados.</p><label>Equipo actual<input value={sourceTeam?.label || `Equipo ${taskMove.sourceTeamIndex + 1}`} readOnly /></label><label>Nuevo equipo<select value={taskMove.destinationTeamIndex} onChange={event => setTaskMove(previous => ({ ...previous, destinationTeamIndex: Number(event.target.value) }))}>{plan.teams.map((team, index) => index !== taskMove.sourceTeamIndex && <option key={team.teamId || index} value={index}>{team.label || `Equipo ${index + 1}`} · {team.members?.join(' / ') || 'Sin técnicos'}</option>)}</select></label><div className="modal-actions"><button className="secondary" onClick={() => setTaskMove(null)}>Cancelar</button><button className="primary" onClick={confirmWeeklyTaskMove}><span aria-hidden="true">⇄</span>Reasignar servicio</button></div></section></div>
+      const sourcePlan = dayPlan(taskMove.day)
+      const sourceTeam = sourcePlan.teams.find(team => taskMove.sourceTeamId && String(team.teamId || '') === String(taskMove.sourceTeamId)) || sourcePlan.teams[taskMove.sourceTeamIndex]
+      const validDestinationDay = /^\d{4}-\d{2}-\d{2}$/.test(taskMove.destinationDay || '')
+      const destinationPlan = validDestinationDay ? dayPlan(taskMove.destinationDay) : { teams: [] }
+      const destinationOptions = destinationPlan.teams.map((team, index) => ({ team, index })).filter(({ team, index }) => taskMove.destinationDay !== taskMove.day || (String(team.teamId || '') !== String(sourceTeam?.teamId || '') && index !== taskMove.sourceTeamIndex))
+      const selectedDestination = destinationOptions.find(({ index }) => index === taskMove.destinationTeamIndex)
+      const destinationIsSunday = validDestinationDay && !hoursForDay(taskMove.destinationDay)
+      const sameDayWithoutAlternative = taskMove.destinationDay === taskMove.day && !destinationOptions.length
+      return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => { if (!taskMoveSaving) setTaskMove(null) }}><section className="modal task-move-modal weekly-move-modal" role="dialog" aria-modal="true" aria-labelledby="weekly-move-title" onMouseDown={event => event.stopPropagation()}><button className="modal-close" disabled={taskMoveSaving} onClick={() => { if (!taskMoveSaving) setTaskMove(null) }}><Icon name="close" /></button><p className="eyebrow">REASIGNAR SERVICIO</p><h2 id="weekly-move-title">Cambiar equipo o fecha</h2><p>Podés trasladar el servicio a otro equipo del mismo día o reprogramarlo para otra fecha. Se conservarán sus datos y se actualizarán Agenda semanal, Agenda del día e Historial en una única operación.</p><label>Origen<input value={`${prettyDate(taskMove.day)} · ${sourceTeam?.label || `Equipo ${taskMove.sourceTeamIndex + 1}`}`} readOnly /></label><label>Nueva fecha<input type="date" min={today} required value={taskMove.destinationDay} onChange={event => selectWeeklyTaskMoveDate(event.target.value)} /></label><label>Equipo de destino<select value={selectedDestination ? taskMove.destinationTeamIndex : ''} disabled={!validDestinationDay || destinationIsSunday || !destinationOptions.length} onChange={event => setTaskMove(previous => ({ ...previous, destinationTeamIndex: Number(event.target.value) }))}><option value="" disabled>Seleccionar equipo</option>{destinationOptions.map(({ team, index }) => <option key={team.teamId || index} value={index}>{team.label || `Equipo ${index + 1}`} · {team.members?.join(' / ') || 'Sin técnicos'}</option>)}</select></label>{destinationIsSunday && <p className="field-error">Los domingos no están habilitados para programar servicios.</p>}{sameDayWithoutAlternative && <p className="weekly-move-help">Este día no tiene otro equipo. Elegí una fecha diferente para reprogramar el servicio.</p>}<div className="modal-actions"><button className="secondary" disabled={taskMoveSaving} onClick={() => setTaskMove(null)}>Cancelar</button><button className="primary" disabled={taskMoveSaving || !validDestinationDay || destinationIsSunday || !selectedDestination || holidayCalendar.loading} onClick={confirmWeeklyTaskMove}><span aria-hidden="true">⇄</span>{taskMoveSaving ? 'Guardando…' : taskMove.destinationDay === taskMove.day ? 'Reasignar servicio' : 'Reprogramar servicio'}</button></div></section></div>
     })()}
     {monthlyVehicleSetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal monthly-vehicles-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-vehicles-title"><button className="modal-close" onClick={() => setMonthlyVehicleSetup(null)}><Icon name="close" /></button><p className="eyebrow">RESPONSABLES DE FLOTA</p><h2 id="monthly-vehicles-title">Vehículos de {new Date(`${monthlyVehicleSetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Asigná el responsable predeterminado de cada vehículo. Cada viernes se creará un control de 15 minutos a las 15:30 para cargar la foto interior y el kilometraje. Si surge una contingencia, podés elegir un reemplazo sólo para ese viernes sin modificar el resto del mes.</p><div className="monthly-vehicle-list">{vehicles.map(vehicle => { const assignment = monthlyVehicleSetup.assignments.find(item => String(item.vehicleId) === String(vehicle.id)); const futureFridays = monthFridays(monthlyVehicleSetup.month).filter(friday => friday >= today); return <div className="monthly-vehicle-assignment" key={vehicle.id}><label><span><b>{vehicleLabel(vehicle)}</b><small>Kilometraje actual: {Number(vehicle.mileage || 0).toLocaleString('es-AR')} km</small></span><select value={assignment?.technicianId || ''} onChange={event => updateMonthlyVehicleAssignment(vehicle.id, event.target.value)}><option value="">Seleccionar responsable</option>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></label>{futureFridays.length > 0 && assignment?.technicianId && <details className="vehicle-control-overrides"><summary>Reemplazos por contingencia</summary>{futureFridays.map(friday => <label key={friday}><span><b>{prettyDate(friday)}</b><small>{assignment.weeklyOverrides?.[friday] ? 'Reemplazo excepcional' : 'Responsable mensual'}</small></span><select value={assignment.weeklyOverrides?.[friday] || assignment.technicianId} onChange={event => updateVehicleControlOverride(vehicle.id, friday, event.target.value)}>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></label>)}</details>}</div> })}</div><ConfigurationHistoryPanel history={monthlyTeams[monthlyVehicleSetup.month]?.configurationHistory} type="vehicles" /><div className="modal-actions"><button className="secondary" onClick={() => setMonthlyVehicleSetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlyVehicleSetup}>Guardar responsables</button></div></section></div>}
     {monthlySetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setMonthlySetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de {new Date(`${monthlySetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Con cinco técnicos activos, el sistema propone dos duplas y una salida individual, rotando mensualmente todas las combinaciones. Podés modificar la sugerencia antes de guardarla. Las agendas ya cargadas no se alteran.</p><div className="monthly-team-list">{monthlySetup.teams.map((team, index) => <label key={team.teamId || index}><b>{team.label || `Equipo ${index + 1}`}</b><select multiple value={team.memberIds || []} onChange={event => updateMonthlyTeam(index, [...event.target.selectedOptions].map(option => option.value))}>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName || tech.name.split(' ')[0]}</option>)}</select><small>Mantené presionada la tecla Ctrl para seleccionar más de un técnico.</small></label>)}</div><button className="secondary monthly-add-team" onClick={addMonthlyTeam}><Icon name="plus" size={15} />Agregar equipo</button><ConfigurationHistoryPanel history={monthlyTeams[monthlySetup.month]?.configurationHistory} type="teams" /><div className="modal-actions"><button className="secondary" onClick={() => setMonthlySetup(null)}>Cancelar</button><button className="primary" onClick={saveMonthlySetup}>Guardar equipos del mes</button></div></section></div>}
@@ -3840,7 +3897,7 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
               return <article className="week-team" key={team.teamId || teamIndex}>
                 <div className="week-team-header"><div className="week-team-identity"><strong>{team.label || `Equipo ${teamIndex + 1}`}</strong><span title={team.members?.join(' · ') || 'Sin técnicos'}>{team.members?.length ? team.members.map(weeklyTechnicianName).join(' · ') : 'Sin técnicos'}</span></div><div className="weekly-team-actions">{plan.teams.length > 1 && <button className="weekly-remove-team" title="Quitar equipo" aria-label={`Quitar ${team.label || `Equipo ${teamIndex + 1}`}`} onClick={() => setTeamRemoval({ day, teamIndex, label: team.label || `Equipo ${teamIndex + 1}` })}><Icon name="trash" size={15} /></button>}<div className="weekly-technicians-picker"><button className="secondary small weekly-add-tech-button" title="Agregar técnicos" aria-label="Agregar técnicos" onClick={() => { setTechPicker(techPicker === pickerKey ? null : pickerKey); setTechFilter('') }}><Icon name="users" size={16} /><span aria-hidden="true">+</span></button>{techPicker === pickerKey && <div className="tech-popover weekly-tech-popover"><div className="weekly-tech-popover-title"><div><strong>Asignar técnicos</strong><small>{team.label || `Equipo ${teamIndex + 1}`}</small></div><span>{team.members?.length || 0} seleccionados</span></div><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={event => setTechFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(techFilter.toLowerCase())).map(tech => <label key={tech.id} title={tech.name}><input type="checkbox" checked={(team.members || []).includes(tech.name)} onChange={() => toggleWeeklyTech(day, teamIndex, tech.name)} />{tech.firstName || tech.name.split(' ')[0]}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div></div>}</div></div></div>
                 {team.tasks.map((task, taskIndex) => <div className={`week-task week-task-summary ${!task.client ? 'available-slot' : ''}`} key={task.taskId || taskIndex} role="button" tabIndex={0} onClick={() => openTaskEditor(day, teamIndex, taskIndex)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openTaskEditor(day, teamIndex, taskIndex) } }}>
-                  <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><div className="week-task-title-actions"><small>{task.time || '--:--'} Hs</small>{plan.teams.length > 1 && (task.customerId || task.client || task.service) && <button type="button" className="weekly-task-move" title="Reasignar a otro equipo" aria-label={`Reasignar Servicio ${taskIndex + 1} a otro equipo`} onClick={event => openWeeklyTaskMove(event, day, teamIndex, taskIndex)}><span aria-hidden="true">⇄</span></button>}<button type="button" className="weekly-task-delete" title="Eliminar servicio" aria-label={`Eliminar Servicio ${taskIndex + 1}`} onClick={event => { event.stopPropagation(); setTaskRemoval({ day, teamId: team.teamId, teamIndex, taskIndex, taskId: task.taskId, historyId: task.historyId, time: task.time || task.scheduledTime || '', wasPlaceholder: !taskHasContent(task), label: team.label || `Equipo ${teamIndex + 1}` }) }}><Icon name="trash" size={14} /></button></div></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>
+                  <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><div className="week-task-title-actions"><small>{task.time || '--:--'} Hs</small>{(task.customerId || task.client || task.service) && !taskIsResolvedForPlanning(task, day, operationalHistory) && <button type="button" className="weekly-task-move" title="Reasignar equipo o fecha" aria-label={`Reasignar Servicio ${taskIndex + 1} a otro equipo o fecha`} onClick={event => openWeeklyTaskMove(event, day, teamIndex, taskIndex)}><span aria-hidden="true">⇄</span></button>}<button type="button" className="weekly-task-delete" title="Eliminar servicio" aria-label={`Eliminar Servicio ${taskIndex + 1}`} onClick={event => { event.stopPropagation(); setTaskRemoval({ day, teamId: team.teamId, teamIndex, taskIndex, taskId: task.taskId, historyId: task.historyId, time: task.time || task.scheduledTime || '', wasPlaceholder: !taskHasContent(task), label: team.label || `Equipo ${teamIndex + 1}` }) }}><Icon name="trash" size={14} /></button></div></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>
                   <TaskStatusBadge task={task} date={day} history={operationalHistory} weekly />
                   {task.vehicleControl ? <div className="vehicle-control-summary"><span><b>Duración:</b> 15 minutos · 15:30–15:45</span><span><b>Técnico responsable:</b> {task.technicians?.[0] || 'Sin asignar'}</span><small>Abrí la tarjeta para cambiar excepcionalmente el técnico de este control.</small></div> : <>
                   <div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTask(day, teamIndex, taskIndex, { time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectWeeklyService(day, teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div>

@@ -929,6 +929,15 @@ body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #34
   margin-top: 24px;
 }
 
+.weekly-move-help {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f5f1df;
+  color: #6c5718;
+  font-size: 0.9rem;
+}
+
 @media (max-width: 900px) {
   .task-row > .daily-task-actions {
     grid-column: 1 / -1;

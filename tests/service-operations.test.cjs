@@ -60,6 +60,60 @@ test('modal creates future history and projections in one atomic operation, with
   assert.equal(saved.agenda.teams[0].tasks[0].taskId, 'new')
   assert.equal(base.history.length, 581)
 })
+test('weekly reassignment moves one service to another date and updates history atomically', async () => {
+  const { weeklyServiceOperations } = await weeklyBuilder()
+  const original = command(fixture(), 'move-date', '11:00')
+  const base = applyStateOperations(fixture(), weeklyServiceOperations(fixture(), original))
+  base.agenda.teams = structuredClone(base.agenda.weekly[day].teams)
+  const destinationDay = '2096-09-12'
+  const destinationTeam = { teamId: 'team-destination', memberIds: ['tech-2'], members: ['Técnico 2'], tasks: [] }
+  base.agenda.weekly[destinationDay] = { teams: [destinationTeam] }
+  const baseRecord = base.history.find(item => item.id === original.record.id)
+  const movedTask = { ...original.task, status: 'Pendiente' }
+  const record = { ...baseRecord, date: destinationDay, teamId: destinationTeam.teamId, team: 'Equipo 1', technicianIds: destinationTeam.memberIds, technicians: destinationTeam.members, rescheduledFrom: day }
+  const operations = weeklyServiceOperations(base, { day: destinationDay, team: destinationTeam, task: movedTask, record, baseRecord, baseTask: original.task, sourceDay: day, sourceTeamId: original.team.teamId })
+  const saved = applyStateOperations(base, operations)
+  assert.equal(saved.agenda.weekly[day].teams[0].tasks.length, 0)
+  assert.equal(saved.agenda.weekly[destinationDay].teams[0].tasks[0].taskId, 'move-date')
+  assert.equal(saved.agenda.teams[0].tasks.length, 0)
+  assert.equal(saved.history.find(item => item.id === record.id).date, destinationDay)
+  assert.equal(saved.history.length, 582)
+})
+test('weekly reassignment keeps same-day team moves atomic', async () => {
+  const { weeklyServiceOperations } = await weeklyBuilder()
+  const original = command(fixture(), 'move-team', '11:00')
+  const base = applyStateOperations(fixture(), weeklyServiceOperations(fixture(), original))
+  const destinationTeam = { teamId: 'team-2', memberIds: ['tech-2'], members: ['Técnico 2'], tasks: [] }
+  base.agenda.weekly[day].teams.push(destinationTeam)
+  base.agenda.teams = structuredClone(base.agenda.weekly[day].teams)
+  const baseRecord = base.history.find(item => item.id === original.record.id)
+  const record = { ...baseRecord, teamId: destinationTeam.teamId, team: 'Equipo 2', technicianIds: destinationTeam.memberIds, technicians: destinationTeam.members }
+  const move = weeklyServiceOperations(base, { day, team: destinationTeam, task: original.task, record, baseRecord, baseTask: original.task, sourceDay: day, sourceTeamId: original.team.teamId })
+  const saved = applyStateOperations(base, move)
+  assert.deepEqual(saved.agenda.weekly[day].teams.map(team => team.tasks.map(task => task.taskId)), [[], ['move-team']])
+  assert.deepEqual(saved.agenda.teams.map(team => team.tasks.map(task => task.taskId)), [[], ['move-team']])
+  assert.equal(saved.history.find(item => item.id === record.id).teamId, 'team-2')
+})
+test('cross-day reassignment preserves services concurrently added at source and destination', async () => {
+  const { weeklyServiceOperations } = await weeklyBuilder()
+  const original = command(fixture(), 'move-concurrent', '09:00')
+  const base = applyStateOperations(fixture(), weeklyServiceOperations(fixture(), original))
+  const destinationDay = '2096-09-12'
+  const destinationTeam = { teamId: 'team-destination', memberIds: ['tech-2'], members: ['Técnico 2'], tasks: [] }
+  base.agenda.weekly[destinationDay] = { teams: [destinationTeam] }
+  const destinationCommand = { ...command(base, 'destination-peer', '13:00'), day: destinationDay, team: destinationTeam }
+  destinationCommand.record = { ...destinationCommand.record, date: destinationDay, teamId: destinationTeam.teamId }
+  const current = applyStateOperations(
+    applyStateOperations(base, weeklyServiceOperations(base, command(base, 'source-peer', '11:00'))),
+    weeklyServiceOperations(base, destinationCommand)
+  )
+  const baseRecord = base.history.find(item => item.id === original.record.id)
+  const record = { ...baseRecord, date: destinationDay, teamId: destinationTeam.teamId, technicianIds: destinationTeam.memberIds, technicians: destinationTeam.members }
+  const move = weeklyServiceOperations(base, { day: destinationDay, team: destinationTeam, task: original.task, record, baseRecord, baseTask: original.task, sourceDay: day, sourceTeamId: original.team.teamId })
+  const saved = applyStateOperations(current, move)
+  assert.deepEqual(saved.agenda.weekly[day].teams[0].tasks.map(task => task.taskId), ['source-peer'])
+  assert.deepEqual(saved.agenda.weekly[destinationDay].teams[0].tasks.map(task => task.taskId).sort(), ['destination-peer', 'move-concurrent'])
+})
 test('two users add different services on the same day without replacing each other', async () => {
   const { weeklyServiceOperations } = await weeklyBuilder()
   const base = fixture()
