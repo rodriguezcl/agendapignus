@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { compareApplicationStates, readApplicationState, storageMode } = require('../api/_lib/storage-router.cjs')
+const { compareApplicationStates, readApplicationRevision, readApplicationState, storageMode } = require('../api/_lib/storage-router.cjs')
 
 const state = passwordHash => ({ revision: 2, roles: [], employees: [{ id: 1, name: 'T', ...(passwordHash ? { passwordHash } : {}) }], services: [], vehicles: [], customers: [], history: [], reviews: [], agenda: { teams: [], weekly: {} }, preferences: { theme: 'light' } })
 
@@ -16,6 +16,25 @@ test('persistent selector returns exactly the active model', async () => {
   assert.equal(await readApplicationState(null, { shadowPrepared: true, readControl: async () => ({ model: 'legacy', revision: 2 }), readLegacy: async () => legacy, readNormalized: async () => normalized }), legacy)
   assert.equal(await readApplicationState(null, { shadowPrepared: true, readControl: async () => ({ model: 'normalized', revision: 2 }), readLegacy: async () => legacy, readNormalized: async () => normalized }), normalized)
   await assert.rejects(readApplicationState(null, { shadowPrepared: true, readControl: async () => ({ model: 'normalized', revision: 3 }), readLegacy: async () => legacy, readNormalized: async () => normalized }), { code: 'STORAGE_CONTROL_READ_CONFLICT' })
+})
+
+test('revision polling never reconstructs the complete application state', async () => {
+  let legacyReads = 0
+  const legacyRevision = async () => { legacyReads += 1; return 12 }
+  const forbiddenStateRead = async () => { throw new Error('full state must not be read') }
+
+  assert.equal(await readApplicationRevision(null, {
+    shadowPrepared: false,
+    readLegacyRevision: legacyRevision,
+    readLegacy: forbiddenStateRead
+  }), 12)
+  assert.equal(await readApplicationRevision(null, {
+    shadowPrepared: true,
+    readControl: async () => ({ model: 'normalized', revision: 13 }),
+    readLegacyRevision: legacyRevision,
+    readLegacy: forbiddenStateRead
+  }), 13)
+  assert.equal(legacyReads, 1)
 })
 
 test('shadow mode compares without exposing credentials and always returns legacy state', async () => {

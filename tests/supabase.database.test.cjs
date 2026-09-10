@@ -1,7 +1,14 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { readExportState, readRevision, readState } = require('../api/_lib/database.cjs')
+const { databasePoolSize, readExportState, readRevision, readState } = require('../api/_lib/database.cjs')
+
+test('permite varias operaciones de base simultáneas con un límite acotado', () => {
+  assert.equal(databasePoolSize({}), 4)
+  assert.equal(databasePoolSize({ PIGNUS_DB_POOL_MAX: '6' }), 6)
+  assert.equal(databasePoolSize({ PIGNUS_DB_POOL_MAX: '1' }), 2)
+  assert.equal(databasePoolSize({ PIGNUS_DB_POOL_MAX: '99' }), 10)
+})
 
 test('reconstruye el estado de Supabase en una única consulta agregada', async () => {
   const queries = []

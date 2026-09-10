@@ -2,6 +2,11 @@ const postgres = require('postgres')
 
 let client
 
+function databasePoolSize(environment = process.env) {
+  const configured = Number.parseInt(environment.PIGNUS_DB_POOL_MAX, 10)
+  return Number.isInteger(configured) ? Math.min(10, Math.max(2, configured)) : 4
+}
+
 function vehicleCollection(value) {
   try {
     const parsed = typeof value === 'string' ? JSON.parse(value) : value
@@ -13,7 +18,9 @@ function vehicleCollection(value) {
 
 function database() {
   if (!process.env.DATABASE_URL) throw new Error('Falta configurar DATABASE_URL.')
-  if (!client) client = postgres(process.env.DATABASE_URL, { max: 1, prepare: false, idle_timeout: 20, connect_timeout: 15, ssl: 'require' })
+  // A single connection serialized polling, reads and writes from every active
+  // administrator served by the same instance. Keep this pool small but concurrent.
+  if (!client) client = postgres(process.env.DATABASE_URL, { max: databasePoolSize(), prepare: false, idle_timeout: 20, connect_timeout: 15, ssl: 'require' })
   return client
 }
 
@@ -122,4 +129,4 @@ async function appendAudit(sql, entries) {
   await sql`delete from pignus_audit_log where id in (select id from pignus_audit_log order by occurred_at desc offset 100)`
 }
 
-module.exports = { appendAudit, database, readCustomers, readExportState, readRevision, readState, replaceCollections }
+module.exports = { appendAudit, database, databasePoolSize, readCustomers, readExportState, readRevision, readState, replaceCollections }
