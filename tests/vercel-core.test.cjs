@@ -610,19 +610,22 @@ test('eliminar un servicio semanal deja una baja persistente y limpia su copia d
 
 test('eliminar un equipo semanal deja una excepción persistente y limpia agenda e historial', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const removal = fs.readFileSync(path.resolve(__dirname, '../src/features/state/application/weekly-team-removal.mjs'), 'utf8')
 
   assert.match(source, /const applyRemovedWeeklyTeams = \(teams = \[\], removedTeams = \[\]\) =>/)
-  assert.match(source, /removedTeams: \[\.\.\.\(plan\.removedTeams \|\| \[\]\)\.filter\(item => item\.id !== marker\.id\), marker\]/)
-  assert.match(source, /new CustomEvent\('pignus:remove-weekly-team'/)
-  assert.match(source, /historyIdSet\.has\(String\(record\.id \|\| ''\)\) \|\| taskIdSet\.has\(String\(record\.sourceTaskId \|\| ''\)\)/)
+  assert.match(source, /command\.operation === 'team-remove'/)
+  assert.match(source, /await persistWeeklyService\(\{ operation: 'team-remove'/)
+  assert.match(removal, /removedTeams: \[\.\.\.\(plan\.removedTeams \|\| \[\]\)\.filter\(item => item\.id !== marker\.id\), marker\]/)
+  assert.match(removal, /return stateOperations\(snapshot, next\)/)
 })
 
 test('los equipos visibles se renumeran consecutivamente después de una baja', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const removal = fs.readFileSync(path.resolve(__dirname, '../src/features/state/application/weekly-team-removal.mjs'), 'utf8')
 
   assert.match(source, /const renumberVisibleWeeklyTeams = \(teams = \[\]\) => teams\.map\(\(team, teamIndex\) =>/)
   assert.match(source, /label: \/\^Equipo \\d\+\$\/\.test\(team\?\.label \|\| ''\) \? `Equipo \$\{teamIndex \+ 1\}`/)
-  assert.match(source, /teams: renumberVisibleWeeklyTeams\(plan\.teams\.filter\(\(team, index\) => !removedWeeklyTeamMatches\(marker, team, index\)\)\)/)
+  assert.match(removal, /teams: renumberTeams\(\(plan\.teams \|\| \[\]\)\.filter\(\(_.*, index\) => index !== resolvedIndex\)\)/)
 })
 
 test('un equipo nuevo no es absorbido ni ocultado por el equipo mensual eliminado', () => {
@@ -985,8 +988,12 @@ test('sólo Administración puede omitir o eliminar un control vehicular', () =>
   omitted.history = []
   const planner = { roleCode: 'user', permissions: { weekly: true, history: true } }
   const historyManager = { roleCode: 'user', permissions: { weekly: true, history: true, historyManage: true } }
+  const omittedWithTeam = structuredClone(current)
+  omittedWithTeam.agenda.weekly['2026-09-11'].teams = []
+  omittedWithTeam.agenda.weekly['2026-09-11'].removedTeams = [{ id: 'team:team', teamId: 'team', teamNumber: 1 }]
 
   assert.throws(() => authorizeIncomingState(omitted, current, planner), error => error.statusCode === 403 && /administrador.*control vehicular/i.test(error.message))
+  assert.throws(() => authorizeIncomingState(omittedWithTeam, current, planner), error => error.statusCode === 403 && /administrador.*control vehicular/i.test(error.message))
   assert.throws(() => authorizeIncomingState({ ...current, history: [] }, current, historyManager), error => error.statusCode === 403 && /administrador.*control vehicular/i.test(error.message))
   assert.doesNotThrow(() => authorizeIncomingState(omitted, current, { roleCode: 'administrator', permissions: {} }))
 })

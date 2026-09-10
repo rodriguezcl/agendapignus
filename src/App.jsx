@@ -40,6 +40,7 @@ import { compactStateBase } from './features/state/application/compact-state-bas
 import { historyRecordRepository } from './infrastructure/repositories/history-record-repository.mjs'
 import { weeklyServiceOperations } from './features/state/application/weekly-service-save.mjs'
 import { weeklyTeamMemberOperations } from './features/state/application/weekly-team-members-save.mjs'
+import { weeklyTeamRemovalOperations } from './features/state/application/weekly-team-removal.mjs'
 import { stateOperations } from './features/state/application/state-operations.mjs'
 import { migrateLegacyEstimatedMinutes } from './domain/state/legacy-estimated-minutes.mjs'
 import './weekly.css'
@@ -588,16 +589,6 @@ const applyRemovedWeeklyTasks = (teams = [], removedTaskIds = []) => {
     ...team,
     tasks: (team.tasks || []).filter(task => !weeklyTaskRemovalAliases(task).some(alias => removed.has(alias)))
   }))
-}
-
-const weeklyTeamRemovalMarker = (team, teamIndex) => {
-  const teamId = String(team?.teamId || '').trim()
-  const teamNumber = teamLabelNumber(team) || teamIndex + 1
-  return {
-    id: teamId ? `team:${teamId}` : `number:${teamNumber}`,
-    teamId,
-    teamNumber
-  }
 }
 
 const removedWeeklyTeamMatches = (marker, team, teamIndex) => {
@@ -1549,22 +1540,6 @@ export default function App() {
     return () => window.removeEventListener('pignus:remove-weekly-task', removeWeeklyService)
   }, [date])
   useEffect(() => {
-    const removeWeeklyTeam = event => {
-      const { day, teamId, teamIndex, historyIds = [], taskIds = [] } = event.detail || {}
-      if (!day) return
-      const historyIdSet = new Set(historyIds.map(String))
-      const taskIdSet = new Set(taskIds.map(String))
-      if (day === date) setTeams(previous => previous.filter((team, currentTeamIndex) => !(
-        teamId ? String(team.teamId || '') === String(teamId) : currentTeamIndex === teamIndex
-      )))
-      if (historyIdSet.size || taskIdSet.size) setHistory(previous => previous.filter(record => !(
-        historyIdSet.has(String(record.id || '')) || taskIdSet.has(String(record.sourceTaskId || ''))
-      )))
-    }
-    window.addEventListener('pignus:remove-weekly-team', removeWeeklyTeam)
-    return () => window.removeEventListener('pignus:remove-weekly-team', removeWeeklyTeam)
-  }, [date])
-  useEffect(() => {
     // Una agenda diaria ya abierta/guardada comparte los mismos taskId que la
     // planificación semanal. Toda corrección semanal debe reflejarse también
     // en esa copia y en su registro pendiente del Historial.
@@ -1803,6 +1778,8 @@ export default function App() {
   const persistWeeklyService = command => persistStateCommand(snapshot => stateRepository.commit(
     command.operation === 'team-members'
       ? weeklyTeamMemberOperations(snapshot, command)
+      : command.operation === 'team-remove'
+        ? weeklyTeamRemovalOperations(snapshot, command)
       : weeklyServiceOperations(snapshot, command),
     stateRevisionRef.current
   ))
@@ -3486,22 +3463,23 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
       }
     })
   }
-  const removeWeeklyTeam = (day, teamIndex) => {
+  const removeWeeklyTeam = async (day, teamIndex) => {
     const removedTeam = dayPlan(day).teams[teamIndex]
     if (!removedTeam) return
-    const marker = weeklyTeamRemovalMarker(removedTeam, teamIndex)
-    const historyIds = (removedTeam.tasks || []).map(task => task.historyId).filter(Boolean)
-    const taskIds = (removedTeam.tasks || []).map(task => task.taskId).filter(Boolean)
-    updateDay(day, plan => ({
-      ...plan,
-      removedTeams: [...(plan.removedTeams || []).filter(item => item.id !== marker.id), marker],
-      teams: renumberVisibleWeeklyTeams(plan.teams.filter((team, index) => !removedWeeklyTeamMatches(marker, team, index)))
-    }))
-    window.dispatchEvent(new CustomEvent('pignus:remove-weekly-team', {
-      detail: { day, teamId: removedTeam.teamId, teamIndex, historyIds, taskIds }
-    }))
-    setTechPicker(null)
-    setNotice('El equipo fue eliminado.')
+    if ((removedTeam.tasks || []).some(task => task.vehicleControl) && !isAdministrator) {
+      setTeamRemoval(null)
+      setNotice('Sólo el rol Administrador puede eliminar un equipo que contiene un control vehicular.')
+      return
+    }
+    try {
+      await persistWeeklyService({ operation: 'team-remove', day, teamId: removedTeam.teamId, teamIndex, fallbackPlan: dayPlan(day) })
+      setTeamRemoval(null)
+      setTechPicker(null)
+      setNotice('El equipo y sus servicios pendientes fueron eliminados correctamente.')
+    } catch (error) {
+      setTeamRemoval(null)
+      setNotice(`No se eliminó el equipo. ${error.message || 'Revisá la versión actual e intentá nuevamente.'}`)
+    }
   }
   const hoursForDay = day => {
     const weekDay = new Date(`${day}T12:00:00`).getDay()

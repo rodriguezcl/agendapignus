@@ -105,7 +105,8 @@ function assertVehicleControlOmissionAuthorized(incoming, current, user) {
   const incomingWeekly = incoming?.agenda?.weekly || {}
   for (const [day, currentPlan] of Object.entries(currentWeekly)) {
     if (day.startsWith('_')) continue
-    const controls = (currentPlan?.teams || []).flatMap(team => team.tasks || []).filter(task => task?.vehicleControl)
+    const controlTeams = (currentPlan?.teams || []).filter(team => (team.tasks || []).some(task => task?.vehicleControl))
+    const controls = controlTeams.flatMap(team => team.tasks || []).filter(task => task?.vehicleControl)
     if (!controls.length) continue
     const previousRemoved = new Set((currentPlan?.removedTaskIds || []).map(String))
     const newlyRemoved = (incomingWeekly?.[day]?.removedTaskIds || []).map(String).filter(id => !previousRemoved.has(id))
@@ -113,6 +114,11 @@ function assertVehicleControlOmissionAuthorized(incoming, current, user) {
       const aliases = [task.taskId && `task:${task.taskId}`, task.historyId && `history:${task.historyId}`].filter(Boolean)
       return aliases.some(alias => newlyRemoved.includes(alias))
     })) deny()
+    const previousRemovedTeams = new Set((currentPlan?.removedTeams || []).map(marker => String(marker.id || '')))
+    const newlyRemovedTeams = (incomingWeekly?.[day]?.removedTeams || []).filter(marker => !previousRemovedTeams.has(String(marker.id || '')))
+    if (controlTeams.some(team => newlyRemovedTeams.some(marker =>
+      String(marker.teamId || '') === String(team.teamId || '') || String(marker.id || '') === `team:${team.teamId}`
+    ))) deny()
   }
   if (userCan(user, 'historyManage')) {
     const incomingHistoryIds = new Set((incoming?.history || []).map(record => String(record.id)))
