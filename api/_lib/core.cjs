@@ -61,6 +61,14 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
   inspectPlan({ teams: agenda.teams || [] })
   Object.entries(agenda.weekly || {}).forEach(([key, value]) => { if (!key.startsWith('_')) inspectPlan(value) })
   const incomingById = new Map(incomingHistory.map(record => [String(record.id), record]))
+  const wasExplicitlyRemoved = record => {
+    const id = String(record?.id || '')
+    const sourceTaskId = String(record?.sourceTaskId || '')
+    return Boolean(
+      (id && (removed.has(id) || removed.has(`history:${id}`))) ||
+      (sourceTaskId && (removed.has(sourceTaskId) || removed.has(`task:${sourceTaskId}`)))
+    )
+  }
   const protectedFields = ['status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'advanceRequest', 'originalScheduledTime']
   const result = []
   for (const previous of currentHistory) {
@@ -69,7 +77,7 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
     const proposed = incomingById.get(id)
     const closed = ['Completado', 'Cancelado', 'Reprogramado'].includes(previous.status) || Boolean(previous.technicalStatus)
     if (!proposed) {
-      if (!closed && (removed.has(id) || (sourceTaskId && removed.has(sourceTaskId)))) continue
+      if (!closed && wasExplicitlyRemoved(previous)) continue
       result.push(previous)
       continue
     }

@@ -106,3 +106,19 @@ test('elimina desde Historial un control cuya tarjeta semanal ya no existe sin q
   assert.deepEqual(next.history, [])
   assert.deepEqual(next.agenda.weekly['2026-09-11'].removedTaskIds, ['task:control-partner', 'history:history-partner'])
 })
+
+test('elimina un control heredado aunque sus identificadores ya no coincidan', async () => {
+  const { historyRecordRemovalOperations } = await import('../src/features/state/application/weekly-task-removal.mjs')
+  const record = { id: 'legacy-history', sourceTaskId: 'obsolete-task', date: '2026-09-11', time: '15:30', vehicleControl: true, vehicleId: 'kangoo', client: 'Renault Kangoo' }
+  const control = { taskId: 'current-task', historyId: 'current-history', time: '15:30', vehicleControl: true, vehicleId: 'kangoo', client: 'Renault Kangoo' }
+  const snapshot = {
+    history: [record],
+    agenda: { weekly: { '2026-09-11': { teams: [team([control])], removedTaskIds: [] } } }
+  }
+
+  const next = applyStateOperations(snapshot, historyRecordRemovalOperations(snapshot, record))
+
+  assert.deepEqual(next.history, [])
+  assert.deepEqual(next.agenda.weekly['2026-09-11'].teams[0].tasks, [])
+  assert.deepEqual(next.agenda.weekly['2026-09-11'].removedTaskIds, ['task:current-task', 'history:current-history'])
+})
