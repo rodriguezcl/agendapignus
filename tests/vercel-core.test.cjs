@@ -612,6 +612,16 @@ test('eliminar un servicio semanal deja una baja persistente y limpia su copia d
   assert.doesNotMatch(removal, /structuredClone\(snapshot\)|stateOperations\(snapshot, next\)/)
 })
 
+test('eliminar un control vencido desde Historial usa la misma baja atómica', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const removal = fs.readFileSync(path.resolve(__dirname, '../src/features/state/application/weekly-task-removal.mjs'), 'utf8')
+  assert.match(source, /const persistHistoryRecordRemoval = async record =>/)
+  assert.match(source, /historyRecordRemovalOperations\(snapshot, record\)/)
+  assert.match(source, /persistHistoryRecordRemoval=\{persistHistoryRecordRemoval\}/)
+  assert.match(source, /await persistHistoryRecordRemoval\(record\)/)
+  assert.match(removal, /export function historyRecordRemovalOperations/)
+})
+
 test('eliminar un equipo semanal deja una excepción persistente y limpia agenda e historial', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const removal = fs.readFileSync(path.resolve(__dirname, '../src/features/state/application/weekly-team-removal.mjs'), 'utf8')

@@ -73,3 +73,36 @@ test('el costo de preparar la omisión no depende del padrón de abonados', asyn
   assert.equal(operations.some(item => item.path[0] === 'customers'), false)
   assert.equal(JSON.stringify(operations).includes('Abonado 19999'), false)
 })
+
+test('elimina desde Historial un control vencido y deja la excepción semanal persistente', async () => {
+  const { historyRecordRemovalOperations } = await import('../src/features/state/application/weekly-task-removal.mjs')
+  const control = { taskId: 'control-kangoo', historyId: 'history-kangoo', time: '15:30', vehicleControl: true }
+  const record = { id: 'history-kangoo', sourceTaskId: 'control-kangoo', date: '2026-09-11', status: 'Pendiente', vehicleControl: true }
+  const snapshot = {
+    history: [record],
+    agenda: {
+      date: '2026-09-12',
+      teams: [],
+      weekly: { '2026-09-11': { teams: [team([control])], removedTaskIds: [] } }
+    }
+  }
+
+  const operations = historyRecordRemovalOperations(snapshot, record)
+  const next = applyStateOperations(snapshot, operations)
+  assert.deepEqual(next.history, [])
+  assert.deepEqual(next.agenda.weekly['2026-09-11'].teams[0].tasks, [])
+  assert.deepEqual(next.agenda.weekly['2026-09-11'].removedTaskIds, ['task:control-kangoo', 'history:history-kangoo'])
+  assert.deepEqual(applyStateOperations(next, operations), next)
+})
+
+test('elimina desde Historial un control cuya tarjeta semanal ya no existe sin que se regenere', async () => {
+  const { historyRecordRemovalOperations } = await import('../src/features/state/application/weekly-task-removal.mjs')
+  const record = { id: 'history-partner', sourceTaskId: 'control-partner', date: '2026-09-11', status: 'Pendiente', vehicleControl: true }
+  const snapshot = {
+    history: [record],
+    agenda: { weekly: { '2026-09-11': { teams: [team([])], removedTaskIds: [] } } }
+  }
+  const next = applyStateOperations(snapshot, historyRecordRemovalOperations(snapshot, record))
+  assert.deepEqual(next.history, [])
+  assert.deepEqual(next.agenda.weekly['2026-09-11'].removedTaskIds, ['task:control-partner', 'history:history-partner'])
+})
