@@ -24,6 +24,7 @@ const { logStateConcurrencyEvent } = require('./_lib/concurrency-observability.c
 const { applyServiceCatalogOperation } = require('./_lib/service-catalog-operation.cjs')
 const { applyVehicleOperation } = require('./_lib/vehicle-operation.cjs')
 const { synchronizeAgendaHistoryRecord } = require('./_lib/history-record-operation.cjs')
+const { removeHistoryRecord } = require('./_lib/history-record-removal.cjs')
 const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('./_lib/customer-import.cjs')
 const {
   assertNoAccidentalHistoryWipe, assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
@@ -743,6 +744,41 @@ async function handleHistoryRecordsBulkUpdate(req, res, sql, user) {
   }
 }
 
+async function handleHistoryRecordRemoval(req, res, sql, user, recordId) {
+  if (!userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para eliminar servicios del historial.' })
+  const { base } = requestBody(req)
+  if (!base || String(base.id || '') !== String(recordId)) return send(res, 400, { error: 'El servicio solicitado no es válido.' })
+  try {
+    const result = await sql.begin(async transaction => {
+      await transaction`set local lock_timeout = '5s'`
+      await transaction`set local statement_timeout = '15s'`
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const currentRevision = Number(revisionRows[0]?.value || 0)
+      await transaction`select data from pignus_work_history where id = ${String(recordId)} for update`
+      await transaction`select data from pignus_agendas where id = 'current' for update`
+      const currentState = await readState(transaction)
+      const current = (currentState.history || []).find(record => String(record.id) === String(recordId))
+      if (!current) return { revision: currentRevision, state: currentState, deleted: null }
+      if (current.vehicleControl) {
+        if (user.roleCode !== 'administrator') { const error = new Error('Sólo el rol Administrador puede eliminar un control vehicular.'); error.statusCode = 403; throw error }
+        if (!base.vehicleControl) { const error = new Error('El control vehicular solicitado no coincide con la versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
+      } else if (JSON.stringify(current) !== JSON.stringify(base)) {
+        const error = new Error('Este servicio cambió desde otra sesión. Recargá la página y revisá su versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error
+      }
+      const removed = removeHistoryRecord(currentState, recordId)
+      await persistStateCollections(transaction, currentState, removed.state, currentRevision + 1)
+      await appendAudit(transaction, [auditEntry(user, 'Eliminó', 'Servicio / historial', String(recordId), current, null)])
+      const state = await readState(transaction)
+      return { revision: currentRevision + 1, state, deleted: current }
+    })
+    return send(res, 200, { ok: true, revision: result.revision, state: visibleStateForUser({ ...result.state, revision: result.revision }, user), deleted: Boolean(result.deleted) })
+  } catch (error) {
+    const databaseBusy = error.code === '55P03' || error.code === '57014'
+    return send(res, databaseBusy ? 503 : (error.statusCode || 400), { code: error.code, error: databaseBusy ? 'La base de datos está ocupada. Intentá nuevamente.' : (error.message || 'No se pudo eliminar el servicio.') })
+  }
+}
+
 async function handleServiceAdvance(req, res, sql, user, decision = '') {
   const { recordId } = requestBody(req)
   const administratorDecision = Boolean(decision)
@@ -906,6 +942,7 @@ module.exports = async function handler(req, res) {
     }
     if (req.method === 'PATCH' && route === '/history/bulk') return await handleHistoryRecordsBulkUpdate(req, res, sql, session.user)
     if (req.method === 'PATCH' && route.startsWith('/history/')) return await handleHistoryRecordUpdate(req, res, sql, session.user, decodeURIComponent(route.slice('/history/'.length)))
+    if (req.method === 'DELETE' && route.startsWith('/history/')) return await handleHistoryRecordRemoval(req, res, sql, session.user, decodeURIComponent(route.slice('/history/'.length)))
     if (req.method === 'GET' && route === '/audit') {
       if (session.user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
       const limit = Math.min(Math.max(Number(req.query.limit) || AUDIT_LOG_LIMIT, 1), AUDIT_LOG_LIMIT)

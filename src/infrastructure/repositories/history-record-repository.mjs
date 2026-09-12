@@ -10,5 +10,10 @@ export const historyRecordRepository = {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ updates })
-  }, 'No se pudieron actualizar los servicios seleccionados.')
+  }, 'No se pudieron actualizar los servicios seleccionados.'),
+  remove: base => requestJson(`/api/history/${encodeURIComponent(String(base.id))}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ base })
+  }, 'No se pudo eliminar el servicio.')
 }

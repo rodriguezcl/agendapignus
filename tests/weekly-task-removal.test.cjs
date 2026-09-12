@@ -1,6 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { applyStateOperations } = require('../api/_lib/state-operations.cjs')
+const { removeHistoryRecord } = require('../api/_lib/history-record-removal.cjs')
 
 const team = tasks => ({
   teamId: 'team-2',
@@ -121,4 +122,24 @@ test('elimina un control heredado aunque sus identificadores ya no coincidan', a
   assert.deepEqual(next.history, [])
   assert.deepEqual(next.agenda.weekly['2026-09-11'].teams[0].tasks, [])
   assert.deepEqual(next.agenda.weekly['2026-09-11'].removedTaskIds, ['task:current-task', 'history:current-history'])
+})
+
+test('la eliminación autoritativa ignora nombres desalineados y retira todas las proyecciones', () => {
+  const record = { id: 'history-kangoo', sourceTaskId: 'control-kangoo', date: '2026-09-11', vehicleControl: true, vehicleId: 'kangoo', technicianIds: ['rodrigo'], technicians: ['Pascual'] }
+  const task = { taskId: 'control-kangoo', historyId: 'history-kangoo', vehicleControl: true, vehicleId: 'kangoo', technicianIds: ['rodrigo'], technicians: ['Rodrigo'] }
+  const snapshot = {
+    history: [record],
+    agenda: {
+      date: '2026-09-11', teams: [team([task])],
+      weekly: { '2026-09-11': { teams: [team([task])], removedTaskIds: [] } }
+    }
+  }
+
+  const result = removeHistoryRecord(snapshot, record.id)
+
+  assert.equal(result.changed, true)
+  assert.deepEqual(result.state.history, [])
+  assert.deepEqual(result.state.agenda.teams[0].tasks, [])
+  assert.deepEqual(result.state.agenda.weekly['2026-09-11'].teams[0].tasks, [])
+  assert.deepEqual(result.state.agenda.weekly['2026-09-11'].removedTaskIds.sort(), ['history:history-kangoo', 'task:control-kangoo'].sort())
 })
