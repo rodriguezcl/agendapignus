@@ -41,6 +41,7 @@ import { historyRecordRepository } from './infrastructure/repositories/history-r
 import { weeklyServiceOperations } from './features/state/application/weekly-service-save.mjs'
 import { weeklyTeamMemberOperations } from './features/state/application/weekly-team-members-save.mjs'
 import { weeklyTeamRemovalOperations } from './features/state/application/weekly-team-removal.mjs'
+import { weeklyTaskRemovalOperations } from './features/state/application/weekly-task-removal.mjs'
 import { stateOperations } from './features/state/application/state-operations.mjs'
 import { migrateLegacyEstimatedMinutes } from './domain/state/legacy-estimated-minutes.mjs'
 import './weekly.css'
@@ -1780,6 +1781,8 @@ export default function App() {
       ? weeklyTeamMemberOperations(snapshot, command)
       : command.operation === 'team-remove'
         ? weeklyTeamRemovalOperations(snapshot, command)
+        : command.operation === 'task-remove'
+          ? weeklyTaskRemovalOperations(snapshot, command)
       : weeklyServiceOperations(snapshot, command),
     stateRevisionRef.current
   ))
@@ -3523,40 +3526,18 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
     }
     updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, tasks: [...team.tasks, { ...blankTask(), time: '', manualSlot: true }] } : team) }))
   }
-  const removeWeeklyTask = ({ day, teamId, teamIndex, taskId, historyId, taskIndex, time, wasPlaceholder }) => {
+  const removeWeeklyTask = async ({ day, teamId, teamIndex, taskId, historyId, taskIndex, time, wasPlaceholder }) => {
     const selectedTeam = dayPlan(day).teams.find((team, index) => (teamId && String(team.teamId || '') === String(teamId)) || index === teamIndex)
     const selectedTask = selectedTeam?.tasks?.find((task, index) => (taskId && String(task.taskId || '') === String(taskId)) || (historyId && String(task.historyId || '') === String(historyId)) || index === taskIndex)
     if (selectedTask?.vehicleControl && !isAdministrator) { setNotice('Sólo el rol Administrador puede omitir un control vehicular.'); setTaskRemoval(null); return }
-    updateDay(day, plan => {
-      let removedSlots = plan.removedSlots || []
-      const removedTaskIds = [...new Set([...(plan.removedTaskIds || []), ...weeklyTaskRemovalAliases({ taskId, historyId })])]
-      const teams = plan.teams.map((team, index) => {
-        const sameTeam = (teamId && String(team.teamId || '') === String(teamId)) || index === teamIndex
-        if (!sameTeam) return team
-        if (wasPlaceholder) removedSlots = appendRemovedWeeklySlot(removedSlots, team, index, time)
-        let removed = false
-        return {
-          ...team,
-          tasks: (team.tasks || []).filter((task, index) => {
-            if (removed) return true
-            const taskTime = String(task.time || task.scheduledTime || '').trim()
-            const sameId = taskId && String(task.taskId || '') === String(taskId)
-            const sameHistory = historyId && String(task.historyId || '') === String(historyId)
-            const samePlaceholder = wasPlaceholder && !taskHasContent(task) && taskTime === String(time || '').trim()
-            const sameIndex = index === taskIndex && (!time || taskTime === String(time).trim())
-            if (sameId || sameHistory || samePlaceholder || sameIndex) {
-              removed = true
-              return false
-            }
-            return true
-          })
-        }
-      })
-      return { ...plan, removedSlots, removedTaskIds, teams }
-    })
-    window.dispatchEvent(new CustomEvent('pignus:remove-weekly-task', { detail: { day, teamId, teamIndex, taskIndex, taskId, historyId } }))
-    setTaskRemoval(null)
-    setNotice(selectedTask?.vehicleControl ? 'El control vehicular fue omitido para esta semana y ya no se mostrará al técnico.' : 'El servicio fue eliminado de la planificación semanal.')
+    try {
+      await persistWeeklyService({ operation: 'task-remove', day, teamId, teamIndex, taskId, historyId, taskIndex, time, wasPlaceholder, fallbackPlan: dayPlan(day) })
+      setTaskRemoval(null)
+      setNotice(selectedTask?.vehicleControl ? 'El control vehicular fue omitido para esta semana y ya no se mostrará al técnico.' : 'El servicio fue eliminado de la planificación semanal.')
+    } catch (error) {
+      setTaskRemoval(null)
+      setNotice(`No se eliminó el servicio. ${error.message || 'Revisá la versión actual e intentá nuevamente.'}`)
+    }
   }
   const suggestedMonthlyTeams = () => {
     const rotation = monthlyTeamRotation(activeTechs, monthKey, '2026-01', vehicles.length || 3)
