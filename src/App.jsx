@@ -20,6 +20,7 @@ import { setVehicleControlAssignedRecords, vehicleControlIsOpen, vehicleControlW
 import { appendConfigurationHistory, guardConfigurationSnapshot, teamConfigurationSnapshot, vehicleConfigurationSnapshot } from './domain/configuration/configuration-history.mjs'
 import { compactVehiclePhoto } from './infrastructure/media/image-upload.mjs'
 import { serviceHasStarted } from './domain/agenda/service-start.mjs'
+import { defaultWeeklyAnchor } from './domain/agenda/weekly-anchor.mjs'
 import { DEFAULT_SERVICE_ESTIMATED_MINUTES, MAX_SERVICE_ESTIMATED_MINUTES, normalizeServiceEstimatedMinutes, removeOverlappingDefaultSlots, serviceScheduleConflicts, taskOccupiedInterval } from './domain/agenda/service-scheduling.mjs'
 import { buildCustomerReferenceIndex, customerFromImportRow, mergeImportedCustomers, reconcileCustomerReference } from './domain/customers/customer-import.mjs'
 import { sortServicesAlphabetically } from './domain/services/service-order.mjs'
@@ -3027,7 +3028,8 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
   const operationalHistory = history || globalThis.__pignusHistory || []
   const localToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const [today, setToday] = useState(localToday)
-  const [anchor, setAnchor] = useState(today)
+  const [anchor, setAnchor] = useState(defaultWeeklyAnchor)
+  const weeklyAnchorFollowsCurrentRef = useRef(true)
   const [monthlySetup, setMonthlySetup] = useState(null)
   const [monthlyTimesSetup, setMonthlyTimesSetup] = useState(null)
   const [monthlyVehicleSetup, setMonthlyVehicleSetup] = useState(null)
@@ -3153,14 +3155,15 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
     return () => cancelAnimationFrame(frame)
   }, [weekly, days, taskEditor, operationalHistory])
   useEffect(() => {
-    // Mantiene la ventana semanal vigente aunque la pantalla permanezca abierta a medianoche.
-    const refreshDay = () => setToday(localToday())
-    const now = new Date()
-    const nextMidnight = new Date(now)
-    nextMidnight.setHours(24, 0, 1, 0)
-    const timeout = window.setTimeout(refreshDay, nextMidnight.getTime() - now.getTime())
-    return () => window.clearTimeout(timeout)
-  }, [today])
+    // Mantiene la fecha vigente y, mientras el usuario no navegue manualmente,
+    // adelanta la vista al lunes siguiente al finalizar el sábado operativo.
+    const refreshPlanningWindow = () => {
+      setToday(localToday())
+      if (weeklyAnchorFollowsCurrentRef.current) setAnchor(defaultWeeklyAnchor())
+    }
+    const interval = window.setInterval(refreshPlanningWindow, 60_000)
+    return () => window.clearInterval(interval)
+  }, [])
   useEffect(() => {
     const board = weeklyBoardRef.current
     if (!board) return
@@ -3893,7 +3896,7 @@ function WeeklyPlanner({ persistWeeklyService, weekly, setWeekly, customers, set
         return <div className="annual-guard-row" key={`${guard.technicianId || guard.name}-${index}`}><span>{index + 1}</span><select aria-label={`Técnico ${index + 1} de la rotación`} value={guard.technicianId || ''} onChange={event => updateAnnualGuardTechnician(index, event.target.value)}>{legacyGuard && <option value={guard.technicianId || ''}>{guard.name} (no activo)</option>}{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select><button type="button" className="secondary" title="Subir" aria-label={`Subir a ${guard.name}`} disabled={index === 0} onClick={() => moveAnnualGuardTechnician(index, -1)}>↑</button><button type="button" className="secondary" title="Bajar" aria-label={`Bajar a ${guard.name}`} disabled={index === annualGuardSetup.rotation.length - 1} onClick={() => moveAnnualGuardTechnician(index, 1)}>↓</button><button type="button" className="icon-btn delete" title="Quitar de la rotación" aria-label={`Quitar a ${guard.name}`} onClick={() => removeAnnualGuardTechnician(index)}><Icon name="trash" size={15} /></button></div>
       })}</div><button type="button" className="secondary annual-guard-add" disabled={!activeTechs.length || !validYear} onClick={addAnnualGuardTechnician}><Icon name="plus" size={15} />Agregar técnico</button>{!validYear && <p className="field-error">Ingresá un año válido.</p>}{duplicated && <p className="field-error">Cada técnico puede aparecer una sola vez en la rotación.</p>}{validYear && !annualGuardSetup.rotation.length && <p className="field-error">Agregá al menos un técnico para generar el cronograma.</p>}<p className="annual-guard-help">Los cambios manuales realizados en un sábado específico se conservan como excepción.</p><ConfigurationHistoryPanel history={weekly._annualGuards?.[annualGuardSetup.year]?.configurationHistory} type="guards" /><div className="modal-actions"><button className="secondary" onClick={() => setAnnualGuardSetup(null)}>Cancelar</button><button className="primary" disabled={!validYear || !annualGuardSetup.rotation.length || duplicated} onClick={saveAnnualGuardSetup}>Guardar guardias del año</button></div></section></div>
     })()}
-    <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Guardá cada servicio desde su formulario. Los cambios confirmados se comparten con todos los usuarios.</p></div><div className="weekly-actions">{canConfigureWeekly('weeklyTeams') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button>}{canConfigureWeekly('weeklyHours') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button>}{canConfigureWeekly('weeklyVehicles') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlyVehicleSetup}><Icon name="vehicle" size={16} />Vehículos del mes</button>}{canConfigureWeekly('weeklyGuards') && <button className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button>}<label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => setAnchor(event.target.value)} /></label></div></div>
+    <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Guardá cada servicio desde su formulario. Los cambios confirmados se comparten con todos los usuarios.</p></div><div className="weekly-actions">{canConfigureWeekly('weeklyTeams') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button>}{canConfigureWeekly('weeklyHours') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button>}{canConfigureWeekly('weeklyVehicles') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlyVehicleSetup}><Icon name="vehicle" size={16} />Vehículos del mes</button>}{canConfigureWeekly('weeklyGuards') && <button className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button>}<label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => { weeklyAnchorFollowsCurrentRef.current = false; setAnchor(event.target.value) }} /></label></div></div>
     {taskEditor && (() => {
       const { day, teamIndex, taskIndex } = taskEditor
       const task = taskEditor.draft
