@@ -1013,6 +1013,20 @@ test('sólo Administración puede omitir o eliminar un control vehicular', () =>
   assert.doesNotThrow(() => authorizeIncomingState(omitted, current, { roleCode: 'administrator', permissions: {} }))
 })
 
+test('los marcadores prefijados impiden restaurar un historial pendiente eliminado', () => {
+  const planningRole = { id: 'planner', code: 'user', name: 'Planificador', permissions: { weekly: true } }
+  const user = userForEmployee({ ...employee, roleId: planningRole.id, role: planningRole.name }, [...roles, planningRole])
+  const record = { id: 'control-history', sourceTaskId: 'control-task', status: 'Pendiente' }
+  const current = { roles: [...roles, planningRole], employees: [employee], services: [], vehicles: [], customers: [], history: [record], reviews: [], agenda: { weekly: { '2026-09-11': { teams: [{ teamId: 'team', tasks: [] }], removedTaskIds: [] } } } }
+  const incoming = structuredClone(current)
+  incoming.history = []
+  incoming.agenda.weekly['2026-09-11'].removedTaskIds = ['task:control-task', 'history:control-history']
+
+  const authorized = authorizeIncomingState(incoming, current, user)
+
+  assert.deepEqual(authorized.history, [])
+})
+
 test('vehículos del mes recibe la flota sin habilitar el módulo completo de vehículos', () => {
   const role = { id: 'weekly-vehicles-role', code: 'user', name: 'Usuario', permissions: { weekly: true, weeklyVehicles: true, vehicles: false } }
   const user = userForEmployee({ ...employee, roleId: role.id, role: role.name }, [...roles, role])

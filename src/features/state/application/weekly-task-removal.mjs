@@ -31,6 +31,20 @@ function resolveTaskIndex(tasks, { taskId, historyId, taskIndex, time }) {
   return !time || candidateTime === String(time).trim() ? Number(taskIndex) : -1
 }
 
+function resolveLegacyVehicleControlIndex(tasks, record) {
+  if (!record?.vehicleControl) return -1
+  const recordVehicleId = String(record.vehicleId || '').trim()
+  const recordTime = String(record.time || record.scheduledTime || '').trim()
+  const recordClient = String(record.client || '').trim()
+  return (tasks || []).findIndex(task => {
+    if (!task?.vehicleControl) return false
+    const sameVehicle = recordVehicleId && String(task.vehicleId || '').trim() === recordVehicleId
+    const sameClient = recordClient && String(task.client || '').trim() === recordClient
+    const sameTime = !recordTime || String(task.time || task.scheduledTime || '').trim() === recordTime
+    return sameTime && (sameVehicle || sameClient)
+  })
+}
+
 function removalFromTeam(operations, prefix, team, taskIndex) {
   const task = team?.tasks?.[taskIndex]
   if (!task) return
@@ -122,11 +136,12 @@ export function historyRecordRemovalOperations(snapshot, record) {
   const plan = snapshot?.agenda?.weekly?.[day]
   let linked = null
   for (const [teamIndex, team] of (plan?.teams || []).entries()) {
-    const taskIndex = resolveTaskIndex(team.tasks || [], {
+    let taskIndex = resolveTaskIndex(team.tasks || [], {
       taskId: currentRecord.sourceTaskId,
       historyId: currentRecord.id,
       taskIndex: -1
     })
+    if (taskIndex < 0) taskIndex = resolveLegacyVehicleControlIndex(team.tasks || [], currentRecord)
     if (taskIndex >= 0) { linked = { team, teamIndex, taskIndex, task: team.tasks[taskIndex] }; break }
   }
 
