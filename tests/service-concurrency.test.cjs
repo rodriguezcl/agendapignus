@@ -14,14 +14,17 @@ test('la huella de un servicio es estable ante el orden de las propiedades', asy
   assert.equal(serviceRecordChanged(original, null), true)
 })
 
-test('el historial actualiza o cierra el modal y bloquea acciones ante cambios concurrentes', () => {
+test('el historial actualiza el modal sin mostrar el aviso rojo de concurrencia', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const styles = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui-polish.css'), 'utf8')
 
   assert.match(source, /const liveDetail = detail \? history\.find/)
   assert.match(source, /if \(!liveDetail\) \{ setDetail\(null\); return \}/)
   assert.match(source, /serviceRecordFingerprint\(detail\) !== serviceRecordFingerprint\(liveDetail\)/)
-  assert.match(source, /className="notice history-concurrency-warning" role="alert"/)
-  assert.match(source, /const interactionBlocked = concurrentChange \|\| recordFingerprint !== acceptedFingerprintRef\.current/)
+  assert.match(source, /acceptedFingerprintRef\.current = recordFingerprint/)
+  assert.match(source, /const interactionBlocked = recordFingerprint !== acceptedFingerprintRef\.current \|\| saving/)
   assert.match(source, /disabled=\{interactionBlocked\}/)
   assert.match(source, /if \(interactionBlocked\) return/)
+  assert.doesNotMatch(source, /history-concurrency-warning|Revisar versión actual|concurrently-updated/)
+  assert.doesNotMatch(styles, /history-concurrency-warning|concurrently-updated/)
 })
