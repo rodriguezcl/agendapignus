@@ -2045,7 +2045,7 @@ export default function App() {
   const logout = async ({ discardDailyAgenda = false } = {}) => {
     if (loggingOutRef.current) return
     loggingOutRef.current = true
-    setLoggingOut(true)
+    const hadPendingStateSave = pendingStateSaves.current > 0 || Boolean(stateSaveTimerRef.current)
     if (stateSaveTimerRef.current) {
       clearTimeout(stateSaveTimerRef.current)
       stateSaveTimerRef.current = null
@@ -2058,7 +2058,7 @@ export default function App() {
       await stateSaveQueue.current.catch(() => {})
       const latestSerializedSnapshot = currentSnapshotRef.current
       const canPersistLatestSnapshot = databaseReady && stateRevisionRef.current !== null && authUser && authUser.roleCode !== 'technician' && (authUser.roleCode || normalizeRoleName(authUser.role) !== 'tecnico')
-      if (canPersistLatestSnapshot && latestSerializedSnapshot && latestSerializedSnapshot !== lastPersistedSnapshotRef.current) {
+      if (canPersistLatestSnapshot && hadPendingStateSave && latestSerializedSnapshot && latestSerializedSnapshot !== lastPersistedSnapshotRef.current) {
         const snapshot = JSON.parse(latestSerializedSnapshot)
         let base = null
         try { base = lastPersistedSnapshotRef.current ? JSON.parse(lastPersistedSnapshotRef.current) : null } catch { base = null }
@@ -2079,6 +2079,7 @@ export default function App() {
       const clean = emptyAgenda()
       setTeams(clean.teams); setDate(clean.date)
     }
+    setLoggingOut(true)
     try {
       const response = await fetchWithTimeout('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ discardDailyAgenda: Boolean(discardDailyAgenda && databaseReady) }) })
       if (!response.ok) throw new Error('No se pudo invalidar la sesión en el servidor.')

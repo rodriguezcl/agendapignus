@@ -199,11 +199,13 @@ test('cerrar sesión fuerza el guardado del último cambio aunque siga dentro de
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const logout = source.slice(source.indexOf('const logout = async'), source.indexOf('const requestLogout'))
   assert.match(logout, /await stateSaveQueue\.current\.catch\(\(\) => \{\}\)/)
+  assert.match(logout, /const hadPendingStateSave = pendingStateSaves\.current > 0 \|\| Boolean\(stateSaveTimerRef\.current\)/)
   assert.match(logout, /const latestSerializedSnapshot = currentSnapshotRef\.current/)
-  assert.match(logout, /latestSerializedSnapshot !== lastPersistedSnapshotRef\.current/)
+  assert.match(logout, /hadPendingStateSave && latestSerializedSnapshot && latestSerializedSnapshot !== lastPersistedSnapshotRef\.current/)
   assert.match(logout, /await stateRepository\.save\(\{ revision: stateRevisionRef\.current,[\s\S]*?\.\.\.snapshot \}\)/)
   assert.match(logout, /No se pudo guardar la agenda antes de cerrar sesión\. La sesión sigue abierta/)
   assert.ok(logout.indexOf('await stateRepository.save') < logout.indexOf("fetchWithTimeout('/api/auth/logout'"))
+  assert.ok(logout.indexOf('setLoggingOut(true)') > logout.indexOf('await stateRepository.save'))
 })
 
 test('una sesión nueva no hereda avisos de guardado de la sesión anterior', () => {
