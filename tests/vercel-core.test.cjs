@@ -601,11 +601,15 @@ test('la agenda diaria respeta espacios quitados y no copia servicios vacíos', 
 
 test('eliminar un servicio semanal deja una baja persistente y limpia su copia diaria', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const removal = fs.readFileSync(path.resolve(__dirname, '../src/features/state/application/weekly-task-removal.mjs'), 'utf8')
 
   assert.match(source, /const applyRemovedWeeklyTasks = \(teams = \[\], removedTaskIds = \[\]\) =>/)
-  assert.match(source, /const removedTaskIds = \[\.\.\.new Set\(\[\.\.\.\(plan\.removedTaskIds \|\| \[\]\), \.\.\.weeklyTaskRemovalAliases\(\{ taskId, historyId \}\)\]\)\]/)
-  assert.match(source, /detail: \{ day, teamId, teamIndex, taskIndex, taskId, historyId \}/)
-  assert.match(source, /currentTaskIndex !== taskIndex/)
+  assert.match(source, /command\.operation === 'task-remove'/)
+  assert.match(source, /await persistWeeklyService\(\{ operation: 'task-remove'/)
+  assert.match(removal, /const removedTaskIds = \[\.\.\.new Set\(\[\.\.\.\(plan\.removedTaskIds \|\| \[\]\), \.\.\.aliases\(task\)\]\)\]/)
+  assert.match(removal, /if \(snapshot\?\.agenda\?\.date === day\)/)
+  assert.match(removal, /if \(matches && !closedRecord\(record\)\)/)
+  assert.doesNotMatch(removal, /structuredClone\(snapshot\)|stateOperations\(snapshot, next\)/)
 })
 
 test('eliminar un equipo semanal deja una excepción persistente y limpia agenda e historial', () => {
