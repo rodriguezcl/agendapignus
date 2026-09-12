@@ -616,12 +616,22 @@ test('eliminar un servicio semanal deja una baja persistente y limpia su copia d
 
 test('eliminar un control vencido desde Historial usa la misma baja atómica', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
-  const removal = fs.readFileSync(path.resolve(__dirname, '../src/features/state/application/weekly-task-removal.mjs'), 'utf8')
+  const repository = fs.readFileSync(path.resolve(__dirname, '../src/infrastructure/repositories/history-record-repository.mjs'), 'utf8')
+  const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
   assert.match(source, /const persistHistoryRecordRemoval = async record =>/)
-  assert.match(source, /historyRecordRemovalOperations\(snapshot, record\)/)
   assert.match(source, /persistHistoryRecordRemoval=\{persistHistoryRecordRemoval\}/)
   assert.match(source, /await persistHistoryRecordRemoval\(record\)/)
-  assert.match(removal, /export function historyRecordRemovalOperations/)
+  assert.match(source, /historyRecordRepository\.remove\(record\)/)
+  assert.match(repository, /method: 'DELETE'/)
+  assert.match(apiSource, /async function handleHistoryRecordRemoval/)
+  assert.match(apiSource, /removeHistoryRecord\(currentState, recordId\)/)
+})
+
+test('los controles vehiculares conservan un único responsable coherente entre nombre e identificador', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  assert.match(source, /const taskHasResponsible = record\.vehicleControl && assignedTask\?\.technicianIds\?\.length/)
+  assert.match(source, /const technicianIds = taskHasResponsible \? assignedTask\.technicianIds/)
+  assert.match(source, /assignedById\.length \? assignedById : assignedByName/)
 })
 
 test('la gestión múltiple del historial se confirma de forma atómica en el servidor', () => {

@@ -180,6 +180,38 @@ test('gestiona un servicio individual sin reenviar ni reducir el historial compl
   assert.equal(response.status, 409)
 })
 
+test('elimina un control vehicular aunque su nombre visible haya quedado desalineado del técnico', async () => {
+  const recordId = 'vehicle-control-2096-03-13-qa-vehicle'
+  const record = {
+    id: recordId, sourceTaskId: recordId, date: '2096-03-13', time: '15:30', scheduledTime: '15:30',
+    serviceId: 'vehicle-weekly-control', service: 'Control semanal de vehículo', status: 'Pendiente',
+    team: 'Equipo 1', teamId: 'qa-team', technicianIds: ['qa-tech'], technicians: ['Nombre visible incorrecto'],
+    vehicleControl: true, vehicleId: 'qa-vehicle', vehicleControlScheduledFriday: '2096-03-13', monthlyVehicleAssignment: '2096-03'
+  }
+  const databasePath = path.join(temporaryDirectory, 'agenda-tecnica.db')
+  const database = new DatabaseSync(databasePath)
+  database.prepare('INSERT INTO work_history (id, data) VALUES (?, ?)').run(recordId, JSON.stringify(record))
+  const agenda = JSON.parse(database.prepare('SELECT data FROM agendas WHERE id = ?').get('current').data)
+  agenda.weekly['2096-03-13'] = {
+    teams: [{ teamId: 'qa-team', label: 'Equipo 1', memberIds: ['qa-admin'], members: ['QA Admin'], tasks: [{ ...record, taskId: recordId, historyId: recordId, technicians: ['QA Técnico'] }] }],
+    removedTaskIds: []
+  }
+  database.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(agenda), 'current')
+  database.close()
+
+  const administratorCookie = await login('qa-admin@pignus.test')
+  const response = await api(`/api/history/${encodeURIComponent(recordId)}`, administratorCookie, {
+    method: 'DELETE',
+    body: JSON.stringify({ base: { ...record, technicians: ['Pascual Gonzalez'] } })
+  })
+  assert.equal(response.status, 200)
+  const payload = await response.json()
+  assert.equal(payload.deleted, true)
+  assert.equal(payload.state.history.some(item => item.id === recordId), false)
+  assert.deepEqual(payload.state.agenda.weekly['2096-03-13'].teams[0].tasks, [])
+  assert.deepEqual(payload.state.agenda.weekly['2096-03-13'].removedTaskIds.sort(), [`history:${recordId}`, `task:${recordId}`].sort())
+})
+
 test('gestiona uno o varios servicios en una transacción atómica', async () => {
   const administratorCookie = await login('qa-admin@pignus.test')
   const before = await state(administratorCookie)

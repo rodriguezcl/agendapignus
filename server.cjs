@@ -14,6 +14,7 @@ const { assertNoPastWeeklyServiceAdditions } = require('./api/_lib/past-agenda.c
 const { applyServiceCatalogOperation } = require('./api/_lib/service-catalog-operation.cjs')
 const { applyVehicleOperation } = require('./api/_lib/vehicle-operation.cjs')
 const { synchronizeAgendaHistoryRecord } = require('./api/_lib/history-record-operation.cjs')
+const { removeHistoryRecord } = require('./api/_lib/history-record-removal.cjs')
 const { applyStateOperations } = require('./api/_lib/state-operations.cjs')
 const { migrateLegacyEstimatedMinutes } = require('./api/_lib/legacy-estimated-minutes.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
@@ -657,7 +658,7 @@ function migrateTeamAndTechnicianReferences() {
   for (const record of rows('work_history')) {
     const technicians = (record.technicianIds || []).map(id => employeeById.get(String(id))).filter(Boolean)
     const named = (record.technicians || []).map(name => employeeByName.get(normalizedCustomerValue(name))).filter(Boolean)
-    const assigned = [...new Map([...technicians, ...named].map(employee => [String(employee.id), employee])).values()]
+    const assigned = [...new Map((technicians.length ? technicians : named).map(employee => [String(employee.id), employee])).values()]
     const teamIndex = Number(String(record.team || '').match(/\d+/)?.[0]) - 1
     const teamId = record.teamId ?? (teamIndex >= 0 && record.date ? stableTeamId(String(record.date).slice(0, 7), teamIndex) : null)
     const next = { ...record, teamId, technicianIds: assigned.map(employee => employee.id), technicians: assigned.map(employee => employee.name) }
@@ -1286,7 +1287,7 @@ function saveState(state, user) {
     const base = normalizeReference(record)
     const byId = (base.technicianIds || []).map(id => employeeById.get(String(id))).filter(Boolean)
     const byName = (base.technicians || []).map(name => employeeByName.get(normalizedCustomerValue(name))).filter(Boolean)
-    const technicians = [...new Map([...byId, ...byName].map(employee => [String(employee.id), employee])).values()]
+    const technicians = [...new Map((byId.length ? byId : byName).map(employee => [String(employee.id), employee])).values()]
     const teamIndex = Number(String(base.team || '').match(/\d+/)?.[0]) - 1
     return { ...base, status: base.status || 'Pendiente', teamId: base.teamId ?? (teamIndex >= 0 ? stableTeamId(String(base.date || '').slice(0, 7), teamIndex) : null), technicianIds: technicians.map(employee => employee.id), technicians: technicians.map(employee => employee.name) }
   }
@@ -1871,6 +1872,42 @@ const server = http.createServer((req, res) => {
         throw error
       }
     }).catch(error => send(res, error.statusCode || 400, { code: error.code, error: error.message || 'No se pudieron actualizar los servicios seleccionados.' }))
+  }
+  if (req.method === 'DELETE' && url.pathname.startsWith('/api/history/')) {
+    const user = requireSession(req, res)
+    if (!user) return
+    if (!userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para eliminar servicios del historial.' })
+    const recordId = decodeURIComponent(url.pathname.slice('/api/history/'.length))
+    return readJson(req, 500_000).then(({ base }) => {
+      if (!base || String(base.id || '') !== recordId) return send(res, 400, { error: 'El servicio solicitado no es válido.' })
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const stored = db.prepare('SELECT data FROM work_history WHERE id = ?').get(recordId)
+        const current = stored?.data ? JSON.parse(stored.data) : null
+        if (!current) {
+          db.exec('COMMIT')
+          return send(res, 200, { ok: true, revision: currentStateRevision(), state: readStateForUser(user), deleted: false })
+        }
+        if (current.vehicleControl) {
+          if (user.roleCode !== 'administrator') { const error = new Error('Sólo el rol Administrador puede eliminar un control vehicular.'); error.statusCode = 403; throw error }
+          if (!base.vehicleControl) { const error = new Error('El control vehicular solicitado no coincide con la versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
+        } else if (JSON.stringify(current) !== JSON.stringify(base)) {
+          const error = new Error('Este servicio cambió desde otra sesión. Recargá la página y revisá su versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error
+        }
+        const currentState = readState()
+        const removed = removeHistoryRecord(currentState, recordId)
+        db.prepare('DELETE FROM work_history WHERE id = ?').run(recordId)
+        db.prepare('INSERT OR REPLACE INTO agendas (id, data) VALUES (?, ?)').run('current', JSON.stringify(removed.state.agenda || {}))
+        writeAudit(user, 'Eliminó', 'Servicio / historial', recordId, current, null)
+        const revision = currentStateRevision() + 1
+        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
+        db.exec('COMMIT')
+        return send(res, 200, { ok: true, revision, state: readStateForUser(user), deleted: true })
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+    }).catch(error => send(res, error.statusCode || 400, { code: error.code, error: error.message || 'No se pudo eliminar el servicio.' }))
   }
   if (req.method === 'PATCH' && url.pathname.startsWith('/api/history/')) {
     const user = requireSession(req, res)

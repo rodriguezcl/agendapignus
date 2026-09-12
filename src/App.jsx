@@ -41,7 +41,7 @@ import { historyRecordRepository } from './infrastructure/repositories/history-r
 import { weeklyServiceOperations } from './features/state/application/weekly-service-save.mjs'
 import { weeklyTeamMemberOperations } from './features/state/application/weekly-team-members-save.mjs'
 import { weeklyTeamRemovalOperations } from './features/state/application/weekly-team-removal.mjs'
-import { historyRecordRemovalOperations, weeklyTaskRemovalOperations } from './features/state/application/weekly-task-removal.mjs'
+import { weeklyTaskRemovalOperations } from './features/state/application/weekly-task-removal.mjs'
 import { stateOperations } from './features/state/application/state-operations.mjs'
 import { migrateLegacyEstimatedMinutes } from './domain/state/legacy-estimated-minutes.mjs'
 import './weekly.css'
@@ -1356,7 +1356,9 @@ export default function App() {
     const byId = new Map(employees.map(employee => [String(employee.id), employee]))
     const byName = new Map(employees.map(employee => [normalizeServiceName(employee.name), employee]))
     const normalizeAssignments = item => {
-      const assigned = [...new Map([...(item.memberIds || item.technicianIds || []).map(id => byId.get(String(id))), ...(item.members || item.technicians || []).map(name => byName.get(normalizeServiceName(name)))].filter(Boolean).map(employee => [String(employee.id), employee])).values()]
+      const assignedById = (item.memberIds || item.technicianIds || []).map(id => byId.get(String(id))).filter(Boolean)
+      const assignedByName = (item.members || item.technicians || []).map(name => byName.get(normalizeServiceName(name))).filter(Boolean)
+      const assigned = [...new Map((assignedById.length ? assignedById : assignedByName).map(employee => [String(employee.id), employee])).values()]
       if ('tasks' in item) return { ...item, teamId: item.teamId || createTeamId(), memberIds: assigned.map(employee => employee.id), members: assigned.map(employee => employee.name) }
       return { ...item, technicianIds: assigned.map(employee => employee.id), technicians: assigned.map(employee => employee.name) }
     }
@@ -1511,8 +1513,13 @@ export default function App() {
           (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
         ))
         if (!assignedTeam) return record
-        const technicianIds = assignedTeam.memberIds || []
-        const technicians = assignedTeam.members || []
+        const assignedTask = (assignedTeam.tasks || []).find(task =>
+          String(task.historyId || '') === String(record.id) ||
+          (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
+        )
+        const taskHasResponsible = record.vehicleControl && assignedTask?.technicianIds?.length
+        const technicianIds = taskHasResponsible ? assignedTask.technicianIds : (assignedTeam.memberIds || [])
+        const technicians = taskHasResponsible ? (assignedTask.technicians || []) : (assignedTeam.members || [])
         const sameAssignment =
           String(record.teamId || '') === String(assignedTeam.teamId || '') &&
           record.team === assignedTeam.label &&
@@ -1804,7 +1811,7 @@ export default function App() {
   }
   const persistHistoryRecordRemoval = async record => {
     try {
-      const payload = await persistStateCommand(snapshot => stateRepository.commit(historyRecordRemovalOperations(snapshot, record), stateRevisionRef.current))
+      const payload = await persistStateCommand(() => historyRecordRepository.remove(record))
       setNotice(record?.vehicleControl ? 'El control vehicular fue eliminado correctamente.' : 'El servicio fue eliminado correctamente.')
       return payload
     } catch (error) {
