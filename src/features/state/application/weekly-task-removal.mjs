@@ -107,3 +107,47 @@ export function weeklyTaskRemovalOperations(snapshot, command) {
   }
   return operations
 }
+
+// History can be the only editable projection once a day has finished. Locate
+// its weekly task and reuse the same atomic removal, then make sure the record
+// itself is deleted even for historical data whose agenda card no longer exists.
+export function historyRecordRemovalOperations(snapshot, record) {
+  const recordId = String(record?.id || '').trim()
+  if (!recordId) throw new Error('El servicio solicitado no es válido.')
+  const currentRecord = (snapshot.history || []).find(item => sameId(item.id, recordId))
+  // An exact retry after a response was lost is already complete.
+  if (!currentRecord) return []
+
+  const day = String(currentRecord.date || record.date || '').trim()
+  const plan = snapshot?.agenda?.weekly?.[day]
+  let linked = null
+  for (const [teamIndex, team] of (plan?.teams || []).entries()) {
+    const taskIndex = resolveTaskIndex(team.tasks || [], {
+      taskId: currentRecord.sourceTaskId,
+      historyId: currentRecord.id,
+      taskIndex: -1
+    })
+    if (taskIndex >= 0) { linked = { team, teamIndex, taskIndex, task: team.tasks[taskIndex] }; break }
+  }
+
+  const operations = linked ? weeklyTaskRemovalOperations(snapshot, {
+    day,
+    teamId: linked.team.teamId,
+    teamIndex: linked.teamIndex,
+    taskId: linked.task.taskId || currentRecord.sourceTaskId,
+    historyId: linked.task.historyId || currentRecord.id,
+    taskIndex: linked.taskIndex,
+    time: linked.task.time || linked.task.scheduledTime
+  }) : []
+
+  if (plan && currentRecord.vehicleControl && !linked) {
+    const removedTaskIds = [...new Set([...(plan.removedTaskIds || []), ...aliases({ taskId: currentRecord.sourceTaskId, historyId: currentRecord.id })])]
+    if (JSON.stringify(removedTaskIds) !== JSON.stringify(plan.removedTaskIds || [])) {
+      operations.push(operation(['agenda', 'weekly', day, 'removedTaskIds'], plan.removedTaskIds, removedTaskIds))
+    }
+  }
+  if (!operations.some(item => item.path[0] === 'history' && item.path[1]?.id === recordId)) {
+    operations.push(operation(['history', { key: 'id', id: recordId }], currentRecord, undefined))
+  }
+  return operations
+}
