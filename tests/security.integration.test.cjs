@@ -180,6 +180,40 @@ test('gestiona un servicio individual sin reenviar ni reducir el historial compl
   assert.equal(response.status, 409)
 })
 
+test('gestiona uno o varios servicios en una transacción atómica', async () => {
+  const administratorCookie = await login('qa-admin@pignus.test')
+  const before = await state(administratorCookie)
+  const bases = before.history.slice(0, 2)
+  assert.equal(bases.length, 2)
+
+  let response = await api('/api/history/bulk', administratorCookie, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      updates: bases.map(base => ({ base, record: { ...base, status: 'Pendiente' } }))
+    })
+  })
+  assert.equal(response.status, 200)
+  let payload = await response.json()
+  for (const base of bases) {
+    assert.equal(payload.state.history.find(record => record.id === base.id).status, 'Pendiente')
+  }
+
+  const current = payload.state.history.filter(record => bases.some(base => base.id === record.id))
+  response = await api('/api/history/bulk', administratorCookie, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      updates: [
+        { base: current[0], record: { ...current[0], status: 'Cancelado' } },
+        { base: { ...current[1], detail: 'Versión obsoleta' }, record: { ...current[1], status: 'Cancelado' } }
+      ]
+    })
+  })
+  assert.equal(response.status, 409)
+  payload = await state(administratorCookie)
+  assert.equal(payload.history.find(record => record.id === current[0].id).status, 'Pendiente')
+  assert.equal(payload.history.find(record => record.id === current[1].id).status, 'Pendiente')
+})
+
 test('tipos de servicio usa operaciones pequeñas con concurrencia por registro', async () => {
   const administratorCookie = await login('qa-admin@pignus.test')
   const coordinatorCookie = await login('qa-weekly@pignus.test')
