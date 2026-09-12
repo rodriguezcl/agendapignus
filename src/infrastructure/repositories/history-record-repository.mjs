@@ -5,5 +5,10 @@ export const historyRecordRepository = {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ base, record })
-  }, 'No se pudo actualizar el servicio.')
+  }, 'No se pudo actualizar el servicio.'),
+  updateMany: updates => requestJson('/api/history/bulk', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ updates })
+  }, 'No se pudieron actualizar los servicios seleccionados.')
 }

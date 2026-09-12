@@ -1788,12 +1788,17 @@ export default function App() {
   ))
   const persistAgendaRecords = (before, records) => persistStateCommand(() => stateRepository.commit(stateOperations({ history: before }, { history: records }), stateRevisionRef.current))
   const persistHistoryRecord = async (base, record) => {
+    const updates = Array.isArray(base) ? base : null
     try {
-      const payload = await persistStateCommand(() => historyRecordRepository.update(base, record))
-      setNotice('El servicio se actualizó correctamente.')
+      const payload = await persistStateCommand(() => updates
+        ? historyRecordRepository.updateMany(updates)
+        : historyRecordRepository.update(base, record))
+      setNotice(updates
+        ? `${updates.length} servicios se actualizaron correctamente.`
+        : 'El servicio se actualizó correctamente.')
       return payload
     } catch (error) {
-      setNotice(`No se guardó el cambio del servicio. ${error.message || 'Intentá nuevamente.'}`)
+      setNotice(`${updates ? 'No se actualizaron los servicios seleccionados.' : 'No se guardó el cambio del servicio.'} ${error.message || 'Intentá nuevamente.'}`)
       throw error
     }
   }
@@ -4579,6 +4584,7 @@ function HistoryBulkView({ history, setHistory, customers, services, employees, 
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
   const [bulkStatus, setBulkStatus] = useState('Completado')
+  const [bulkSaving, setBulkSaving] = useState(false)
   const [rescheduleDate, setRescheduleDate] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
@@ -4596,8 +4602,25 @@ function HistoryBulkView({ history, setHistory, customers, services, employees, 
   }, [detail, liveDetail])
   const toggle = id => setSelected(previous => previous.includes(id) ? previous.filter(item => item !== id) : [...previous, id])
   const toggleAll = () => setSelected(selected.length === records.length ? [] : records.map(record => record.id))
-  const applyBulk = () => {
-    if (!selected.length || (bulkStatus === 'Reprogramado' && (!rescheduleDate || rescheduleDate < minimumRescheduleDate))) return
+  const applyBulk = async () => {
+    if (bulkSaving || !selected.length || (bulkStatus === 'Reprogramado' && (!rescheduleDate || rescheduleDate < minimumRescheduleDate))) return
+    const selectedRecords = history.filter(record => selected.includes(record.id))
+    if (bulkStatus !== 'Reprogramado' && persistHistoryRecord) {
+      const updates = selectedRecords.map(base => ({
+        base,
+        record: stampServiceRecord({ ...base, status: bulkStatus, scheduledDate: '' }, authUser)
+      }))
+      setBulkSaving(true)
+      try {
+        await persistHistoryRecord(updates)
+        setSelected([])
+        setBulkOpen(false)
+        setRescheduleDate('')
+      } finally {
+        setBulkSaving(false)
+      }
+      return
+    }
     if (bulkStatus === 'Reprogramado') history.filter(record => selected.includes(record.id)).forEach(record => {
       window.dispatchEvent(new CustomEvent('pignus:reschedule-service', { detail: { record, nextDate: rescheduleDate, sourceDate: record.date } }))
     })

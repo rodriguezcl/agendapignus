@@ -1156,6 +1156,20 @@ function assertServiceCanBeCompleted(record, now = new Date().toISOString()) {
   const current = Number(parts.hour) * 60 + Number(parts.minute)
   if (scheduled > current) { const error = new Error('No se puede completar un servicio antes de su fecha y hora programadas.'); error.statusCode = 409; throw error }
 }
+
+function managedHistoryRecord(current, proposed, user, now = new Date().toISOString()) {
+  const allowedStatuses = ['Pendiente', 'Completado', 'Cancelado', 'Reprogramado', 'Requiere revisión']
+  if (!allowedStatuses.includes(proposed.status || 'Pendiente')) throw new Error('El estado solicitado no es válido.')
+  let next = { ...current, ...proposed, id: current.id, status: proposed.status || 'Pendiente' }
+  if (next.status === 'Completado' && current.status !== 'Completado') {
+    if (user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
+    next = { ...next, completedAt: next.completedAt || now }
+  } else if (next.status !== 'Completado') {
+    const { completedAt: _discardedCompletion, ...withoutCompletion } = next
+    next = withoutCompletion
+  }
+  return next
+}
 function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now = new Date().toISOString(), { allowEarlyCompletion = false } = {}) {
   const previousById = new Map((previousHistory || []).map(record => [String(record.id), record]))
   return (history || []).map(record => {
@@ -1813,6 +1827,51 @@ const server = http.createServer((req, res) => {
     if (!user) return
     return send(res, 200, readStateForUser(user))
   }
+  if (req.method === 'PATCH' && url.pathname === '/api/history/bulk') {
+    const user = requireSession(req, res)
+    if (!user) return
+    if (!userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
+    return readJson(req, 500_000).then(({ updates }) => {
+      if (!Array.isArray(updates) || !updates.length || updates.length > 100) return send(res, 400, { error: 'Seleccioná entre 1 y 100 servicios válidos.' })
+      const identifiers = updates.map(update => String(update?.record?.id || ''))
+      if (identifiers.some(id => !id) || new Set(identifiers).size !== identifiers.length || updates.some((update, index) => !update?.base || String(update.base.id || '') !== identifiers[index])) return send(res, 400, { error: 'La selección contiene servicios inválidos o repetidos.' })
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const currentById = new Map()
+        for (const recordId of identifiers) {
+          const stored = db.prepare('SELECT data FROM work_history WHERE id = ?').get(recordId)
+          const current = stored?.data ? JSON.parse(stored.data) : null
+          if (!current) { const error = new Error('Uno de los servicios ya no existe.'); error.statusCode = 404; throw error }
+          currentById.set(recordId, current)
+        }
+        for (const update of updates) {
+          const current = currentById.get(String(update.record.id))
+          if (JSON.stringify(current) !== JSON.stringify(update.base)) { const error = new Error('Uno de los servicios cambió desde otra sesión. Recargá la página y revisá la selección.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
+        }
+        const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+        let agenda = agendaRow?.data ? JSON.parse(agendaRow.data) : null
+        const now = new Date().toISOString()
+        for (const update of updates) {
+          const recordId = String(update.record.id)
+          const current = currentById.get(recordId)
+          const next = managedHistoryRecord(current, update.record, user, now)
+          db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(next), recordId)
+          if (agenda) agenda = synchronizeAgendaHistoryRecord(agenda, current, next)
+          const convertedCustomer = next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo') ? convertCompletedRetirementSubscriber(next) : null
+          writeAudit(user, 'Modificó', 'Servicio / historial', recordId, current, next)
+          if (convertedCustomer) writeAudit(user, 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(convertedCustomer.customerId), { account: convertedCustomer.convertedFromAccount, kind: 'subscriber' }, convertedCustomer)
+        }
+        if (agenda && JSON.stringify(agenda) !== agendaRow.data) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(agenda), 'current')
+        const revision = currentStateRevision() + 1
+        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
+        db.exec('COMMIT')
+        return send(res, 200, { ok: true, revision, state: readStateForUser(user) })
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+    }).catch(error => send(res, error.statusCode || 400, { code: error.code, error: error.message || 'No se pudieron actualizar los servicios seleccionados.' }))
+  }
   if (req.method === 'PATCH' && url.pathname.startsWith('/api/history/')) {
     const user = requireSession(req, res)
     if (!user) return
@@ -1826,17 +1885,8 @@ const server = http.createServer((req, res) => {
         const current = stored?.data ? JSON.parse(stored.data) : null
         if (!current) { const error = new Error('El servicio ya no existe.'); error.statusCode = 404; throw error }
         if (JSON.stringify(current) !== JSON.stringify(base)) { const error = new Error('Este servicio cambió desde otra sesión. Recargá la página y revisá su versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
-        const allowedStatuses = ['Pendiente', 'Completado', 'Cancelado', 'Reprogramado', 'Requiere revisión']
-        if (!allowedStatuses.includes(proposed.status || 'Pendiente')) throw new Error('El estado solicitado no es válido.')
         const now = new Date().toISOString()
-        let next = { ...current, ...proposed, id: current.id, status: proposed.status || 'Pendiente' }
-        if (next.status === 'Completado' && current.status !== 'Completado') {
-          if (user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
-          next = { ...next, completedAt: next.completedAt || now }
-        } else if (next.status !== 'Completado') {
-          const { completedAt: _discardedCompletion, ...withoutCompletion } = next
-          next = withoutCompletion
-        }
+        const next = managedHistoryRecord(current, proposed, user, now)
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(next), recordId)
         const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
         if (agendaRow?.data) {

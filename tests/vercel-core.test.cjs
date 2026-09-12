@@ -624,6 +624,16 @@ test('eliminar un control vencido desde Historial usa la misma baja atómica', (
   assert.match(removal, /export function historyRecordRemovalOperations/)
 })
 
+test('la gestión múltiple del historial se confirma de forma atómica en el servidor', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const repository = fs.readFileSync(path.resolve(__dirname, '../src/infrastructure/repositories/history-record-repository.mjs'), 'utf8')
+  const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
+  assert.match(source, /await persistHistoryRecord\(updates\)/)
+  assert.match(repository, /requestJson\('\/api\/history\/bulk'/)
+  assert.match(apiSource, /async function handleHistoryRecordsBulkUpdate/)
+  assert.match(apiSource, /route === '\/history\/bulk'/)
+})
+
 test('eliminar un equipo semanal deja una excepción persistente y limpia agenda e historial', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const removal = fs.readFileSync(path.resolve(__dirname, '../src/features/state/application/weekly-team-removal.mjs'), 'utf8')
