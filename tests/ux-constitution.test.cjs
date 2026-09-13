@@ -16,7 +16,16 @@ test('los diálogos administran foco, Escape y restauración al disparador', () 
 test('los controles sin texto visible reciben nombre accesible', () => {
   assert.match(app, /Cambiar tema de color/)
   assert.match(app, /Cerrar notificación/)
+  assert.match(app, /button\[title\]:not\(\[aria-label\]\)/)
+  assert.match(app, /context \? `\$\{control\.title\}: \$\{context\}`/)
+  assert.match(app, /aria-pressed/)
   assert.match(app, /input\[placeholder\*="Buscar"\]/)
+})
+
+test('los selectores no modales también se cierran por teclado y los roles admiten Enter o Espacio', () => {
+  assert.match(app, /\.picker-backdrop, \.backdrop, \.profile-trigger\[aria-expanded="true"\]/)
+  assert.match(app, /dataKeyboardSelectable|keyboardSelectable/)
+  assert.match(app, /\['Enter', ' '\]\.includes\(event\.key\)/)
 })
 
 test('el portal técnico comunica conectividad y ofrece acciones de campo', () => {
@@ -42,5 +51,6 @@ test('la capa constitucional define tokens, foco, objetivos táctiles y movimien
   assert.match(constitutionStyles, /--pignus-color-brand:/)
   assert.match(constitutionStyles, /:focus-visible/)
   assert.match(constitutionStyles, /min-height: 44px/)
+  assert.match(constitutionStyles, /\.row-actions button/)
   assert.match(constitutionStyles, /prefers-reduced-motion: reduce/)
 })

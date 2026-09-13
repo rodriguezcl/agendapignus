@@ -1251,17 +1251,42 @@ export default function App() {
       const scope = root instanceof Element ? root : document
       const includeSelf = selector => root instanceof Element && root.matches(selector) ? [root] : []
       const controls = selector => [...includeSelf(selector), ...scope.querySelectorAll(selector)]
-      controls('.theme-toggle:not([aria-label])').forEach(button => button.setAttribute('aria-label', 'Cambiar tema de color'))
+      controls('.theme-toggle:not([aria-label])').forEach(button => button.setAttribute('aria-label', button.title || 'Cambiar tema de color'))
       controls('.mobile-menu:not([aria-label])').forEach(button => button.setAttribute('aria-label', 'Abrir menú'))
       controls('.close-modal:not([aria-label]), .modal-close:not([aria-label])').forEach(button => button.setAttribute('aria-label', 'Cerrar diálogo'))
       controls('.notice button:not([aria-label])').forEach(button => button.setAttribute('aria-label', 'Cerrar notificación'))
+      controls('button[title]:not([aria-label]), a[title]:not([aria-label])').forEach(control => {
+        if (!control.textContent.trim()) {
+          const row = control.closest('.account-row, .employee-row, .vehicle-row, .service-row')
+          const context = row?.querySelector('.person b, strong, :scope > b')?.textContent?.trim()
+          control.setAttribute('aria-label', context ? `${control.title}: ${context}` : control.title)
+        }
+      })
+      controls('.status').forEach(button => {
+        button.setAttribute('aria-pressed', String(button.classList.contains('on')))
+        const row = button.closest('.employee-row, .service-row')
+        const context = row?.querySelector('.person b, strong, :scope > b')?.textContent?.trim()
+        if (context && !button.getAttribute('aria-label')) button.setAttribute('aria-label', `${button.classList.contains('on') ? 'Desactivar' : 'Activar'} ${context}`)
+      })
+      controls('.roles-card > div:not([data-keyboard-selectable])').forEach(card => {
+        card.dataset.keyboardSelectable = 'true'
+        card.tabIndex = 0
+        card.setAttribute('role', 'button')
+        card.setAttribute('aria-label', `Seleccionar rol ${card.querySelector('b')?.textContent?.trim() || ''}`.trim())
+        card.addEventListener('keydown', event => {
+          if (event.target !== card || !['Enter', ' '].includes(event.key)) return
+          event.preventDefault()
+          card.click()
+        })
+      })
       controls('input[placeholder*="Buscar"]:not([aria-label]), input[placeholder*="buscar"]:not([aria-label])').forEach(input => input.setAttribute('aria-label', input.placeholder))
     }
     nameControls(document)
-    const observer = new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
-      if (node instanceof Element) nameControls(node)
-    })))
-    observer.observe(document.body, { childList: true, subtree: true })
+    const observer = new MutationObserver(records => records.forEach(record => {
+      if (record.type === 'attributes' && record.target instanceof Element) nameControls(record.target)
+      record.addedNodes.forEach(node => { if (node instanceof Element) nameControls(node) })
+    }))
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'data-theme', 'title'] })
     return () => observer.disconnect()
   }, [])
   useEffect(() => {
@@ -1326,7 +1351,15 @@ export default function App() {
     const closeFromEscape = event => {
       if (event.key !== 'Escape') return
       const layers = modalLayers()
-      if (!layers.length || !dismiss(layers[layers.length - 1])) return
+      if (!layers.length) {
+        const transient = document.querySelector('.picker-backdrop, .backdrop, .profile-trigger[aria-expanded="true"]')
+        if (!transient) return
+        transient.click()
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      if (!dismiss(layers[layers.length - 1])) return
       event.preventDefault()
       event.stopPropagation()
     }

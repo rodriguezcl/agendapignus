@@ -31,6 +31,16 @@
   outline-offset: 2px !important;
 }
 
+:where(.row-actions button, .icon-btn, .theme-toggle, .mobile-menu, .close-modal, .modal-close, .notice > button, .weekly-team-remove, .weekly-task-action) {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+[role='button']:focus-visible {
+  outline: 3px solid var(--pignus-focus);
+  outline-offset: 2px;
+}
+
 .modal-layer,
 .modal-backdrop { z-index: var(--pignus-layer-modal); }
 .modal[role='dialog'] { box-shadow: var(--pignus-shadow-modal); }
