@@ -7,6 +7,7 @@ const { appendOperationalAudit: appendAudit, setAuxiliaryPreference, upsertVehic
 const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./_lib/service-advance.cjs')
+const { startTechnicianServiceRecord } = require('./_lib/technician-service-start.cjs')
 
 async function persistStateCollections(transaction, current, next, nextRevision) {
   const versionedNext = { ...next, revision: Number(nextRevision) }
@@ -539,6 +540,34 @@ async function handleExport(req, res, sql, user) {
   return res.status(200).send(`\ufeff${html}`)
 }
 
+async function handleTechnicianStart(req, res, sql, user) {
+  if (user.roleCode !== 'technician') return send(res, 403, { error: 'Esta acción es exclusiva del rol técnico.' })
+  const { recordId } = requestBody(req)
+  try {
+    const result = await sql.begin(async transaction => {
+      await transaction`set local lock_timeout = '5s'`
+      await transaction`set local statement_timeout = '15s'`
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const currentRevision = Number(revisionRows[0]?.value || 0)
+      const rows = await transaction`select data from pignus_work_history where id = ${String(recordId || '')} for update`
+      const previous = rows[0]?.data
+      const next = startTechnicianServiceRecord(previous, user)
+      if (next === previous) return { record: previous, revision: currentRevision }
+      const currentState = await readState(transaction)
+      const nextState = structuredClone(currentState)
+      nextState.history = nextState.history.map(item => String(item.id) === String(next.id) ? next : item)
+      await persistStateCollections(transaction, currentState, nextState, currentRevision + 1)
+      await appendAudit(transaction, [auditEntry(user, 'Inició servicio técnico', 'Servicio / historial', String(next.id), previous, next)])
+      return { record: next, revision: currentRevision + 1 }
+    })
+    return send(res, 200, { record: technicianSafeRecord(result.record), revision: result.revision })
+  } catch (error) {
+    const databaseBusy = error.code === '55P03' || error.code === '57014'
+    return send(res, databaseBusy ? 503 : (error.statusCode || 400), { error: databaseBusy ? 'La base de datos está ocupada. Intentá nuevamente.' : (error.message || 'No se pudo iniciar el servicio.') })
+  }
+}
+
 async function handleTechnicianStatus(req, res, sql, user) {
   if (user.roleCode !== 'technician') return send(res, 403, { error: 'Esta acción es exclusiva del rol técnico.' })
   const { recordId, type, observation, vehicleMileage, vehiclePhoto } = requestBody(req)
@@ -955,6 +984,7 @@ module.exports = async function handler(req, res) {
       const rows = await sql`select data from pignus_audit_log where id = ${id}`
       return rows[0] ? send(res, 200, { record: rows[0].data }) : send(res, 404, { error: 'El registro de auditoría no existe.' })
     }
+    if (req.method === 'POST' && route === '/technician/start') return await handleTechnicianStart(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/technician/status') return await handleTechnicianStatus(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/technician/advance-request') return await handleServiceAdvance(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/admin/advance-request/approve') return await handleServiceAdvance(req, res, sql, session.user, 'approved')

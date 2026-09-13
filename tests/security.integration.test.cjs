@@ -619,6 +619,38 @@ test('la exportación técnica contiene solamente trabajos asignados', async () 
   assert.ok(!report.includes(excluded))
 })
 
+test('el técnico inicia únicamente su servicio y el reintento no duplica la operación', async () => {
+  const technicianCookie = await login('qa-tech@pignus.test')
+  const administratorCookie = await login('qa-admin@pignus.test')
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const record = { id: 'qa-tech-start', date: today, time: '00:00', client: 'PIG-9001 CLIENTE INCLUIDO QA', service: 'Service técnico', status: 'Pendiente', technicianIds: ['qa-tech'], technicians: ['QA Técnico'] }
+  const foreignRecord = { ...record, id: 'qa-tech-start-foreign', technicianIds: ['otro-tecnico'], technicians: ['Otro Técnico'] }
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  upsertJson(db, 'work_history', 'id', record)
+  upsertJson(db, 'work_history', 'id', foreignRecord)
+  db.close()
+  try {
+    let response = await api('/api/technician/start', technicianCookie, { method: 'POST', body: JSON.stringify({ recordId: record.id }) })
+    assert.equal(response.status, 200)
+    const first = await response.json()
+    assert.equal(first.record.startedById, 'qa-tech')
+    assert.ok(first.record.startedAt)
+
+    response = await api('/api/technician/start', technicianCookie, { method: 'POST', body: JSON.stringify({ recordId: record.id }) })
+    assert.equal(response.status, 200)
+    assert.equal((await response.json()).record.startedAt, first.record.startedAt)
+
+    response = await api('/api/technician/start', technicianCookie, { method: 'POST', body: JSON.stringify({ recordId: foreignRecord.id }) })
+    assert.equal(response.status, 403)
+    response = await api('/api/technician/start', administratorCookie, { method: 'POST', body: JSON.stringify({ recordId: record.id }) })
+    assert.equal(response.status, 403)
+  } finally {
+    const cleanupDb = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+    cleanupDb.prepare('DELETE FROM work_history WHERE id IN (?, ?)').run(record.id, foreignRecord.id)
+    cleanupDb.close()
+  }
+})
+
 test('el historial contextual del técnico es de solo lectura y registra quién informó', async () => {
   const cookie = await login('qa-tech@pignus.test')
   const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
