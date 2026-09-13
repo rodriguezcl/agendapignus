@@ -67,7 +67,11 @@ async function readTechnicianState(sql, technicianId, today) {
         nullif(data->>'customerId', '') as customer_id,
         upper(coalesce(nullif(data->>'clientAccount', ''), split_part(coalesce(data->>'client', ''), ' ', 1))) as account
       from pignus_work_history
-      where coalesce(data->'technicianIds', '[]'::jsonb) ? ${String(technicianId)}
+      where exists (
+        select 1
+        from jsonb_array_elements_text(coalesce(data->'technicianIds', '[]'::jsonb)) as assigned(technician_id)
+        where assigned.technician_id = ${String(technicianId)}
+      )
         and coalesce(data->>'date', '') >= ${String(today)}
         and coalesce(data->>'technicalStatus', '') = ''
         and coalesce(data->>'status', 'Pendiente') not in ('Completado', 'Cancelado', 'Reprogramado')
@@ -76,7 +80,11 @@ async function readTechnicianState(sql, technicianId, today) {
       coalesce((
         select jsonb_agg(history.data order by history.work_date, history.created_at, history.id)
         from pignus_work_history history
-        where coalesce(history.data->'technicianIds', '[]'::jsonb) ? ${String(technicianId)}
+        where exists (
+          select 1
+          from jsonb_array_elements_text(coalesce(history.data->'technicianIds', '[]'::jsonb)) as assigned(technician_id)
+          where assigned.technician_id = ${String(technicianId)}
+        )
           or nullif(history.data->>'customerId', '') in (select customer_id from active_customers where customer_id is not null)
           or upper(coalesce(nullif(history.data->>'clientAccount', ''), split_part(coalesce(history.data->>'client', ''), ' ', 1))) in (select account from active_customers where account <> '')
       ), '[]'::jsonb) as history,

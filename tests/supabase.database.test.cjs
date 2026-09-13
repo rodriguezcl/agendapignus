@@ -27,6 +27,9 @@ test('consulta sólo historial relacionado y vehículos para refrescar la agenda
   assert.deepEqual(state.history, [{ id: 'job-1', technicianIds: ['tech-1'] }])
   assert.deepEqual(state.vehicles, [{ id: 'vehicle-1' }])
   assert.match(queries[0].statement, /active_customers/)
+  assert.equal((queries[0].statement.match(/jsonb_array_elements_text/g) || []).length, 2)
+  assert.doesNotMatch(queries[0].statement, /technicianIds'[^\n]*\?/)
+  assert.deepEqual(queries[0].values, ['tech-1', '2026-09-10', 'tech-1'])
   assert.doesNotMatch(queries[0].statement, /pignus_customers|pignus_agendas|pignus_employees|pignus_roles/)
 })
 
