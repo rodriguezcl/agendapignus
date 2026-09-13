@@ -27,6 +27,7 @@
     "preview:scheduled-vehicle-controls": "node --env-file-if-exists=.env.local scripts/preview-scheduled-vehicle-controls.cjs",
     "test:normalization": "node --test tests/normalization.test.cjs",
     "test": "node --test tests/*.test.cjs",
+    "test:ux": "node scripts/ux-quality-gate.cjs && node --test tests/ux-constitution.test.cjs tests/ux-quality-gate.test.cjs",
     "test:concurrency": "node --test tests/state-concurrency-hardening.test.cjs tests/security.integration.test.cjs",
     "build": "vite build",
     "preview": "vite preview"

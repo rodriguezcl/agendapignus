@@ -1,5 +1,7 @@
 # Sistema de diseño UX/UI de Agenda Pignus
 
+Documento normativo: [Constitución UX/UI](./UX-UI-CONSTITUTION.md).
+
 ## Alcance
 
 Esta capa traduce la Constitución UX/UI a fundamentos reutilizables sin modificar reglas de negocio, contratos API, datos, autenticación, autorización ni concurrencia. La fuente ejecutable es `src/constitution-ui.css`, cargada al final de los estilos de la aplicación.
