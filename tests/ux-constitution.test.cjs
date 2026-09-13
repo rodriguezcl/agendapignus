@@ -61,8 +61,15 @@ test('el historial limita los registros renderizados y expone semántica de tabl
 
 test('la capa constitucional define tokens, foco, objetivos táctiles y movimiento reducido', () => {
   assert.match(constitutionStyles, /--pignus-color-brand:/)
+  assert.match(constitutionStyles, /--pignus-font-family:/)
+  assert.match(constitutionStyles, /--pignus-space-7:/)
+  assert.match(constitutionStyles, /--pignus-shadow-card:/)
+  assert.match(constitutionStyles, /--pignus-breakpoint-mobile:/)
+  assert.match(constitutionStyles, /--ui-radius: var\(--pignus-radius-md\)/)
   assert.match(constitutionStyles, /:focus-visible/)
   assert.match(constitutionStyles, /min-height: 44px/)
   assert.match(constitutionStyles, /\.row-actions button/)
+  assert.match(constitutionStyles, /\.work-status, \.role-chip/)
+  assert.match(constitutionStyles, /\.data-card, \.history-table/)
   assert.match(constitutionStyles, /prefers-reduced-motion: reduce/)
 })

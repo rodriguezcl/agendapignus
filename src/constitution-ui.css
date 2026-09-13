@@ -1,4 +1,13 @@
 :root {
+  --pignus-font-family: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --pignus-font-size-xs: 11px;
+  --pignus-font-size-sm: 12px;
+  --pignus-font-size-md: 14px;
+  --pignus-font-size-lg: 18px;
+  --pignus-line-height-compact: 1.25;
+  --pignus-line-height-body: 1.45;
+  --pignus-font-weight-medium: 600;
+  --pignus-font-weight-strong: 700;
   --pignus-color-brand: #173f2b;
   --pignus-color-brand-strong: #0f3120;
   --pignus-color-accent: #b77d00;
@@ -12,19 +21,68 @@
   --pignus-color-warning: #75520a;
   --pignus-color-warning-surface: #fff7df;
   --pignus-color-danger: #a43d37;
+  --pignus-color-danger-surface: #fff0ee;
+  --pignus-color-success: #157342;
+  --pignus-color-success-surface: #dff5e7;
   --pignus-focus: #1769aa;
   --pignus-space-1: 4px;
   --pignus-space-2: 8px;
   --pignus-space-3: 12px;
   --pignus-space-4: 16px;
   --pignus-space-5: 24px;
+  --pignus-space-6: 32px;
+  --pignus-space-7: 48px;
   --pignus-radius-sm: 7px;
   --pignus-radius-md: 11px;
+  --pignus-radius-lg: 16px;
+  --pignus-radius-pill: 999px;
+  --pignus-border-width: 1px;
+  --pignus-shadow-card: 0 1px 2px rgba(15, 45, 28, .04);
+  --pignus-shadow-floating: 0 8px 24px rgba(23, 63, 43, .1);
   --pignus-shadow-modal: 0 18px 54px rgba(15, 38, 25, .24);
   --pignus-duration-fast: 160ms;
+  --pignus-duration-normal: 220ms;
+  --pignus-control-height: 42px;
+  --pignus-touch-target: 44px;
   --pignus-layer-sticky: 20;
   --pignus-layer-modal: 100;
+  --pignus-breakpoint-mobile: 640px;
+  --pignus-breakpoint-tablet: 900px;
+
+  /* Alias transitorios: permiten migrar la capa existente sin una ruptura visual. */
+  --ui-radius: var(--pignus-radius-md);
+  --ui-radius-sm: var(--pignus-radius-sm);
+  --ui-border: var(--pignus-color-border);
+  --ui-border-strong: #b8cdbb;
+  --ui-surface: var(--pignus-color-surface);
+  --ui-surface-soft: var(--pignus-color-surface-subtle);
+  --ui-text: var(--pignus-color-text);
+  --ui-muted: var(--pignus-color-muted);
+  --ui-focus: rgba(23, 105, 170, .18);
 }
+
+.app-shell[data-theme='dark'],
+.technician-page[data-theme='dark'],
+body.dark {
+  --pignus-color-surface: #1b2a21;
+  --pignus-color-surface-subtle: #17271e;
+  --pignus-color-text: #edf5ef;
+  --pignus-color-muted: #b9cabd;
+  --pignus-color-border: #3a5342;
+  --pignus-color-info: #c4e3f5;
+  --pignus-color-info-surface: #1b3442;
+  --pignus-color-warning: #f0d989;
+  --pignus-color-warning-surface: #423819;
+  --pignus-color-danger: #ffc9c2;
+  --pignus-color-danger-surface: #351f1d;
+  --pignus-color-success: #b9f0ce;
+  --pignus-color-success-surface: #174a34;
+  --pignus-shadow-card: 0 1px 2px rgba(0, 0, 0, .18);
+  --pignus-shadow-floating: 0 8px 24px rgba(0, 0, 0, .22);
+  --pignus-shadow-modal: 0 18px 54px rgba(0, 0, 0, .42);
+}
+
+body { font-family: var(--pignus-font-family); }
 
 :where(button, a, input, select, textarea):focus-visible {
   outline: 3px solid var(--pignus-focus) !important;
@@ -43,7 +101,62 @@
 
 .modal-layer,
 .modal-backdrop { z-index: var(--pignus-layer-modal); }
-.modal[role='dialog'] { box-shadow: var(--pignus-shadow-modal); }
+.modal[role='dialog'] {
+  border: var(--pignus-border-width) solid var(--pignus-color-border);
+  border-radius: var(--pignus-radius-lg);
+  background: var(--pignus-color-surface);
+  color: var(--pignus-color-text);
+  box-shadow: var(--pignus-shadow-modal);
+}
+
+:where(.primary, .secondary, .danger-button, .detail-button, .save) {
+  min-height: var(--pignus-control-height);
+  border-radius: var(--pignus-radius-sm);
+  font-family: inherit;
+  font-weight: var(--pignus-font-weight-strong);
+  line-height: var(--pignus-line-height-compact);
+  transition-duration: var(--pignus-duration-fast);
+}
+:where(.primary, .secondary, .danger-button, .detail-button, .save):disabled {
+  cursor: not-allowed;
+  opacity: .62;
+  transform: none;
+}
+:where(.primary, .secondary, .danger-button, .detail-button, .save)[aria-busy='true'] {
+  cursor: wait;
+}
+
+:where(.content, .modal, .login-card) :where(input, select, textarea):not([type='checkbox']):not([type='radio']) {
+  min-height: var(--pignus-control-height);
+  border-color: var(--pignus-color-border);
+  border-radius: var(--pignus-radius-sm);
+  background: var(--pignus-color-surface);
+  color: var(--pignus-color-text);
+  font-family: inherit;
+  transition-duration: var(--pignus-duration-fast);
+}
+
+:where(.data-card, .history-table, .employees-table, .services-table, .accounts-table, .audit-table) {
+  border: var(--pignus-border-width) solid var(--pignus-color-border);
+  border-radius: var(--pignus-radius-md);
+  background: var(--pignus-color-surface);
+  box-shadow: var(--pignus-shadow-card);
+}
+
+:where(.work-status, .role-chip) {
+  border-radius: var(--pignus-radius-pill);
+  font-size: var(--pignus-font-size-xs);
+  font-weight: var(--pignus-font-weight-strong);
+  line-height: var(--pignus-line-height-compact);
+}
+.work-status.completado {
+  color: var(--pignus-color-success);
+  background: var(--pignus-color-success-surface);
+}
+.work-status.cancelado {
+  color: var(--pignus-color-danger);
+  background: var(--pignus-color-danger-surface);
+}
 
 .history-version-notice,
 .technician-connection-status {
@@ -90,7 +203,7 @@
 }
 .technician-next-service {
   border: 2px solid var(--pignus-color-brand);
-  box-shadow: 0 8px 24px rgba(23, 63, 43, .1);
+  box-shadow: var(--pignus-shadow-floating);
 }
 .technician-next-label {
   margin: 0 0 var(--pignus-space-2);
