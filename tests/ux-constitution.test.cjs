@@ -5,6 +5,7 @@ const path = require('node:path')
 
 const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
 const constitutionStyles = fs.readFileSync(path.join(__dirname, '..', 'src', 'constitution-ui.css'), 'utf8')
+const systemState = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'ui', 'SystemState.jsx'), 'utf8')
 
 test('los diálogos administran foco, Escape y restauración al disparador', () => {
   assert.match(app, /const trapModalFocus/)
@@ -72,4 +73,16 @@ test('la capa constitucional define tokens, foco, objetivos táctiles y movimien
   assert.match(constitutionStyles, /\.work-status, \.role-chip/)
   assert.match(constitutionStyles, /\.data-card, \.history-table/)
   assert.match(constitutionStyles, /prefers-reduced-motion: reduce/)
+})
+
+test('los estados del sistema diferencian carga, error, vacío y recuperación', () => {
+  assert.match(systemState, /type === 'loading' \|\| type === 'syncing'/)
+  assert.match(systemState, /role=\{urgent \? 'alert' : 'status'\}/)
+  assert.match(systemState, /system-state-skeleton/)
+  assert.match(app, /const noticeTone/)
+  assert.match(app, /noticeElement\.dataset\.tone/)
+  assert.match(app, /SystemState type="syncing"/)
+  assert.match(app, /type=\{databaseError \? 'error' : 'loading'\}/)
+  assert.match(constitutionStyles, /\.empty-state::before/)
+  assert.match(constitutionStyles, /notice\[data-tone='error'\]/)
 })
