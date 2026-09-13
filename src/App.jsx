@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './components/ui/Icon.jsx'
+import SystemState from './components/ui/SystemState.jsx'
 import RequiredLabel from './presentation/components/forms/RequiredLabel.jsx'
 import ServiceTypes from './features/services/presentation/ServiceTypes.jsx'
 import { HelpShell } from './HelpCenter.jsx'
@@ -54,6 +55,13 @@ const nextLiveScheduleMinute = (now = new Date()) => {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(now).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
   const elapsed = Number(parts.hour) * 60 + Number(parts.minute) + (Number(parts.second) > 0 ? 1 : 0)
   return Math.ceil(elapsed / 15) * 15
+}
+const noticeTone = message => {
+  const normalized = String(message || '').trim().toLocaleLowerCase('es')
+  if (/sin conexión|conexión perdida|fuera de línea/.test(normalized)) return 'offline'
+  if (/^(no |no se |no pudo|error)|conflicto|demoró demasiado|falló/.test(normalized)) return 'error'
+  if (/^(hay |primero |solamente )|desactualiz|otra sesión|revisá|bloquead/.test(normalized)) return 'warning'
+  return 'success'
 }
 import './ui-polish.css'
 import './login.css'
@@ -1567,6 +1575,12 @@ export default function App() {
     const noticeElement = document.querySelector('.content > .notice')
     const isAgendaMessage = notice.startsWith('La agenda ')
     noticeElement?.classList.toggle('agenda-message-hidden', isAgendaMessage && module !== 'agenda')
+    if (noticeElement) {
+      const tone = noticeTone(notice)
+      noticeElement.dataset.tone = tone
+      noticeElement.setAttribute('role', tone === 'error' || tone === 'offline' ? 'alert' : 'status')
+      noticeElement.setAttribute('aria-live', tone === 'error' || tone === 'offline' ? 'assertive' : 'polite')
+    }
   }, [module, notice])
   useEffect(() => {
     // Mantiene sincronizada la agenda abierta cuando se corrige un servicio desde Historial.
@@ -2255,10 +2269,10 @@ export default function App() {
     button.addEventListener('click', intercept, true)
     return () => button.removeEventListener('click', intercept, true)
   })
-  if (loggingOut) return <main className="login-page"><div className="login-loading">Cerrando sesión segura…</div></main>
-  if (authLoading) return <main className="login-page"><div className="login-loading">Verificando sesión segura…</div></main>
+  if (loggingOut) return <main className="login-page"><SystemState type="syncing" inverse title="Cerrando sesión segura…" detail="Esperá mientras confirmamos los cambios pendientes." /></main>
+  if (authLoading) return <main className="login-page"><SystemState type="loading" inverse title="Verificando sesión segura…" detail="Estamos recuperando tu acceso y los datos autorizados." /></main>
   if (!authUser) return <Login initialError={sessionEndedMessage} onLogin={(user, initialState) => { setSessionEndedMessage(''); setNotice(''); initialRemoteStateRef.current = initialState || null; setAuthUser(user) }} />
-  if (!databaseReady) return <main className="login-page"><div className="login-card"><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">DATOS PROTEGIDOS</p><h1>{databaseError ? 'No se pudo cargar la agenda' : 'Cargando información autorizada…'}</h1>{databaseError && <><p className="login-error" role="alert">{databaseError}</p><button className="primary" type="button" onClick={() => { setDatabaseError(''); setAuthUser(current => current ? { ...current } : current) }}>Reintentar</button><button className="secondary" type="button" onClick={logout}>Cerrar sesión</button></>}</div></main>
+  if (!databaseReady) return <main className="login-page"><div className="login-card"><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">DATOS PROTEGIDOS</p><SystemState type={databaseError ? 'error' : 'loading'} title={databaseError ? 'No se pudo cargar la agenda' : 'Cargando información autorizada…'} detail={databaseError || 'Estamos preparando la información permitida para tu perfil.'} action={databaseError ? () => { setDatabaseError(''); setAuthUser(current => current ? { ...current } : current) } : undefined} /><button className="secondary" type="button" onClick={logout}>Cerrar sesión</button></div></main>
   if (authUser.roleCode === 'technician' || normalizeRoleName(authUser.role) === 'tecnico') return <TechnicianPortalErrorBoundary logout={logout}><TechnicianPortal user={authUser} history={history} setHistory={setHistory} vehicles={vehicles} setVehicles={setVehicles} logout={logout} sessionInvalidated={endInvalidatedSession} /></TechnicianPortalErrorBoundary>
   if (module === 'help') return <HelpShell user={authUser} onNavigate={setModule} logout={logout} theme={theme} setTheme={setTheme} isAdministrator={isAdministrator} navigation={nav} />
   if (module === 'audit' && isAdministrator) return <AuditShell user={authUser} onNavigate={setModule} logout={logout} theme={theme} setTheme={setTheme} navigation={nav} />

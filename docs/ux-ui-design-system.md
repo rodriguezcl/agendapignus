@@ -20,6 +20,12 @@ Esta capa traduce la Constitución UX/UI a fundamentos reutilizables sin modific
 
 Botones, campos, modales, tarjetas, tablas y etiquetas de estado consumen los tokens constitucionales. Los estados `disabled` y `loading` diferencian el cursor y evitan movimiento. Los estados completado y cancelado usan texto además de color.
 
+### Estados y feedback
+
+`SystemState` es el patrón común para `loading`, `syncing`, `empty`, `warning`, `error`, `offline` y `success`. Cada estado combina texto, semántica ARIA e iconografía; los estados de espera representan la estructura mediante skeleton y respetan movimiento reducido.
+
+Las notificaciones operativas se clasifican visual y semánticamente a partir del resultado comunicado. Un fallo usa `role="alert"`; una confirmación o advertencia no urgente usa `role="status"`. Todas conservan texto visible, por lo que el color nunca es el único indicador.
+
 ## Compatibilidad y migración
 
 La capa anterior usa variables `--ui-*`. Durante la migración, esas variables funcionan como alias de `--pignus-*`. No se eliminarán hasta que cada módulo deje de consumirlas y supere las pruebas de no regresión.
