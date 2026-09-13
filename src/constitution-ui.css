@@ -1,0 +1,132 @@
+:root {
+  --pignus-color-brand: #173f2b;
+  --pignus-color-brand-strong: #0f3120;
+  --pignus-color-accent: #b77d00;
+  --pignus-color-surface: #ffffff;
+  --pignus-color-surface-subtle: #f3f7f2;
+  --pignus-color-text: #173426;
+  --pignus-color-muted: #5f7265;
+  --pignus-color-border: #cfdccf;
+  --pignus-color-info: #315f7d;
+  --pignus-color-info-surface: #edf6fb;
+  --pignus-color-warning: #75520a;
+  --pignus-color-warning-surface: #fff7df;
+  --pignus-color-danger: #a43d37;
+  --pignus-focus: #1769aa;
+  --pignus-space-1: 4px;
+  --pignus-space-2: 8px;
+  --pignus-space-3: 12px;
+  --pignus-space-4: 16px;
+  --pignus-space-5: 24px;
+  --pignus-radius-sm: 7px;
+  --pignus-radius-md: 11px;
+  --pignus-shadow-modal: 0 18px 54px rgba(15, 38, 25, .24);
+  --pignus-duration-fast: 160ms;
+  --pignus-layer-sticky: 20;
+  --pignus-layer-modal: 100;
+}
+
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid var(--pignus-focus) !important;
+  outline-offset: 2px !important;
+}
+
+.modal-layer,
+.modal-backdrop { z-index: var(--pignus-layer-modal); }
+.modal[role='dialog'] { box-shadow: var(--pignus-shadow-modal); }
+
+.history-version-notice,
+.technician-connection-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pignus-space-4);
+  margin: var(--pignus-space-3) 0 var(--pignus-space-4);
+  padding: var(--pignus-space-3) var(--pignus-space-4);
+  color: var(--pignus-color-info);
+  background: var(--pignus-color-info-surface);
+  border: 1px solid #b9d6e7;
+  border-radius: var(--pignus-radius-md);
+}
+.history-version-notice div,
+.technician-connection-status { line-height: 1.45; }
+.history-version-notice b,
+.history-version-notice span,
+.technician-connection-status b,
+.technician-connection-status span { display: block; }
+.history-version-notice span,
+.technician-connection-status span { margin-top: var(--pignus-space-1); font-size: 12px; }
+.technician-connection-status.is-offline,
+.technician-connection-status.is-failed {
+  color: var(--pignus-color-warning);
+  background: var(--pignus-color-warning-surface);
+  border-color: #ead28d;
+}
+
+.technician-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pignus-space-2);
+  margin-top: var(--pignus-space-3);
+}
+.technician-quick-actions a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  color: var(--pignus-color-brand);
+  text-decoration: none;
+}
+
+.history-bulk .table-head {
+  position: sticky !important;
+  top: 66px !important;
+  z-index: var(--pignus-layer-sticky);
+}
+.history-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--pignus-space-3);
+  margin-top: var(--pignus-space-3);
+  padding: var(--pignus-space-3) var(--pignus-space-4);
+  color: var(--pignus-color-muted);
+  background: var(--pignus-color-surface);
+  border: 1px solid var(--pignus-color-border);
+  border-radius: var(--pignus-radius-md);
+}
+.history-pagination label { display: inline-flex; align-items: center; gap: var(--pignus-space-2); }
+.history-pagination select,
+.history-pagination button { min-height: 40px; }
+
+/* El aviso dentro de un modal conserva el mismo tono semántico que fuera de él. */
+body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice {
+  color: #1f6b42;
+  background: #e4f4e9;
+  border-color: #bae2c6;
+}
+body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice span::before { display: none; }
+body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice span > svg { display: block; }
+
+@media (pointer: coarse), (max-width: 640px) {
+  :where(button, a, input, select, textarea) { min-height: 44px; }
+  :where(.icon-btn, .row-actions button, .weekly-team-remove, .weekly-task-action, .close-modal, .modal-close) {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+  .technician-quick-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .history-version-notice,
+  .technician-connection-status { align-items: stretch; flex-direction: column; }
+  .history-pagination { justify-content: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

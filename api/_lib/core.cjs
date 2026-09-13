@@ -69,7 +69,7 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
       (sourceTaskId && (removed.has(sourceTaskId) || removed.has(`task:${sourceTaskId}`)))
     )
   }
-  const protectedFields = ['status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'advanceRequest', 'originalScheduledTime']
+  const protectedFields = ['status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'startedAt', 'startedById', 'startedByName', 'advanceRequest', 'originalScheduledTime']
   const result = []
   for (const previous of currentHistory) {
     const id = String(previous.id)

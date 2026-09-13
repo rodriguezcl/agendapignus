@@ -9,6 +9,7 @@ import { blockingOverdueVehicleControl, filterTechnicianHistory, overdueVehicleC
 import { AUTH_LOGIN_TIMEOUT_MS, fetchAuthWithRetry, fetchWithTimeout } from './infrastructure/http/fetch-timeout.mjs'
 import { sortOperationalHistory } from './domain/history/history-order.mjs'
 import { submitTechnicianStatus } from './infrastructure/http/technician-status.mjs'
+import { startTechnicianService } from './infrastructure/http/technician-start.mjs'
 import { countYearToDateAlarmInstallations, countYearToDateCompletedRecords, pendingDefinitionRecords } from './domain/dashboard/dashboard-metrics.mjs'
 import { advancedSaturdayGuardMessage, findAdvancedSaturdayGuard, suppressAdvancedSaturdayAvailability } from './domain/agenda/weekend-guard.mjs'
 import { annualGuardForDate, DEFAULT_2026_GUARD_ROTATION, firstSaturdayOfYear } from './domain/agenda/annual-guards.mjs'
@@ -35,7 +36,7 @@ import { vehicleRepository } from './infrastructure/repositories/vehicle-reposit
 import { SESSION_IDLE_TIMEOUT_MS, SESSION_STATUS_INTERVAL_MS, TECHNICIAN_SESSION_IDLE_TIMEOUT_MS, TECHNICIAN_SESSION_STATUS_INTERVAL_MS, useSessionLifecycle } from './features/auth/application/useSessionLifecycle.js'
 import { readSettledLoginCredentials } from './features/auth/application/login-autofill.mjs'
 import { serviceAdvanceRepository } from './infrastructure/repositories/service-advance-repository.mjs'
-import { serviceRecordFingerprint } from './domain/history/service-concurrency.mjs'
+import { serviceRecordChangedFields, serviceRecordFingerprint } from './domain/history/service-concurrency.mjs'
 import { recoverStateRevisionConflict } from './features/state/application/state-save-conflict.mjs'
 import { compactStateBase } from './features/state/application/compact-state-base.mjs'
 import { historyRecordRepository } from './infrastructure/repositories/history-record-repository.mjs'
@@ -56,6 +57,7 @@ const nextLiveScheduleMinute = (now = new Date()) => {
 }
 import './ui-polish.css'
 import './login.css'
+import './constitution-ui.css'
 
 class TechnicianPortalErrorBoundary extends React.Component {
   constructor(props) {
@@ -1245,8 +1247,66 @@ export default function App() {
     return () => { observer.disconnect(); unlock() }
   }, [])
   useEffect(() => {
+    const nameControls = root => {
+      const scope = root instanceof Element ? root : document
+      const includeSelf = selector => root instanceof Element && root.matches(selector) ? [root] : []
+      const controls = selector => [...includeSelf(selector), ...scope.querySelectorAll(selector)]
+      controls('.theme-toggle:not([aria-label])').forEach(button => button.setAttribute('aria-label', 'Cambiar tema de color'))
+      controls('.mobile-menu:not([aria-label])').forEach(button => button.setAttribute('aria-label', 'Abrir menú'))
+      controls('.close-modal:not([aria-label]), .modal-close:not([aria-label])').forEach(button => button.setAttribute('aria-label', 'Cerrar diálogo'))
+      controls('.notice button:not([aria-label])').forEach(button => button.setAttribute('aria-label', 'Cerrar notificación'))
+      controls('input[placeholder*="Buscar"]:not([aria-label]), input[placeholder*="buscar"]:not([aria-label])').forEach(input => input.setAttribute('aria-label', input.placeholder))
+    }
+    nameControls(document)
+    const observer = new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
+      if (node instanceof Element) nameControls(node)
+    })))
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [])
+  useEffect(() => {
     const modalLayers = () => [...document.querySelectorAll('.modal-layer, .modal-backdrop')]
       .filter(layer => layer.isConnected && window.getComputedStyle(layer).display !== 'none')
+    const modalOrigins = new WeakMap()
+    let modalSequence = 0
+    const focusableSelector = [
+      'button:not(:disabled)',
+      'a[href]',
+      'input:not(:disabled):not([type="hidden"])',
+      'select:not(:disabled)',
+      'textarea:not(:disabled)',
+      '[tabindex]:not([tabindex="-1"])'
+    ].join(', ')
+    const dialogFor = layer => layer.matches('[role="dialog"]') ? layer : layer.querySelector('[role="dialog"], .modal')
+    const prepareModal = layer => {
+      if (!(layer instanceof HTMLElement) || layer.dataset.focusManaged === 'true') return
+      const dialog = dialogFor(layer)
+      if (!(dialog instanceof HTMLElement)) return
+      layer.dataset.focusManaged = 'true'
+      modalOrigins.set(layer, document.activeElement instanceof HTMLElement ? document.activeElement : null)
+      if (!dialog.hasAttribute('role')) dialog.setAttribute('role', 'dialog')
+      dialog.setAttribute('aria-modal', 'true')
+      if (!dialog.hasAttribute('aria-label') && !dialog.hasAttribute('aria-labelledby')) {
+        const title = dialog.querySelector('h1, h2, h3')
+        if (title) {
+          if (!title.id) title.id = `pignus-modal-title-${++modalSequence}`
+          dialog.setAttribute('aria-labelledby', title.id)
+        }
+      }
+      if (!dialog.hasAttribute('tabindex')) dialog.tabIndex = -1
+      dialog.querySelectorAll('.close-modal, .modal-close').forEach(button => {
+        if (!button.getAttribute('aria-label') && !button.textContent.trim()) button.setAttribute('aria-label', 'Cerrar')
+      })
+      requestAnimationFrame(() => {
+        if (!layer.isConnected) return
+        const preferred = dialog.querySelector('[autofocus], input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), .confirm-actions .secondary:not(:disabled), .modal-actions .secondary:not(:disabled), button:not(:disabled)')
+        ;(preferred || dialog).focus({ preventScroll: true })
+      })
+    }
+    const restoreModalFocus = layer => {
+      const origin = modalOrigins.get(layer)
+      if (origin?.isConnected) requestAnimationFrame(() => origin.focus({ preventScroll: true }))
+    }
     const dismiss = layer => {
       const control = layer?.querySelector([
         '.close-modal:not(:disabled)',
@@ -1270,11 +1330,44 @@ export default function App() {
       event.preventDefault()
       event.stopPropagation()
     }
+    const trapModalFocus = event => {
+      if (event.key !== 'Tab') return
+      const layers = modalLayers()
+      const layer = layers[layers.length - 1]
+      const dialog = layer && dialogFor(layer)
+      if (!dialog) return
+      const controls = [...dialog.querySelectorAll(focusableSelector)].filter(control => control instanceof HTMLElement && control.offsetParent !== null)
+      if (!controls.length) { event.preventDefault(); dialog.focus(); return }
+      const first = controls[0]
+      const last = controls[controls.length - 1]
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault(); last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus()
+      }
+    }
+    const modalObserver = new MutationObserver(records => records.forEach(record => {
+      record.addedNodes.forEach(node => {
+        if (!(node instanceof Element)) return
+        if (node.matches('.modal-layer, .modal-backdrop')) prepareModal(node)
+        node.querySelectorAll?.('.modal-layer, .modal-backdrop').forEach(prepareModal)
+      })
+      record.removedNodes.forEach(node => {
+        if (!(node instanceof Element)) return
+        if (node.matches('.modal-layer, .modal-backdrop')) restoreModalFocus(node)
+        node.querySelectorAll?.('.modal-layer, .modal-backdrop').forEach(restoreModalFocus)
+      })
+    }))
+    modalLayers().forEach(prepareModal)
+    modalObserver.observe(document.body, { childList: true, subtree: true })
     document.addEventListener('click', closeFromBackdrop)
     document.addEventListener('keydown', closeFromEscape, true)
+    document.addEventListener('keydown', trapModalFocus, true)
     return () => {
+      modalObserver.disconnect()
       document.removeEventListener('click', closeFromBackdrop)
       document.removeEventListener('keydown', closeFromEscape, true)
+      document.removeEventListener('keydown', trapModalFocus, true)
     }
   }, [])
   useEffect(() => {
@@ -4153,6 +4246,7 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
   const [historySearch, setHistorySearch] = useState('')
   const [customerHistoryRecord, setCustomerHistoryRecord] = useState(null)
   const [clock, setClock] = useState(Date.now())
+  const [connectionStatus, setConnectionStatus] = useState(() => navigator.onLine ? 'online' : 'offline')
   const today = currentLocalDate()
   const resolved = technicianRecordResolved
   const directChildWithClass = (element, className) => Array.from(element?.children || []).find(child => child.classList.contains(className)) || null
@@ -4217,13 +4311,17 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
     let stopped = false
     const refreshSharedAgenda = async () => {
       if (stopped || refreshing || document.visibilityState === 'hidden') return
+      if (!navigator.onLine) { setConnectionStatus('offline'); return }
       refreshing = true
+      setConnectionStatus('syncing')
       try {
         const data = await stateRepository.load()
         if (!stopped && Array.isArray(data?.history)) setHistory(data.history)
         if (!stopped && Array.isArray(data?.vehicles)) setVehicles?.(data.vehicles)
+        if (!stopped) setConnectionStatus('online')
       } catch (error) {
         if (error.status === 401 && !stopped) sessionInvalidated(error.message)
+        else if (!stopped) setConnectionStatus(navigator.onLine ? 'failed' : 'offline')
         // La agenda visible no se descarta ante un fallo temporal de conectividad.
       } finally {
         refreshing = false
@@ -4232,6 +4330,7 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
     const refreshWhenVisible = () => {
       if (document.visibilityState !== 'hidden') void refreshSharedAgenda()
     }
+    const markOffline = () => setConnectionStatus('offline')
     // La sesión puede quedar abierta mientras un coordinador agrega otro trabajo.
     // En móviles, volver desde segundo plano dispara pageshow/visibilitychange pero
     // no necesariamente focus, por eso sincronizamos en todos esos ciclos.
@@ -4240,6 +4339,7 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
     window.addEventListener('focus', refreshWhenVisible)
     window.addEventListener('pageshow', refreshWhenVisible)
     window.addEventListener('online', refreshWhenVisible)
+    window.addEventListener('offline', markOffline)
     document.addEventListener('visibilitychange', refreshWhenVisible)
     return () => {
       stopped = true
@@ -4247,6 +4347,7 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
       window.removeEventListener('focus', refreshWhenVisible)
       window.removeEventListener('pageshow', refreshWhenVisible)
       window.removeEventListener('online', refreshWhenVisible)
+      window.removeEventListener('offline', markOffline)
       document.removeEventListener('visibilitychange', refreshWhenVisible)
     }
   }, [setHistory])
@@ -4275,6 +4376,25 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
     if (help) help.textContent = view === 'agenda' ? 'Consultá los servicios vencidos todavía pendientes, los de hoy y los de mañana. Permanecen disponibles hasta que informes su estado. Los controles vehiculares son tareas autónomas.' : view === 'history' ? 'Consultá los servicios que ya informaste y el estado registrado en cada uno.' : 'Descargá la documentación vigente de los vehículos de la empresa.'
   }, [view])
   useEffect(() => {
+    const help = document.querySelector('.technician-help')
+    if (!help) return undefined
+    document.querySelector('.technician-connection-status')?.remove()
+    if (connectionStatus === 'online') return undefined
+    const status = document.createElement('div')
+    status.className = `technician-connection-status is-${connectionStatus}`
+    status.setAttribute('role', 'status')
+    status.setAttribute('aria-live', 'polite')
+    const messages = {
+      syncing: ['Sincronizando agenda', 'Estamos comprobando si hay cambios nuevos.'],
+      offline: ['Sin conexión', 'La agenda visible sigue disponible. Reconectate antes de informar un servicio.'],
+      failed: ['No pudimos actualizar la agenda', 'Conservamos la información visible. Podés reintentar cuando mejore la conexión.']
+    }
+    const [title, detail] = messages[connectionStatus] || messages.failed
+    status.innerHTML = `<b>${title}</b><span>${detail}</span>`
+    help.insertAdjacentElement('afterend', status)
+    return () => status.remove()
+  }, [connectionStatus, view])
+  useEffect(() => {
     const cards = document.querySelectorAll('.technician-service')
     document.querySelector('.vehicle-control-blocker-banner')?.remove()
     const overdueControls = view === 'agenda' ? overdueVehicleControls(services, today) : []
@@ -4296,6 +4416,7 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
       const serviceRecord = services[index]
       card.classList.toggle('vehicle-control-card', Boolean(serviceRecord?.vehicleControl))
       card.querySelector('.technician-advance-request')?.remove()
+      card.querySelector('.technician-quick-actions')?.remove()
       const actions = card.querySelector('.technician-actions')
       const advanceStatus = serviceRecord?.advanceRequest?.status
       const canRequestAdvance = view === 'agenda' && actions && !serviceRecord?.vehicleControl && serviceRecord?.date === today && !serviceHasStarted(serviceRecord, clock)
@@ -4331,13 +4452,62 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
           card.classList.add('blocked-by-vehicle-control')
           lockedInfo.textContent = `Completá primero el control vencido de ${vehicleLabel(blockingControl.vehicle || blockingControl)}. El domicilio y el contacto permanecerán ocultos hasta informarlo.`
         }
+        if (!blockingControl && !serviceRecord?.vehicleControl) {
+          const quickActions = document.createElement('div')
+          quickActions.className = 'technician-quick-actions'
+          quickActions.setAttribute('aria-label', 'Acciones rápidas del servicio')
+          if (serviceRecord.address) {
+            const directions = document.createElement('a')
+            directions.className = 'secondary'
+            directions.target = '_blank'
+            directions.rel = 'noopener noreferrer'
+            directions.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(serviceRecord.address)}`
+            directions.textContent = 'Cómo llegar'
+            quickActions.append(directions)
+          }
+          if (serviceRecord.phone) {
+            const call = document.createElement('a')
+            call.className = 'secondary'
+            call.href = `tel:${String(serviceRecord.phone).replace(/[^+\d]/g, '')}`
+            call.textContent = 'Llamar'
+            quickActions.append(call)
+          }
+          const start = document.createElement('button')
+          start.type = 'button'
+          start.className = 'primary technician-start-service'
+          const canStart = serviceHasStarted(serviceRecord, clock) && connectionStatus !== 'offline'
+          start.disabled = Boolean(serviceRecord.startedAt) || !canStart
+          start.textContent = serviceRecord.startedAt ? 'Servicio iniciado' : 'Iniciar servicio'
+          if (!canStart && !serviceRecord.startedAt) start.title = connectionStatus === 'offline' ? 'Reconectate para iniciar el servicio.' : 'El servicio podrá iniciarse cuando llegue su horario.'
+          start.onclick = async () => {
+            start.disabled = true
+            start.textContent = 'Iniciando…'
+            card.querySelector('.technician-start-error')?.remove()
+            try {
+              const updated = await startTechnicianService(serviceRecord.id)
+              setHistory(previous => previous.map(item => String(item.id) === String(updated.id) ? updated : item))
+              start.textContent = 'Servicio iniciado'
+            } catch (error) {
+              start.disabled = false
+              start.textContent = 'Iniciar servicio'
+              const message = document.createElement('p')
+              message.className = 'field-error technician-start-error'
+              message.setAttribute('role', 'alert')
+              message.textContent = error.message || 'No se pudo iniciar el servicio.'
+              quickActions.insertAdjacentElement('afterend', message)
+            }
+          }
+          quickActions.prepend(start)
+          if (actions) card.insertBefore(quickActions, actions)
+          else card.append(quickActions)
+        }
       }
     })
     return () => {
       document.querySelector('.vehicle-control-blocker-banner')?.remove()
-      cards.forEach(card => { const team = directChildWithClass(card, 'technician-team'); if (team) card.removeChild(team); card.querySelector('.technician-advance-request')?.remove(); card.classList.remove('blocked-by-vehicle-control', 'vehicle-control-card') })
+      cards.forEach(card => { const team = directChildWithClass(card, 'technician-team'); if (team) card.removeChild(team); card.querySelector('.technician-advance-request')?.remove(); card.querySelector('.technician-quick-actions')?.remove(); card.classList.remove('blocked-by-vehicle-control', 'vehicle-control-card') })
     }
-  }, [services, view, today, clock, setHistory])
+  }, [services, view, today, clock, connectionStatus, setHistory])
   const saveStatus = async () => {
     const { record, type } = confirm
     const updated = await submitTechnicianStatus({ recordId: record.id, type, observation, vehicleMileage: vehicleMileageRef.current, vehiclePhoto: vehiclePhotoRef.current, vehicleControl: Boolean(record.vehicleControl && type === 'Completado') })
@@ -4599,12 +4769,20 @@ function HistoryBulkView({ history, setHistory, customers, services, employees, 
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [historyPage, setHistoryPage] = useState(1)
+  const [historyPageSize, setHistoryPageSize] = useState(50)
   const minimumRescheduleDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const normalizedSearch = normalizeSearchText(search)
-  const records = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizedSearch) && (!fromDate || record.date >= fromDate) && (!toDate || record.date <= toDate) && (statusFilter === 'all' || (record.status || 'Pendiente') === statusFilter)).sort(sortOperationalHistory)
+  const matchingRecords = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizedSearch) && (!fromDate || record.date >= fromDate) && (!toDate || record.date <= toDate) && (statusFilter === 'all' || (record.status || 'Pendiente') === statusFilter)).sort(sortOperationalHistory)
+  const historyPageCount = Math.max(1, Math.ceil(matchingRecords.length / historyPageSize))
+  const currentHistoryPage = Math.min(historyPage, historyPageCount)
+  const records = matchingRecords.slice((currentHistoryPage - 1) * historyPageSize, currentHistoryPage * historyPageSize)
   const technicianNames = record => record.technicians?.map(name => String(name).trim().split(/\s+/)[0]).filter(Boolean).join(' / ') || 'Sin asignar'
   const status = record => record.status || 'Pendiente'
   const liveDetail = detail ? history.find(record => String(record.id) === String(detail.id)) : null
+  useEffect(() => { setHistoryPage(1); setSelected([]) }, [search, fromDate, toDate, statusFilter, historyPageSize])
+  useEffect(() => { if (historyPage > historyPageCount) setHistoryPage(historyPageCount) }, [historyPage, historyPageCount])
+  useEffect(() => setSelected([]), [historyPage])
   useEffect(() => {
     if (!detail) return
     if (!liveDetail) { setDetail(null); return }
@@ -4704,8 +4882,46 @@ function HistoryBulkView({ history, setHistory, customers, services, employees, 
     const clear = document.querySelector('.history-clear-filters')
     if (clear) clear.hidden = !fromDate && !toDate && statusFilter === 'all'
     const counter = document.querySelector('.history-toolbar>div:not(.history-date-filters)')
-    if (counter) counter.innerHTML = `<b>${records.length}</b> ${records.length === history.length ? 'trabajos registrados' : 'trabajos encontrados'}`
-  }, [fromDate, toDate, statusFilter, records.length, history.length])
+    if (counter) counter.innerHTML = `<b>${matchingRecords.length}</b> ${matchingRecords.length === history.length ? 'trabajos registrados' : 'trabajos encontrados'}`
+  }, [fromDate, toDate, statusFilter, matchingRecords.length, history.length])
+  useEffect(() => {
+    const table = document.querySelector('.history-bulk')
+    if (!table) return undefined
+    table.setAttribute('role', 'table')
+    table.setAttribute('aria-label', 'Historial técnico')
+    const header = table.querySelector('.table-head')
+    header?.setAttribute('role', 'row')
+    header?.querySelectorAll(':scope > span').forEach(cell => cell.setAttribute('role', 'columnheader'))
+    table.querySelectorAll('.history-row').forEach(row => {
+      row.setAttribute('role', 'row')
+      ;[...row.children].forEach(cell => cell.setAttribute('role', 'cell'))
+    })
+    const navigation = document.createElement('nav')
+    navigation.className = 'history-pagination'
+    navigation.setAttribute('aria-label', 'Paginación del historial')
+    const summary = document.createElement('span')
+    const firstRecord = matchingRecords.length ? (currentHistoryPage - 1) * historyPageSize + 1 : 0
+    const lastRecord = Math.min(currentHistoryPage * historyPageSize, matchingRecords.length)
+    summary.textContent = `${firstRecord}–${lastRecord} de ${matchingRecords.length}`
+    const pageLabel = document.createElement('span')
+    pageLabel.textContent = `Página ${currentHistoryPage} de ${historyPageCount}`
+    const previous = document.createElement('button')
+    previous.type = 'button'; previous.className = 'secondary'; previous.textContent = 'Anterior'; previous.disabled = currentHistoryPage <= 1
+    previous.onclick = () => setHistoryPage(page => Math.max(1, page - 1))
+    const next = document.createElement('button')
+    next.type = 'button'; next.className = 'secondary'; next.textContent = 'Siguiente'; next.disabled = currentHistoryPage >= historyPageCount
+    next.onclick = () => setHistoryPage(page => Math.min(historyPageCount, page + 1))
+    const sizeLabel = document.createElement('label')
+    sizeLabel.textContent = 'Mostrar '
+    const size = document.createElement('select')
+    ;[25, 50, 100].forEach(value => { const option = document.createElement('option'); option.value = String(value); option.textContent = String(value); size.append(option) })
+    size.value = String(historyPageSize)
+    size.onchange = event => setHistoryPageSize(Number(event.target.value))
+    sizeLabel.append(size, document.createTextNode(' registros'))
+    navigation.append(sizeLabel, summary, previous, pageLabel, next)
+    table.insertAdjacentElement('afterend', navigation)
+    return () => navigation.remove()
+  }, [records, matchingRecords.length, currentHistoryPage, historyPageCount, historyPageSize])
   useEffect(() => {
     // El componente de historial conserva parte de su estructura legada; aplicar la clase
     // al chip ya renderizado evita duplicar la tabla y mantiene el color sincronizado al filtrar.
@@ -4736,8 +4952,11 @@ function HistoryManagementDetail({ record, setHistory, close, customers, service
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const recordFingerprint = serviceRecordFingerprint(record)
-  const acceptedFingerprintRef = useRef(recordFingerprint)
-  const interactionBlocked = recordFingerprint !== acceptedFingerprintRef.current || saving
+  const acceptedRecordRef = useRef(record)
+  const [acceptedFingerprint, setAcceptedFingerprint] = useState(recordFingerprint)
+  const remotelyUpdated = recordFingerprint !== acceptedFingerprint
+  const changedFields = remotelyUpdated ? serviceRecordChangedFields(acceptedRecordRef.current, record) : []
+  const interactionBlocked = remotelyUpdated || saving
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       const container = document.querySelector('.history-detail .history-edit-grid, .history-detail .history-detail-grid')
@@ -4748,14 +4967,36 @@ function HistoryManagementDetail({ record, setHistory, close, customers, service
   }, [record, editing])
   const editableDraft = value => ({ customerId: value.customerId || '', serviceId: value.serviceId || '', technicianIds: value.technicianIds || [], teamId: value.teamId || '', team: value.team || '', address: value.address || '', phone: value.phone || '', detail: value.detail || '', internalNote: value.internalNote || '', internalChecklist: normalizeInternalChecklist(value.internalChecklist) })
   const [draft, setDraft] = useState(() => editableDraft(record))
-  useEffect(() => {
-    if (recordFingerprint === acceptedFingerprintRef.current) return
-    acceptedFingerprintRef.current = recordFingerprint
+  const reviewCurrentVersion = () => {
+    acceptedRecordRef.current = record
+    setAcceptedFingerprint(recordFingerprint)
     setEditing(false)
     setConfirmDelete(false)
     setPendingAction(null)
     setDraft(editableDraft(record))
-  }, [recordFingerprint])
+  }
+  useEffect(() => {
+    const heading = document.querySelector('.history-detail .history-detail-heading')
+    if (!heading || !remotelyUpdated) return undefined
+    const notice = document.createElement('div')
+    notice.className = 'history-version-notice'
+    notice.setAttribute('role', 'status')
+    notice.setAttribute('aria-live', 'polite')
+    const copy = document.createElement('div')
+    const title = document.createElement('b')
+    title.textContent = 'Hay una versión más reciente de este servicio.'
+    const detail = document.createElement('span')
+    detail.textContent = `${changedFields.length ? `Cambió: ${changedFields.join(', ')}. ` : 'Se actualizaron datos del registro. '}${editing ? 'Tu borrador permanece visible y no fue reemplazado.' : 'Revisá la versión actual antes de continuar.'}`
+    const review = document.createElement('button')
+    review.type = 'button'
+    review.className = 'secondary'
+    review.textContent = 'Revisar versión actual'
+    review.onclick = reviewCurrentVersion
+    copy.append(title, detail)
+    notice.append(copy, review)
+    heading.insertAdjacentElement('afterend', notice)
+    return () => notice.remove()
+  }, [remotelyUpdated, changedFields.join('|'), editing, recordFingerprint])
   const update = async patch => {
     if (interactionBlocked) return
     // Al elegir una nueva fecha, el servicio deja de pertenecer al día original y vuelve
@@ -5116,5 +5357,5 @@ function Confirm({ title, detail, action, destructive, confirmLabel, close }) {
     }
   }
   const label = confirmLabel || (destructive ? 'Sí, eliminar' : 'Confirmar cambios')
-  return <div className="modal-layer"><div className="modal confirm-modal"><span className={destructive ? 'confirm-icon danger' : 'confirm-icon'}>{destructive ? <Icon name="trash" /> : <Icon name="lock" />}</span><h2>{title}</h2><p>{detail}</p>{error && <div className="notice confirm-error" role="alert">{error}</div>}<div className="confirm-actions"><button className="secondary" disabled={submitting} onClick={close}>Cancelar</button><button className={destructive ? 'danger-button' : 'primary'} disabled={submitting} onClick={submit}>{submitting ? 'Guardando…' : label}</button></div></div></div>
+  return <div className="modal-layer"><div className="modal confirm-modal" role="alertdialog" aria-modal="true"><span className={destructive ? 'confirm-icon danger' : 'confirm-icon'} aria-hidden="true">{destructive ? <Icon name="trash" /> : <Icon name="lock" />}</span><h2>{title}</h2><p>{detail}</p>{error && <div className="notice confirm-error" role="alert">{error}</div>}<div className="confirm-actions"><button type="button" className="secondary" disabled={submitting} onClick={close}>Cancelar</button><button type="button" className={destructive ? 'danger-button' : 'primary'} disabled={submitting} onClick={submit}>{submitting ? 'Guardando…' : label}</button></div></div></div>
 }

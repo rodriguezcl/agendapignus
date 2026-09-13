@@ -18,6 +18,7 @@ const { removeHistoryRecord } = require('./api/_lib/history-record-removal.cjs')
 const { applyStateOperations } = require('./api/_lib/state-operations.cjs')
 const { migrateLegacyEstimatedMinutes } = require('./api/_lib/legacy-estimated-minutes.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
+const { startTechnicianServiceRecord } = require('./api/_lib/technician-service-start.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
 const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('./api/_lib/customer-import.cjs')
 const { concurrentStateChanged, mergeConcurrentState } = require('./api/_lib/state-merge.cjs')
@@ -824,7 +825,7 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
   inspectPlan({ teams: agenda.teams || [] })
   Object.entries(agenda.weekly || {}).forEach(([key, value]) => { if (!key.startsWith('_')) inspectPlan(value) })
   const incomingById = new Map(incomingHistory.map(record => [String(record.id), record]))
-  const protectedFields = ['status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'advanceRequest', 'originalScheduledTime']
+  const protectedFields = ['status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'startedAt', 'startedById', 'startedByName', 'advanceRequest', 'originalScheduledTime']
   const result = []
   for (const previous of currentHistory) {
     const id = String(previous.id)
@@ -2074,6 +2075,32 @@ const server = http.createServer((req, res) => {
         throw error
       }
     }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo procesar la solicitud de adelanto.' }))
+  }
+  if (req.method === 'POST' && url.pathname === '/api/technician/start') {
+    const user = requireSession(req, res)
+    if (!user) return
+    if (user.roleCode !== 'technician') return send(res, 403, { error: 'Esta acción es exclusiva del rol técnico.' })
+    return readJson(req).then(({ recordId }) => {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const previousRow = db.prepare('SELECT data FROM work_history WHERE id = ?').get(String(recordId || ''))
+        const previous = previousRow?.data ? JSON.parse(previousRow.data) : null
+        const next = startTechnicianServiceRecord(previous, user)
+        if (next === previous) {
+          db.exec('COMMIT')
+          return send(res, 200, { record: technicianSafeRecord(previous), revision: currentStateRevision() })
+        }
+        db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(next), String(next.id))
+        writeAudit(user, 'Inició servicio técnico', 'Servicio / historial', String(next.id), previous, next)
+        const revision = currentStateRevision() + 1
+        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
+        db.exec('COMMIT')
+        return send(res, 200, { record: technicianSafeRecord(next), revision })
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+    }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo iniciar el servicio.' }))
   }
   if (req.method === 'POST' && url.pathname === '/api/technician/status') {
     const user = requireSession(req, res)
