@@ -88,6 +88,36 @@
   color: var(--pignus-color-brand);
   text-decoration: none;
 }
+.technician-next-service {
+  border: 2px solid var(--pignus-color-brand);
+  box-shadow: 0 8px 24px rgba(23, 63, 43, .1);
+}
+.technician-next-label {
+  margin: 0 0 var(--pignus-space-2);
+  color: var(--pignus-color-brand);
+  letter-spacing: .08em;
+}
+.technician-following-services {
+  margin: var(--pignus-space-5) 0 var(--pignus-space-3);
+  font-size: 18px;
+}
+.technician-start-service { order: -1; }
+.technician-started-status {
+  margin: var(--pignus-space-2) 0;
+  padding: var(--pignus-space-2) var(--pignus-space-3);
+  color: var(--pignus-color-brand);
+  background: var(--pignus-color-surface-subtle);
+  border-left: 3px solid var(--pignus-color-brand);
+  border-radius: var(--pignus-radius-sm);
+  font-size: 13px;
+  font-weight: 700;
+}
+.technician-service.is-collapsed > p:not(.tech-client),
+.technician-service.is-collapsed > .technician-team,
+.technician-service.is-collapsed > .technician-actions,
+.technician-service.is-collapsed > .technician-customer-history,
+.technician-service.is-collapsed > .reported-at,
+.technician-service.is-collapsed > .technician-started-status { display: none; }
 
 .history-bulk .table-head {
   position: sticky !important;
@@ -127,6 +157,9 @@ body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice span > svg
     min-height: 44px !important;
   }
   .technician-quick-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .technician-quick-actions .technician-start-service { grid-column: 1 / -1; }
+  .technician-quick-actions > * { width: 100%; }
+  .technician-next-service { scroll-margin-top: var(--pignus-space-3); }
   .history-version-notice,
   .technician-connection-status { align-items: stretch; flex-direction: column; }
   .history-pagination { justify-content: center; }

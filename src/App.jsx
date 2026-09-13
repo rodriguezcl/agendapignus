@@ -4280,6 +4280,7 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
   const [customerHistoryRecord, setCustomerHistoryRecord] = useState(null)
   const [clock, setClock] = useState(Date.now())
   const [connectionStatus, setConnectionStatus] = useState(() => navigator.onLine ? 'online' : 'offline')
+  const expandedServiceCardsRef = useRef(new Set())
   const today = currentLocalDate()
   const resolved = technicianRecordResolved
   const directChildWithClass = (element, className) => Array.from(element?.children || []).find(child => child.classList.contains(className)) || null
@@ -4430,6 +4431,7 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
   useEffect(() => {
     const cards = document.querySelectorAll('.technician-service')
     document.querySelector('.vehicle-control-blocker-banner')?.remove()
+    document.querySelector('.technician-following-services')?.remove()
     const overdueControls = view === 'agenda' ? overdueVehicleControls(services, today) : []
     if (overdueControls.length) {
       const banner = document.createElement('div')
@@ -4447,6 +4449,22 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
     }
     cards.forEach((card, index) => {
       const serviceRecord = services[index]
+      if (!serviceRecord) return
+      if (view === 'agenda') {
+        const isNext = index === 0
+        card.classList.toggle('technician-next-service', isNext)
+        if (isNext) {
+          const nextLabel = document.createElement('p')
+          nextLabel.className = 'eyebrow technician-next-label'
+          nextLabel.textContent = 'PRÓXIMO SERVICIO'
+          card.prepend(nextLabel)
+        } else if (index === 1) {
+          const following = document.createElement('h2')
+          following.className = 'technician-following-services'
+          following.textContent = 'Siguientes servicios'
+          card.parentNode?.insertBefore(following, card)
+        }
+      }
       card.classList.toggle('vehicle-control-card', Boolean(serviceRecord?.vehicleControl))
       card.querySelector('.technician-advance-request')?.remove()
       card.querySelector('.technician-quick-actions')?.remove()
@@ -4488,7 +4506,8 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
         if (!blockingControl && !serviceRecord?.vehicleControl) {
           const quickActions = document.createElement('div')
           quickActions.className = 'technician-quick-actions'
-          quickActions.setAttribute('aria-label', 'Acciones rápidas del servicio')
+          quickActions.setAttribute('role', 'group')
+          quickActions.setAttribute('aria-label', `Acciones rápidas para ${serviceRecord.client || 'el servicio'}`)
           if (serviceRecord.address) {
             const directions = document.createElement('a')
             directions.className = 'secondary'
@@ -4496,6 +4515,7 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
             directions.rel = 'noopener noreferrer'
             directions.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(serviceRecord.address)}`
             directions.textContent = 'Cómo llegar'
+            directions.setAttribute('aria-label', `Cómo llegar a ${serviceRecord.client || serviceRecord.address}`)
             quickActions.append(directions)
           }
           if (serviceRecord.phone) {
@@ -4503,17 +4523,36 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
             call.className = 'secondary'
             call.href = `tel:${String(serviceRecord.phone).replace(/[^+\d]/g, '')}`
             call.textContent = 'Llamar'
+            call.setAttribute('aria-label', `Llamar a ${serviceRecord.client || 'contacto del servicio'}`)
             quickActions.append(call)
           }
+          const detailToggle = document.createElement('button')
+          detailToggle.type = 'button'
+          detailToggle.className = 'secondary technician-detail-toggle'
+          const syncDetailState = expanded => {
+            card.classList.toggle('is-collapsed', !expanded)
+            detailToggle.setAttribute('aria-expanded', String(expanded))
+            detailToggle.textContent = expanded ? 'Ocultar detalle' : 'Ver detalle'
+          }
+          syncDetailState(index === 0 || expandedServiceCardsRef.current.has(String(serviceRecord.id)))
+          detailToggle.onclick = () => {
+            const expanded = card.classList.contains('is-collapsed')
+            if (expanded) expandedServiceCardsRef.current.add(String(serviceRecord.id))
+            else expandedServiceCardsRef.current.delete(String(serviceRecord.id))
+            syncDetailState(expanded)
+          }
+          quickActions.append(detailToggle)
           const start = document.createElement('button')
           start.type = 'button'
           start.className = 'primary technician-start-service'
+          start.setAttribute('aria-label', `${serviceRecord.startedAt ? 'Servicio iniciado para' : 'Iniciar servicio para'} ${serviceRecord.client || 'cliente'}`)
           const canStart = serviceHasStarted(serviceRecord, clock) && connectionStatus !== 'offline'
           start.disabled = Boolean(serviceRecord.startedAt) || !canStart
           start.textContent = serviceRecord.startedAt ? 'Servicio iniciado' : 'Iniciar servicio'
           if (!canStart && !serviceRecord.startedAt) start.title = connectionStatus === 'offline' ? 'Reconectate para iniciar el servicio.' : 'El servicio podrá iniciarse cuando llegue su horario.'
           start.onclick = async () => {
             start.disabled = true
+            start.setAttribute('aria-busy', 'true')
             start.textContent = 'Iniciando…'
             card.querySelector('.technician-start-error')?.remove()
             try {
@@ -4522,6 +4561,7 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
               start.textContent = 'Servicio iniciado'
             } catch (error) {
               start.disabled = false
+              start.removeAttribute('aria-busy')
               start.textContent = 'Iniciar servicio'
               const message = document.createElement('p')
               message.className = 'field-error technician-start-error'
@@ -4533,12 +4573,20 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
           quickActions.prepend(start)
           if (actions) card.insertBefore(quickActions, actions)
           else card.append(quickActions)
+          if (serviceRecord.startedAt) {
+            const started = document.createElement('p')
+            started.className = 'technician-started-status'
+            started.setAttribute('role', 'status')
+            started.textContent = `Servicio iniciado: ${prettyReportDateTime(serviceRecord.startedAt)}`
+            quickActions.insertAdjacentElement('afterend', started)
+          }
         }
       }
     })
     return () => {
       document.querySelector('.vehicle-control-blocker-banner')?.remove()
-      cards.forEach(card => { const team = directChildWithClass(card, 'technician-team'); if (team) card.removeChild(team); card.querySelector('.technician-advance-request')?.remove(); card.querySelector('.technician-quick-actions')?.remove(); card.classList.remove('blocked-by-vehicle-control', 'vehicle-control-card') })
+      document.querySelector('.technician-following-services')?.remove()
+      cards.forEach(card => { const team = directChildWithClass(card, 'technician-team'); if (team) card.removeChild(team); card.querySelector('.technician-next-label')?.remove(); card.querySelector('.technician-advance-request')?.remove(); card.querySelector('.technician-quick-actions')?.remove(); card.querySelector('.technician-started-status')?.remove(); card.classList.remove('blocked-by-vehicle-control', 'vehicle-control-card', 'technician-next-service', 'is-collapsed') })
     }
   }, [services, view, today, clock, connectionStatus, setHistory])
   const saveStatus = async () => {
