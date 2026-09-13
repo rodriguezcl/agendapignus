@@ -40,6 +40,18 @@ test('el portal técnico comunica conectividad y ofrece acciones de campo', () =
   assert.match(startClient, /\/api\/technician\/start/)
 })
 
+test('el portal técnico prioriza el próximo servicio y resume los siguientes sin perder acciones', () => {
+  assert.match(app, /PRÓXIMO SERVICIO/)
+  assert.match(app, /Siguientes servicios/)
+  assert.match(app, /technician-detail-toggle/)
+  assert.match(app, /Ver detalle/)
+  assert.match(app, /aria-busy/)
+  assert.match(app, /Acciones rápidas para/)
+  assert.match(constitutionStyles, /\.technician-next-service/)
+  assert.match(constitutionStyles, /\.technician-service\.is-collapsed/)
+  assert.match(constitutionStyles, /\.technician-start-service \{ grid-column: 1 \/ -1/)
+})
+
 test('el historial limita los registros renderizados y expone semántica de tabla', () => {
   assert.match(app, /matchingRecords\.slice/)
   assert.match(app, /historyPageSize/)
