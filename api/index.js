@@ -8,6 +8,7 @@ const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./_lib/service-advance.cjs')
 const { startTechnicianServiceRecord } = require('./_lib/technician-service-start.cjs')
+const { stateForOperationComparison } = require('./_lib/legacy-estimated-minutes.cjs')
 
 async function persistStateCollections(transaction, current, next, nextRevision) {
   const versionedNext = { ...next, revision: Number(nextRevision) }
@@ -361,7 +362,8 @@ async function handleSaveState(req, res, sql, user) {
       const currentRevision = Number(revisionRows[0]?.value || 0)
       const current = await readState(transaction)
       const individual = req.method === 'PATCH'
-      let next = authorizeIncomingState(individual ? applyStateOperations(visibleStateForUser(current, user), incoming.operations) : incoming, current, user)
+      const operationState = individual ? stateForOperationComparison(current) : current
+      let next = authorizeIncomingState(individual ? applyStateOperations(visibleStateForUser(operationState, user), incoming.operations) : incoming, current, user)
       const base = incoming.base && typeof incoming.base === 'object' ? incoming.base : null
       const merged = Boolean(base && concurrentStateChanged(base, current))
       if (!individual && base) next = mergeConcurrentState(base, current, next)
