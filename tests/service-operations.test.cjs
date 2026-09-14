@@ -57,6 +57,29 @@ test('un servicio legado se compara con la misma duración que muestra el navega
   assert.equal(saved.history.find(record => record.id === 'work-legacy').address, 'Actualizada')
   assert.equal(saved.agenda.weekly[day].teams[0].tasks.find(task => task.taskId === 'task-legacy').address, 'Actualizada')
 })
+test('un guardado pendiente y la edición del modal se aplican en una sola transacción', async () => {
+  const { stateOperations } = await builder()
+  const { weeklyServiceOperations } = await weeklyBuilder()
+  const stored = fixture()
+  const legacyRecord = { id: 'work-pending', sourceTaskId: 'task-pending', service: 'Service', serviceId: 's', status: 'Pendiente', address: '-', phone: '-' }
+  const legacyTask = { taskId: 'task-pending', historyId: 'work-pending', service: 'Service', serviceId: 's', status: 'Pendiente', address: '-', phone: '-' }
+  stored.history.push(legacyRecord)
+  stored.agenda.weekly[day].teams[0].tasks.push(legacyTask)
+
+  const local = stateForOperationComparison(stored)
+  const team = local.agenda.weekly[day].teams[0]
+  const baseRecord = local.history.find(record => record.id === legacyRecord.id)
+  const baseTask = team.tasks.find(task => task.taskId === legacyTask.taskId)
+  const task = { ...baseTask, address: 'José Roque Funes 2751', phone: '+54 9 3513 02-0552', paymentMethod: 'Crédito', amount: '320000' }
+  const record = { ...baseRecord, ...task, id: baseRecord.id, sourceTaskId: task.taskId, date: day, teamId: team.teamId, technicianIds: team.memberIds, technicians: team.members }
+  const commandOperations = weeklyServiceOperations(local, { day, team, task, record, baseRecord, baseTask })
+
+  assert.throws(() => applyStateOperations(stored, commandOperations), { code: 'RECORD_WRITE_CONFLICT' })
+  const saved = applyStateOperations(stored, [...stateOperations(stored, local), ...commandOperations])
+  assert.equal(saved.history.find(item => item.id === legacyRecord.id).paymentMethod, 'Crédito')
+  assert.equal(saved.history.find(item => item.id === legacyRecord.id).amount, '320000')
+  assert.equal(saved.agenda.weekly[day].teams[0].tasks.find(item => item.taskId === legacyTask.taskId).address, 'José Roque Funes 2751')
+})
 test('deleting one record preserves every concurrent insertion', async () => {
   const { stateOperations } = await builder()
   const base = fixture(), deletion = clone(base), insertion = clone(base)
