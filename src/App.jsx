@@ -1891,7 +1891,7 @@ export default function App() {
   const refreshRemoteState = async () => {
     applyRemoteState(await stateRepository.load())
   }
-  const persistStateCommand = async buildOperations => {
+  const persistStateCommand = async (buildOperations, { combinePendingState = false } = {}) => {
     if (confirmedSaveRef.current) throw new Error('Ya hay un guardado en curso.')
     confirmedSaveRef.current = true
     setConfirmedSaving(true)
@@ -1909,6 +1909,13 @@ export default function App() {
       const base = JSON.parse(lastPersistedSnapshotRef.current || 'null')
       if (!base) throw new Error('Esperá a que termine de cargar la agenda.')
       let snapshot = local
+      if (combinePendingState) {
+        const pendingOperations = serialized !== lastPersistedSnapshotRef.current ? stateOperations(base, local) : []
+        const commandOperations = await buildOperations(local)
+        const payload = await stateRepository.commit([...pendingOperations, ...commandOperations], stateRevisionRef.current)
+        applyRemoteState(payload.state)
+        return payload
+      }
       if (serialized !== lastPersistedSnapshotRef.current) {
         const flushed = await stateRepository.save({ ...local, base, revision: stateRevisionRef.current })
         stateRevisionRef.current = Number(flushed.revision)
@@ -1924,16 +1931,15 @@ export default function App() {
       pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1)
     }
   }
-  const persistWeeklyService = command => persistStateCommand(snapshot => stateRepository.commit(
+  const persistWeeklyService = command => persistStateCommand(snapshot => (
     command.operation === 'team-members'
       ? weeklyTeamMemberOperations(snapshot, command)
       : command.operation === 'team-remove'
         ? weeklyTeamRemovalOperations(snapshot, command)
         : command.operation === 'task-remove'
           ? weeklyTaskRemovalOperations(snapshot, command)
-      : weeklyServiceOperations(snapshot, command),
-    stateRevisionRef.current
-  ))
+      : weeklyServiceOperations(snapshot, command)
+  ), { combinePendingState: true })
   const persistAgendaRecords = (before, records) => persistStateCommand(() => stateRepository.commit(stateOperations({ history: before }, { history: records }), stateRevisionRef.current))
   const persistHistoryRecord = async (base, record) => {
     const updates = Array.isArray(base) ? base : null
