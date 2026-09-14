@@ -196,5 +196,5 @@ test('la interfaz bloquea doble guardado y descarta instantáneas encoladas obso
   assert.match(source, /payload\.state && currentSnapshotRef\.current === serializedStateSnapshot/)
   assert.match(source, /if \(!taskEditor \|\| taskEditorSaveGuardRef\.current\) return/)
   assert.match(source, /disabled=\{taskEditorSaving\}/)
-  assert.match(api, /payload\.code = error\.code \|\| 'STATE_REVISION_CONFLICT'/)
+  assert.match(api, /payload\.code = publicError\.code \|\| 'STATE_REVISION_CONFLICT'/)
 })

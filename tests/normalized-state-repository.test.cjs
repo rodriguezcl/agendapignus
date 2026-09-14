@@ -56,6 +56,32 @@ test('normalized writes fail closed when the imported fingerprint is not the exp
   } finally { await pg.close() }
 })
 
+test('reordena equipos planificados y mensuales sin colisionar posiciones transitorias', async () => {
+  const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
+  try {
+    await pg.exec(fs.readFileSync(path.join(__dirname, '../supabase/proposals/normalized-shadow-v1.sql'), 'utf8'))
+    const previous = fixture()
+    previous.agenda.weekly['2026-09-14'] = { teams: [
+      { teamId: 'team-a', memberIds: ['e'], tasks: [] },
+      { teamId: 'team-b', memberIds: [], tasks: [] }
+    ] }
+    previous.agenda.weekly._monthlyTeams = { '2026-09': { teams: [
+      { teamId: 'team-a', memberIds: ['e'] },
+      { teamId: 'team-b', memberIds: [] }
+    ] } }
+    await insertShadowCandidate(pg, buildShadowCandidate(previous))
+    const next = structuredClone(previous)
+    next.revision = 2
+    next.agenda.weekly['2026-09-14'].teams.reverse()
+    next.agenda.weekly._monthlyTeams['2026-09'].teams.reverse()
+
+    await synchronizeNormalizedState(pg, previous, next)
+
+    assert.deepEqual((await pg.query("select team_key from normalized_shadow.planned_teams where scope = 'weekly' and work_date = '2026-09-14' order by position")).rows.map(row => row.team_key), ['team-b', 'team-a'])
+    assert.deepEqual((await pg.query("select team_key from normalized_shadow.monthly_teams where period = '2026-09' order by position")).rows.map(row => row.team_key), ['team-b', 'team-a'])
+  } finally { await pg.close() }
+})
+
 test('normalized writes create and remove one job without changing its siblings', async () => {
   const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
   try {

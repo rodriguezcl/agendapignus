@@ -18,6 +18,7 @@ import { monthlyTeamRotation } from './domain/agenda/monthly-team-rotation.mjs'
 import { holidayDecisionForDate, holidayDecisionLabel, holidayForDate, holidayIsBlocked } from './domain/agenda/holidays.mjs'
 import { readNationalHolidayCache, writeNationalHolidayCache } from './infrastructure/browser/holiday-cache.mjs'
 import { buildVehicleControlRecords, ensureVehicleControlService, monthFridays, rescheduleVehicleControlRecords, suggestedVehicleAssignments, vehicleControlTask, vehicleLabel } from './domain/vehicles/vehicle-controls.mjs'
+import { agendaHasUnsavedServices } from './domain/agenda/unsaved-agenda.mjs'
 import { setVehicleControlAssignedRecords, vehicleControlIsOpen, vehicleControlWindowLabel } from './domain/vehicles/vehicle-control-window.mjs'
 import { appendConfigurationHistory, guardConfigurationSnapshot, teamConfigurationSnapshot, vehicleConfigurationSnapshot } from './domain/configuration/configuration-history.mjs'
 import { compactVehiclePhoto } from './infrastructure/media/image-upload.mjs'
@@ -2204,12 +2205,9 @@ export default function App() {
   if (isAdministrator) nav.push(['audit', 'audit', 'Auditoría'])
   nav.push(['help', 'help', 'Centro de ayuda'])
   const emptyAgenda = () => ({ date: new Date().toISOString().slice(0, 10), teams: [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }] })
-  // Una agenda se considera pendiente cuando tiene datos que todavía no quedaron registrados en Historial.
-  const hasUnsavedAgenda = teams.some((team, teamIndex) => {
-    const membersChanged = team.members.length > 0 && !history.some(record => record.date === date && record.team === `Equipo ${teamIndex + 1}` && JSON.stringify(record.technicians || []) === JSON.stringify(team.members))
-    const hasPendingTask = team.tasks.some(task => Object.values(task).some(Boolean) && !history.some(record => record.date === date && record.team === `Equipo ${teamIndex + 1}` && record.time === task.time && record.service === task.service && record.client === task.client && record.address === task.address && record.phone === task.phone && record.detail === task.detail))
-    return membersChanged || hasPendingTask
-  })
+  // Sólo un servicio nuevo o editado requiere advertir sobre descarte. Un
+  // equipo asignado o un turno vacío no representan información pendiente.
+  const hasUnsavedAgenda = agendaHasUnsavedServices({ teams, history, date })
   const logout = async ({ discardDailyAgenda = false } = {}) => {
     if (loggingOutRef.current) return
     loggingOutRef.current = true

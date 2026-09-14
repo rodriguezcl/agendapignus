@@ -85,4 +85,5 @@ test('los estados del sistema diferencian carga, error, vacío y recuperación',
   assert.match(app, /type=\{databaseError \? 'error' : 'loading'\}/)
   assert.match(constitutionStyles, /\.empty-state::before/)
   assert.match(constitutionStyles, /notice\[data-tone='error'\]/)
+  assert.match(constitutionStyles, /body:has\(\.modal-backdrop, \.modal-layer\).*notice\[data-tone='error'\]/s)
 })
