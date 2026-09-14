@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const { buildShadowCandidate, insertShadowCandidate } = require('../api/_lib/normalization-rehearsal.cjs')
-const { appendOperationalAudit, setAuxiliaryPreference, upsertVehicleControlPhoto, upsertVehicleInsuranceDocument } = require('../api/_lib/operational-storage.cjs')
+const { appendOperationalAudit, setAuxiliaryPreference, upsertServicePhoto, upsertVehicleControlPhoto, upsertVehicleInsuranceDocument } = require('../api/_lib/operational-storage.cjs')
 
 function fixture() {
   return { revision: 1, roles: [{ id: 'r', name: 'Rol', permissions: {} }], employees: [{ id: 'e', roleId: 'r', name: 'Técnico' }],
@@ -18,7 +18,8 @@ async function database() {
   await pg.exec(`create table pignus_audit_log (id uuid primary key, occurred_at timestamptz not null, data jsonb not null);
     create table pignus_preferences (key text primary key, value text not null, updated_at timestamptz not null default now());
     create table pignus_vehicle_insurance_documents (vehicle_id text primary key, file_name text not null, pdf_data bytea not null, uploaded_at timestamptz not null);
-    create table pignus_vehicle_control_photos (record_id text primary key, vehicle_id text not null, mime_type text not null, photo_data bytea not null, created_at timestamptz not null);`)
+    create table pignus_vehicle_control_photos (record_id text primary key, vehicle_id text not null, mime_type text not null, photo_data bytea not null, created_at timestamptz not null);
+    create table pignus_service_photos (record_id text primary key, mime_type text not null, photo_data bytea not null, created_at timestamptz not null, uploaded_by_id text, uploaded_by_name text);`)
   await insertShadowCandidate(pg, buildShadowCandidate(fixture()))
   return pg
 }
@@ -33,12 +34,14 @@ test('specialized audit, preference and binary writes are mirrored byte-for-byte
     await setAuxiliaryPreference(pg, 'last_customer_import_backup', '{"ok":true}')
     await upsertVehicleInsuranceDocument(pg, { vehicleId: 'v', fileName: 'seguro.pdf', data: pdf, uploadedAt: event.at })
     await upsertVehicleControlPhoto(pg, { recordId: 'h', vehicleId: 'v', mimeType: 'image/jpeg', data: photo, createdAt: event.at })
+    await upsertServicePhoto(pg, { recordId: 'h', mimeType: 'image/jpeg', data: photo, createdAt: event.at, uploadedById: 'e', uploadedByName: 'Admin' })
     await pg.exec('commit')
     assert.deepEqual((await pg.query('select data from pignus_audit_log')).rows[0].data, event)
     assert.deepEqual((await pg.query('select original_payload from normalized_shadow.audit_events')).rows[0].original_payload, event)
     assert.equal((await pg.query("select preference_value from normalized_shadow.legacy_preference_evidence where preference_key='last_customer_import_backup'")).rows[0].preference_value, '{"ok":true}')
     assert.deepEqual(Buffer.from((await pg.query('select pdf_data from normalized_shadow.vehicle_insurance_documents')).rows[0].pdf_data), pdf)
     assert.deepEqual(Buffer.from((await pg.query('select photo_data from normalized_shadow.vehicle_control_photos')).rows[0].photo_data), photo)
+    assert.deepEqual(Buffer.from((await pg.query('select photo_data from normalized_shadow.service_photos')).rows[0].photo_data), photo)
   } finally { await pg.close() }
 })
 

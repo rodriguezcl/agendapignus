@@ -365,6 +365,36 @@ test('completar un control vehicular almacena la foto y permite volver a consult
   verificationDb.close()
 })
 
+test('la foto de referencia del servicio sólo puede modificarla gestión y verla el técnico asignado', async () => {
+  const administratorCookie = await login('qa-admin@pignus.test')
+  const technicianCookie = await login('qa-tech@pignus.test')
+  const record = { id: 'qa-service-reference-photo', sourceTaskId: 'qa-service-reference-task', date: '2099-01-10', time: '09:00', client: 'CLI-9000 CLIENTE QA', service: 'Service técnico', status: 'Pendiente', technicianIds: ['qa-tech'], technicians: ['QA Técnico'], vehicleControl: false }
+  const databasePath = path.join(temporaryDirectory, 'agenda-tecnica.db')
+  const setupDb = new DatabaseSync(databasePath)
+  upsertJson(setupDb, 'work_history', 'id', record)
+  setupDb.close()
+  const bytes = Buffer.from('foto-servicio-qa')
+  const photo = `data:image/jpeg;base64,${bytes.toString('base64')}`
+
+  let response = await api(`/api/service-photo/${record.id}`, technicianCookie, { method: 'POST', body: JSON.stringify({ photo }) })
+  assert.equal(response.status, 403)
+  response = await api(`/api/service-photo/${record.id}`, administratorCookie, { method: 'POST', body: JSON.stringify({ photo }) })
+  assert.equal(response.status, 200)
+  const uploaded = await response.json()
+  assert.equal(uploaded.url, `/api/service-photo/${record.id}`)
+  response = await api(uploaded.url, technicianCookie)
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('content-type'), 'image/jpeg')
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes)
+  response = await api(uploaded.url, administratorCookie, { method: 'DELETE' })
+  assert.equal(response.status, 200)
+  assert.equal((await api(uploaded.url, technicianCookie)).status, 404)
+
+  const cleanupDb = new DatabaseSync(databasePath)
+  cleanupDb.prepare('DELETE FROM work_history WHERE id = ?').run(record.id)
+  cleanupDb.close()
+})
+
 test('sirve la aplicación compilada y conserva aisladas las rutas API', async () => {
   const page = await api('/')
   assert.equal(page.status, 200)

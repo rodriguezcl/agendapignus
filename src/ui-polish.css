@@ -271,6 +271,29 @@ span.field-label-text > span.required-mark,
 .vehicle-control-photo-preview, .vehicle-control-history-photo { display: block; width: 100%; max-height: 320px; object-fit: contain; border-radius: 10px; border: 1px solid #d8e4d8; background: #eef3ee; }
 .vehicle-control-photo-preview { grid-column: 1 / -1; }
 .vehicle-control-history-photo { margin-top: 12px; }
+
+.service-photo { display: block; width: min(100%, 420px); margin-top: 10px; }
+.service-photo img { display: block; width: 100%; max-height: 320px; object-fit: contain; border-radius: 12px; border: 1px solid #d8e4d8; background: #eef3ee; }
+.weekly-service-photo { width: 100%; }
+.weekly-service-photo img { max-height: 150px; object-fit: cover; }
+.daily-service-photo, .service-photo-manager, .service-photo-field { grid-column: 1 / -1; }
+.service-photo-field { display: grid; gap: 10px; padding: 14px; border: 1px solid #d8e4d8; border-radius: 12px; background: #f7faf7; }
+.service-photo-field > div:first-child { display: flex; flex-direction: column; gap: 2px; }
+.service-photo-field > div:first-child small, .service-photo-manager > small { color: #66756b; }
+.service-photo-field > img { width: min(100%, 420px); max-height: 280px; object-fit: contain; border-radius: 10px; background: #eaf0eb; }
+.service-photo-actions, .history-photo-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.history-photo-actions { margin-left: auto; justify-content: flex-end; }
+.history-photo-actions small { flex-basis: 100%; }
+.history-service-photo-detail { grid-column: 1 / -1; }
+.technician-service-photo { width: 100%; margin: 12px 0; }
+.technician-service-photo img { max-height: 300px; }
+.app-shell[data-theme='dark'] .service-photo-field, .technician-page[data-theme='dark'] .service-photo-field { background: #12261c; border-color: #365243; }
+.app-shell[data-theme='dark'] .service-photo img, .technician-page[data-theme='dark'] .service-photo img { background: #102219; border-color: #365243; }
+
+@media (max-width: 720px) {
+  .service-photo-actions > button, .history-photo-actions > button { flex: 1 1 140px; }
+  .history-photo-actions { width: 100%; margin-left: 0; }
+}
 .vehicle-control-detail { display: flex; flex-direction: column; gap: 5px; }
 .vehicle-control-report-help { margin: 8px 0 2px; padding: 12px 14px; border-radius: 8px; background: #f1f7fb; color: #315f79; }
 .vehicle-control-fixed-duration, .vehicle-control-planning-fields { display: grid; gap: 10px; }
