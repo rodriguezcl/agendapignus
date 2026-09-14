@@ -1062,6 +1062,9 @@ test('vehículos del mes espera la confirmación atómica antes de informar el g
   const save = source.slice(source.indexOf('const saveMonthlyVehicleSetup'), source.indexOf('const annualGuardDraft'))
 
   assert.match(source, /const persistWeeklyConfiguration = buildNext => persistStateCommand/)
+  assert.match(source, /rebaseOnRecordConflict: true/)
+  assert.match(source, /const remote = await stateRepository\.load\(\)/)
+  assert.match(source, /stateRepository\.commit\(await buildOperations\(remote\), Number\(remote\.revision\)\)/)
   assert.match(save, /const saveMonthlyVehicleSetup = async \(\) =>/)
   assert.match(save, /await persistWeeklyConfiguration\(snapshot =>/)
   assert.ok(save.indexOf('await persistWeeklyConfiguration') < save.indexOf('setMonthlyVehicleSetup(null)'))
