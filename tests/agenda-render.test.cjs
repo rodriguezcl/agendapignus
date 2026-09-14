@@ -39,3 +39,12 @@ test('la vista previa permite copiar la agenda con la misma acción del botón e
   assert.match(source, /<Preview title="Vista previa de la agenda" text=\{message\} onCopy=\{copyAgenda\}/)
   assert.match(source, /className="modal-actions preview-modal-actions"[\s\S]*?onClick=\{onCopy\}[\s\S]*?Copiar agenda/)
 })
+
+test('la agenda diaria conserva la dotación semanal vigente al recuperar servicios históricos', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const loader = source.slice(source.indexOf('const loadAgendaForDate'), source.indexOf('const activeServices', source.indexOf('const loadAgendaForDate')))
+
+  assert.match(loader, /const plannedTeamKeys = new Set\(byTeam\.keys\(\)\)/)
+  assert.match(loader, /if \(!plannedTeamKeys\.has\(teamKey\)\) \{[\s\S]*?record\.technicianIds[\s\S]*?record\.technicians/)
+  assert.doesNotMatch(loader, /current\.memberIds = record\.technicianIds\?\.length \? record\.technicianIds : current\.memberIds\s+current\.members = record\.technicians\?\.length \? record\.technicians : current\.members\s+\/\/ Se aceptan/)
+})

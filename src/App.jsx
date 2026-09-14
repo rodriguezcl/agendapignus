@@ -2718,13 +2718,19 @@ function AgendaWorkspaceForm({ persistAgendaRecords, date, setDate, teams, setTe
         tasks: (alignedTeam.tasks || []).map(task => ({ ...blankTask(), ...task }))
       })
     })
+    const plannedTeamKeys = new Set(byTeam.keys())
     saved.forEach(record => {
       const number = Number(String(record.team || '').match(/\d+/)?.[0]) || 1
       const teamKey = record.teamId || `legacy-team-${number}`
       const current = byTeam.get(teamKey) || { position: number, teamId: record.teamId || createTeamId(), memberIds: record.technicianIds || [], members: record.technicians || [], tasks: [] }
       current.teamId ||= record.teamId || createTeamId()
-      current.memberIds = record.technicianIds?.length ? record.technicianIds : current.memberIds
-      current.members = record.technicians?.length ? record.technicians : current.members
+      // La dotación semanal es la asignación vigente del equipo. El historial
+      // conserva la instantánea que tenía cada servicio al guardarse y sólo se
+      // usa como respaldo para equipos antiguos que ya no están planificados.
+      if (!plannedTeamKeys.has(teamKey)) {
+        current.memberIds = record.technicianIds?.length ? record.technicianIds : current.memberIds
+        current.members = record.technicians?.length ? record.technicians : current.members
+      }
       // Se aceptan los nombres anteriores del campo para recuperar también agendas ya existentes.
       const recoveredTask = taskWithServiceEstimate({ taskId: record.sourceTaskId || record.id || createTaskId(), historyId: record.id, time: record.time || record.scheduledTime || record.hora || record.Hora || '', serviceId: record.serviceId || '', service: record.service || '', estimatedMinutes: record.estimatedMinutes, estimatedMinutesCustomized: record.estimatedMinutesCustomized, customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', internalNote: record.internalNote || '', internalChecklist: normalizeInternalChecklist(record.internalChecklist), paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', ...serviceTrace(record) }, resolveServiceForTask(record, services))
       const sameTask = task => (record.id && String(task.historyId || '') === String(record.id)) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
