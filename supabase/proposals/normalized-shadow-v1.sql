@@ -167,6 +167,12 @@ create table if not exists normalized_shadow.vehicle_control_photos (
   mime_type text not null, photo_data bytea not null,
   created_at timestamptz not null
 );
+create table if not exists normalized_shadow.service_photos (
+  job_id text primary key references normalized_shadow.jobs(id) on delete cascade,
+  mime_type text not null, photo_data bytea not null,
+  created_at timestamptz not null,
+  uploaded_by_id text, uploaded_by_name text
+);
 create table if not exists normalized_shadow.service_assignments (
   job_id text not null references normalized_shadow.jobs(id),
   employee_id text not null references normalized_shadow.employees(id),

@@ -27,7 +27,8 @@ const taskMatchesRecord = (task, team, teamIndex, record, date) => {
     text(record.time || record.scheduledTime) === text(task.time) &&
     sameReference(task, record, 'serviceId', 'service') &&
     sameReference(task, record, 'customerId', 'client') &&
-    ['address', 'phone', 'detail', 'internalNote', 'paymentMethod', 'amount', 'monthlyFee', 'form'].every(key => text(task[key]) === text(record[key]))
+    ['address', 'phone', 'detail', 'internalNote', 'paymentMethod', 'amount', 'monthlyFee', 'form', 'servicePhotoUrl', 'servicePhotoAttachedAt'].every(key => text(task[key]) === text(record[key])) &&
+    Boolean(task.servicePhotoAttached) === Boolean(record.servicePhotoAttached)
 }
 
 export function agendaHasUnsavedServices({ teams = [], history = [], date = '' } = {}) {

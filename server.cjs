@@ -71,6 +71,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, data TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS reviews (id TEXT PRIMARY KEY, data TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS vehicle_control_photos (record_id TEXT PRIMARY KEY, vehicle_id TEXT NOT NULL, mime_type TEXT NOT NULL, photo_data BLOB NOT NULL, created_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS service_photos (record_id TEXT PRIMARY KEY, mime_type TEXT NOT NULL, photo_data BLOB NOT NULL, created_at TEXT NOT NULL, uploaded_by_id TEXT, uploaded_by_name TEXT);
   CREATE TABLE IF NOT EXISTS vehicle_insurance_documents (vehicle_id TEXT PRIMARY KEY, file_name TEXT NOT NULL, pdf_data BLOB NOT NULL, uploaded_at TEXT NOT NULL);
 `)
 
@@ -1333,7 +1334,10 @@ function saveState(state, user) {
     replaceRows('employees', securedEmployees, 'id')
     replaceRows('services', state.services, 'id')
     const historyDelta = require('./api/_lib/record-changes.cjs').recordChanges(previousHistory, normalizedHistory)
-    for (const id of historyDelta.removed) db.prepare('DELETE FROM work_history WHERE id = ?').run(id)
+    for (const id of historyDelta.removed) {
+      db.prepare('DELETE FROM service_photos WHERE record_id = ?').run(id)
+      db.prepare('DELETE FROM work_history WHERE id = ?').run(id)
+    }
     for (const record of historyDelta.changed) db.prepare('INSERT INTO work_history (id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data').run(String(record.id), JSON.stringify(record))
     replaceRows('customers', state.customers, 'account')
     if (JSON.stringify(previousState.customers) !== JSON.stringify(state.customers)) db.prepare('DELETE FROM preferences WHERE key = ?').run(CUSTOMER_IMPORT_BACKUP_KEY)
@@ -1898,6 +1902,7 @@ const server = http.createServer((req, res) => {
         }
         const currentState = readState()
         const removed = removeHistoryRecord(currentState, recordId)
+        db.prepare('DELETE FROM service_photos WHERE record_id = ?').run(recordId)
         db.prepare('DELETE FROM work_history WHERE id = ?').run(recordId)
         db.prepare('INSERT OR REPLACE INTO agendas (id, data) VALUES (?, ?)').run('current', JSON.stringify(removed.state.agenda || {}))
         writeAudit(user, 'Eliminó', 'Servicio / historial', recordId, current, null)
@@ -1986,6 +1991,34 @@ const server = http.createServer((req, res) => {
     if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
     res.writeHead(200, { 'Content-Type': photo.mime_type, 'Content-Length': photo.photo_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
     return res.end(photo.photo_data)
+  }
+  if (['GET', 'POST', 'DELETE'].includes(req.method) && url.pathname.startsWith('/api/service-photo/')) {
+    const user = requireSession(req, res)
+    if (!user) return
+    const recordId = decodeURIComponent(url.pathname.slice('/api/service-photo/'.length))
+    const record = rows('work_history').find(item => String(item.id) === String(recordId))
+    if (!record || record.vehicleControl) return send(res, 404, { error: 'El servicio no existe.' })
+    if (req.method === 'GET') {
+      const allowed = user.roleCode !== 'technician' || record.technicianIds?.some(id => String(id) === String(user.id))
+      if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
+      const photo = db.prepare('SELECT mime_type, photo_data FROM service_photos WHERE record_id = ?').get(recordId)
+      if (!photo) return send(res, 404, { error: 'La foto no existe.' })
+      res.writeHead(200, { 'Content-Type': photo.mime_type, 'Content-Length': photo.photo_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
+      return res.end(photo.photo_data)
+    }
+    if (user.roleCode === 'technician') return send(res, 403, { error: 'Sólo Administración y usuarios pueden modificar la foto del servicio.' })
+    if (req.method === 'DELETE') {
+      db.prepare('DELETE FROM service_photos WHERE record_id = ?').run(recordId)
+      return send(res, 200, { ok: true })
+    }
+    return readJson(req, 2_000_000).then(({ photo }) => {
+      const match = String(photo || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([a-z0-9+/=]+)$/i)
+      const data = match ? Buffer.from(match[2], 'base64') : null
+      if (!data?.length || data.length > 1_000_000) return send(res, 400, { error: 'Seleccioná una foto válida de hasta 1 MB.' })
+      const createdAt = new Date().toISOString()
+      db.prepare('INSERT OR REPLACE INTO service_photos (record_id, mime_type, photo_data, created_at, uploaded_by_id, uploaded_by_name) VALUES (?, ?, ?, ?, ?, ?)').run(recordId, match[1].toLowerCase(), data, createdAt, String(user.id), user.name || user.email || '')
+      return send(res, 200, { ok: true, url: `/api/service-photo/${encodeURIComponent(recordId)}`, createdAt })
+    }).catch(error => send(res, 400, { error: error.message || 'No se pudo guardar la foto.' }))
   }
   if (['GET', 'POST'].includes(req.method) && url.pathname.startsWith('/api/vehicle-insurance/')) {
     const user = requireSession(req, res)

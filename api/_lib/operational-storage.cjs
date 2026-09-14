@@ -51,6 +51,29 @@ async function upsertVehicleControlPhoto(sql, photo) {
   [String(photo.recordId), String(photo.vehicleId), photo.mimeType, photo.data, photo.createdAt])
 }
 
+async function upsertServicePhoto(sql, photo) {
+  await queryRows(sql, `insert into pignus_service_photos (record_id, mime_type, photo_data, created_at, uploaded_by_id, uploaded_by_name)
+    values ($1,$2,$3,$4,$5,$6) on conflict (record_id) do update set mime_type=excluded.mime_type,
+    photo_data=excluded.photo_data, created_at=excluded.created_at, uploaded_by_id=excluded.uploaded_by_id, uploaded_by_name=excluded.uploaded_by_name`,
+  [String(photo.recordId), photo.mimeType, photo.data, photo.createdAt, photo.uploadedById == null ? null : String(photo.uploadedById), photo.uploadedByName || null])
+  if (!(await normalizedShadowIsPrepared(sql))) return
+  await queryRows(sql, `create table if not exists normalized_shadow.service_photos (
+    job_id text primary key references normalized_shadow.jobs(id) on delete cascade,
+    mime_type text not null, photo_data bytea not null, created_at timestamptz not null,
+    uploaded_by_id text, uploaded_by_name text
+  )`)
+  await queryRows(sql, `insert into normalized_shadow.service_photos (job_id, mime_type, photo_data, created_at, uploaded_by_id, uploaded_by_name)
+    values ($1,$2,$3,$4,$5,$6) on conflict (job_id) do update set mime_type=excluded.mime_type,
+    photo_data=excluded.photo_data, created_at=excluded.created_at, uploaded_by_id=excluded.uploaded_by_id, uploaded_by_name=excluded.uploaded_by_name`,
+  [String(photo.recordId), photo.mimeType, photo.data, photo.createdAt, photo.uploadedById == null ? null : String(photo.uploadedById), photo.uploadedByName || null])
+}
+
+async function deleteServicePhoto(sql, recordId) {
+  await queryRows(sql, 'delete from pignus_service_photos where record_id = $1', [String(recordId)])
+  if (!(await normalizedShadowIsPrepared(sql))) return
+  await queryRows(sql, 'delete from normalized_shadow.service_photos where job_id = $1', [String(recordId)])
+}
+
 async function setAuxiliaryPreference(sql, key, value) {
   if (value == null) await queryRows(sql, 'delete from pignus_preferences where key = $1', [key])
   else await queryRows(sql, `insert into pignus_preferences (key, value, updated_at) values ($1,$2,now())
@@ -61,4 +84,4 @@ async function setAuxiliaryPreference(sql, key, value) {
     values ($1,$2,now()) on conflict (preference_key) do update set preference_value=excluded.preference_value, updated_at=now()`, [key, value])
 }
 
-module.exports = { appendOperationalAudit, normalizedShadowIsPrepared, setAuxiliaryPreference, upsertVehicleControlPhoto, upsertVehicleInsuranceDocument }
+module.exports = { appendOperationalAudit, deleteServicePhoto, normalizedShadowIsPrepared, setAuxiliaryPreference, upsertServicePhoto, upsertVehicleControlPhoto, upsertVehicleInsuranceDocument }

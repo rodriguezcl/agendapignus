@@ -42,6 +42,7 @@ import { serviceRecordChangedFields, serviceRecordFingerprint } from './domain/h
 import { recoverStateRevisionConflict } from './features/state/application/state-save-conflict.mjs'
 import { compactStateBase } from './features/state/application/compact-state-base.mjs'
 import { historyRecordRepository } from './infrastructure/repositories/history-record-repository.mjs'
+import { servicePhotoRepository } from './infrastructure/repositories/service-photo-repository.mjs'
 import { weeklyServiceOperations } from './features/state/application/weekly-service-save.mjs'
 import { weeklyTeamMemberOperations } from './features/state/application/weekly-team-members-save.mjs'
 import { weeklyTeamRemovalOperations } from './features/state/application/weekly-team-removal.mjs'
@@ -63,6 +64,54 @@ const noticeTone = message => {
   if (/^(no |no se |no pudo|error)|conflicto|demoró demasiado|falló/.test(normalized)) return 'error'
   if (/^(hay |primero |solamente )|desactualiz|otra sesión|revisá|bloquead/.test(normalized)) return 'warning'
   return 'success'
+}
+
+const servicePhotoUrl = record => record?.servicePhotoUrl || (record?.servicePhotoAttached ? `/api/service-photo/${encodeURIComponent(String(record.id || record.historyId || ''))}` : '')
+
+function ServicePhoto({ record, className = '' }) {
+  const url = servicePhotoUrl(record)
+  const [visible, setVisible] = useState(Boolean(url))
+  useEffect(() => setVisible(Boolean(url)), [url])
+  if (!url || !visible) return null
+  return <a className={`service-photo ${className}`.trim()} href={url} target="_blank" rel="noreferrer" title="Abrir foto del servicio"><img src={url} alt={`Foto de referencia de ${record.client || record.service || 'servicio'}`} onError={() => setVisible(false)} /></a>
+}
+
+function ServicePhotoField({ record, photoData = '', removed = false, onChange, disabled = false }) {
+  const galleryRef = useRef(null)
+  const cameraRef = useRef(null)
+  const [processing, setProcessing] = useState(false)
+  const [error, setError] = useState('')
+  const existingUrl = servicePhotoUrl(record)
+  const preview = removed ? '' : photoData || existingUrl
+  const select = async file => {
+    if (!file || disabled) return
+    setProcessing(true); setError('')
+    try { onChange({ photoData: await compactVehiclePhoto(file), removed: false }) }
+    catch (uploadError) { setError(uploadError.message) }
+    finally { setProcessing(false) }
+  }
+  return <section className="service-photo-field"><div><b>Foto de referencia</b><small>Visible para el equipo técnico asignado.</small></div>{preview && <img src={preview} alt="Vista previa de la foto del servicio" onError={event => { if (!photoData) event.currentTarget.hidden = true }} />}<div className="service-photo-actions"><button type="button" className="secondary small" disabled={disabled || processing} onClick={() => galleryRef.current?.click()}><Icon name="upload" size={16} />Galería o archivo</button><button type="button" className="secondary small" disabled={disabled || processing} onClick={() => cameraRef.current?.click()}><Icon name="camera" size={16} />Sacar foto</button>{preview && <button type="button" className="danger-button small" disabled={disabled || processing} onClick={() => onChange({ photoData: '', removed: true })}><Icon name="trash" size={16} />Quitar foto</button>}</div><input ref={galleryRef} hidden type="file" accept="image/*" onChange={event => { select(event.target.files?.[0]); event.target.value = '' }} /><input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={event => { select(event.target.files?.[0]); event.target.value = '' }} />{processing && <small>Preparando foto…</small>}{error && <small className="field-error" role="alert">{error}</small>}</section>
+}
+
+function ServicePhotoManager({ record, onMetadataChange }) {
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const recordId = record?.id || record?.historyId
+  const change = async ({ photoData, removed }) => {
+    if (!recordId || saving) return
+    setSaving(true); setError('')
+    try {
+      if (photoData) {
+        const result = await servicePhotoRepository.upload(recordId, photoData)
+        onMetadataChange({ servicePhotoAttached: true, servicePhotoUrl: result.url, servicePhotoAttachedAt: result.createdAt })
+      } else if (removed) {
+        await servicePhotoRepository.remove(recordId)
+        onMetadataChange({ servicePhotoAttached: false, servicePhotoUrl: '', servicePhotoAttachedAt: '' })
+      }
+    } catch (photoError) { setError(photoError.message) }
+    finally { setSaving(false) }
+  }
+  return <div className="service-photo-manager"><ServicePhotoField record={record} disabled={!recordId || saving} onChange={change} />{!recordId && <small>Guardá el servicio antes de adjuntar una foto.</small>}{error && <small className="field-error" role="alert">{error}</small>}</div>
 }
 import './ui-polish.css'
 import './login.css'
@@ -2901,7 +2950,7 @@ function AgendaWorkspaceForm({ persistAgendaRecords, date, setDate, teams, setTe
         clientNameAtService: task.clientNameAtService || task.client.replace(/^[^\s]+\s+/, ''), detail: task.detail,
         internalNote: task.internalNote || '', internalChecklist: normalizeInternalChecklist(task.internalChecklist),
         ...applicableServiceExtras(task, serviceForTask(task)),
-        address: task.address, phone: task.phone, installationZone: task.installationZone || '', ...serviceTrace(task)
+        address: task.address, phone: task.phone, installationZone: task.installationZone || '', servicePhotoAttached: Boolean(task.servicePhotoAttached), servicePhotoUrl: task.servicePhotoUrl || '', servicePhotoAttachedAt: task.servicePhotoAttachedAt || '', ...serviceTrace(task)
       })))
       const accountKey = record => String(record.clientAccount || record.account || String(record.client || '').trim().split(' ')[0] || '').trim().toUpperCase()
       const serviceKey = record => String(record.service || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/nueva/g, '').replace(/\s+/g, ' ').trim()
@@ -3173,6 +3222,7 @@ function AgendaWorkspaceForm({ persistAgendaRecords, date, setDate, teams, setTe
 {task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForTask(task)))}</small>}
 {(() => { const conflict = conflictForDailyTask(teamIndex, taskIndex); return conflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>{scheduleConflictForTaskMessage(conflict, taskIndex)}</span></p> })()}
 <TaskStatusBadge task={task} date={date} history={history} />
+{!task.vehicleControl && <ServicePhotoManager record={{ ...(historyRecordForTask(task, date, history) || {}), ...task }} onMetadataChange={patch => { updateTask(teamIndex, taskIndex, patch); setHistory(previous => previous.map(record => String(record.id) === String(task.historyId) || String(record.sourceTaskId) === String(task.taskId) ? { ...record, ...patch } : record)) }} />}
 {dailyCustomerField(task, teamIndex, taskIndex)}
 <label className="daily-field-address"><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" value={task.address} onChange={event => updateTask(teamIndex, taskIndex, { address: event.target.value })} /></label><label className="daily-field-contact"><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" value={task.phone} onChange={event => updateTask(teamIndex, taskIndex, { phone: event.target.value })} /></label><label className="observations daily-field-observations">Observaciones<BufferedTextarea value={task.detail} onCommit={value => updateTask(teamIndex, taskIndex, { detail: value })} /></label>{serviceCode(serviceForTask(task)) === 'alarm-installation' && <fieldset className="installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input type="radio" aria-required="true" name={`zone-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForTask(task)) }) }} />{label}</label>)}</fieldset>}<ServiceExtraFields className="daily-extra-fields" task={task} service={serviceForTask(task)} buffered onChange={patch => updateTask(teamIndex, taskIndex, patch)} /></>}<div className="daily-task-actions">{!task.vehicleControl && <><button type="button" className="icon-btn daily-copy-button" title="Copiar este servicio" aria-label={`Copiar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => copySingleTask(task, team, teamIndex, taskIndex)}><Icon name="copy" size={16} /><span>Copiar</span></button>{teams.length > 1 && <button type="button" className="icon-btn move daily-move-button" title="Reasignar a otro equipo" aria-label={`Reasignar servicio ${taskIndex + 1} a otro equipo`} onClick={() => openTaskMove(teamIndex, taskIndex)}><span aria-hidden="true">⇄</span><span>Reasignar</span></button>}{taskHasContent(task) && <button type="button" className="icon-btn delete daily-delete-button" title="Eliminar servicio" aria-label={`Eliminar servicio ${taskIndex + 1} del Equipo ${teamIndex + 1}`} onClick={() => setTeams(previous => previous.map((item, index) => index !== teamIndex ? item : { ...item, tasks: item.tasks.length > 1 ? item.tasks.filter((_, index) => index !== taskIndex) : [blankTask()] }))}><Icon name="trash" size={16} /><span>Eliminar</span></button>}</>}</div></div>)}</div><button className="link-button" onClick={() => setTeams(previous => previous.map((item, index) => index === teamIndex ? { ...item, tasks: [...item.tasks, blankTask()] } : item))}><Icon name="plus" size={16} />Agregar servicio</button></article>)}<button className="add-team" onClick={() => setTeams([...teams, { teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])}><Icon name="plus" />Agregar otro equipo</button>{preview && <Preview title="Vista previa de la agenda" text={message} onCopy={copyAgenda} close={() => setPreview(false)} />}{confirmation === 'clear' && <Confirm title="Limpiar agenda" detail="¿Querés borrar todos los equipos y servicios cargados?" destructive action={clearAgenda} close={() => setConfirmation(null)} />}{confirmation?.type === 'team' && <Confirm title="Eliminar equipo" detail={`¿Querés eliminar el Equipo ${confirmation.index + 1}? Esta acción no se puede deshacer.`} destructive action={() => { setTeams(previous => previous.filter((_, index) => index !== confirmation.index)); setNotice('El equipo fue eliminado.') }} close={() => setConfirmation(null)} />}</>
 }
@@ -3396,7 +3446,7 @@ function WeeklyPlanner({ persistWeeklyService, persistWeeklyConfiguration, weekl
     setTaskEditorSaving(false)
     const teamSnapshot = dayPlan(day).teams[teamIndex]
     const task = teamSnapshot?.tasks[taskIndex]
-    if (task) setTaskEditor({ persistedTeam: Boolean(weekly[day]?.teams?.some(team => String(team.teamId) === String(teamSnapshot.teamId))), baseRecord: historyRecordForTask(task, day, operationalHistory) || null, baseTask: weekly[day]?.teams?.flatMap(team => team.tasks || []).find(item => String(item.taskId) === String(task.taskId)) || null, day, teamIndex, taskIndex, teamId: teamSnapshot.teamId, teamSnapshot: { ...teamSnapshot, tasks: [...(teamSnapshot.tasks || [])] }, taskId: task.taskId, draft: taskWithServiceEstimate(task, serviceForWeeklyTask(task)) })
+    if (task) setTaskEditor({ persistedTeam: Boolean(weekly[day]?.teams?.some(team => String(team.teamId) === String(teamSnapshot.teamId))), baseRecord: historyRecordForTask(task, day, operationalHistory) || null, baseTask: weekly[day]?.teams?.flatMap(team => team.tasks || []).find(item => String(item.taskId) === String(task.taskId)) || null, day, teamIndex, taskIndex, teamId: teamSnapshot.teamId, teamSnapshot: { ...teamSnapshot, tasks: [...(teamSnapshot.tasks || [])] }, taskId: task.taskId, draft: taskWithServiceEstimate(task, serviceForWeeklyTask(task)), photoData: '', photoRemoved: false })
   }
   const updateTaskDraft = patch => !taskEditorSaveGuardRef.current && setTaskEditor(previous => previous ? { ...previous, draft: { ...previous.draft, ...patch } } : previous)
   const selectDraftService = selectedId => {
@@ -3469,11 +3519,16 @@ function WeeklyPlanner({ persistWeeklyService, persistWeeklyConfiguration, weekl
     const savedTeam = editedTeam || teamSnapshot
     if (!savedTeam?.members?.length && !tracedDraft.vehicleControl) { rejectSave('Asigná al menos un técnico antes de guardar el servicio.'); return }
     const previousRecord = taskEditor.baseRecord
-    const record = { ...previousRecord, ...weeklyHistoryRecord(day, savedTeam, teamIndex, tracedDraft, taskIndex), status: previousRecord?.status || 'Pendiente' }
+    const photoPatch = taskEditor.photoData
+      ? { servicePhotoAttached: true, servicePhotoUrl: `/api/service-photo/${encodeURIComponent(String(previousRecord?.id || tracedDraft.historyId || `work-${tracedDraft.taskId}`))}`, servicePhotoAttachedAt: new Date().toISOString() }
+      : taskEditor.photoRemoved ? { servicePhotoAttached: false, servicePhotoUrl: '', servicePhotoAttachedAt: '' } : {}
+    const record = { ...previousRecord, ...weeklyHistoryRecord(day, savedTeam, teamIndex, { ...tracedDraft, ...photoPatch }, taskIndex), ...photoPatch, status: previousRecord?.status || 'Pendiente' }
     if (previousRecord) record.id = previousRecord.id
-    const savedTask = { ...tracedDraft, historyId: record.id, status: record.status }
+    const savedTask = { ...tracedDraft, ...photoPatch, historyId: record.id, status: record.status }
     try {
       await persistWeeklyService({ day, team: savedTeam, task: savedTask, record, baseRecord: previousRecord, baseTask: taskEditor.baseTask, customer: newCustomer })
+      if (taskEditor.photoData) await servicePhotoRepository.upload(record.id, taskEditor.photoData)
+      else if (taskEditor.photoRemoved) await servicePhotoRepository.remove(record.id)
       setTaskEditor(null)
       setNotice('Servicio guardado correctamente en la agenda y el Historial.')
     } catch (error) {
@@ -4039,6 +4094,9 @@ function WeeklyPlanner({ persistWeeklyService, persistWeeklyConfiguration, weekl
     address: task.address,
     phone: task.phone,
     installationZone: task.installationZone || '',
+    servicePhotoAttached: Boolean(task.servicePhotoAttached),
+    servicePhotoUrl: task.servicePhotoUrl || '',
+    servicePhotoAttachedAt: task.servicePhotoAttachedAt || '',
     ...serviceTrace(task)
   })
   const displayDate = day => new Date(`${day}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).replace('.', '')
@@ -4077,7 +4135,7 @@ function WeeklyPlanner({ persistWeeklyService, persistWeeklyConfiguration, weekl
       if (!task || !hours) return null
       return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => { if (!taskEditorSaving) setTaskEditor(null) }}><section className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button type="button" className="modal-close" aria-label="Cerrar edición del servicio" title="Cerrar" onClick={() => { if (!taskEditorSaving) setTaskEditor(null) }}><Icon name="close" size={18} /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>{task.vehicleControl ? 'Control semanal de vehículo' : `Servicio ${taskIndex + 1}`}</h2><p className="weekly-modal-team">{taskEditor.teamSnapshot?.label || `Equipo ${teamIndex + 1}`} · {taskEditor.teamSnapshot?.members?.join(' / ') || 'Sin técnicos asignados'}</p><div className="weekly-task-form"><div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTaskDraft({ time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" disabled={task.vehicleControl} value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectDraftService(event.target.value)}>{task.vehicleControl && serviceForWeeklyTask(task) ? <option value={serviceForWeeklyTask(task).id}>{serviceForWeeklyTask(task).name}</option> : <><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</>}</select></label></div>{task.vehicleControl ? <label className="vehicle-control-fixed-duration"><span><RequiredLabel>Tiempo estimado</RequiredLabel></span><input value="15 minutos" readOnly /></label> : <ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTaskDraft({ estimatedMinutes, estimatedMinutesCustomized: true })} />}{task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForWeeklyTask(task)))}</small>}{taskConflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>{scheduleConflictForTaskMessage(taskConflict, taskIndex)}</span></p>}{task.vehicleControl ? <div className="vehicle-control-planning-fields"><label>Vehículo<input value={task.client || vehicleLabel(task)} readOnly /></label><label><RequiredLabel>Técnico a cargo</RequiredLabel><select value={task.technicianIds?.[0] || ''} onChange={event => { const technician = activeTechs.find(item => String(item.id) === event.target.value); updateTaskDraft({ technicianIds: technician ? [technician.id] : [], technicians: technician ? [technician.name] : [] }) }}><option value="">Seleccionar técnico</option>{activeTechs.map(technician => <option key={technician.id} value={technician.id}>{technician.name}</option>)}</select></label><p>Podés reemplazar al responsable para este control ante una contingencia. La asignación mensual predeterminada no se modifica.</p></div> : <>{serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input aria-required="true" type="radio" name={`weekly-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTaskDraft({ installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
 <CustomerAutocomplete className="weekly-customer-search" value={task.client} customerId={task.customerId} customers={customers} subscriberReservation={task.subscriberReservation} onTextCommit={commitDraftCustomerText} onCustomerSelect={selectDraftCustomer} onAddCustomer={beginDraftNewCustomer} onReserveSubscriber={serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' ? beginDraftSubscriberReservation : undefined} />
-<label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.address} onChange={event => updateTaskDraft({ address: event.target.value })} /></label><label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.phone} onChange={event => updateTaskDraft({ phone: event.target.value })} /></label><p className="weekly-customer-data-note">{task.subscriberReservation ? 'Estos datos son provisorios y no crean un CLI. Vinculá el PIG importado cuando esté disponible.' : task.newCustomer ? 'Completá dirección y contacto para crear el cliente CLI al guardar.' : 'Dirección y contacto se administran desde el módulo Abonados y clientes.'}</p><label><RequiredLabel>Detalle</RequiredLabel><BufferedTextarea aria-required="true" value={task.detail} onCommit={value => updateTaskDraft({ detail: value })} /></label><ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} onChange={updateTaskDraft} /></>}</div><div className="modal-actions"><button className="secondary" disabled={taskEditorSaving} onClick={() => { if (!taskEditorSaving) setTaskEditor(null) }}>Cancelar</button><button className="primary" disabled={taskEditorSaving} onClick={saveTaskEditor}><Icon name="check" size={16} />{taskEditorSaving ? 'Guardando…' : 'Guardar servicio'}</button></div></section></div>
+<label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.address} onChange={event => updateTaskDraft({ address: event.target.value })} /></label><label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation} title={task.newCustomer || task.subscriberReservation ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.phone} onChange={event => updateTaskDraft({ phone: event.target.value })} /></label><p className="weekly-customer-data-note">{task.subscriberReservation ? 'Estos datos son provisorios y no crean un CLI. Vinculá el PIG importado cuando esté disponible.' : task.newCustomer ? 'Completá dirección y contacto para crear el cliente CLI al guardar.' : 'Dirección y contacto se administran desde el módulo Abonados y clientes.'}</p><label><RequiredLabel>Detalle</RequiredLabel><BufferedTextarea aria-required="true" value={task.detail} onCommit={value => updateTaskDraft({ detail: value })} /></label><ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} onChange={updateTaskDraft} /><ServicePhotoField record={task} photoData={taskEditor.photoData} removed={taskEditor.photoRemoved} disabled={taskEditorSaving} onChange={({ photoData, removed }) => setTaskEditor(previous => ({ ...previous, photoData, photoRemoved: removed }))} /></>}</div><div className="modal-actions"><button className="secondary" disabled={taskEditorSaving} onClick={() => { if (!taskEditorSaving) setTaskEditor(null) }}>Cancelar</button><button className="primary" disabled={taskEditorSaving} onClick={saveTaskEditor}><Icon name="check" size={16} />{taskEditorSaving ? 'Guardando…' : 'Guardar servicio'}</button></div></section></div>
     })()}
     <div className="weekly-scroll-top" ref={weeklyTopScrollRef} tabIndex={0} aria-label="Desplazamiento horizontal superior" onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyBoardRef.current)}><div style={{ width: `${weeklyScrollWidth}px` }} /></div>
     <div className="weekly-board" ref={weeklyBoardRef} onScroll={event => syncWeeklyScroll(event.currentTarget, weeklyTopScrollRef.current)}>
@@ -4106,6 +4164,7 @@ function WeeklyPlanner({ persistWeeklyService, persistWeeklyConfiguration, weekl
                 {team.tasks.map((task, taskIndex) => <div className={`week-task week-task-summary ${!task.client ? 'available-slot' : ''}`} key={task.taskId || taskIndex} role="button" tabIndex={0} onClick={() => openTaskEditor(day, teamIndex, taskIndex)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openTaskEditor(day, teamIndex, taskIndex) } }}>
                   <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><div className="week-task-title-actions"><small>{task.time || '--:--'} Hs</small>{(task.customerId || task.client || task.service) && !taskIsResolvedForPlanning(task, day, operationalHistory) && <button type="button" className="weekly-task-move" title="Reasignar equipo o fecha" aria-label={`Reasignar Servicio ${taskIndex + 1} a otro equipo o fecha`} onClick={event => openWeeklyTaskMove(event, day, teamIndex, taskIndex)}><span aria-hidden="true">⇄</span></button>}{(!task.vehicleControl || isAdministrator) && <button type="button" className="weekly-task-delete" title={task.vehicleControl ? 'Omitir control vehicular esta semana' : 'Eliminar servicio'} aria-label={task.vehicleControl ? `Omitir control vehicular del ${prettyDate(day)}` : `Eliminar Servicio ${taskIndex + 1}`} onClick={event => { event.stopPropagation(); setTaskRemoval({ day, teamId: team.teamId, teamIndex, taskIndex, taskId: task.taskId, historyId: task.historyId, time: task.time || task.scheduledTime || '', wasPlaceholder: !taskHasContent(task), vehicleControl: Boolean(task.vehicleControl), label: team.label || `Equipo ${teamIndex + 1}` }) }}><Icon name="trash" size={14} /></button>}</div></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>
                   <TaskStatusBadge task={task} date={day} history={operationalHistory} weekly />
+                  {!task.vehicleControl && <ServicePhoto record={historyRecordForTask(task, day, operationalHistory) || task} className="weekly-service-photo" />}
                   {task.vehicleControl ? <div className="vehicle-control-summary"><span><b>Duración:</b> 15 minutos · 15:30–15:45</span><span><b>Técnico responsable:</b> {task.technicians?.[0] || 'Sin asignar'}</span><small>Abrí la tarjeta para cambiar excepcionalmente el técnico de este control.</small></div> : <>
                   <div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTask(day, teamIndex, taskIndex, { time: event.target.value })} /></label><label><RequiredLabel>Tipo de servicio</RequiredLabel><select aria-required="true" value={serviceForWeeklyTask(task)?.id || ''} onChange={event => selectWeeklyService(day, teamIndex, taskIndex, event.target.value)}><option value="">Seleccionar</option>{activeServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label></div>
                   <ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTask(day, teamIndex, taskIndex, { estimatedMinutes, estimatedMinutesCustomized: true })} />
@@ -4334,6 +4393,21 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
   setVehicleControlAssignedRecords(assignedServices)
   const completedServices = assignedServices.filter(resolved).reverse()
   const services = view === 'agenda' ? technicianAgendaServices(assignedServices, today) : view === 'history' ? filterTechnicianHistory(completedServices, historySearch) : []
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      document.querySelectorAll('.technician-service').forEach((card, index) => {
+        const record = services[index]
+        const url = servicePhotoUrl(record)
+        card.querySelector('.technician-service-photo')?.remove()
+        if (!url) return
+        const link = document.createElement('a'); link.className = 'service-photo technician-service-photo'; link.href = url; link.target = '_blank'; link.rel = 'noreferrer'; link.title = 'Abrir foto de referencia'
+        const photo = document.createElement('img'); photo.src = url; photo.alt = `Foto de referencia de ${record.client || 'servicio'}`; photo.onerror = () => link.remove()
+        link.append(photo)
+        card.querySelector('.tech-client')?.insertAdjacentElement('afterend', link)
+      })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [services.map(record => `${record.id}:${record.servicePhotoAttachedAt || ''}`).join('|')])
   useEffect(() => {
     const refreshClock = () => setClock(Date.now())
     const interval = window.setInterval(refreshClock, 30000)
@@ -5141,6 +5215,39 @@ function HistoryManagementDetail({ record, setHistory, close, customers, service
     setSaving(true)
     try { await persistHistoryRecord(record, tracedRecord); close() } finally { setSaving(false) }
   }
+  useEffect(() => {
+    if (editing || record.vehicleControl) return undefined
+    const heading = document.querySelector('.history-detail .history-detail-heading')
+    if (!heading || heading.querySelector('.history-photo-actions')) return undefined
+    const actions = document.createElement('div'); actions.className = 'history-photo-actions'
+    const gallery = document.createElement('input'); gallery.type = 'file'; gallery.accept = 'image/*'; gallery.hidden = true
+    const camera = document.createElement('input'); camera.type = 'file'; camera.accept = 'image/*'; camera.setAttribute('capture', 'environment'); camera.hidden = true
+    const galleryButton = document.createElement('button'); galleryButton.type = 'button'; galleryButton.className = 'secondary small'; galleryButton.textContent = record.servicePhotoAttached ? 'Cambiar foto' : 'Adjuntar foto'; galleryButton.onclick = () => gallery.click()
+    const cameraButton = document.createElement('button'); cameraButton.type = 'button'; cameraButton.className = 'secondary small'; cameraButton.textContent = 'Sacar foto'; cameraButton.onclick = () => camera.click()
+    const status = document.createElement('small')
+    const upload = async event => {
+      const file = event.target.files?.[0]
+      if (!file) return
+      galleryButton.disabled = true; cameraButton.disabled = true; status.textContent = 'Preparando foto…'
+      try {
+        const photo = await compactVehiclePhoto(file)
+        const result = await servicePhotoRepository.upload(record.id, photo)
+        await update({ servicePhotoAttached: true, servicePhotoUrl: result.url, servicePhotoAttachedAt: result.createdAt })
+      } catch (photoError) {
+        status.textContent = photoError.message; status.className = 'field-error'; galleryButton.disabled = false; cameraButton.disabled = false
+      }
+      event.target.value = ''
+    }
+    gallery.onchange = upload; camera.onchange = upload
+    actions.append(galleryButton, cameraButton)
+    if (record.servicePhotoAttached) {
+      const removeButton = document.createElement('button'); removeButton.type = 'button'; removeButton.className = 'danger-button small'; removeButton.textContent = 'Quitar foto'
+      removeButton.onclick = async () => { try { await servicePhotoRepository.remove(record.id); await update({ servicePhotoAttached: false, servicePhotoUrl: '', servicePhotoAttachedAt: '' }) } catch (photoError) { status.textContent = photoError.message; status.className = 'field-error' } }
+      actions.append(removeButton)
+    }
+    actions.append(gallery, camera, status); heading.append(actions)
+    return () => actions.remove()
+  }, [editing, record.id, record.servicePhotoAttached, saving])
   const remove = async () => {
     if (interactionBlocked) return
     if (!persistHistoryRecordRemoval) { setHistory(previous => previous.filter(item => item.id !== record.id)); close(); return }
@@ -5187,6 +5294,17 @@ function HistoryManagementDetail({ record, setHistory, close, customers, service
     detail.append(title, mileage)
     if (record.vehiclePhotoUrl) { const photo = document.createElement('img'); photo.src = record.vehiclePhotoUrl; photo.alt = `Estado interior de ${record.client}`; photo.className = 'vehicle-control-history-photo'; detail.append(photo) }
     grid.append(detail)
+    return () => detail.remove()
+  }, [record, editing])
+  useEffect(() => {
+    if (editing || record.vehicleControl || !servicePhotoUrl(record)) return undefined
+    const grid = document.querySelector('.history-detail .history-detail-grid')
+    if (!grid || grid.querySelector('.history-service-photo-detail')) return undefined
+    const detail = document.createElement('div'); detail.className = 'detail-notes history-service-photo-detail'
+    const title = document.createElement('b'); title.textContent = 'Foto de referencia del servicio'
+    const link = document.createElement('a'); link.className = 'service-photo history-service-photo'; link.href = servicePhotoUrl(record); link.target = '_blank'; link.rel = 'noreferrer'; link.title = 'Abrir foto en tamaño completo'
+    const photo = document.createElement('img'); photo.src = servicePhotoUrl(record); photo.alt = `Foto de referencia de ${record.client || 'servicio'}`; photo.onerror = () => detail.remove()
+    link.append(photo); detail.append(title, link); grid.append(detail)
     return () => detail.remove()
   }, [record, editing])
   useEffect(() => {
@@ -5259,7 +5377,9 @@ function HistoryManagementDetail({ record, setHistory, close, customers, service
   }, [editing, rescheduleDate, minimumRescheduleDate])
   return <><div className="modal-layer"><div className="modal detail-modal history-detail"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">{prettyDate(record.date)} · {status.toUpperCase()}</p><div className="history-detail-heading"><h2>{editing ? 'Editar servicio' : record.client}</h2><button className="secondary detail-edit" disabled={interactionBlocked} onClick={() => setEditing(!editing)}><Icon name="edit" size={15} />{editing ? 'Cancelar edición' : 'Editar datos'}</button></div>{record.subscriberReservation && <p className="history-reservation-notice"><Icon name="alert" size={17} />Esta es una reserva de nuevo abonado. Presioná Editar datos y vinculá el PIG importado; el turno, equipo y duración se conservarán.</p>}{record.reservationLinkedAt && <p className="history-reservation-linked"><Icon name="check" size={17} />Reserva vinculada el {prettyReportDateTime(record.reservationLinkedAt)}. Datos provisorios originales: {record.reservationOriginal?.name || 'sin nombre'} · {record.reservationOriginal?.address || 'sin dirección'} · {record.reservationOriginal?.phone || 'sin contacto'}.</p>}{editing ? <div className="history-edit-grid"><label>{record.subscriberReservation ? 'Vincular abonado PIG' : 'Cliente o cuenta'}<select value={draft.customerId} onChange={setField('customerId')}><option value="">Seleccionar</option>{customers.filter(customer => !record.subscriberReservation || customerKind(customer) === 'subscriber').map(customer => <option key={customer.customerId} value={customer.customerId}>{customer.account} · {customer.name}</option>)}</select></label><label>Tipo de servicio<select value={draft.serviceId} onChange={setField('serviceId')}><option value="">Seleccionar</option>{services.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label><label>Equipo<input readOnly value={draft.team} title="La identidad del equipo se conserva mediante su ID interno" /></label><label>Técnicos asignados<select multiple value={draft.technicianIds} onChange={event => setDraft(previous => ({ ...previous, technicianIds: [...event.target.selectedOptions].map(option => option.value) }))}>{employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label><label>Dirección<input value={draft.address} onChange={setField('address')} /></label><label>Contacto<input value={draft.phone} onChange={setField('phone')} /></label><label className="detail-notes">Detalle / observaciones<textarea value={draft.detail} onChange={setField('detail')} /></label></div> : <div className="history-detail-grid"><div><b>Servicio</b><span>{record.service}</span></div><div><b>Equipo</b><span>{record.team}</span></div><div><b>Técnicos asignados</b><span>{record.technicians?.join(' / ') || 'Sin técnicos asignados'}</span></div><div><b>Hora asignada</b><span>{record.time || record.scheduledTime || 'Sin horario'}</span></div>{record.completedAt && <div><b>Finalización real</b><span>{prettyReportDateTime(record.completedAt)}</span></div>}<div><b>Dirección</b><span>{record.address || 'Sin dirección'}</span></div><div><b>Contacto</b><span>{record.phone || 'Sin contacto'}</span></div><div className="detail-notes"><b>Detalle / observaciones</b><span>{record.detail || 'Sin observaciones'}</span></div></div>}<InternalPreparationFields task={editing ? draft : record} readOnly={!editing} onChange={patch => setDraft(previous => ({ ...previous, ...patch }))} />{editing ? <div className="history-actions"><button className="primary" disabled={interactionBlocked} onClick={saveChanges}><Icon name="check" />Guardar cambios</button><button className="secondary" disabled={interactionBlocked} onClick={() => setEditing(false)}>Cancelar</button></div> : <div className="history-actions">{status === 'Pendiente' ? <button className="primary" disabled={interactionBlocked} onClick={() => update({ status: 'Completado', scheduledDate: '', completedAt: new Date().toISOString() })}><Icon name="check" />Marcar completado</button> : <button className="pending-button" disabled={interactionBlocked} onClick={() => update({ status: 'Pendiente', scheduledDate: '', technicalStatus: '', technicalObservation: '', technicalReportedAt: '', completedAt: '' })}><Icon name="history" />Marcar pendiente</button>}<button className="secondary" disabled={interactionBlocked} onClick={() => update({ status: 'Cancelado', scheduledDate: '' })}><Icon name="close" />Cancelar servicio</button><label>Reprogramar para<input type="date" disabled={interactionBlocked} min={minimumRescheduleDate} value={rescheduleDate} onChange={event => setRescheduleDate(event.target.value)} /></label><button className="secondary" disabled={interactionBlocked || !rescheduleDate || rescheduleDate < minimumRescheduleDate} onClick={() => { if (rescheduleDate >= minimumRescheduleDate) update({ status: 'Reprogramado', scheduledDate: rescheduleDate }) }}><Icon name="calendar" />Reprogramar</button><button className="danger-button delete-history" disabled={interactionBlocked} onClick={() => setConfirmDelete(true)}><Icon name="trash" />Eliminar registro</button></div>}</div></div>{confirmDelete && <Confirm title="Eliminar registro" detail="¿Querés eliminar este servicio del historial? Esta acción no se puede deshacer." destructive action={remove} close={() => setConfirmDelete(false)} />}</> }
 
-function HistoryDetail({ record, close }) { return <div className="modal-layer"><div className="modal detail-modal history-detail"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">{prettyDate(record.date)} · {(record.status || 'Pendiente').toUpperCase()}</p><h2>{record.client}</h2><div className="history-detail-grid"><div><b>Servicio</b><span>{record.service}</span></div><div><b>Hora asignada</b><span>{record.time || record.scheduledTime ? `${record.time || record.scheduledTime} Hs` : 'Sin horario'}</span></div><div><b>Equipo</b><span>{record.team}</span></div><div><b>Técnicos asignados</b><span>{record.technicians?.join(' / ') || 'Sin técnicos asignados'}</span></div><div><b>Dirección</b><span>{record.address || 'Sin dirección'}</span></div><div><b>Contacto</b><span>{record.phone || 'Sin contacto'}</span></div><div className="detail-notes"><b>Detalle / observaciones</b><span>{record.detail || 'Sin observaciones'}</span></div></div><InternalPreparationFields task={record} readOnly onChange={() => {}} /></div></div> }
+function HistoryDetail({ record, close }) {
+  return <div className="modal-layer"><div className="modal detail-modal history-detail"><button className="close-modal" onClick={close}><Icon name="close" /></button><p className="eyebrow">{prettyDate(record.date)} · {(record.status || 'Pendiente').toUpperCase()}</p><h2>{record.client}</h2><div className="history-detail-grid"><div><b>Servicio</b><span>{record.service}</span></div><div><b>Hora asignada</b><span>{record.time || record.scheduledTime ? `${record.time || record.scheduledTime} Hs` : 'Sin horario'}</span></div><div><b>Equipo</b><span>{record.team}</span></div><div><b>Técnicos asignados</b><span>{record.technicians?.join(' / ') || 'Sin técnicos asignados'}</span></div><div><b>Dirección</b><span>{record.address || 'Sin dirección'}</span></div><div><b>Contacto</b><span>{record.phone || 'Sin contacto'}</span></div><div className="detail-notes"><b>Detalle / observaciones</b><span>{record.detail || 'Sin observaciones'}</span></div>{!record.vehicleControl && servicePhotoUrl(record) && <div className="detail-notes history-service-photo-detail"><b>Foto de referencia del servicio</b><ServicePhoto record={record} className="history-service-photo" /></div>}</div><InternalPreparationFields task={record} readOnly onChange={() => {}} /></div></div>
+}
 
 function Accounts({ customers, setCustomers, setNotice, ask, history, teams, weekly, permissions = {}, isAdministrator = false, stateRevision, refreshRemoteState, applyCustomerImportState }) {
   const [search, setSearch] = useState(''); const [form, setForm] = useState(blankCustomer); const [editing, setEditing] = useState(null); const [showForm, setShowForm] = useState(false); const [importOpen, setImportOpen] = useState(false); const [detail, setDetail] = useState(null); const [customerHistory, setCustomerHistory] = useState(null)

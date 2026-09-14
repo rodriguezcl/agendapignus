@@ -6,6 +6,7 @@ import React from 'react'
  */
 const paths = {
   menu: 'M3 6h18M3 12h18M3 18h18',
+  camera: 'M4 7h3l2-3h6l2 3h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Zm8 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
   alert: 'M12 9v4m0 4h.01M10.3 3.7 2-1.2 9 15.5a2 2 0 0 1-1.7 3H4.7A2 2 0 0 1 3 18L10.3 3.7Z',
   dashboard: 'M4 4h6v7H4zm10 0h6v11h-6zM4 15h6v5H4zm10 4v-4h6v4z',
   audit: 'M6 3h9l3 3v15H6zM15 3v4h4M9 12h6M9 16h6M9 8h2',

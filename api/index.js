@@ -3,7 +3,7 @@ const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
 const { database, readTechnicianState, replaceCollections } = require('./_lib/database.cjs')
 const { readApplicationRevision: readRevision, readApplicationState: readState } = require('./_lib/storage-router.cjs')
 const { coordinateStateWrite } = require('./_lib/state-write-coordinator.cjs')
-const { appendOperationalAudit: appendAudit, setAuxiliaryPreference, upsertVehicleControlPhoto, upsertVehicleInsuranceDocument } = require('./_lib/operational-storage.cjs')
+const { appendOperationalAudit: appendAudit, deleteServicePhoto, setAuxiliaryPreference, upsertServicePhoto, upsertVehicleControlPhoto, upsertVehicleInsuranceDocument } = require('./_lib/operational-storage.cjs')
 const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./_lib/service-advance.cjs')
@@ -158,6 +158,44 @@ async function requireSession(req, res, sql = database()) {
   const session = await sessionContext(req, sql)
   if (!session) send(res, 401, { code: 'SESSION_ENDED', error: 'Esta sesión ya no está activa. La cuenta pudo haberse abierto en otro dispositivo o la sesión pudo haber vencido.' })
   return session
+}
+
+async function ensureServicePhotoSchema(sql) {
+  await sql`create table if not exists pignus_service_photos (
+    record_id text primary key references pignus_work_history(id) on delete cascade,
+    mime_type text not null, photo_data bytea not null, created_at timestamptz not null default now(),
+    uploaded_by_id text, uploaded_by_name text
+  )`
+  await sql`alter table pignus_service_photos enable row level security`
+  await sql`revoke all on table pignus_service_photos from anon, authenticated`
+}
+
+async function handleServicePhoto(req, res, sql, user, recordId) {
+  await ensureServicePhotoSchema(sql)
+  const records = await sql`select data from pignus_work_history where id = ${String(recordId)}`
+  const record = records[0]?.data
+  if (!record || record.vehicleControl) return send(res, 404, { error: 'El servicio no existe.' })
+  if (req.method === 'GET') {
+    const allowed = user.roleCode === 'administrator' || user.roleCode !== 'technician' || record.technicianIds?.some(id => String(id) === String(user.id))
+    if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
+    const photos = await sql`select mime_type, photo_data from pignus_service_photos where record_id = ${String(recordId)}`
+    if (!photos[0]) return send(res, 404, { error: 'La foto no existe.' })
+    securityHeaders(res)
+    res.setHeader('Content-Type', photos[0].mime_type)
+    res.setHeader('Content-Length', photos[0].photo_data.length)
+    return res.status(200).send(photos[0].photo_data)
+  }
+  if (user.roleCode === 'technician') return send(res, 403, { error: 'Sólo Administración y usuarios pueden modificar la foto del servicio.' })
+  if (req.method === 'DELETE') {
+    await deleteServicePhoto(sql, recordId)
+    return send(res, 200, { ok: true })
+  }
+  const match = String(requestBody(req).photo || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([a-z0-9+/=]+)$/i)
+  const data = match ? Buffer.from(match[2], 'base64') : null
+  if (!data?.length || data.length > 1_000_000) return send(res, 400, { error: 'Seleccioná una foto válida de hasta 1 MB.' })
+  const createdAt = new Date().toISOString()
+  await upsertServicePhoto(sql, { recordId, mimeType: match[1].toLowerCase(), data, createdAt, uploadedById: user.id, uploadedByName: user.name || user.email })
+  return send(res, 200, { ok: true, url: `/api/service-photo/${encodeURIComponent(String(recordId))}`, createdAt })
 }
 
 const sessionIdleTimeoutFor = user => user?.roleCode === 'technician' ? TECHNICIAN_SESSION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS
@@ -994,6 +1032,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST' && route === '/admin/advance-request/deny') return await handleServiceAdvance(req, res, sql, session.user, 'denied')
     if (['GET', 'POST', 'DELETE'].includes(req.method) && route === '/customers/import') return await handleCustomerImport(req, res, sql, session.user)
     if (req.method === 'GET' && route.startsWith('/vehicle-control/photo/')) return await handleVehicleControlPhoto(req, res, sql, session.user, decodeURIComponent(route.slice('/vehicle-control/photo/'.length)))
+    if (['GET', 'POST', 'DELETE'].includes(req.method) && route.startsWith('/service-photo/')) return await handleServicePhoto(req, res, sql, session.user, decodeURIComponent(route.slice('/service-photo/'.length)))
     if (['GET', 'POST'].includes(req.method) && route.startsWith('/vehicle-insurance/')) return await handleVehicleInsurance(req, res, sql, session.user, decodeURIComponent(route.slice('/vehicle-insurance/'.length)))
     if (req.method === 'POST' && route === '/agenda/daily/clear') return await handleClearAgenda(req, res, sql, session.user)
     return send(res, 404, { error: 'Ruta no encontrada.' })
