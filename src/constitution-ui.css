@@ -338,6 +338,17 @@ body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice {
 }
 body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice span::before { display: none; }
 body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice span > svg { display: block; }
+body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice[data-tone='warning'] {
+  color: var(--pignus-color-warning);
+  background: var(--pignus-color-warning-surface);
+  border-color: var(--pignus-color-warning);
+}
+body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice[data-tone='error'],
+body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice[data-tone='offline'] {
+  color: var(--pignus-color-danger);
+  background: var(--pignus-color-danger-surface);
+  border-color: var(--pignus-color-danger);
+}
 
 @media (pointer: coarse), (max-width: 640px) {
   :where(button, a, input, select, textarea) { min-height: 44px; }

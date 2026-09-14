@@ -9,6 +9,7 @@ const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehi
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./_lib/service-advance.cjs')
 const { startTechnicianServiceRecord } = require('./_lib/technician-service-start.cjs')
 const { stateForOperationComparison } = require('./_lib/legacy-estimated-minutes.cjs')
+const { stateWriteError } = require('./_lib/state-write-error.cjs')
 
 async function persistStateCollections(transaction, current, next, nextRevision) {
   const versionedNext = { ...next, revision: Number(nextRevision) }
@@ -403,11 +404,11 @@ async function handleSaveState(req, res, sql, user) {
     return send(res, 200, { ok: true, revision: result.revision, merged: result.merged, state: visibleStateForUser(result.state, user) })
   } catch (error) {
     console.error('No se pudo guardar el estado:', error.message)
-    const databaseBusy = error.code === '55P03' || error.code === '57014'
-    const status = databaseBusy ? 503 : (error.statusCode || 400)
-    const payload = { error: databaseBusy ? 'La base de datos está ocupada. El sistema volverá a intentarlo automáticamente.' : (error.message || 'No se pudieron guardar los datos.') }
+    const publicError = stateWriteError(error)
+    const status = publicError.status
+    const payload = { error: publicError.message }
     if (status === 409) {
-      payload.code = error.code || 'STATE_REVISION_CONFLICT'
+      payload.code = publicError.code || 'STATE_REVISION_CONFLICT'
       if (error.conflictPath) payload.conflictPath = error.conflictPath
       try { payload.revision = await readRevision(sql) } catch { /* El mensaje funcional sigue siendo suficiente. */ }
       logStateConcurrencyEvent('state_write_conflict', {

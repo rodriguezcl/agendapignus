@@ -17,6 +17,7 @@ const { synchronizeAgendaHistoryRecord } = require('./api/_lib/history-record-op
 const { removeHistoryRecord } = require('./api/_lib/history-record-removal.cjs')
 const { applyStateOperations } = require('./api/_lib/state-operations.cjs')
 const { migrateLegacyEstimatedMinutes, stateForOperationComparison } = require('./api/_lib/legacy-estimated-minutes.cjs')
+const { stateWriteError } = require('./api/_lib/state-write-error.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 const { startTechnicianServiceRecord } = require('./api/_lib/technician-service-start.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
@@ -2211,17 +2212,18 @@ const server = http.createServer((req, res) => {
       send(res, 200, { ok: true, revision: result.revision, merged: result.merged, state: readStateForUser(user) })
     }).catch(error => {
       console.error(error)
-      const status = error?.statusCode || 400
+      const publicError = stateWriteError(error)
+      const status = publicError.status
       if (status === 409) logStateConcurrencyEvent('state_write_conflict', {
         actorRole: user.roleCode,
-        code: error?.code || 'STATE_REVISION_CONFLICT',
+        code: publicError.code || 'STATE_REVISION_CONFLICT',
         expectedRevision: attemptedRevision,
         currentRevision: currentStateRevision(),
         conflictPath: error?.conflictPath
       })
       send(res, status, {
-        error: error?.message || 'No se pudieron guardar los datos.',
-        ...(status === 409 ? { code: error?.code || 'STATE_REVISION_CONFLICT', conflictPath: error?.conflictPath, revision: currentStateRevision() } : {})
+        error: publicError.message,
+        ...(status === 409 ? { code: publicError.code || 'STATE_REVISION_CONFLICT', conflictPath: error?.conflictPath, revision: currentStateRevision() } : {})
       })
     })
     return

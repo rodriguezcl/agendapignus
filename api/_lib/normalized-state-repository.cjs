@@ -59,6 +59,37 @@ const equivalent = (left, right) => JSON.stringify(canonical(left)) === JSON.str
 const rowKey = (row, keys) => JSON.stringify(keys.map(key => row[key] == null ? null : String(row[key])))
 const MAX_BATCH_PARAMETERS = 30_000
 const MAX_DELETE_BATCH_ROWS = 1_000
+const POSITIONAL_UNIQUE_BUCKETS = {
+  planned_teams: ['scope', 'work_date'],
+  monthly_teams: ['period']
+}
+
+const positionBucketKey = (row, keys) => rowKey(row, keys)
+
+function changedPositionBuckets(beforeRows, nextRows, bucketKeys, identityKeys) {
+  const byPosition = rows => new Map(rows.map(row => [JSON.stringify([positionBucketKey(row, bucketKeys), Number(row.position)]), rowKey(row, identityKeys)]))
+  const before = byPosition(beforeRows), next = byPosition(nextRows), changed = new Set()
+  for (const position of new Set([...before.keys(), ...next.keys()])) {
+    if (before.get(position) !== next.get(position)) changed.add(JSON.parse(position)[0])
+  }
+  return changed
+}
+
+async function vacateChangedPositions(sql, table, beforeRows, nextRows, identityKeys) {
+  const bucketKeys = POSITIONAL_UNIQUE_BUCKETS[table]
+  if (!bucketKeys) return new Set()
+  const changed = changedPositionBuckets(beforeRows, nextRows, bucketKeys, identityKeys)
+  const buckets = new Map(beforeRows.map(row => [positionBucketKey(row, bucketKeys), bucketKeys.map(key => row[key])]))
+  for (const bucket of changed) {
+    const values = buckets.get(bucket)
+    if (!values) continue
+    const conditions = bucketKeys.map((key, index) => `${key} = $${index + 2}`).join(' and ')
+    // Free the final non-negative positions before swapping/replacing rows.
+    // The enclosing transaction makes this temporary offset invisible.
+    await queryRows(sql, `update normalized_shadow.${table} set position = position + $1 where ${conditions}`, [1_000_000, ...values])
+  }
+  return changed
+}
 
 async function bulkUpsertRows(sql, table, keys, rows) {
   if (!rows.length) return 0
@@ -142,11 +173,15 @@ async function synchronizeNormalizedStateInTransaction(sql, previousState, nextS
   // Parents are inserted before children and existing children are moved to
   // their new parents before obsolete parent rows are removed.
   for (const table of tableNames) {
-    const keys = TABLE_KEYS[table], before = new Map((previous.tables[table] || []).map(row => [rowKey(row, keys), row]))
+    const keys = TABLE_KEYS[table], beforeRows = previous.tables[table] || [], nextRows = next.tables[table] || []
+    const vacatedBuckets = await vacateChangedPositions(sql, table, beforeRows, nextRows, keys)
+    const positionBucketKeys = POSITIONAL_UNIQUE_BUCKETS[table]
+    const before = new Map(beforeRows.map(row => [rowKey(row, keys), row]))
     const changed = []
-    for (const row of next.tables[table] || []) {
+    for (const row of nextRows) {
       const old = before.get(rowKey(row, keys))
-      if (old && equivalent(old, row)) continue
+      const positionVacated = positionBucketKeys && vacatedBuckets.has(positionBucketKey(row, positionBucketKeys))
+      if (!positionVacated && old && equivalent(old, row)) continue
       changed.push(row)
     }
     changedRows += await bulkUpsertRows(sql, table, keys, changed)
