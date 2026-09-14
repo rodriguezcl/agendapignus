@@ -82,6 +82,25 @@ test('reordena equipos planificados y mensuales sin colisionar posiciones transi
   } finally { await pg.close() }
 })
 
+test('transfiere la identidad de tarea cuando cambia el id histórico sin colisión transitoria', async () => {
+  const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
+  try {
+    await pg.exec(fs.readFileSync(path.join(__dirname, '../supabase/proposals/normalized-shadow-v1.sql'), 'utf8'))
+    const previous = fixture()
+    await insertShadowCandidate(pg, buildShadowCandidate(previous))
+    const next = structuredClone(previous)
+    next.revision = 2
+    next.history[0].id = 'h-corregido'
+    next.history[0].client = 'CLI-1 Cliente corregido'
+
+    await synchronizeNormalizedState(pg, previous, next)
+
+    const jobs = (await pg.query('select id, source_task_id from normalized_shadow.jobs order by id')).rows
+    assert.deepEqual(jobs, [{ id: 'h-corregido', source_task_id: 't' }])
+    assert.deepEqual((await readNormalizedState(pg)).history, next.history)
+  } finally { await pg.close() }
+})
+
 test('normalized writes create and remove one job without changing its siblings', async () => {
   const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
   try {

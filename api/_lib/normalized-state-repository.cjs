@@ -91,6 +91,24 @@ async function vacateChangedPositions(sql, table, beforeRows, nextRows, identity
   return changed
 }
 
+async function vacateTransferredJobTaskIds(sql, beforeRows, nextRows, identityKeys) {
+  const ownerByTaskId = rows => new Map(rows
+    .filter(row => row.source_task_id != null && String(row.source_task_id).trim())
+    .map(row => [String(row.source_task_id), rowKey(row, identityKeys)]))
+  const beforeOwners = ownerByTaskId(beforeRows)
+  const nextOwners = ownerByTaskId(nextRows)
+  const transferred = new Set([...nextOwners].filter(([taskId, owner]) => beforeOwners.has(taskId) && beforeOwners.get(taskId) !== owner).map(([taskId]) => taskId))
+  const previousOwnerIds = beforeRows
+    .filter(row => transferred.has(String(row.source_task_id || '')))
+    .map(row => row.id)
+  if (!previousOwnerIds.length) return
+  const placeholders = previousOwnerIds.map((_, index) => `$${index + 1}`).join(',')
+  // source_task_id is the stable identity of a service, but legacy repairs can
+  // move it to a corrected history row. Free the old owner inside the same
+  // transaction before inserting the replacement row.
+  await queryRows(sql, `update normalized_shadow.jobs set source_task_id = null where id in (${placeholders})`, previousOwnerIds)
+}
+
 async function bulkUpsertRows(sql, table, keys, rows) {
   if (!rows.length) return 0
   const groups = new Map()
@@ -175,6 +193,7 @@ async function synchronizeNormalizedStateInTransaction(sql, previousState, nextS
   for (const table of tableNames) {
     const keys = TABLE_KEYS[table], beforeRows = previous.tables[table] || [], nextRows = next.tables[table] || []
     const vacatedBuckets = await vacateChangedPositions(sql, table, beforeRows, nextRows, keys)
+    if (table === 'jobs') await vacateTransferredJobTaskIds(sql, beforeRows, nextRows, keys)
     const positionBucketKeys = POSITIONAL_UNIQUE_BUCKETS[table]
     const before = new Map(beforeRows.map(row => [rowKey(row, keys), row]))
     const changed = []
