@@ -4,6 +4,7 @@ const { applyStateOperations } = require('../api/_lib/state-operations.cjs')
 const { recordChanges } = require('../api/_lib/record-changes.cjs')
 const { validateChangedAgendaSchedules } = require('../api/_lib/scheduling-validation.cjs')
 const { replaceCollections } = require('../api/_lib/database.cjs')
+const { stateForOperationComparison } = require('../api/_lib/legacy-estimated-minutes.cjs')
 const day = '2096-09-11'
 const clone = structuredClone
 const fixture = () => ({
@@ -36,6 +37,25 @@ test('same record conflicts even if different fields changed; retries are idempo
   assert.deepEqual(applyStateOperations(saved, operations), saved)
   assert.throws(() => applyStateOperations(saved, stateOperations(base, b)), { code: 'RECORD_WRITE_CONFLICT' })
   assert.equal(base.history[0].status, 'Pendiente')
+})
+test('un servicio legado se compara con la misma duración que muestra el navegador', async () => {
+  const { stateOperations } = await builder()
+  const stored = fixture()
+  const legacyRecord = { id: 'work-legacy', sourceTaskId: 'task-legacy', service: 'Service', serviceId: 's', address: 'Anterior' }
+  const legacyTask = { taskId: 'task-legacy', historyId: 'work-legacy', service: 'Service', serviceId: 's', address: 'Anterior' }
+  stored.history.push(legacyRecord)
+  stored.agenda.weekly[day].teams[0].tasks.push(legacyTask)
+  const browserBase = stateForOperationComparison(stored)
+  const edited = clone(browserBase)
+  edited.history.find(record => record.id === 'work-legacy').address = 'Actualizada'
+  edited.agenda.weekly[day].teams[0].tasks.find(task => task.taskId === 'task-legacy').address = 'Actualizada'
+
+  const operations = stateOperations(browserBase, edited)
+  assert.throws(() => applyStateOperations(stored, operations), { code: 'RECORD_WRITE_CONFLICT' })
+  const saved = applyStateOperations(stateForOperationComparison(stored), operations)
+
+  assert.equal(saved.history.find(record => record.id === 'work-legacy').address, 'Actualizada')
+  assert.equal(saved.agenda.weekly[day].teams[0].tasks.find(task => task.taskId === 'task-legacy').address, 'Actualizada')
 })
 test('deleting one record preserves every concurrent insertion', async () => {
   const { stateOperations } = await builder()

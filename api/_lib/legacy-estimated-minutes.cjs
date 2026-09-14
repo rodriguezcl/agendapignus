@@ -85,4 +85,10 @@ function migrateLegacyEstimatedMinutes(state = {}, { repairUnidentifiedAgenda = 
   }
 }
 
-module.exports = { LEGACY_ESTIMATED_MINUTES, hasMissingEstimatedMinutes, hasValidEstimatedMinutes, migrateLegacyEstimatedMinutes, migrateLegacyServiceRecord }
+// El navegador aplica esta reparación al hidratar el estado. Las operaciones
+// compare-and-swap deben contrastarse contra la misma representación; de otro
+// modo, un servicio legado sin duración parece haber sido modificado por otra
+// sesión aunque el único cambio real sea, por ejemplo, su dirección.
+const stateForOperationComparison = state => migrateLegacyEstimatedMinutes(state, { repairUnidentifiedAgenda: true }).state
+
+module.exports = { LEGACY_ESTIMATED_MINUTES, hasMissingEstimatedMinutes, hasValidEstimatedMinutes, migrateLegacyEstimatedMinutes, migrateLegacyServiceRecord, stateForOperationComparison }

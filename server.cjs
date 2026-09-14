@@ -16,7 +16,7 @@ const { applyVehicleOperation } = require('./api/_lib/vehicle-operation.cjs')
 const { synchronizeAgendaHistoryRecord } = require('./api/_lib/history-record-operation.cjs')
 const { removeHistoryRecord } = require('./api/_lib/history-record-removal.cjs')
 const { applyStateOperations } = require('./api/_lib/state-operations.cjs')
-const { migrateLegacyEstimatedMinutes } = require('./api/_lib/legacy-estimated-minutes.cjs')
+const { migrateLegacyEstimatedMinutes, stateForOperationComparison } = require('./api/_lib/legacy-estimated-minutes.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 const { startTechnicianServiceRecord } = require('./api/_lib/technician-service-start.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
@@ -1194,7 +1194,7 @@ function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now
 }
 
 function saveState(state, user) {
-  if (Object.hasOwn(state, 'operations')) state = { ...applyStateOperations(readStateForUser(user), state.operations), revision: currentStateRevision() }
+  if (Object.hasOwn(state, 'operations')) state = { ...applyStateOperations(stateForOperationComparison(readStateForUser(user)), state.operations), revision: currentStateRevision() }
   const expectedRevision = Number(state.revision)
   const actualRevision = currentStateRevision()
   const base = state.base && typeof state.base === 'object' ? state.base : null
