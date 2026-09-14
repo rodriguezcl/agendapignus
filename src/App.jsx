@@ -1643,11 +1643,13 @@ export default function App() {
     }
   }, [history, date, employees, roles])
   useEffect(() => {
-    // Historial debe reflejar la dotacion real del equipo del dia destino, no la
-    // dotacion que tenia el servicio antes de ser reprogramado.
+    // Los controles vehiculares tienen un responsable propio en la tarjeta.
+    // Los servicios comunes conservan la instantánea leída del Historial hasta
+    // que un guardado explícito actualice también su asignación.
     setHistory(previous => {
       let changed = false
       const next = previous.map(record => {
+        if (!record.vehicleControl) return record
         const day = weekly?.[record.date]
         const assignedTeam = day?.teams?.find(team => (team.tasks || []).some(task =>
           String(task.historyId || '') === String(record.id) ||
@@ -1659,16 +1661,11 @@ export default function App() {
           (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
         )
         const taskHasResponsible = record.vehicleControl && assignedTask?.technicianIds?.length
-        const technicianIds = taskHasResponsible ? assignedTask.technicianIds : (assignedTeam.memberIds || [])
-        const technicians = taskHasResponsible ? (assignedTask.technicians || []) : (assignedTeam.members || [])
-        const sameAssignment =
-          String(record.teamId || '') === String(assignedTeam.teamId || '') &&
-          record.team === assignedTeam.label &&
-          JSON.stringify(record.technicianIds || []) === JSON.stringify(technicianIds) &&
-          JSON.stringify(record.technicians || []) === JSON.stringify(technicians)
-        if (sameAssignment) return record
+        const technicianIds = taskHasResponsible ? assignedTask.technicianIds : (record.technicianIds || [])
+        const technicians = taskHasResponsible ? (assignedTask.technicians || []) : (record.technicians || [])
+        if (JSON.stringify(record.technicianIds || []) === JSON.stringify(technicianIds) && JSON.stringify(record.technicians || []) === JSON.stringify(technicians)) return record
         changed = true
-        return { ...record, teamId: assignedTeam.teamId || '', team: assignedTeam.label || record.team, technicianIds, technicians }
+        return { ...record, technicianIds, technicians }
       })
       return changed ? next : previous
     })

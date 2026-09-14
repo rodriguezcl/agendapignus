@@ -61,9 +61,11 @@ test('un guardado pendiente y la edición del modal se aplican en una sola trans
   const { stateOperations } = await builder()
   const { weeklyServiceOperations } = await weeklyBuilder()
   const stored = fixture()
-  const legacyRecord = { id: 'work-pending', sourceTaskId: 'task-pending', service: 'Service', serviceId: 's', status: 'Pendiente', address: '-', phone: '-' }
-  const legacyTask = { taskId: 'task-pending', historyId: 'work-pending', service: 'Service', serviceId: 's', status: 'Pendiente', address: '-', phone: '-' }
+  const legacyRecord = { id: 'work-pending', sourceTaskId: 'task-pending', service: 'Service', serviceId: 's', status: 'Pendiente', address: '-', phone: '-', technicianIds: ['tech-1'], technicians: ['Técnico 1'], estimatedMinutes: 60, estimatedMinutesCustomized: false }
+  const legacyTask = { taskId: 'task-pending', historyId: 'work-pending', service: 'Service', serviceId: 's', status: 'Pendiente', address: '-', phone: '-', estimatedMinutes: 60, estimatedMinutesCustomized: false }
   stored.history.push(legacyRecord)
+  stored.agenda.weekly[day].teams[0].memberIds = ['tech-1', 'tech-2']
+  stored.agenda.weekly[day].teams[0].members = ['Técnico 1', 'Técnico 2']
   stored.agenda.weekly[day].teams[0].tasks.push(legacyTask)
 
   const local = stateForOperationComparison(stored)
@@ -74,10 +76,12 @@ test('un guardado pendiente y la edición del modal se aplican en una sola trans
   const record = { ...baseRecord, ...task, id: baseRecord.id, sourceTaskId: task.taskId, date: day, teamId: team.teamId, technicianIds: team.memberIds, technicians: team.members }
   const commandOperations = weeklyServiceOperations(local, { day, team, task, record, baseRecord, baseTask })
 
-  assert.throws(() => applyStateOperations(stored, commandOperations), { code: 'RECORD_WRITE_CONFLICT' })
+  const directlyCompared = applyStateOperations(stateForOperationComparison(stored), commandOperations)
+  assert.equal(directlyCompared.history.find(item => item.id === legacyRecord.id).amount, '320000')
   const saved = applyStateOperations(stored, [...stateOperations(stored, local), ...commandOperations])
   assert.equal(saved.history.find(item => item.id === legacyRecord.id).paymentMethod, 'Crédito')
   assert.equal(saved.history.find(item => item.id === legacyRecord.id).amount, '320000')
+  assert.deepEqual(saved.history.find(item => item.id === legacyRecord.id).technicianIds, ['tech-1', 'tech-2'])
   assert.equal(saved.agenda.weekly[day].teams[0].tasks.find(item => item.taskId === legacyTask.taskId).address, 'José Roque Funes 2751')
 })
 test('deleting one record preserves every concurrent insertion', async () => {
