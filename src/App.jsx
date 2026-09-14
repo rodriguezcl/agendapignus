@@ -1888,7 +1888,7 @@ export default function App() {
   const refreshRemoteState = async () => {
     applyRemoteState(await stateRepository.load())
   }
-  const persistStateCommand = async (buildOperations, { combinePendingState = false } = {}) => {
+  const persistStateCommand = async (buildOperations, { combinePendingState = false, rebaseOnRecordConflict = false } = {}) => {
     if (confirmedSaveRef.current) throw new Error('Ya hay un guardado en curso.')
     confirmedSaveRef.current = true
     setConfirmedSaving(true)
@@ -1909,7 +1909,18 @@ export default function App() {
       if (combinePendingState) {
         const pendingOperations = serialized !== lastPersistedSnapshotRef.current ? stateOperations(base, local) : []
         const commandOperations = await buildOperations(local)
-        const payload = await stateRepository.commit([...pendingOperations, ...commandOperations], stateRevisionRef.current)
+        let payload
+        try {
+          payload = await stateRepository.commit([...pendingOperations, ...commandOperations], stateRevisionRef.current)
+        } catch (error) {
+          const recordConflict = error?.status === 409 && error?.payload?.code === 'RECORD_WRITE_CONFLICT'
+          if (!rebaseOnRecordConflict || !recordConflict || pendingOperations.length) throw error
+          // Monthly configuration is an explicit command whose draft lives in
+          // the modal. If its base became stale while the modal was open, read
+          // the current state and rebuild the same command against that state.
+          const remote = await stateRepository.load()
+          payload = await stateRepository.commit(await buildOperations(remote), Number(remote.revision))
+        }
         applyRemoteState(payload.state)
         return payload
       }
@@ -1937,7 +1948,7 @@ export default function App() {
           ? weeklyTaskRemovalOperations(snapshot, command)
       : weeklyServiceOperations(snapshot, command)
   ), { combinePendingState: true })
-  const persistWeeklyConfiguration = buildNext => persistStateCommand(snapshot => stateOperations(snapshot, buildNext(snapshot)), { combinePendingState: true })
+  const persistWeeklyConfiguration = buildNext => persistStateCommand(snapshot => stateOperations(snapshot, buildNext(snapshot)), { combinePendingState: true, rebaseOnRecordConflict: true })
   const persistAgendaRecords = (before, records) => persistStateCommand(() => stateRepository.commit(stateOperations({ history: before }, { history: records }), stateRevisionRef.current))
   const persistHistoryRecord = async (base, record) => {
     const updates = Array.isArray(base) ? base : null
