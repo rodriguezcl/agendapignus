@@ -1057,6 +1057,20 @@ test('vehículos del mes recibe la flota sin habilitar el módulo completo de ve
   assert.deepEqual(visible.vehicles, [vehicle])
 })
 
+test('vehículos del mes espera la confirmación atómica antes de informar el guardado', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const save = source.slice(source.indexOf('const saveMonthlyVehicleSetup'), source.indexOf('const annualGuardDraft'))
+
+  assert.match(source, /const persistWeeklyConfiguration = buildNext => persistStateCommand/)
+  assert.match(save, /const saveMonthlyVehicleSetup = async \(\) =>/)
+  assert.match(save, /await persistWeeklyConfiguration\(snapshot =>/)
+  assert.ok(save.indexOf('await persistWeeklyConfiguration') < save.indexOf('setMonthlyVehicleSetup(null)'))
+  assert.ok(save.indexOf('await persistWeeklyConfiguration') < save.indexOf('Se guardaron los responsables'))
+  assert.match(save, /No se guardaron los responsables\./)
+  assert.doesNotMatch(save, /setHistory\(previous/)
+  assert.doesNotMatch(save, /setWeekly\(previous/)
+})
+
 test('el servidor protege configuraciones, historial y clientes según cada función concedida', () => {
   const baseRole = { id: 'user-role', code: 'user', name: 'Usuario', permissions: { weekly: true, history: true, accounts: true } }
   const baseUser = userForEmployee({ ...employee, roleId: baseRole.id, role: baseRole.name }, [...roles, baseRole])
