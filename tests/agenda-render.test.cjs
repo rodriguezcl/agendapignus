@@ -30,3 +30,12 @@ test('la agenda distingue servicios sin persistir y confirma su alta en historia
   assert.match(source, /Guardá la agenda para habilitarlo al técnico\./)
   assert.match(source, /El servidor no confirmó todos los servicios en el historial\./)
 })
+
+test('la vista previa permite copiar la agenda con la misma acción del botón exterior', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+
+  assert.match(source, /const copyAgenda = \(\) => \{[\s\S]*?navigator\.clipboard\?\.writeText\(message\)[\s\S]*?return clearAgenda\(\)/)
+  assert.match(source, /<button className="primary" onClick=\{copyAgenda\}><Icon name="copy" \/>Copiar agenda<\/button>/)
+  assert.match(source, /<Preview title="Vista previa de la agenda" text=\{message\} onCopy=\{copyAgenda\}/)
+  assert.match(source, /className="modal-actions preview-modal-actions"[\s\S]*?onClick=\{onCopy\}[\s\S]*?Copiar agenda/)
+})
