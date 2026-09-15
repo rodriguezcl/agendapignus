@@ -1265,7 +1265,7 @@ export default function App() {
   const [databaseError, setDatabaseError] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
-  const stateSnapshot = { roles, employees, services, vehicles, history, customers, agenda: { date, teams, weekly }, preferences: { theme } }
+  const stateSnapshot = { roles, employees, services, vehicles, history, customers, agenda: { date, teams, weekly }, preferences: isSupervisor ? {} : { theme } }
   const serializedStateSnapshot = JSON.stringify(stateSnapshot)
   currentSnapshotRef.current = serializedStateSnapshot
   useEffect(() => writeLocalValue('pignus-theme', theme), [theme])
@@ -1936,7 +1936,7 @@ export default function App() {
     setTeams(data.agenda?.teams?.length ? data.agenda.teams : [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])
     setDate(persistedAgendaDate)
     setWeekly(data.agenda?.weekly && typeof data.agenda.weekly === 'object' ? data.agenda.weekly : {})
-    if (data.preferences?.theme) setTheme(data.preferences.theme)
+    if (!isSupervisor && data.preferences?.theme) setTheme(data.preferences.theme)
     setDatabaseReady(true)
   }
   const refreshRemoteState = async () => {
@@ -2092,6 +2092,7 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [databaseReady, serializedStateSnapshot])
   useEffect(() => {
+    if (isSupervisor) return
     if (confirmedSaveRef.current || loggingOutRef.current || hydratingStateRef.current || serializedStateSnapshot === lastPersistedSnapshotRef.current || !databaseReady || stateRevision === null || !authUser || authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return
     // Desde que existe un cambio local pendiente (incluido el debounce) se
     // bloquea la recarga periódica para que no restaure la versión anterior.
@@ -2142,7 +2143,7 @@ export default function App() {
       if (stateSaveTimerRef.current === timer) stateSaveTimerRef.current = null
       if (!saveStarted) pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1)
     }
-  }, [databaseReady, authUser, serializedStateSnapshot])
+  }, [databaseReady, authUser, isSupervisor, serializedStateSnapshot])
   useEffect(() => {
     // Sincronización ligera de todos los módulos. Evita que dos sesiones abiertas
     // muestren indicadores, historial o agenda de revisiones diferentes.
@@ -2170,7 +2171,7 @@ export default function App() {
         }
         const remoteRevision = Number(data.revision)
         if (!stopped && remoteRevision !== Number(stateRevisionRef.current)) {
-          const hasLocalChanges = pendingStateSaves.current > 0 || currentSnapshotRef.current !== lastPersistedSnapshotRef.current
+          const hasLocalChanges = !isSupervisor && (pendingStateSaves.current > 0 || currentSnapshotRef.current !== lastPersistedSnapshotRef.current)
           if (hasLocalChanges) {
             if (remoteConflictRevisionRef.current !== remoteRevision) setNotice('Hay cambios guardados desde otra sesión. Recargá la página para continuar sin sobrescribirlos.')
             remoteConflictRevisionRef.current = remoteRevision
@@ -2205,7 +2206,7 @@ export default function App() {
       window.removeEventListener('online', refreshWhenVisible)
       document.removeEventListener('visibilitychange', refreshWhenVisible)
     }
-  }, [databaseReady, authUser, stateRevision])
+  }, [databaseReady, authUser, isSupervisor, stateRevision])
   const ask = (title, detail, action, destructive = false) => setConfirmation({ title, detail, action, destructive })
   const updateTask = (team, task, patch) => {
     const changesTime = Object.prototype.hasOwnProperty.call(patch, 'time')
@@ -2275,7 +2276,7 @@ export default function App() {
       // explícita la instantánea más reciente antes de invalidar la sesión.
       await stateSaveQueue.current.catch(() => {})
       const latestSerializedSnapshot = currentSnapshotRef.current
-      const canPersistLatestSnapshot = databaseReady && stateRevisionRef.current !== null && authUser && authUser.roleCode !== 'technician' && (authUser.roleCode || normalizeRoleName(authUser.role) !== 'tecnico')
+      const canPersistLatestSnapshot = !isSupervisor && databaseReady && stateRevisionRef.current !== null && authUser && authUser.roleCode !== 'technician' && (authUser.roleCode || normalizeRoleName(authUser.role) !== 'tecnico')
       if (canPersistLatestSnapshot && hadPendingStateSave && latestSerializedSnapshot && latestSerializedSnapshot !== lastPersistedSnapshotRef.current) {
         const snapshot = JSON.parse(latestSerializedSnapshot)
         let base = null
