@@ -2558,6 +2558,10 @@ function ServiceExtraFields({ className, task, service, onChange, buffered = fal
       const amountProps = { ...props, inputMode: 'decimal', required, placeholder: required ? 'Ingresar monto' : 'Opcional' }
       return <label className="service-extra-field" key={key}>{required ? <RequiredLabel>{label}</RequiredLabel> : label}<CurrencyInput {...amountProps} buffered={buffered} onCommit={value => onChange({ amount: value })} /></label>
     }
+    if (key === 'monthlyFee') {
+      const monthlyFeeProps = { ...props, inputMode: 'decimal', placeholder: enabled ? 'Ingresar abono mensual' : props.placeholder }
+      return <label className="service-extra-field" key={key}>{label}<CurrencyInput {...monthlyFeeProps} buffered={buffered} onCommit={value => onChange({ monthlyFee: value })} /></label>
+    }
     return <label className="service-extra-field" key={key}>{label}{buffered
       ? <BufferedInput {...props} onCommit={value => onChange({ [key]: value })} />
       : <input {...props} onChange={event => onChange({ [key]: event.target.value })} />}</label>

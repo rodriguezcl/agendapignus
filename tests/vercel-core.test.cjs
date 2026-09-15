@@ -526,6 +526,8 @@ test('configura formulario, forma de pago y monto según el servicio', () => {
   assert.match(source, /const formatCurrencyAmount = value =>/)
   assert.match(source, /toLocaleString\('es-AR'/)
   assert.match(source, /<CurrencyInput \{\.\.\.amountProps\}/)
+  assert.match(source, /<CurrencyInput \{\.\.\.monthlyFeeProps\}/)
+  assert.match(source, /onCommit=\{value => onChange\(\{ monthlyFee: value \}\)\}/)
   assert.match(source, /`Monto: \$\{previewValue\(formatCurrencyAmount\(technicianExtras\.amount\)\)\}`/)
   assert.match(source, /requiresPaymentAmount\(task, serviceForTask\(task\)\)/)
   assert.match(source, /requiresPaymentAmount\(draft, serviceForWeeklyTask\(draft\)\)/)
