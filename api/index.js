@@ -396,10 +396,10 @@ async function handleSaveState(req, res, sql, user) {
   const incoming = requestBody(req)
   try {
     const result = await sql.begin(async transaction => {
-      // Do not occupy a request until the browser aborts when another writer is
-      // holding the global revision. PATCH writes are safe to retry.
-      await transaction`set local lock_timeout = '5s'`
-      await transaction`set local statement_timeout = '15s'`
+      // Agenda writes update the legacy and normalized models atomically. A
+      // short wait incorrectly reported normal serialization as a busy DB.
+      await transaction`set local lock_timeout = '15s'`
+      await transaction`set local statement_timeout = '40s'`
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
       const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const currentRevision = Number(revisionRows[0]?.value || 0)

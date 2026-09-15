@@ -691,6 +691,46 @@ test('la gestión del historial dispone de tiempo para sincronizar y evita una s
   assert.equal((bulkHandler.match(/readState\(transaction\)/g) || []).length, 1)
 })
 
+test('el alta de agenda espera la escritura doble y reintenta una indisponibilidad transitoria', async () => {
+  const { writeState, STATE_WRITE_TIMEOUT_MS } = await import('../src/infrastructure/repositories/state-repository.mjs')
+  const requests = []
+  const options = { method: 'PATCH', body: JSON.stringify({ revision: 7, operations: [{ path: ['history', { key: 'id', id: 'new' }], existed: false, exists: true, after: { id: 'new' } }] }) }
+  const fetcher = async (_url, receivedOptions) => {
+    requests.push(receivedOptions.body)
+    if (requests.length === 1) return { ok: false, status: 503, json: async () => ({ code: 'DATABASE_BUSY', error: 'Base ocupada' }) }
+    return { ok: true, status: 200, json: async () => ({ ok: true, revision: 8 }) }
+  }
+
+  const payload = await writeState(options, 'No se pudo guardar el servicio.', { fetcher, retryDelay: 0, requestTimeout: 100 })
+
+  assert.equal(payload.revision, 8)
+  assert.equal(STATE_WRITE_TIMEOUT_MS, 50_000)
+  assert.deepEqual(requests, [options.body, options.body])
+})
+
+test('el alta de agenda no confunde un conflicto real con una base ocupada', async () => {
+  const { writeState } = await import('../src/infrastructure/repositories/state-repository.mjs')
+  let requests = 0
+  const fetcher = async () => {
+    requests += 1
+    return { ok: false, status: 409, json: async () => ({ code: 'RECORD_WRITE_CONFLICT', error: 'El servicio cambió desde otra sesión.' }) }
+  }
+
+  await assert.rejects(
+    writeState({ method: 'PATCH' }, 'No se pudo guardar el servicio.', { fetcher, retryDelay: 0, requestTimeout: 100 }),
+    /cambió desde otra sesión/
+  )
+  assert.equal(requests, 1)
+})
+
+test('el servidor concede margen suficiente al guardado general de Agenda', () => {
+  const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
+  const stateHandler = apiSource.slice(apiSource.indexOf('async function handleSaveState'), apiSource.indexOf('function serviceOperationForRequest'))
+
+  assert.match(stateHandler, /set local lock_timeout = '15s'/)
+  assert.match(stateHandler, /set local statement_timeout = '40s'/)
+})
+
 test('eliminar un equipo semanal deja una excepción persistente y limpia agenda e historial', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   const removal = fs.readFileSync(path.resolve(__dirname, '../src/features/state/application/weekly-team-removal.mjs'), 'utf8')
