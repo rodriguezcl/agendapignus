@@ -177,8 +177,8 @@ async function synchronizeNormalizedStateInTransaction(sql, previousState, nextS
   const previous = buildShadowCandidate(previousState), next = buildShadowCandidate(nextState)
   const [batch] = await queryRows(sql, 'select source_fingerprint, source_revision from normalized_shadow.import_batch where id = 1 for update')
   if (!batch) { const error = new Error('El modelo normalizado todavía no tiene un lote importado.'); error.code = 'NORMALIZED_STATE_EMPTY'; throw error }
-  const credentialChanges = await synchronizeCredentials(sql, nextState.employees)
   if (batch.source_fingerprint === next.analysis.sourceFingerprint && Number(batch.source_revision) === Number(next.analysis.revision)) {
+    const credentialChanges = await synchronizeCredentials(sql, nextState.employees)
     return { revision: next.analysis.revision, sourceFingerprint: next.analysis.sourceFingerprint, previousSourceFingerprint: previous.analysis.sourceFingerprint, idempotent: true, changedRows: credentialChanges }
   }
   if (batch.source_fingerprint !== previous.analysis.sourceFingerprint || Number(batch.source_revision) !== Number(previous.analysis.revision)) {
@@ -186,7 +186,7 @@ async function synchronizeNormalizedStateInTransaction(sql, previousState, nextS
     error.code = 'NORMALIZED_WRITE_CONFLICT'
     throw error
   }
-  let changedRows = credentialChanges
+  let changedRows = 0
   const tableNames = Object.keys(TABLE_KEYS)
   // Parents are inserted before children and existing children are moved to
   // their new parents before obsolete parent rows are removed.
@@ -205,6 +205,10 @@ async function synchronizeNormalizedStateInTransaction(sql, previousState, nextS
     }
     changedRows += await bulkUpsertRows(sql, table, keys, changed)
   }
+  // Credentials reference employees. New parent rows must exist before their
+  // password hashes are inserted; credentials for removed employees must be
+  // deleted before the reverse dependency pass removes those employees.
+  changedRows += await synchronizeCredentials(sql, nextState.employees)
   // Once every surviving row points at its final parent, children and then
   // obsolete parents can be removed in reverse dependency order.
   for (const table of [...tableNames].reverse()) {
