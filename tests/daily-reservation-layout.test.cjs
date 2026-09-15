@@ -6,6 +6,17 @@ const path = require('node:path')
 const app = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
 const css = fs.readFileSync(path.join(__dirname, '../src/ui-polish.css'), 'utf8')
 
+test('la foto respeta las columnas del formulario y el ancho completo en móvil', () => {
+  assert.match(css, /\.content > \.team-card \.task-row > \.service-photo-manager,[^{]+\{\s*grid-column: 2 \/ 5 !important;/)
+  const mobile = css.slice(css.indexOf('@media (max-width: 640px)', css.indexOf('/* Helper text')))
+  assert.match(mobile, /\.content > \.team-card \.task-row > \.service-photo-manager,[^{]+\{\s*grid-column: 1 \/ -1 !important;/)
+  assert.match(css, /\.service-photo-manager, \.service-photo-field\s*\{\s*min-width: 0;\s*max-width: 100%;\s*box-sizing: border-box;/)
+})
+
+test('los tres campos superiores se alinean por arriba independientemente del aviso', () => {
+  assert.match(css, /\.content > \.team-card \.task-row > :is\(\.daily-field-time, \.daily-field-service, \.daily-field-customer\)\s*\{\s*align-self: start;/)
+})
+
 test('la etiqueta de reserva sólo se muestra en el estado semanal', () => {
   assert.match(app, /weekly && task\?\.subscriberReservation && <em className="role-chip subscriber-reservation-chip"/)
 })
