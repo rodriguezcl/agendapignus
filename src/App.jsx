@@ -1213,7 +1213,7 @@ function showAdvanceRequestConfirmation(record, onRequested) {
 }
 
 export default function App() {
-  const [module, setModule] = useState('dashboard')
+  const [requestedModule, setModule] = useState('dashboard')
   const [menuOpen, setMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readLocalValue('pignus-sidebar-collapsed') === 'true')
   const [desktopSidebar, setDesktopSidebar] = useState(() => globalThis.matchMedia?.('(min-width: 641px)').matches ?? true)
@@ -1251,6 +1251,10 @@ export default function App() {
   const remoteConflictRevisionRef = useRef(null)
   const serviceDefaultsRef = useRef(new Map())
   const [authUser, setAuthUser] = useState(null)
+  const activeRole = roles.find(role => String(role.id) === String(authUser?.roleId)) || roles.find(role => role.name === authUser?.role)
+  const isSupervisor = authUser?.roleCode === 'supervisor' || normalizeRoleName(authUser?.role) === 'supervisor' || roleCode(activeRole) === 'supervisor'
+  // Resolve before rendering: restoring a session must never flash statistics.
+  const module = isSupervisor ? 'history' : requestedModule
   const [sessionEndedMessage, setSessionEndedMessage] = useState('')
   globalThis.__pignusCurrentUser = authUser
   globalThis.__pignusHistory = history
@@ -2239,8 +2243,6 @@ export default function App() {
   }, [isAdministrator, databaseReady, activeTechs.map(tech => `${tech.id}:${tech.name}`).join('|')])
   // Cada módulo tiene un ícono propio para facilitar el reconocimiento visual en la navegación.
   const nav = [['dashboard', 'dashboard', 'Menú principal'], ['weekly', 'calendar', 'Agenda semanal'], ['agenda', 'agenda', 'Agenda del día'], ['history', 'history', 'Historial'], ['accounts', 'accounts', 'Abonados y clientes'], ['employees', 'users', 'Empleados'], ['services', 'tools', 'Tipo de servicio'], ['vehicles', 'vehicle', 'Vehículos'], ['settings', 'settings', 'Configuración']]
-  const activeRole = roles.find(role => String(role.id) === String(authUser?.roleId)) || roles.find(role => role.name === authUser?.role)
-  const isSupervisor = authUser?.roleCode === 'supervisor' || normalizeRoleName(authUser?.role) === 'supervisor' || normalizeRoleName(activeRole?.name) === 'supervisor'
   const modulePermissions = isSupervisor ? resolvedRolePermissions({ name: 'Supervisor' }) : { ...resolvedRolePermissions(activeRole), dashboard: true, help: true }
   if (!isAdministrator) {
     for (let index = nav.length - 1; index >= 0; index -= 1) if (!modulePermissions[nav[index][0]]) nav.splice(index, 1)

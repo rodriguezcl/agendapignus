@@ -4,6 +4,18 @@ const { userCan, userForEmployee, visibleStateForUser } = require('../api/_lib/c
 
 const supervisor = { id: 'supervisor-1', roleCode: 'supervisor', role: 'Supervisor', permissions: { dashboard: true, historyManage: true, accounts: true } }
 
+test('Supervisor abre Historial desde el primer render, incluso con navegación previa a estadísticas', async () => {
+  const fs = require('node:fs')
+  const path = require('node:path')
+  const app = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+  assert.match(app, /const module = isSupervisor \? 'history' : requestedModule/)
+  const { resolvedRolePermissions } = await import('../src/domain/access/permissions.mjs')
+  const permissions = resolvedRolePermissions({ name: 'Supervisor', permissions: { dashboard: true, historyManage: true } })
+  assert.equal(permissions.history, true)
+  assert.equal(permissions.dashboard, false)
+  assert.equal(permissions.historyManage, false)
+})
+
 const state = {
   revision: 17,
   roles: [{ id: 'role-supervisor', code: 'role-custom', name: 'Supervisor', permissions: { dashboard: true, historyManage: true } }],
