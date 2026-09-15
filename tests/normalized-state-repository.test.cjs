@@ -43,6 +43,33 @@ test('normalized repository projects the application state and synchronizes only
   } finally { await pg.close() }
 })
 
+test('crea y elimina las credenciales después de resolver la clave foránea del empleado', async () => {
+  const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
+  try {
+    await pg.exec(fs.readFileSync(path.join(__dirname, '../supabase/proposals/normalized-shadow-v1.sql'), 'utf8'))
+    const previous = fixture()
+    await insertShadowCandidate(pg, buildShadowCandidate(previous))
+    const withSupervisor = structuredClone(previous)
+    withSupervisor.revision = 2
+    withSupervisor.roles.push({ id: 'supervisor-role', code: 'supervisor', name: 'Supervisor', permissions: { history: true } })
+    withSupervisor.employees.push({ id: 'supervisor-employee', roleId: 'supervisor-role', role: 'Supervisor', name: 'Yeiko Marcano', email: 'yeiko@example.com', status: 'Activo', passwordHash: 'SUPERVISOR_HASH' })
+
+    await synchronizeNormalizedState(pg, previous, withSupervisor)
+
+    assert.equal((await pg.query("select count(*)::int as count from normalized_shadow.employees where id = 'supervisor-employee'")).rows[0].count, 1)
+    assert.equal((await pg.query("select password_hash from normalized_shadow.employee_credentials where employee_id = 'supervisor-employee'")).rows[0].password_hash, 'SUPERVISOR_HASH')
+
+    const withoutSupervisor = structuredClone(withSupervisor)
+    withoutSupervisor.revision = 3
+    withoutSupervisor.employees = withoutSupervisor.employees.filter(employee => employee.id !== 'supervisor-employee')
+    withoutSupervisor.roles = withoutSupervisor.roles.filter(role => role.id !== 'supervisor-role')
+    await synchronizeNormalizedState(pg, withSupervisor, withoutSupervisor)
+
+    assert.equal((await pg.query("select count(*)::int as count from normalized_shadow.employee_credentials where employee_id = 'supervisor-employee'")).rows[0].count, 0)
+    assert.equal((await pg.query("select count(*)::int as count from normalized_shadow.employees where id = 'supervisor-employee'")).rows[0].count, 0)
+  } finally { await pg.close() }
+})
+
 test('normalized writes fail closed when the imported fingerprint is not the expected base', async () => {
   const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
   try {
