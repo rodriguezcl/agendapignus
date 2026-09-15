@@ -641,9 +641,54 @@ test('la gestión múltiple del historial se confirma de forma atómica en el se
   const repository = fs.readFileSync(path.resolve(__dirname, '../src/infrastructure/repositories/history-record-repository.mjs'), 'utf8')
   const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
   assert.match(source, /await persistHistoryRecord\(updates\)/)
-  assert.match(repository, /requestJson\('\/api\/history\/bulk'/)
+  assert.match(repository, /writeHistoryRequest\('\/api\/history\/bulk'/)
   assert.match(apiSource, /async function handleHistoryRecordsBulkUpdate/)
   assert.match(apiSource, /route === '\/history\/bulk'/)
+})
+
+test('la gestión del historial reintenta una indisponibilidad temporal con la misma operación', async () => {
+  const { writeHistoryRequest, HISTORY_WRITE_TIMEOUT_MS } = await import('../src/infrastructure/repositories/history-record-repository.mjs')
+  const requests = []
+  const options = { method: 'PATCH', body: JSON.stringify({ base: { id: 'record-1' }, record: { id: 'record-1', status: 'Completado' } }) }
+  const fetcher = async (_url, receivedOptions) => {
+    requests.push(receivedOptions.body)
+    if (requests.length === 1) return { ok: false, status: 503, json: async () => ({ code: 'DATABASE_BUSY', error: 'Base ocupada' }) }
+    return { ok: true, status: 200, json: async () => ({ ok: true, revision: 4 }) }
+  }
+
+  const payload = await writeHistoryRequest('/api/history/record-1', options, 'No se pudo actualizar.', { fetcher, retryDelay: 0, requestTimeout: 100 })
+
+  assert.equal(payload.revision, 4)
+  assert.equal(HISTORY_WRITE_TIMEOUT_MS, 40_000)
+  assert.deepEqual(requests, [options.body, options.body])
+})
+
+test('la gestión del historial no reintenta un conflicto funcional', async () => {
+  const { writeHistoryRequest } = await import('../src/infrastructure/repositories/history-record-repository.mjs')
+  let requests = 0
+  const fetcher = async () => {
+    requests += 1
+    return { ok: false, status: 409, json: async () => ({ error: 'El servicio cambió desde otra sesión.' }) }
+  }
+
+  await assert.rejects(
+    writeHistoryRequest('/api/history/record-1', { method: 'PATCH' }, 'No se pudo actualizar.', { fetcher, retryDelay: 0, requestTimeout: 100 }),
+    /cambió desde otra sesión/
+  )
+  assert.equal(requests, 1)
+})
+
+test('la gestión del historial dispone de tiempo para sincronizar y evita una segunda lectura completa', () => {
+  const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
+  const pointHandler = apiSource.slice(apiSource.indexOf('async function handleHistoryRecordUpdate'), apiSource.indexOf('async function handleHistoryRecordsBulkUpdate'))
+  const bulkHandler = apiSource.slice(apiSource.indexOf('async function handleHistoryRecordsBulkUpdate'), apiSource.indexOf('async function handleHistoryRecordRemoval'))
+
+  assert.match(pointHandler, /set local statement_timeout = '30s'/)
+  assert.match(bulkHandler, /set local statement_timeout = '30s'/)
+  assert.match(pointHandler, /state: nextState/)
+  assert.match(bulkHandler, /state: nextState/)
+  assert.equal((pointHandler.match(/readState\(transaction\)/g) || []).length, 1)
+  assert.equal((bulkHandler.match(/readState\(transaction\)/g) || []).length, 1)
 })
 
 test('eliminar un equipo semanal deja una excepción persistente y limpia agenda e historial', () => {

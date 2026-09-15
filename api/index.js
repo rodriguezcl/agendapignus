@@ -732,7 +732,7 @@ async function handleHistoryRecordUpdate(req, res, sql, user, recordId) {
   try {
     const result = await sql.begin(async transaction => {
       await transaction`set local lock_timeout = '5s'`
-      await transaction`set local statement_timeout = '15s'`
+      await transaction`set local statement_timeout = '30s'`
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
       const lockedRevision = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const currentRevision = Number(lockedRevision[0]?.value || 0)
@@ -757,8 +757,7 @@ async function handleHistoryRecordUpdate(req, res, sql, user, recordId) {
       }
       await persistStateCollections(transaction, currentState, nextState, currentRevision + 1)
       await appendAudit(transaction, entries)
-      const state = await readState(transaction)
-      return { revision: currentRevision + 1, state }
+      return { revision: currentRevision + 1, state: nextState }
     })
     return send(res, 200, { ok: true, revision: result.revision, state: visibleStateForUser({ ...result.state, revision: result.revision }, user) })
   } catch (error) {
@@ -776,7 +775,7 @@ async function handleHistoryRecordsBulkUpdate(req, res, sql, user) {
   try {
     const result = await sql.begin(async transaction => {
       await transaction`set local lock_timeout = '5s'`
-      await transaction`set local statement_timeout = '15s'`
+      await transaction`set local statement_timeout = '30s'`
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
       const lockedRevision = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const currentRevision = Number(lockedRevision[0]?.value || 0)
@@ -808,8 +807,7 @@ async function handleHistoryRecordsBulkUpdate(req, res, sql, user) {
       normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
       await persistStateCollections(transaction, currentState, nextState, currentRevision + 1)
       await appendAudit(transaction, entries)
-      const state = await readState(transaction)
-      return { revision: currentRevision + 1, state }
+      return { revision: currentRevision + 1, state: nextState }
     })
     return send(res, 200, { ok: true, revision: result.revision, state: visibleStateForUser({ ...result.state, revision: result.revision }, user) })
   } catch (error) {
