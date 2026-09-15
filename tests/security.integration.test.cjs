@@ -159,7 +159,7 @@ test('protege rutas y agrega cabeceras de seguridad', async () => {
   assert.match(response.headers.get('content-security-policy'), /default-src 'none'/)
 })
 
-test('Supervisor recibe sólo el historial CCTV y no puede escribir ni exportar', async () => {
+test('Supervisor recibe sólo cuentas e historial CCTV y no puede escribir ni exportar', async () => {
   const cookie = await login('qa-supervisor@pignus.test')
   const visible = await state(cookie)
 
@@ -169,7 +169,8 @@ test('Supervisor recibe sólo el historial CCTV y no puede escribir ni exportar'
   assert.deepEqual(visible.employees, [])
   assert.deepEqual(visible.services, [])
   assert.deepEqual(visible.vehicles, [])
-  assert.deepEqual(visible.customers, [])
+  assert.ok(visible.customers.length > 0)
+  assert.ok(visible.customers.every(customer => customer.cctvService === true))
   assert.equal(visible.agenda, null)
 
   let response = await api('/api/state', cookie, { method: 'PATCH', body: JSON.stringify({ revision: visible.revision, operations: [] }) })
