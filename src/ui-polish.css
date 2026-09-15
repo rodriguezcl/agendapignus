@@ -612,6 +612,14 @@ body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #34
   grid-row: 2;
   align-self: start;
   justify-self: start;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.daily-field-customer > .subscriber-reservation-note {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .weekly-agenda-task-status {
