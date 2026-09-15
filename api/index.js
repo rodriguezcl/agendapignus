@@ -401,9 +401,14 @@ async function handleSaveState(req, res, sql, user) {
       await transaction`set local lock_timeout = '15s'`
       await transaction`set local statement_timeout = '40s'`
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      // Read the snapshot before serializing writers. If nobody committed in
+      // between, the expensive state reconstruction never holds the global
+      // revision lock. A concurrent commit is detected by the revision check
+      // and only that contended request must refresh while holding the lock.
+      let current = await readState(transaction)
       const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const currentRevision = Number(revisionRows[0]?.value || 0)
-      const current = await readState(transaction)
+      if (Number(current.revision) !== currentRevision) current = await readState(transaction)
       const individual = req.method === 'PATCH'
       const operationState = individual ? stateForOperationComparison(current) : current
       let next = authorizeIncomingState(individual ? applyStateOperations(visibleStateForUser(operationState, user), incoming.operations) : incoming, current, user)

@@ -9,25 +9,77 @@ async function queryRows(sql, statement, parameters = []) {
 }
 
 async function readNormalizedState(sql, { includeCredentials = false } = {}) {
-  const [batch] = await queryRows(sql, 'select source_revision as revision from normalized_shadow.import_batch where id = 1')
+  // Reconstruct the complete application snapshot in one database round trip.
+  // The previous implementation issued seven sequential queries; every state
+  // write performed that work while holding the global revision row lock.
+  const credentialsProjection = includeCredentials
+    ? `coalesce((
+        select jsonb_agg(jsonb_build_object(
+          'employee_id', employee_id,
+          'password_hash', password_hash
+        ) order by employee_id)
+        from normalized_shadow.employee_credentials
+      ), '[]'::jsonb)`
+    : `'[]'::jsonb`
+  const [batch] = await queryRows(sql, `
+    select
+      source_revision as revision,
+      coalesce((
+        select jsonb_agg(jsonb_build_object(
+          'collection', collection,
+          'original_payload', original_payload
+        ) order by collection, source_position)
+        from normalized_shadow.source_record_evidence
+      ), '[]'::jsonb) as evidence,
+      ${credentialsProjection} as credentials,
+      coalesce((
+        select jsonb_agg(original_payload order by source_position)
+        from normalized_shadow.history_evidence
+      ), '[]'::jsonb) as history,
+      coalesce((
+        select jsonb_agg(jsonb_build_object(
+          'scope', scope,
+          'work_date', work_date::text,
+          'original_payload', original_payload
+        ) order by scope, work_date)
+        from normalized_shadow.agenda_plan_evidence
+      ), '[]'::jsonb) as plans,
+      coalesce((
+        select jsonb_agg(jsonb_build_object(
+          'config_key', config_key,
+          'original_payload', original_payload
+        ) order by config_key)
+        from normalized_shadow.configuration_evidence
+      ), '[]'::jsonb) as configs,
+      coalesce((
+        select jsonb_object_agg(preference_key, preference_value)
+        from normalized_shadow.app_preferences
+      ), '{}'::jsonb) as preferences
+    from normalized_shadow.import_batch
+    where id = 1
+  `)
   if (!batch) { const error = new Error('El modelo normalizado todavía no tiene un lote importado.'); error.code = 'NORMALIZED_STATE_EMPTY'; throw error }
-  const evidence = await queryRows(sql, 'select collection, original_payload from normalized_shadow.source_record_evidence order by collection, source_position')
+  const rows = value => {
+    const parsed = payload(value)
+    return Array.isArray(parsed) ? parsed : []
+  }
+  const evidence = rows(batch.evidence)
   const collection = name => evidence.filter(row => row.collection === name).map(row => payload(row.original_payload))
   const employees = collection('employees_without_credentials')
   if (includeCredentials) {
-    const credentials = new Map((await queryRows(sql, 'select employee_id, password_hash from normalized_shadow.employee_credentials')).map(row => [String(row.employee_id), row.password_hash]))
+    const credentials = new Map(rows(batch.credentials).map(row => [String(row.employee_id), row.password_hash]))
     for (const employee of employees) if (credentials.has(String(employee.id))) employee.passwordHash = credentials.get(String(employee.id))
   }
-  const history = (await queryRows(sql, 'select original_payload from normalized_shadow.history_evidence order by source_position')).map(row => payload(row.original_payload))
-  const plans = await queryRows(sql, "select scope, work_date::text as work_date, original_payload from normalized_shadow.agenda_plan_evidence order by scope, work_date")
-  const configs = await queryRows(sql, 'select config_key, original_payload from normalized_shadow.configuration_evidence order by config_key')
+  const history = rows(batch.history).map(payload)
+  const plans = rows(batch.plans)
+  const configs = rows(batch.configs)
   const weekly = Object.fromEntries(configs.map(row => [row.config_key, payload(row.original_payload)]))
   let daily = { date: '', teams: [] }
   for (const row of plans) {
     if (row.scope === 'weekly') weekly[row.work_date] = payload(row.original_payload)
     else daily = payload(row.original_payload)
   }
-  const preferences = Object.fromEntries((await queryRows(sql, 'select preference_key, preference_value from normalized_shadow.app_preferences order by preference_key')).map(row => [row.preference_key, row.preference_value]))
+  const preferences = payload(batch.preferences) || {}
   return {
     revision: Number(batch.revision || 0),
     roles: collection('roles'), employees,
