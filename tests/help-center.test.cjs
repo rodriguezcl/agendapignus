@@ -35,11 +35,20 @@ test('la ayuda explica el orden actual del Historial', () => {
 })
 
 test('la búsqueda incluye módulos y preguntas frecuentes', () => {
-  assert.match(helpSource, /const faqResults = FAQ/)
+  assert.match(helpSource, /const faqResults = faqEntries/)
   assert.match(helpSource, /return \[\.\.\.moduleResults, \.\.\.faqResults\]/)
   assert.match(helpSource, /choose\(result\.section\.id, result\.index\)/)
 })
 
 test('la fecha visible de actualización corresponde a esta revisión', () => {
-  assert.match(helpSource, /Actualizado · 30 de agosto de 2026/)
+  assert.match(helpSource, /Actualizado · 15 de septiembre de 2026/)
+})
+
+test('el perfil técnico recibe ayuda propia y los demás roles sólo ven módulos permitidos', () => {
+  assert.match(helpSource, /export function TechnicianHelpCenter/)
+  assert.match(helpSource, /TECHNICIAN_MODULE_IDS = new Set\(\['technician', 'vehicles', 'mobile'\]\)/)
+  assert.match(helpSource, /allowedModules\.includes\(item\.module\)/)
+  assert.match(helpSource, /const faqEntries = technicianOnly \? TECHNICIAN_FAQ : FAQ/)
+  assert.match(helpSource, /Consultar la foto de referencia/)
+  assert.match(helpSource, /observación técnica obligatoria/)
 })

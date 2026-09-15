@@ -921,6 +921,8 @@ test('el técnico dispone del módulo Vehículos como tabla de solo lectura y pu
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
   const technicianPortal = source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function DashboardStatusView'))
   assert.match(technicianPortal, /data-view="vehicles"[\s\S]*?<span>Vehículos<\/span>/)
+  assert.match(technicianPortal, /data-view="help"[\s\S]*?<span>Centro de ayuda<\/span>/)
+  assert.match(technicianPortal, /<TechnicianHelpCenter onNavigate=\{setView\} \/>/)
   assert.match(technicianPortal, /technician-vehicle-head[\s\S]*?<span>Vehículo<\/span><span>Año<\/span><span>Matrícula<\/span><span>Seguro<\/span>/)
   assert.match(technicianPortal, /href=\{`\/api\/vehicle-insurance\/\$\{encodeURIComponent\(String\(vehicle\.id\)\)\}`\}[\s\S]*?Descargar PDF/)
   assert.doesNotMatch(technicianPortal, /view === 'vehicles'[\s\S]*?Kilometraje[\s\S]*?function DashboardStatusView/)

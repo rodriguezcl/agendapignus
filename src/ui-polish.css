@@ -296,6 +296,7 @@ span.field-label-text > span.required-mark,
 }
 .vehicle-control-detail { display: flex; flex-direction: column; gap: 5px; }
 .vehicle-control-report-help { margin: 8px 0 2px; padding: 12px 14px; border-radius: 8px; background: #f1f7fb; color: #315f79; }
+.technician-content.technician-help-page { max-width: 1180px; }
 .vehicle-control-fixed-duration, .vehicle-control-planning-fields { display: grid; gap: 10px; }
 .vehicle-control-fixed-duration input, .vehicle-control-planning-fields input { background: #f4f7f4; }
 .vehicle-control-planning-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
