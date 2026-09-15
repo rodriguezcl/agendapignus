@@ -31,6 +31,8 @@ test('los selectores no modales también se cierran por teclado y los roles admi
 
 test('el portal técnico comunica conectividad y ofrece acciones de campo', () => {
   assert.match(app, /connectionStatus/)
+  assert.doesNotMatch(app, /Sincronizando agenda/)
+  assert.doesNotMatch(app, /setConnectionStatus\('syncing'\)/)
   assert.match(app, /Sin conexión/)
   assert.match(app, /technician-quick-actions/)
   assert.match(app, /google\.com\/maps\/search/)
