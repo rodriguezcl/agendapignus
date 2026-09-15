@@ -13,6 +13,15 @@ function normalizeImportedCustomers(customers = []) {
   }))
 }
 
+function preserveCustomerTrackingFlags(currentCustomers = [], importedCustomers = []) {
+  const byId = new Map(currentCustomers.map(customer => [String(customer?.customerId || ''), customer]))
+  const byAccount = new Map(currentCustomers.map(customer => [String(customer?.account || '').trim().toUpperCase(), customer]))
+  return importedCustomers.map(customer => {
+    const current = byId.get(String(customer?.customerId || '')) || byAccount.get(String(customer?.account || '').trim().toUpperCase())
+    return { ...customer, cctvService: Boolean(current?.cctvService) }
+  })
+}
+
 function validateImportedCustomers(customers) {
   if (!Array.isArray(customers)) throw new Error('La importación no contiene una lista válida de abonados.')
   const unique = (key, label) => {
@@ -62,4 +71,4 @@ function restoreCustomerImportBackup(currentCustomers = [], backup) {
   return [...restoredByAccount.values()]
 }
 
-module.exports = { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport }
+module.exports = { customerImportChanges, normalizeImportedCustomers, preserveCustomerTrackingFlags, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport }

@@ -45,7 +45,7 @@ function buildShadowCandidate(state) {
       name: employee.name || '', email: employee.email || null, phone: employee.phone || null, status: employee.status || null })),
     customers: state.customers.map(customer => ({ id: String(customer.customerId), account: customer.account, name: customer.name || '', kind: customer.kind || null, customer_type: customer.type || null,
       address: customer.address || null, street: customer.street || null, locality: customer.locality || null, province: customer.province || null, phone: customer.phone || null,
-      converted_from_account: customer.convertedFromAccount || null, subscription_ended_at: customer.subscriptionEndedAt || null })),
+      converted_from_account: customer.convertedFromAccount || null, subscription_ended_at: customer.subscriptionEndedAt || null, cctv_service: Boolean(customer.cctvService) })),
     customer_import_fields: state.customers.flatMap(customer => Object.entries(customer.fields || {}).map(([field_name, field_value]) => ({ customer_id: String(customer.customerId), field_name, field_value: field_value == null ? null : String(field_value) }))),
     service_types: state.services.map(service => ({ id: String(service.id), code: service.code, name: service.name, description: service.description || null, category: service.category || null,
       status: service.status || null, system_managed: Boolean(service.system), estimated_minutes: Number(service.estimatedMinutes) })),

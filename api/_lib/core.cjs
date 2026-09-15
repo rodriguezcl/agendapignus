@@ -14,6 +14,7 @@ function legacyRoleCode(role = {}) {
   if (name === 'tecnico') return 'technician'
   if (name === 'coordinador') return 'coordinator'
   if (name === 'usuario') return 'user'
+  if (name === 'supervisor') return 'supervisor'
   return `role-${role.id}`
 }
 
@@ -39,6 +40,7 @@ const FEATURE_PERMISSION_PARENTS = {
 
 function userCan(user, permission) {
   if (user?.roleCode === 'administrator') return true
+  if (user?.roleCode === 'supervisor' || normalizedRoleName(user?.role) === 'supervisor') return permission === 'history'
   const parent = FEATURE_PERMISSION_PARENTS[permission]
   if (parent && user?.permissions?.[parent] !== true) return false
   if (typeof user?.permissions?.[permission] === 'boolean') return user.permissions[permission]
@@ -171,7 +173,7 @@ function userForEmployee(employee, roles) {
     name: employee.name,
     email: employee.email,
     roleId: role.id,
-    roleCode: role.code || legacyRoleCode(role),
+    roleCode: normalizedRoleName(role.name) === 'supervisor' ? 'supervisor' : role.code || legacyRoleCode(role),
     role: role.name,
     permissions: role.permissions || {}
   }
@@ -218,6 +220,20 @@ function visibleStateForUser(state, user) {
       roles: [], employees: [], services: [], vehicles: (state.vehicles || []).map(technicianVehicle), customers: [], agenda: null, preferences: {},
       history: visibleHistory.map(technicianSafeRecord)
     }
+  }
+  if (user.roleCode === 'supervisor' || normalizedRoleName(user.role) === 'supervisor') {
+    const trackedCustomers = (state.customers || []).filter(customer => customer?.cctvService === true)
+    const customerIds = new Set(trackedCustomers.map(customer => String(customer.customerId || '')).filter(Boolean))
+    const accounts = new Set(trackedCustomers.map(customer => String(customer.account || '').trim().toUpperCase()).filter(Boolean))
+    const history = (state.history || []).filter(record => {
+      const customerId = String(record.customerId || '')
+      const account = String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()
+      return (customerId && customerIds.has(customerId)) || (account && accounts.has(account))
+    }).map(record => {
+      const { internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, ...visible } = record
+      return visible
+    })
+    return { revision: state.revision, roles: [], employees: [], services: [], vehicles: [], customers: [], history, agenda: null, preferences: {} }
   }
   const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
   return {
@@ -386,7 +402,7 @@ function normalizeStateForSave(state, current, { allowEarlyCompletion = false } 
   }
   const normalizeTeams = teams => deduplicateScheduledTasks((teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(normalizeScheduledService) })))
   const vehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), mileage: vehicle.mileage == null || vehicle.mileage === '' ? null : Number(vehicle.mileage), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
-  const customers = (state.customers || []).map(customer => ({ ...customer, kind: customerKind(customer), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }))
+  const customers = (state.customers || []).map(customer => ({ ...customer, kind: customerKind(customer), cctvService: Boolean(customer.cctvService), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }))
   const history = normalizeHistoryCompletionTimes(
     (state.history || []).map(record => ({ ...normalizeScheduledService(record), status: record.status || 'Pendiente' })),
     current.history,

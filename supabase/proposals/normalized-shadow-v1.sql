@@ -79,7 +79,7 @@ create table if not exists normalized_shadow.customers (
   id text primary key, account text not null unique, name text not null,
   kind text, customer_type text, address text, street text, locality text,
   province text, phone text, converted_from_account text,
-  subscription_ended_at timestamptz
+  subscription_ended_at timestamptz, cctv_service boolean not null default false
 );
 create table if not exists normalized_shadow.customer_import_fields (
   customer_id text not null references normalized_shadow.customers(id),

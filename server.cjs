@@ -21,7 +21,7 @@ const { stateWriteError } = require('./api/_lib/state-write-error.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 const { startTechnicianServiceRecord } = require('./api/_lib/technician-service-start.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
-const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('./api/_lib/customer-import.cjs')
+const { customerImportChanges, normalizeImportedCustomers, preserveCustomerTrackingFlags, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('./api/_lib/customer-import.cjs')
 const { concurrentStateChanged, mergeConcurrentState } = require('./api/_lib/state-merge.cjs')
 const { logStateConcurrencyEvent } = require('./api/_lib/concurrency-observability.cjs')
 
@@ -200,6 +200,7 @@ function legacyRoleCode(role) {
   if (name === 'tecnico') return 'technician'
   if (name === 'coordinador') return 'coordinator'
   if (name === 'usuario') return 'user'
+  if (name === 'supervisor') return 'supervisor'
   return `role-${role.id}`
 }
 
@@ -785,6 +786,20 @@ function readStateForUser(user) {
   const state = readState()
   const { reviews: retiredReviews, ...visibleState } = state
   if (user.roleCode === 'administrator') return { ...visibleState, services: ensureVehicleControlService(state.services) }
+  if (user.roleCode === 'supervisor' || normalizedRoleName(user.role) === 'supervisor') {
+    const trackedCustomers = state.customers.filter(customer => customer?.cctvService === true)
+    const customerIds = new Set(trackedCustomers.map(customer => String(customer.customerId || '')).filter(Boolean))
+    const accounts = new Set(trackedCustomers.map(customer => String(customer.account || '').trim().toUpperCase()).filter(Boolean))
+    const history = state.history.filter(record => {
+      const customerId = String(record.customerId || '')
+      const account = String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()
+      return (customerId && customerIds.has(customerId)) || (account && accounts.has(account))
+    }).map(record => {
+      const { internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, ...visible } = record
+      return visible
+    })
+    return { revision: state.revision, roles: [], employees: [], services: [], vehicles: [], customers: [], history, agenda: null, preferences: {} }
+  }
   const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
   return {
     ...visibleState,
@@ -808,6 +823,7 @@ function roleForEmployee(employee) {
 
 function userCan(user, permission) {
   if (user?.roleCode === 'administrator') return true
+  if (user?.roleCode === 'supervisor' || normalizedRoleName(user?.role) === 'supervisor') return permission === 'history'
   const parent = FEATURE_PERMISSION_PARENTS[permission]
   if (parent && user?.permissions?.[parent] !== true) return false
   if (typeof user?.permissions?.[permission] === 'boolean') return user.permissions[permission]
@@ -1255,7 +1271,7 @@ function saveState(state, user) {
     const street = rawStreet || (kind === 'subscriber' ? String(customer.address || '').trim() || '-' : '')
     const address = String(customer.address || '').trim() || (street ? [street, customer.locality, customer.province].filter(Boolean).join(', ') : '')
     const phone = rawPhone || (kind === 'subscriber' ? '-' : '')
-    const normalized = { ...customer, customerId: customer.customerId || legacyCustomerId(customer), kind, name, street, address, phone }
+    const normalized = { ...customer, customerId: customer.customerId || legacyCustomerId(customer), kind, cctvService: Boolean(customer.cctvService), name, street, address, phone }
     if (normalized.kind !== 'subscriber' || !completedRetirementCustomerIds.has(String(normalized.customerId))) return normalized
     return { ...normalized, kind: 'client', account: `CLI-${String(nextClientNumber++).padStart(4, '0')}`, type: 'Cliente de servicio', convertedFromAccount: normalized.account, subscriptionEndedAt: new Date().toISOString() }
   })
@@ -1504,7 +1520,7 @@ function sessionUser(req) {
     sessions.delete(token)
     return null
   }
-  const user = { id: employee.id, name: employee.name, email: employee.email, roleId: role.id, roleCode: role.code || legacyRoleCode(role), role: role.name, permissions: role.permissions || {} }
+  const user = { id: employee.id, name: employee.name, email: employee.email, roleId: role.id, roleCode: normalizedRoleName(role.name) === 'supervisor' ? 'supervisor' : role.code || legacyRoleCode(role), role: role.name, permissions: role.permissions || {} }
   session.user = user
   return user
 }
@@ -1684,7 +1700,7 @@ function handleCustomerImport(req, res, user) {
       } else {
         if (!Number.isInteger(Number(body.revision)) || Number(body.revision) !== currentRevision) { const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de importar.'); error.statusCode = 409; throw error }
         if (!Array.isArray(body.customers)) throw new Error('La importación no contiene una lista válida de abonados.')
-        nextCustomers = normalizeImportedCustomers(body.customers)
+        nextCustomers = preserveCustomerTrackingFlags(currentCustomers, normalizeImportedCustomers(body.customers))
       }
       validateImportedCustomers(nextCustomers)
       if (!undo) validateIncrementalCustomerImport(currentCustomers, nextCustomers)
@@ -1746,7 +1762,7 @@ const server = http.createServer((req, res) => {
       }
       clearLoginFailures(req)
       const assignedRole = rows('roles').find(role => String(role.id) === String(employee.roleId)) || rows('roles').find(role => normalizedRoleName(role.name) === normalizedRoleName(employee.role))
-      const user = { id: employee.id, name: employee.name, email: employee.email, roleId: assignedRole?.id, roleCode: assignedRole?.code || legacyRoleCode(assignedRole || { id: employee.roleId, name: employee.role }), role: assignedRole?.name || employee.role }
+      const user = { id: employee.id, name: employee.name, email: employee.email, roleId: assignedRole?.id, roleCode: normalizedRoleName(assignedRole?.name || employee.role) === 'supervisor' ? 'supervisor' : assignedRole?.code || legacyRoleCode(assignedRole || { id: employee.roleId, name: employee.role }), role: assignedRole?.name || employee.role }
       const token = crypto.randomBytes(32).toString('hex')
       let replacedSessions = 0
       for (const [activeToken, session] of sessions) {
@@ -1826,7 +1842,7 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     if (user.roleCode === 'technician') return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial', user.id, url.searchParams.get('format') || 'excel')
-    if (!userCan(user, 'history')) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
+    if (user.roleCode === 'supervisor' || !userCan(user, 'history')) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
     return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial', null, url.searchParams.get('format') || 'excel')
   }
   if (req.method === 'GET' && req.url === '/api/state') {
@@ -1987,7 +2003,7 @@ const server = http.createServer((req, res) => {
     const photo = db.prepare('SELECT mime_type, photo_data FROM vehicle_control_photos WHERE record_id = ?').get(recordId)
     const record = rows('work_history').find(item => String(item.id) === String(recordId))
     if (!photo || !record) return send(res, 404, { error: 'La foto no existe.' })
-    const allowed = user.roleCode === 'administrator' || userCan(user, 'history') || record.technicianIds?.some(id => String(id) === String(user.id))
+    const allowed = user.roleCode === 'administrator' || (user.roleCode !== 'supervisor' && userCan(user, 'history')) || record.technicianIds?.some(id => String(id) === String(user.id))
     if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
     res.writeHead(200, { 'Content-Type': photo.mime_type, 'Content-Length': photo.photo_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
     return res.end(photo.photo_data)
@@ -1999,14 +2015,16 @@ const server = http.createServer((req, res) => {
     const record = rows('work_history').find(item => String(item.id) === String(recordId))
     if (!record || record.vehicleControl) return send(res, 404, { error: 'El servicio no existe.' })
     if (req.method === 'GET') {
-      const allowed = user.roleCode !== 'technician' || record.technicianIds?.some(id => String(id) === String(user.id))
+      const allowed = user.roleCode === 'supervisor'
+        ? readStateForUser(user).history.some(item => String(item.id) === String(recordId))
+        : user.roleCode !== 'technician' || record.technicianIds?.some(id => String(id) === String(user.id))
       if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
       const photo = db.prepare('SELECT mime_type, photo_data FROM service_photos WHERE record_id = ?').get(recordId)
       if (!photo) return send(res, 404, { error: 'La foto no existe.' })
       res.writeHead(200, { 'Content-Type': photo.mime_type, 'Content-Length': photo.photo_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
       return res.end(photo.photo_data)
     }
-    if (user.roleCode === 'technician') return send(res, 403, { error: 'Sólo Administración y usuarios pueden modificar la foto del servicio.' })
+    if (user.roleCode === 'technician' || user.roleCode === 'supervisor') return send(res, 403, { error: 'Sólo Administración y usuarios pueden modificar la foto del servicio.' })
     if (req.method === 'DELETE') {
       db.prepare('DELETE FROM service_photos WHERE record_id = ?').run(recordId)
       return send(res, 200, { ok: true })
@@ -2231,7 +2249,7 @@ const server = http.createServer((req, res) => {
   if (['PUT', 'PATCH'].includes(req.method) && req.url === '/api/state') {
     const user = requireSession(req, res)
     if (!user) return
-    if (user.roleCode === 'technician') return send(res, 403, { error: 'El rol técnico no puede modificar la agenda.' })
+    if (user.roleCode === 'technician' || user.roleCode === 'supervisor') return send(res, 403, { error: 'Este rol tiene acceso de solo lectura.' })
     let attemptedRevision = null
     readJson(req, 15_000_000).then(state => {
       if (req.method === 'PATCH' && !Array.isArray(state.operations)) throw new Error('Faltan las operaciones de guardado.')

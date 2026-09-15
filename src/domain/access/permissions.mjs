@@ -31,17 +31,23 @@ export const DEFAULT_FEATURE_PERMISSIONS = Object.fromEntries(FEATURE_PERMISSION
 
 export const normalizeRoleName = normalizeServiceName
 
-export const roleCode = role => role?.code || ({
+export const roleCode = role => normalizeRoleName(role?.name) === 'supervisor' ? 'supervisor' : role?.code || ({
   administrador: 'administrator',
   tecnico: 'technician',
   coordinador: 'coordinator',
-  usuario: 'user'
+  usuario: 'user',
+  supervisor: 'supervisor'
 }[normalizeRoleName(role?.name)] || `role-${role?.id}`)
 
 export const resolvedRolePermissions = role => {
   const code = roleCode(role)
   const explicit = role?.permissions || {}
   const resolved = { ...DEFAULT_MODULE_PERMISSIONS, ...DEFAULT_FEATURE_PERMISSIONS, ...explicit }
+  if (code === 'supervisor') {
+    Object.keys(resolved).forEach(key => { resolved[key] = false })
+    resolved.history = true
+    return resolved
+  }
   FEATURE_PERMISSIONS.forEach(([, featureKey]) => {
     if (code === 'administrator') resolved[featureKey] = true
     else if (explicit[featureKey] == null) resolved[featureKey] = false
