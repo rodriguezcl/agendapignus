@@ -4471,7 +4471,8 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
       if (stopped || refreshing || document.visibilityState === 'hidden') return
       if (!navigator.onLine) { setConnectionStatus('offline'); return }
       refreshing = true
-      setConnectionStatus('syncing')
+      // La actualización periódica es silenciosa para no desplazar controles
+      // mientras el técnico está interactuando con una tarjeta.
       try {
         const data = await stateRepository.load()
         if (!stopped && Array.isArray(data?.history)) setHistory(data.history)
@@ -4544,7 +4545,6 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
     status.setAttribute('role', 'status')
     status.setAttribute('aria-live', 'polite')
     const messages = {
-      syncing: ['Sincronizando agenda', 'Estamos comprobando si hay cambios nuevos.'],
       offline: ['Sin conexión', 'La agenda visible sigue disponible. Reconectate antes de informar un servicio.'],
       failed: ['No pudimos actualizar la agenda', 'Conservamos la información visible. Podés reintentar cuando mejore la conexión.']
     }
