@@ -40,7 +40,7 @@ const FEATURE_PERMISSION_PARENTS = {
 
 function userCan(user, permission) {
   if (user?.roleCode === 'administrator') return true
-  if (user?.roleCode === 'supervisor' || normalizedRoleName(user?.role) === 'supervisor') return permission === 'history'
+  if (user?.roleCode === 'supervisor' || normalizedRoleName(user?.role) === 'supervisor') return permission === 'history' || permission === 'accounts'
   const parent = FEATURE_PERMISSION_PARENTS[permission]
   if (parent && user?.permissions?.[parent] !== true) return false
   if (typeof user?.permissions?.[permission] === 'boolean') return user.permissions[permission]
@@ -233,7 +233,7 @@ function visibleStateForUser(state, user) {
       const { internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, ...visible } = record
       return visible
     })
-    return { revision: state.revision, roles: [], employees: [], services: [], vehicles: [], customers: [], history, agenda: null, preferences: {} }
+    return { revision: state.revision, roles: [], employees: [], services: [], vehicles: [], customers: trackedCustomers, history, agenda: null, preferences: {} }
   }
   const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
   return {

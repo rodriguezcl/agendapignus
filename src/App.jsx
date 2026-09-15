@@ -1254,7 +1254,7 @@ export default function App() {
   const activeRole = roles.find(role => String(role.id) === String(authUser?.roleId)) || roles.find(role => role.name === authUser?.role)
   const isSupervisor = authUser?.roleCode === 'supervisor' || normalizeRoleName(authUser?.role) === 'supervisor' || roleCode(activeRole) === 'supervisor'
   // Resolve before rendering: restoring a session must never flash statistics.
-  const module = isSupervisor ? 'history' : requestedModule
+  const module = isSupervisor && requestedModule !== 'accounts' ? 'history' : requestedModule
   const [sessionEndedMessage, setSessionEndedMessage] = useState('')
   globalThis.__pignusCurrentUser = authUser
   globalThis.__pignusHistory = history

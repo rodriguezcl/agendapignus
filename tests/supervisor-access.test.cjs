@@ -8,12 +8,14 @@ test('Supervisor abre Historial desde el primer render, incluso con navegación 
   const fs = require('node:fs')
   const path = require('node:path')
   const app = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
-  assert.match(app, /const module = isSupervisor \? 'history' : requestedModule/)
+  assert.match(app, /const module = isSupervisor && requestedModule !== 'accounts' \? 'history' : requestedModule/)
   const { resolvedRolePermissions } = await import('../src/domain/access/permissions.mjs')
   const permissions = resolvedRolePermissions({ name: 'Supervisor', permissions: { dashboard: true, historyManage: true } })
   assert.equal(permissions.history, true)
   assert.equal(permissions.dashboard, false)
   assert.equal(permissions.historyManage, false)
+  assert.equal(permissions.accounts, true)
+  for (const permission of ['accountsEdit', 'accountsDelete', 'accountsImport']) assert.equal(permissions[permission], false)
 })
 
 const state = {
@@ -46,14 +48,16 @@ test('Supervisor sólo recibe el historial de cuentas marcadas como Servicio de 
   assert.deepEqual(visible.employees, [])
   assert.deepEqual(visible.services, [])
   assert.deepEqual(visible.vehicles, [])
-  assert.deepEqual(visible.customers, [])
+  assert.deepEqual(visible.customers.map(customer => customer.customerId), ['customer-cctv'])
+  assert.deepEqual(visibleStateForUser({ ...state, customers: state.customers.map(customer => ({ ...customer, cctvService: false })) }, supervisor).customers, [])
   assert.equal(visible.agenda, null)
 })
 
 test('Supervisor tiene acceso de lectura al Historial y ningún permiso de gestión', () => {
   assert.equal(userCan(supervisor, 'history'), true)
   assert.equal(userCan(supervisor, 'historyManage'), false)
-  assert.equal(userCan(supervisor, 'accounts'), false)
+  assert.equal(userCan(supervisor, 'accounts'), true)
+  for (const permission of ['accountsEdit', 'accountsDelete', 'accountsImport']) assert.equal(userCan({ ...supervisor, permissions: { [permission]: true } }, permission), false)
   assert.equal(userCan(supervisor, 'dashboard'), false)
 })
 

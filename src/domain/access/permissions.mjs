@@ -46,6 +46,7 @@ export const resolvedRolePermissions = role => {
   if (code === 'supervisor') {
     Object.keys(resolved).forEach(key => { resolved[key] = false })
     resolved.history = true
+    resolved.accounts = true
     return resolved
   }
   FEATURE_PERMISSIONS.forEach(([, featureKey]) => {
