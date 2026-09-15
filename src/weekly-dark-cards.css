@@ -1,0 +1,52 @@
+/* Use the actual theme attribute; keep technician popovers outside the card. */
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary {
+  background: #192d23;
+  color: #e4efe8;
+  border-bottom-color: #365346;
+}
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary:hover,
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary:focus-visible {
+  background: #243e30;
+  box-shadow: inset 0 0 0 1px #719680;
+  transform: none;
+}
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary.available-slot {
+  background: #142b20;
+  border-left-color: #55c786;
+}
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary.available-slot:hover,
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary.available-slot:focus-visible {
+  background: #203c2b;
+}
+.app-shell[data-theme='dark'] .weekly-board .weekly-vehicle-control {
+  background: #1b303b;
+  border-left-color: #7bb4d1;
+}
+.app-shell[data-theme='dark'] .weekly-board :is(.week-task-client, .week-task-title span, .week-task-title small) {
+  color: #e4efe8;
+}
+.app-shell[data-theme='dark'] .weekly-board .available-slot :is(.week-task-client, .week-task-title span, .week-task-title small) {
+  color: #ace5bf;
+}
+.app-shell[data-theme='dark'] .weekly-board .weekly-agenda-task-status > small {
+  color: #b6dbc4;
+}
+.app-shell[data-theme='dark'] .weekly-board .weekly-vehicle-control .week-task-client {
+  color: #b9dff2;
+}
+.app-shell[data-theme='dark'] .weekly-board .weekly-add-task {
+  background: #20372a;
+  border-color: #486450;
+  color: #f2d788;
+}
+.app-shell[data-theme='dark'] .weekly-board .weekly-add-task:hover {
+  background: #2c4535;
+}
+.app-shell[data-theme='dark'] .weekly-board :is(.weekly-task-delete, .weekly-task-move) {
+  background: #20372a;
+  border-color: #53705e;
+  color: #e4efe8;
+}
+.app-shell[data-theme='dark'] .weekly-board .weekly-task-delete {
+  color: #ffb9b2;
+}

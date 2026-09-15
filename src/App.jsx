@@ -51,6 +51,7 @@ import { stateOperations } from './features/state/application/state-operations.m
 import { migrateLegacyEstimatedMinutes } from './domain/state/legacy-estimated-minutes.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
+import './weekly-dark-cards.css'
 
 const currentLocalDate = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
 const nextLiveScheduleMinute = (now = new Date()) => {
