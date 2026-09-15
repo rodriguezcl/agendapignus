@@ -402,7 +402,10 @@ function normalizeStateForSave(state, current, { allowEarlyCompletion = false } 
   }
   const normalizeTeams = teams => deduplicateScheduledTasks((teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(normalizeScheduledService) })))
   const vehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), mileage: vehicle.mileage == null || vehicle.mileage === '' ? null : Number(vehicle.mileage), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
-  const customers = (state.customers || []).map(customer => ({ ...customer, kind: customerKind(customer), cctvService: Boolean(customer.cctvService), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }))
+  // Legacy accounts without a CCTV flag already mean "not tracked". Adding
+  // false here migrates the whole customer catalog during an unrelated service
+  // save and generates thousands of audit writes inside the same transaction.
+  const customers = (state.customers || []).map(customer => ({ ...customer, kind: customerKind(customer), ...(Object.hasOwn(customer, 'cctvService') ? { cctvService: Boolean(customer.cctvService) } : {}), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }))
   const history = normalizeHistoryCompletionTimes(
     (state.history || []).map(record => ({ ...normalizeScheduledService(record), status: record.status || 'Pendiente' })),
     current.history,

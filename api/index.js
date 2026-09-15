@@ -453,7 +453,7 @@ async function handleSaveState(req, res, sql, user) {
     console.error('No se pudo guardar el estado:', error.message)
     const publicError = stateWriteError(error)
     const status = publicError.status
-    const payload = { error: publicError.message }
+    const payload = { error: publicError.message, ...(publicError.code ? { code: publicError.code } : {}) }
     if (status === 409) {
       payload.code = publicError.code || 'STATE_REVISION_CONFLICT'
       if (error.conflictPath) payload.conflictPath = error.conflictPath

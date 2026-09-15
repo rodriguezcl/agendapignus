@@ -1,9 +1,13 @@
 function stateWriteError(error) {
-  const databaseBusy = error?.code === '55P03' || error?.code === '57014'
-  if (databaseBusy) return {
+  if (error?.code === '55P03') return {
     status: 503,
-    message: 'La base de datos está ocupada. El sistema volverá a intentarlo automáticamente.',
-    code: 'DATABASE_BUSY'
+    message: 'El guardado esperó demasiado a que terminara otra operación. Intentá guardar nuevamente.',
+    code: 'DATABASE_LOCK_TIMEOUT'
+  }
+  if (error?.code === '57014') return {
+    status: 503,
+    message: 'El procesamiento del guardado excedió el tiempo permitido. Intentá guardar nuevamente. Si se repite, informá a Administración.',
+    code: 'DATABASE_STATEMENT_TIMEOUT'
   }
   const databaseConstraint = error?.code === '23505' || /duplicate key value|unique constraint/i.test(String(error?.message || ''))
   if (databaseConstraint) return {
