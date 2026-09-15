@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('../api/_lib/customer-import.cjs')
+const { customerImportChanges, normalizeImportedCustomers, preserveCustomerTrackingFlags, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('../api/_lib/customer-import.cjs')
 const { bulkDeleteRows, bulkUpsertRows } = require('../api/_lib/normalized-state-repository.cjs')
 
 test('la sincronización secundaria agrupa más de mil abonados en una escritura masiva', async () => {
@@ -76,4 +76,22 @@ test('la importación incremental nunca puede eliminar registros existentes', ()
     /no puede eliminar abonados ni clientes existentes/
   )
   assert.doesNotThrow(() => validateIncrementalCustomerImport(current, [...current, customer('PIG-0002', 'customer-3')]))
+})
+
+test('la importación conserva la selección manual de Servicio de CCTV', () => {
+  const current = [
+    { ...customer('PIG-0001', 'customer-1'), cctvService: true },
+    { ...customer('CLI-0001', 'customer-2'), cctvService: false }
+  ]
+  const imported = [
+    { ...customer('PIG-0001', 'customer-replaced'), phone: '3511111111' },
+    { ...customer('CLI-0001', 'customer-2'), phone: '3512222222' },
+    customer('PIG-0002', 'customer-3')
+  ]
+
+  const result = preserveCustomerTrackingFlags(current, imported)
+
+  assert.equal(result[0].cctvService, true, 'la cuenta se reconoce aunque el importador regenere su identificador')
+  assert.equal(result[1].cctvService, false)
+  assert.equal(result[2].cctvService, false, 'las cuentas nuevas no ingresan al seguimiento automáticamente')
 })

@@ -28,7 +28,7 @@ const { applyServiceCatalogOperation } = require('./_lib/service-catalog-operati
 const { applyVehicleOperation } = require('./_lib/vehicle-operation.cjs')
 const { synchronizeAgendaHistoryRecord } = require('./_lib/history-record-operation.cjs')
 const { removeHistoryRecord } = require('./_lib/history-record-removal.cjs')
-const { customerImportChanges, normalizeImportedCustomers, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('./_lib/customer-import.cjs')
+const { customerImportChanges, normalizeImportedCustomers, preserveCustomerTrackingFlags, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('./_lib/customer-import.cjs')
 const {
   assertNoAccidentalHistoryWipe, assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, hashPassword,
   legacyRoleCode, normalizedServiceName, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml,
@@ -75,7 +75,7 @@ async function handleVehicleControlPhoto(req, res, sql, user, recordId) {
   `
   const row = rows[0]
   if (!row) return send(res, 404, { error: 'La foto no existe.' })
-  const allowed = user.roleCode === 'administrator' || userCan(user, 'history') || row.record?.technicianIds?.some(id => String(id) === String(user.id))
+  const allowed = user.roleCode === 'administrator' || (user.roleCode !== 'supervisor' && userCan(user, 'history')) || row.record?.technicianIds?.some(id => String(id) === String(user.id))
   if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
   securityHeaders(res)
   res.setHeader('Content-Type', row.mime_type)
@@ -176,7 +176,11 @@ async function handleServicePhoto(req, res, sql, user, recordId) {
   const record = records[0]?.data
   if (!record || record.vehicleControl) return send(res, 404, { error: 'El servicio no existe.' })
   if (req.method === 'GET') {
-    const allowed = user.roleCode === 'administrator' || user.roleCode !== 'technician' || record.technicianIds?.some(id => String(id) === String(user.id))
+    let allowed = user.roleCode === 'administrator' || user.roleCode !== 'technician' || record.technicianIds?.some(id => String(id) === String(user.id))
+    if (user.roleCode === 'supervisor') {
+      const state = await readState(sql)
+      allowed = visibleStateForUser(state, user).history.some(item => String(item.id) === String(recordId))
+    }
     if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
     const photos = await sql`select mime_type, photo_data from pignus_service_photos where record_id = ${String(recordId)}`
     if (!photos[0]) return send(res, 404, { error: 'La foto no existe.' })
@@ -185,7 +189,7 @@ async function handleServicePhoto(req, res, sql, user, recordId) {
     res.setHeader('Content-Length', photos[0].photo_data.length)
     return res.status(200).send(photos[0].photo_data)
   }
-  if (user.roleCode === 'technician') return send(res, 403, { error: 'Sólo Administración y usuarios pueden modificar la foto del servicio.' })
+  if (user.roleCode === 'technician' || user.roleCode === 'supervisor') return send(res, 403, { error: 'Sólo Administración y usuarios pueden modificar la foto del servicio.' })
   if (req.method === 'DELETE') {
     await deleteServicePhoto(sql, recordId)
     return send(res, 200, { ok: true })
@@ -918,7 +922,7 @@ async function handleCustomerImport(req, res, sql, user) {
         responseMode = String(body.responseMode || '')
         if (!Number.isInteger(Number(body.revision)) || Number(body.revision) !== currentRevision) { const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de importar.'); error.statusCode = 409; throw error }
         if (!Array.isArray(body.customers)) throw new Error('La importación no contiene una lista válida de abonados.')
-        nextCustomers = normalizeImportedCustomers(body.customers)
+        nextCustomers = preserveCustomerTrackingFlags(currentCustomers, normalizeImportedCustomers(body.customers))
       }
       validateImportedCustomers(nextCustomers)
       if (!undo) validateIncrementalCustomerImport(currentCustomers, nextCustomers)
@@ -1003,11 +1007,11 @@ module.exports = async function handler(req, res) {
       }
     }
     if (['PUT', 'PATCH'].includes(req.method) && route === '/state') {
-      if (session.user.roleCode === 'technician') return send(res, 403, { error: 'El rol técnico no puede modificar la agenda.' })
+      if (session.user.roleCode === 'technician' || session.user.roleCode === 'supervisor') return send(res, 403, { error: 'Este rol tiene acceso de solo lectura.' })
       return await handleSaveState(req, res, sql, session.user)
     }
     if (req.method === 'GET' && route === '/history/export') {
-      if (session.user.roleCode !== 'technician' && !userCan(session.user, 'history')) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
+      if (session.user.roleCode === 'supervisor' || (session.user.roleCode !== 'technician' && !userCan(session.user, 'history'))) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
       return await handleExport(req, res, sql, session.user)
     }
     if (req.method === 'PATCH' && route === '/history/bulk') return await handleHistoryRecordsBulkUpdate(req, res, sql, session.user)

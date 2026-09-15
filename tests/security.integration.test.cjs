@@ -50,8 +50,8 @@ function createFixtureDatabase(databasePath) {
   ]
   services.forEach(service => upsertJson(db, 'services', 'id', service))
   const customers = [
-    { customerId: 'qa-customer-a', kind: 'subscriber', account: 'PIG-9001', name: 'CLIENTE INCLUIDO QA', street: 'Calle QA 100', address: 'Calle QA 100', locality: 'Córdoba', province: 'Córdoba', phone: '3510000001', type: 'Residencial', fields: {} },
-    { customerId: 'qa-customer-b', kind: 'subscriber', account: 'PIG-9002', name: 'CLIENTE EXCLUIDO QA', street: 'Calle QA 200', address: 'Calle QA 200', locality: 'Córdoba', province: 'Córdoba', phone: '3510000002', type: 'Residencial', fields: {} }
+    { customerId: 'qa-customer-a', kind: 'subscriber', account: 'PIG-9001', name: 'CLIENTE INCLUIDO QA', street: 'Calle QA 100', address: 'Calle QA 100', locality: 'Córdoba', province: 'Córdoba', phone: '3510000001', type: 'Residencial', cctvService: true, fields: {} },
+    { customerId: 'qa-customer-b', kind: 'subscriber', account: 'PIG-9002', name: 'CLIENTE EXCLUIDO QA', street: 'Calle QA 200', address: 'Calle QA 200', locality: 'Córdoba', province: 'Córdoba', phone: '3510000002', type: 'Residencial', cctvService: false, fields: {} }
   ]
   customers.forEach(customer => upsertJson(db, 'customers', 'account', customer))
   const baseHistory = { date: '2096-03-10', time: '09:00', serviceId: 'qa-alarm', service: 'Instalación de alarma', installationZone: 'residencial', technicians: [], technicianIds: [], status: 'Completado', team: 'Equipo 1' }
@@ -97,7 +97,8 @@ test.before(async () => {
   const roles = [
     { id: 'qa-employees-role', code: 'qa-employees', name: 'QA Empleados', description: 'Prueba', permissions: { employees: true } },
     { id: 'qa-settings-role', code: 'qa-settings', name: 'QA Configuración', description: 'Prueba', permissions: { settings: true } },
-    { id: 'qa-weekly-role', code: 'qa-weekly', name: 'QA Semanal', description: 'Prueba', permissions: { weekly: true } }
+    { id: 'qa-weekly-role', code: 'qa-weekly', name: 'QA Semanal', description: 'Prueba', permissions: { weekly: true } },
+    { id: 'qa-supervisor-role', code: 'role-qa-supervisor', name: 'Supervisor', description: 'Prueba de seguimiento CCTV', permissions: { dashboard: true, accounts: true, history: true, historyManage: true } }
   ]
   roles.forEach(role => upsertJson(db, 'roles', 'id', role))
   const employees = [
@@ -106,7 +107,8 @@ test.before(async () => {
     { id: 'qa-employees', firstName: 'QA', lastName: 'Empleados', name: 'QA Empleados', roleId: 'qa-employees-role', role: 'QA Empleados', email: 'qa-employees@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') },
     { id: 'qa-settings', firstName: 'QA', lastName: 'Configuración', name: 'QA Configuración', roleId: 'qa-settings-role', role: 'QA Configuración', email: 'qa-settings@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') },
     { id: 'qa-weekly', firstName: 'QA', lastName: 'Semanal', name: 'QA Semanal', roleId: 'qa-weekly-role', role: 'QA Semanal', email: 'qa-weekly@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') },
-    { id: 'qa-tech', firstName: 'QA', lastName: 'Técnico', name: 'QA Técnico', roleId: 3, role: 'Técnico', email: 'qa-tech@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') }
+    { id: 'qa-tech', firstName: 'QA', lastName: 'Técnico', name: 'QA Técnico', roleId: 3, role: 'Técnico', email: 'qa-tech@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') },
+    { id: 'qa-supervisor', firstName: 'QA', lastName: 'Supervisor', name: 'QA Supervisor', roleId: 'qa-supervisor-role', role: 'Supervisor', email: 'qa-supervisor@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') }
   ]
   employees.forEach(employee => upsertJson(db, 'employees', 'id', employee))
   const history = db.prepare('SELECT id, data FROM work_history').all().map(row => ({ id: row.id, record: JSON.parse(row.data) }))
@@ -155,6 +157,25 @@ test('protege rutas y agrega cabeceras de seguridad', async () => {
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff')
   assert.equal(response.headers.get('x-frame-options'), 'DENY')
   assert.match(response.headers.get('content-security-policy'), /default-src 'none'/)
+})
+
+test('Supervisor recibe sólo el historial CCTV y no puede escribir ni exportar', async () => {
+  const cookie = await login('qa-supervisor@pignus.test')
+  const visible = await state(cookie)
+
+  assert.equal(visible.history.some(record => record.id === 'qa-history-included'), true)
+  assert.equal(visible.history.some(record => record.id === 'qa-history-excluded'), false)
+  assert.deepEqual(visible.roles, [])
+  assert.deepEqual(visible.employees, [])
+  assert.deepEqual(visible.services, [])
+  assert.deepEqual(visible.vehicles, [])
+  assert.deepEqual(visible.customers, [])
+  assert.equal(visible.agenda, null)
+
+  let response = await api('/api/state', cookie, { method: 'PATCH', body: JSON.stringify({ revision: visible.revision, operations: [] }) })
+  assert.equal(response.status, 403)
+  response = await api('/api/history/export?month=2096-03&category=all', cookie)
+  assert.equal(response.status, 403)
 })
 
 test('gestiona un servicio individual sin reenviar ni reducir el historial completo', async () => {
