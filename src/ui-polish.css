@@ -277,6 +277,11 @@ span.field-label-text > span.required-mark,
 .weekly-service-photo { width: 100%; }
 .weekly-service-photo img { max-height: 150px; object-fit: cover; }
 .daily-service-photo, .service-photo-manager, .service-photo-field { grid-column: 1 / -1; }
+.service-photo-manager, .service-photo-field {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
 .service-photo-field { display: grid; gap: 10px; padding: 14px; border: 1px solid #d8e4d8; border-radius: 12px; background: #f7faf7; }
 .service-photo-field > div:first-child { display: flex; flex-direction: column; gap: 2px; }
 .service-photo-field > div:first-child small, .service-photo-manager > small { color: #66756b; }
@@ -2314,6 +2319,10 @@ html.modal-open body {
 .content > .team-card .task-row > .daily-field-time { grid-column: 2; grid-row: 1; }
 .content > .team-card .task-row > .daily-field-service { grid-column: 3; grid-row: 1; }
 .content > .team-card .task-row > .daily-field-customer { grid-column: 4; grid-row: 1; }
+/* Helper text grows below the controls instead of shifting their baseline. */
+.content > .team-card .task-row > :is(.daily-field-time, .daily-field-service, .daily-field-customer) {
+  align-self: start;
+}
 .content > .team-card .task-row > .daily-field-duration { grid-column: 2; grid-row: 2; }
 .content > .team-card .task-row > .daily-field-address { grid-column: 3; grid-row: 2; }
 .content > .team-card .task-row > .daily-field-contact { grid-column: 4; grid-row: 2; }
@@ -2330,6 +2339,7 @@ html.modal-open body {
 
 .content > .team-card .task-row > .installation-zone,
 .content > .team-card .task-row > .internal-preparation,
+.content > .team-card .task-row > .service-photo-manager,
 .content > .team-card .task-row > .daily-extra-fields,
 .content > .team-card .task-row > .service-trace {
   grid-column: 2 / 5 !important;
@@ -2491,6 +2501,7 @@ html.modal-open body {
   .content > .team-card .task-row > .daily-field-observations,
   .content > .team-card .task-row > .installation-zone,
   .content > .team-card .task-row > .daily-extra-fields,
+  .content > .team-card .task-row > .service-photo-manager,
   .content > .team-card .task-row > .service-trace,
   .content > .team-card .task-row > .daily-task-actions {
     grid-column: 1 / -1 !important;
