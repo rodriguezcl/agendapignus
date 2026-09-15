@@ -4,6 +4,16 @@ const { userCan, userForEmployee, visibleStateForUser } = require('../api/_lib/c
 
 const supervisor = { id: 'supervisor-1', roleCode: 'supervisor', role: 'Supervisor', permissions: { dashboard: true, historyManage: true, accounts: true } }
 
+test('el tema de Supervisor es local y no dispara escrituras ni bloquea la actualización', () => {
+  const app = require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/App.jsx'), 'utf8')
+  assert.match(app, /preferences: isSupervisor \? \{\} : \{ theme \}/)
+  assert.match(app, /useEffect\(\(\) => writeLocalValue\('pignus-theme', theme\), \[theme\]\)/)
+  assert.match(app, /if \(!isSupervisor && data.preferences\?\.theme\) setTheme/)
+  assert.match(app, /if \(isSupervisor\) return\s+if \(confirmedSaveRef.current/)
+  assert.match(app, /const hasLocalChanges = !isSupervisor &&/)
+  assert.match(app, /const canPersistLatestSnapshot = !isSupervisor &&/)
+})
+
 test('Supervisor abre Historial desde el primer render, incluso con navegación previa a estadísticas', async () => {
   const fs = require('node:fs')
   const path = require('node:path')
