@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import Icon from '../../../components/ui/Icon.jsx'
+import EditorModal from '../../../components/ui/EditorModal.jsx'
 import RequiredLabel from '../../../presentation/components/forms/RequiredLabel.jsx'
 import {
   MAX_SERVICE_ESTIMATED_MINUTES,
@@ -82,7 +83,7 @@ export default function ServiceTypes({ services, setServices, setNotice, ask, st
       <div><p className="eyebrow">CATÁLOGO OPERATIVO</p><h1>Tipo de servicio</h1><p>Administrá los servicios disponibles para planificar en la agenda técnica.</p></div>
       <button className="primary" onClick={startCreate}><Icon name="plus" />Nuevo servicio</button>
     </div>
-    {open && <form className="service-form" onSubmit={save}>
+    {open && <EditorModal active={Boolean(editing)} title="Editar tipo de servicio" onClose={() => setOpen(false)}><form className="service-form" onSubmit={save}>
       <label><RequiredLabel>Nombre del servicio</RequiredLabel><input required value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /></label>
       <label>Descripción<input value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} /></label>
       <div className="service-duration-field"><span><RequiredLabel>Tiempo estimado</RequiredLabel></span><div className="service-duration-inputs">
@@ -91,7 +92,7 @@ export default function ServiceTypes({ services, setServices, setNotice, ask, st
       </div></div>
       <button className="primary"><Icon name="check" />{editing ? 'Guardar cambios' : 'Guardar servicio'}</button>
       <button type="button" className="secondary" onClick={() => setOpen(false)}>Cancelar</button>
-    </form>}
+    </form></EditorModal>}
     <div className="data-card services-table">
       <div className="table-head"><span>Servicio</span><span>Descripción</span><span>Tiempo estimado</span><span>Estado</span><span>Acciones</span></div>
       {services.map(service => <div className="service-row" key={service.id}>
