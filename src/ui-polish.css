@@ -2337,6 +2337,7 @@ html.modal-open body {
   line-height: 1.45;
 }
 
+.content > .team-card .task-row > .vehicle-control-daily-fields,
 .content > .team-card .task-row > .installation-zone,
 .content > .team-card .task-row > .internal-preparation,
 .content > .team-card .task-row > .service-photo-manager,
@@ -2344,6 +2345,13 @@ html.modal-open body {
 .content > .team-card .task-row > .service-trace {
   grid-column: 2 / 5 !important;
   grid-row: auto !important;
+}
+
+.content > .team-card .task-row > .vehicle-control-daily-fields {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
 }
 
 .content > .team-card .task-row > .daily-extra-fields {
@@ -2493,6 +2501,7 @@ html.modal-open body {
     grid-row: auto !important;
   }
   .content > .team-card .task-row > .daily-field-customer,
+  .content > .team-card .task-row > .vehicle-control-daily-fields,
   .content > .team-card .task-row > .daily-field-duration,
   .content > .team-card .task-row > .task-occupied-range,
   .content > .team-card .task-row > .task-schedule-alert,
