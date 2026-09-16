@@ -2137,6 +2137,32 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
 .modal.history-detail {
   width: min(720px, 100%);
   max-width: 720px;
+  box-sizing: border-box;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+}
+
+/* Acciones compactas, con la misma altura que la confirmación de cambios. */
+.modal.history-detail > .history-actions {
+  grid-template-columns: repeat(3, minmax(0, 160px));
+  gap: 8px;
+}
+
+.modal.history-detail > .history-actions > button {
+  height: auto !important;
+  min-height: 44px !important;
+  padding: 10px 8px !important;
+  font-size: 13px;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.modal.history-detail > .history-actions > label input {
+  height: 44px !important;
+  min-height: 44px !important;
 }
 
 .history-detail-heading {
