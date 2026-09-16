@@ -6,9 +6,9 @@ const daily = source.slice(source.indexOf('function AgendaWorkspaceForm('), sour
 
 test('editable daily view renders the pending-services dialog with all three choices', () => {
   assert.match(daily, /return <>\{dailyLeaveModal\}<div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA<\/p><h1>Organizá/)
-  assert.match(daily, /onClick=\{cancelDailyAndContinue\}>Cancelar carga/)
-  assert.match(daily, /onClick=\{saveDailyAndContinue\}>Guardar y continuar/)
-  assert.match(daily, /onClick=\{continueDailyEditing\}>Seguir editando/)
+  assert.match(daily, /onClick=\{cancelDailyAndContinue\}><Icon name="close" size=\{16\} \/>Cancelar carga/)
+  assert.match(daily, /onClick=\{saveDailyAndContinue\}><Icon name="check" size=\{16\} \/>Guardar y continuar/)
+  assert.match(daily, /onClick=\{continueDailyEditing\}><Icon name="edit" size=\{16\} \/>Seguir editando/)
 })
 test('saving from dialog marks the target card and cancellation preserves saved services', () => {
   assert.match(daily, /pignus:validate-required/)
