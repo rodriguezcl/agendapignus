@@ -1,0 +1,10 @@
+/* Preserve the layout and theme; only the invalid control gets an error border. */
+input[data-required-missing="true"],
+select[data-required-missing="true"],
+textarea[data-required-missing="true"] {
+  border-color: #d94242 !important;
+  box-shadow: 0 0 0 1px #d94242 !important;
+}
+fieldset:has(input[type="radio"][data-required-missing="true"]) {
+  border-color: #d94242 !important;
+}
