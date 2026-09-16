@@ -2133,9 +2133,51 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
   display: none !important;
 }
 
-/* El título puede envolver, pero la acción de edición conserva todo su contenido dentro del marco. */
+/* El nombre ocupa la primera fila; editar y las fotos comparten la segunda. */
+.modal.history-detail {
+  width: min(720px, 100%);
+  max-width: 720px;
+}
+
+.history-detail-heading {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 12px;
+}
+
 .history-detail-heading h2 {
-  flex: 1 1 auto;
+  flex: 0 0 100%;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.history-detail-heading > .history-photo-actions {
+  flex: 1 1 260px;
+  width: auto;
+  min-width: 0;
+  margin-left: 0;
+  justify-content: flex-start;
+}
+
+.history-detail-heading > .history-photo-actions > button {
+  flex: 0 1 auto;
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
+.history-detail-heading .history-photo-actions small:empty {
+  display: none;
+}
+
+.history-detail > :is(.service-trace, .internal-preparation, .history-actions) {
+  margin-top: 16px;
+}
+
+.history-detail > :is(.history-detail-grid, .history-edit-grid) {
+  margin-top: 20px;
 }
 
 .history-detail-heading > .detail-edit {
