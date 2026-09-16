@@ -2813,10 +2813,8 @@ function AgendaWorkspaceForm({ persistWeeklyService, persistAgendaRecords, date,
     const targetTimes = defaultServiceTimesForDate(nextDate, weekly)
     setTeams(isSaturday(nextDate) ? assignGuardToEmptySaturday(normalizeSaturdayTeams(recoveredTeams, nextDate, weekly), nextDate, weekly, activeTechs) : alignDefaultServiceTimes(recoveredTeams, nextDate, targetTimes, fallbackDefaultServiceTimesForDate(nextDate)))
     const reprogrammedCount = saved.filter(record => record.rescheduledFrom).length
-    if (announce) {
-      setNotice(reprogrammedCount
-        ? `Se cargó la agenda del ${prettyDate(nextDate)} con ${reprogrammedCount} servicio(s) reprogramado(s).`
-        : `Se recuperó la agenda guardada del ${prettyDate(nextDate)}.`)
+    if (announce && reprogrammedCount) {
+      setNotice(`Se cargó la agenda del ${prettyDate(nextDate)} con ${reprogrammedCount} servicio(s) reprogramado(s).`)
     }
   }
   useEffect(() => {
