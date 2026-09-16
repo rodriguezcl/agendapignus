@@ -4116,7 +4116,6 @@ function WeeklyPlanner({ persistWeeklyService, persistWeeklyConfiguration, weekl
     if (conflicts.length) { setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`); return }
     const teams = dayPlan(day).teams.map(({ teamId, memberIds, members, tasks }) => ({ teamId, memberIds, members, tasks }))
     openDaily(day, teams)
-    setNotice(`Se cargó la planificación semanal del ${prettyDate(day)} en la agenda técnica.`)
   }
   const weeklyHistoryRecord = (day, team, teamIndex, task, taskIndex) => ({
     id: task.historyId || `work-${task.taskId || `${day}-${teamIndex}-${taskIndex}`}`,
