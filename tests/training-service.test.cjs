@@ -3,6 +3,15 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
 
+test('daily training name shares the customer grid position and buffered editing', () => {
+  const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+  const field = source.split('\n').find(line => line.includes('const dailyCustomerField ='))
+  assert.match(field, /\? <label className="daily-field-customer">/)
+  assert.match(field, /<BufferedInput/)
+  const css = fs.readFileSync(require.resolve('../src/ui-polish.css'), 'utf8')
+  assert.match(css, /\.daily-field-customer \{ grid-column: 4; grid-row: 1; \}/)
+})
+
 test('Capacitación permits a descriptive name without a customer or contact', async () => {
   const { isTrainingService, trainingClientPatch, serviceCode } = await import('../src/domain/services/service.mjs')
   assert.equal(isTrainingService({ name: ' CAPACITACIÓN ' }), true)
