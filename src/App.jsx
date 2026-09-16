@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icon from './components/ui/Icon.jsx'
 import EditorModal from './components/ui/EditorModal.jsx'
+import { sortEmployeesAlphabetically, sortVehiclesAlphabetically } from './domain/shared/catalog-order.mjs'
 import SystemState from './components/ui/SystemState.jsx'
 import RequiredLabel from './presentation/components/forms/RequiredLabel.jsx'
 import ServiceTypes from './features/services/presentation/ServiceTypes.jsx'
@@ -5523,6 +5524,7 @@ const readFileAsDataUrl = file => new Promise((resolve, reject) => { const reade
 const insuranceExpired = (vehicle, today = currentLocalDate()) => Boolean(vehicle?.insuranceExpiresOn && vehicle.insuranceExpiresOn < today)
 
 function Vehicles({ vehicles, setVehicles, setNotice, ask, isAdministrator, stateRevision, refreshRemoteState }) {
+  vehicles = sortVehiclesAlphabetically(vehicles)
   isAdministrator = isAdministrator ?? globalThis.__pignusCurrentUser?.roleCode === 'administrator'
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -5583,6 +5585,7 @@ function Vehicles({ vehicles, setVehicles, setNotice, ask, isAdministrator, stat
 }
 
 function Employees({ employees, setEmployees, roles, setNotice, ask, history, teams, weekly }) {
+  employees = sortEmployeesAlphabetically(employees)
   const [form, setForm] = useState(blankEmployee); const [editing, setEditing] = useState(null); const [open, setOpen] = useState(false)
   const save = e => { e.preventDefault(); const firstName = form.firstName.trim(); const lastName = form.lastName.trim(); const assignedRole = roles.find(role => String(role.id) === String(form.roleId)) || roles.find(role => role.name === form.role); const record = { ...form, firstName, lastName, name: `${firstName} ${lastName}`.trim(), roleId: assignedRole?.id, role: assignedRole?.name || form.role, id: editing || Date.now() }; ask(editing ? 'Confirmar edición' : 'Confirmar alta', `¿Querés guardar el perfil de ${record.name}?`, () => { setEmployees(prev => editing ? prev.map(x => x.id === editing ? record : x) : [...prev, record]); setOpen(false); setEditing(null); setNotice('El empleado fue guardado correctamente.') }) }
   const removeEmployee = employee => {
