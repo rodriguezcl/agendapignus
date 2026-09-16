@@ -157,6 +157,21 @@ function validateChangedAgendaSchedules(state, previousState = null) {
   const previousPlans = agendaPlans(previousState?.agenda)
   nextPlans.forEach((plan, key) => {
     const previous = previousPlans.get(key)
+    // Removing unchanged scheduled tasks cannot introduce a new overlap.
+    // Compare a multiset so duplicate tasks cannot hide an added occurrence.
+    if (previous) {
+      const before = JSON.parse(scheduleSignature(previous.teams, serviceMapFor(previousState?.services), previous.date, previousState?.history))
+      const after = JSON.parse(scheduleSignature(plan.teams, serviceMap, plan.date, state?.history))
+      const rows = teams => teams.flatMap(({ tasks, ...team }) => tasks.map(task => JSON.stringify({ team, task })))
+      const remaining = rows(before)
+      const nextRows = rows(after)
+      if (nextRows.length < remaining.length && nextRows.every(row => {
+        const index = remaining.indexOf(row)
+        if (index < 0) return false
+        remaining.splice(index, 1)
+        return true
+      })) return
+    }
     if (previous && scheduleSignature(previous.teams, serviceMap, previous.date, previousState?.history) === scheduleSignature(plan.teams, serviceMap, plan.date, state?.history)) return
     ;(plan.teams || []).forEach((team, teamIndex) => {
       const activeTasks = (team.tasks || []).map((task, taskIndex) => ({ task, taskIndex })).filter(({ task }) => (task.serviceId || task.service) && !agendaTaskIsResolvedForPlanning(task, plan.date, state?.history))
