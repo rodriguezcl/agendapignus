@@ -2189,6 +2189,10 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
 }
 
 .history-detail-heading > .history-photo-actions > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   flex: 0 1 auto;
   min-height: 40px;
   padding: 8px 12px;
@@ -2744,6 +2748,10 @@ body:has(.modal-backdrop, .modal-layer) .app-shell[data-theme="dark"] .content >
   gap: 8px;
 }
 .unsaved-service-modal > .modal-actions > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   width: 100%;
   min-width: 0;
   min-height: 44px;
