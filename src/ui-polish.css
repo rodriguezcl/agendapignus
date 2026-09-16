@@ -920,7 +920,7 @@ body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #34
   gap: 8px;
 }
 
-.daily-task-actions .icon-btn {
+.daily-task-actions :is(.icon-btn, .daily-save-button) {
   width: 36px;
   min-width: 36px;
   min-height: 36px;
@@ -930,7 +930,7 @@ body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #34
   justify-content: center;
 }
 
-.daily-task-actions .icon-btn > span:not([aria-hidden="true"]) { display: none; }
+.daily-task-actions :is(.icon-btn, .daily-save-button) > span:not([aria-hidden="true"]) { display: none; }
 .daily-task-actions .daily-copy-button { color: #245c3d; }
 
 .task-move-modal label {
@@ -1571,14 +1571,14 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
     gap: 8px;
   }
 
-  .content > .team-card .daily-task-actions .icon-btn {
+  .content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button) {
     width: 100%;
     min-width: 0;
     min-height: 44px;
     gap: 7px;
   }
 
-  .content > .team-card .daily-task-actions .icon-btn > span:not([aria-hidden="true"]) {
+  .content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button) > span:not([aria-hidden="true"]) {
     display: inline;
   }
 
@@ -2421,7 +2421,7 @@ html.modal-open body {
   border-left: 1px solid #e1e9e2;
 }
 
-.content > .team-card .daily-task-actions .icon-btn {
+.content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button) {
   width: 100%;
   min-width: 0;
   min-height: 40px;
@@ -2432,7 +2432,7 @@ html.modal-open body {
   font-weight: 700;
 }
 
-.content > .team-card .daily-task-actions .icon-btn > span:not([aria-hidden='true']) {
+.content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button) > span:not([aria-hidden='true']) {
   display: inline;
 }
 
@@ -2470,7 +2470,7 @@ html.modal-open body {
     border-top: 1px solid #e1e9e2;
   }
 
-  .content > .team-card .daily-task-actions .icon-btn {
+  .content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button) {
     width: auto;
     min-width: 106px;
   }
@@ -2514,7 +2514,7 @@ html.modal-open body {
     padding-top: 12px;
   }
 
-  .content > .team-card .daily-task-actions .icon-btn {
+  .content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button) {
     width: 100%;
     min-width: 0;
     min-height: 44px;
