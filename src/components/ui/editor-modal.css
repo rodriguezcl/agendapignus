@@ -4,4 +4,7 @@
 .catalog-editor-modal form > * { min-width: 0; grid-column: auto; }
 .catalog-editor-modal form :is(input, select) { max-width: 100%; box-sizing: border-box; }
 .catalog-editor-modal .vehicle-insurance-current { grid-column: 1 / -1; overflow-wrap: anywhere; }
+.service-form-actions { display: flex; align-items: center; gap: 12px; }
+.catalog-editor-modal .service-form > .service-form-actions { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.service-form-actions > button { min-width: 0; white-space: normal; }
 @media (max-width: 640px) { .catalog-editor-modal :is(.employee-form, .service-form, .vehicle-form) { grid-template-columns: minmax(0, 1fr); } }
