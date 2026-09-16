@@ -7,7 +7,7 @@ const { appendOperationalAudit: appendAudit, deleteServicePhoto, setAuxiliaryPre
 const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./_lib/service-advance.cjs')
-const { startTechnicianServiceRecord } = require('./_lib/technician-service-start.cjs')
+const { startTechnicianServiceRecord, assertTechnicianServiceStarted } = require('./_lib/technician-service-start.cjs')
 const { stateForOperationComparison } = require('./_lib/legacy-estimated-minutes.cjs')
 const { stateWriteError } = require('./_lib/state-write-error.cjs')
 
@@ -673,7 +673,10 @@ async function handleTechnicianStatus(req, res, sql, user) {
         photo = { recordId: record.id, vehicleId: record.vehicleId, mimeType: photoMatch[1].toLowerCase(), data: photoBuffer, createdAt: new Date().toISOString() }
         workingState.vehicles = vehicles
       } else if (!String(observation || '').trim()) throw new Error('La observación es obligatoria para informar el servicio.')
-      if (type === 'Completado' && !record.vehicleControl) assertServiceCanBeCompleted(record)
+      if (type === 'Completado' && !record.vehicleControl) {
+        assertTechnicianServiceStarted(record)
+        assertServiceCanBeCompleted(record)
+      }
       const now = new Date().toISOString()
       const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
       const entries = [auditEntry(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, next)]

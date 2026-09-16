@@ -1,7 +1,13 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { startTechnicianServiceRecord } = require('../api/_lib/technician-service-start.cjs')
+const { startTechnicianServiceRecord, assertTechnicianServiceStarted } = require('../api/_lib/technician-service-start.cjs')
+
+test('completar exige inicio registrado, salvo controles vehiculares', () => {
+  assert.throws(() => assertTechnicianServiceStarted({}), { statusCode: 409 })
+  assert.doesNotThrow(() => assertTechnicianServiceStarted({ startedAt: '2026-09-16T15:00:00Z' }))
+  assert.doesNotThrow(() => assertTechnicianServiceStarted({ vehicleControl: true }))
+})
 
 const user = { id: 'tech-1', name: 'Pascual Gonzalez', roleCode: 'technician' }
 const pending = {

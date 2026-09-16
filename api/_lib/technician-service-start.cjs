@@ -43,4 +43,12 @@ function startTechnicianServiceRecord(record, user, now = new Date().toISOString
   }
 }
 
-module.exports = { startTechnicianServiceRecord }
+function assertTechnicianServiceStarted(record) {
+  if (!record.vehicleControl && !record.startedAt) {
+    const error = new Error('Para marcar el servicio completado primero debés presionar Iniciar servicio.')
+    error.statusCode = 409
+    throw error
+  }
+}
+
+module.exports = { startTechnicianServiceRecord, assertTechnicianServiceStarted }
