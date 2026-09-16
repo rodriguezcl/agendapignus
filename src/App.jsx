@@ -5021,18 +5021,20 @@ function HistoryBulkView({ history, setHistory, customers, services, employees, 
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [serviceFilter, setServiceFilter] = useState('')
+  const historyServiceOptions = useMemo(() => [...new Map(history.filter(record => record.service).map(record => [normalizeSearchText(record.service), String(record.service).trim()])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'es')), [history])
   const [historyPage, setHistoryPage] = useState(1)
   const [historyPageSize, setHistoryPageSize] = useState(50)
   const minimumRescheduleDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const normalizedSearch = normalizeSearchText(search)
-  const matchingRecords = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizedSearch) && (!fromDate || record.date >= fromDate) && (!toDate || record.date <= toDate) && (statusFilter === 'all' || (record.status || 'Pendiente') === statusFilter)).sort(sortOperationalHistory)
+  const matchingRecords = history.filter(record => normalizeSearchText(`${record.client} ${record.service} ${record.technicians?.join(' ')}`).includes(normalizedSearch) && (!fromDate || record.date >= fromDate) && (!toDate || record.date <= toDate) && (!serviceFilter || normalizeSearchText(record.service) === serviceFilter) && (statusFilter === 'all' || (record.status || 'Pendiente') === statusFilter)).sort(sortOperationalHistory)
   const historyPageCount = Math.max(1, Math.ceil(matchingRecords.length / historyPageSize))
   const currentHistoryPage = Math.min(historyPage, historyPageCount)
   const records = matchingRecords.slice((currentHistoryPage - 1) * historyPageSize, currentHistoryPage * historyPageSize)
   const technicianNames = record => record.technicians?.map(name => String(name).trim().split(/\s+/)[0]).filter(Boolean).join(' / ') || 'Sin asignar'
   const status = record => record.status || 'Pendiente'
   const liveDetail = detail ? history.find(record => String(record.id) === String(detail.id)) : null
-  useEffect(() => { setHistoryPage(1); setSelected([]) }, [search, fromDate, toDate, statusFilter, historyPageSize])
+  useEffect(() => { setHistoryPage(1); setSelected([]) }, [search, fromDate, toDate, statusFilter, serviceFilter, historyPageSize])
   useEffect(() => { if (historyPage > historyPageCount) setHistoryPage(historyPageCount) }, [historyPage, historyPageCount])
   useEffect(() => setSelected([]), [historyPage])
   useEffect(() => {
@@ -5123,19 +5125,34 @@ function HistoryBulkView({ history, setHistory, customers, services, employees, 
     statusSelect.value = statusFilter
     statusSelect.onchange = event => setStatusFilter(event.target.value)
     statusField.append(statusSelect)
+    const serviceField = document.createElement('label'); serviceField.textContent = 'Tipo de servicio'
+    const serviceSelect = document.createElement('select'); serviceSelect.className = 'history-service-filter'; serviceSelect.setAttribute('aria-label', 'Filtrar por tipo de servicio')
+    serviceSelect.onchange = event => setServiceFilter(event.target.value)
+    serviceField.append(serviceSelect)
     const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'secondary history-clear-filters'; clear.textContent = 'Limpiar filtros'
-    clear.onclick = () => { from.input.value = ''; to.input.value = ''; statusSelect.value = 'all'; setFromDate(''); setToDate(''); setStatusFilter('all') }
-    filters.append(from.field, to.field, statusField, clear)
+    clear.onclick = () => { from.input.value = ''; to.input.value = ''; statusSelect.value = 'all'; serviceSelect.value = ''; setFromDate(''); setToDate(''); setStatusFilter('all'); setServiceFilter('') }
+    filters.append(from.field, to.field, statusField, serviceField, clear)
     toolbar.prepend(filters)
     return () => filters.remove()
     // Los inputs permanecen montados mientras se usa el selector nativo de iOS.
   }, [])
   useEffect(() => {
+    const select = document.querySelector('.history-service-filter')
+    if (!select) return
+    select.replaceChildren()
+    const all = document.createElement('option'); all.value = ''; all.textContent = 'Todos los servicios'; select.append(all)
+    historyServiceOptions.forEach(([value, label]) => {
+      const option = document.createElement('option'); option.value = value; option.textContent = label; select.append(option)
+    })
+    if (serviceFilter && !historyServiceOptions.some(([value]) => value === serviceFilter)) setServiceFilter('')
+    select.value = serviceFilter
+  }, [historyServiceOptions, serviceFilter])
+  useEffect(() => {
     const clear = document.querySelector('.history-clear-filters')
-    if (clear) clear.hidden = !fromDate && !toDate && statusFilter === 'all'
+    if (clear) clear.hidden = !fromDate && !toDate && statusFilter === 'all' && !serviceFilter
     const counter = document.querySelector('.history-toolbar>div:not(.history-date-filters)')
     if (counter) counter.innerHTML = `<b>${matchingRecords.length}</b> ${matchingRecords.length === history.length ? 'trabajos registrados' : 'trabajos encontrados'}`
-  }, [fromDate, toDate, statusFilter, matchingRecords.length, history.length])
+  }, [fromDate, toDate, statusFilter, serviceFilter, matchingRecords.length, history.length])
   useEffect(() => {
     const table = document.querySelector('.history-bulk')
     if (!table) return undefined
