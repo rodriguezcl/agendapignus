@@ -1,0 +1,57 @@
+/* Shared dialog chrome, including nested scrollable lists and previews. */
+.modal {
+  --modal-scroll-thumb: #8c9c91;
+  --modal-close-bg: #fff;
+  --modal-close-border: #cfddd1;
+  --modal-close-color: #355b43;
+}
+.app-shell[data-theme='dark'] .modal {
+  --modal-scroll-thumb: #718b79;
+  --modal-close-bg: #1d3024;
+  --modal-close-border: #47634f;
+  --modal-close-color: #e1ece4;
+}
+.modal.modal, .modal :where(*) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--modal-scroll-thumb) transparent;
+}
+/* Chromium: inset the track so it never paints across the rounded corners. */
+@supports selector(::-webkit-scrollbar) {
+  .modal.modal, .modal :where(*) { scrollbar-width: auto; scrollbar-color: auto; }
+  .modal::-webkit-scrollbar, .modal *::-webkit-scrollbar { width: 8px; height: 8px; }
+  .modal::-webkit-scrollbar-track, .modal *::-webkit-scrollbar-track { background: transparent; margin: 16px 0; }
+  .modal::-webkit-scrollbar-thumb, .modal *::-webkit-scrollbar-thumb {
+    background: var(--modal-scroll-thumb);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: 8px;
+  }
+  .modal::-webkit-scrollbar-button, .modal *::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  .modal::-webkit-scrollbar-corner, .modal *::-webkit-scrollbar-corner { background: transparent; }
+}
+.modal.modal :is(.close-modal, .modal-close, .modal-dismiss) {
+  box-sizing: border-box;
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--modal-close-border);
+  border-radius: 50%;
+  background: var(--modal-close-bg);
+  color: var(--modal-close-color);
+  box-shadow: 0 2px 6px #0b28161a;
+  font-size: 22px;
+  line-height: 1;
+}
+.modal.modal :is(.close-modal, .modal-close, .modal-dismiss):hover {
+  background: var(--modal-close-bg);
+  border-color: var(--modal-close-color);
+}
+.modal.modal :is(.close-modal, .modal-close, .modal-dismiss):focus-visible {
+  outline: 2px solid var(--modal-close-color);
+  outline-offset: 2px;
+}
+.modal.modal :is(.close-modal, .modal-close, .modal-dismiss) svg { width: 18px; height: 18px; }
