@@ -262,12 +262,26 @@ body { font-family: var(--pignus-font-family); }
   border-color: #ead28d;
 }
 
-.technician-quick-actions {
-  display: flex;
-  flex-wrap: wrap;
+.technician-service .technician-quick-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--pignus-space-2);
   margin-top: var(--pignus-space-3);
 }
+.technician-service .technician-quick-actions > :is(button, a) {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.3;
+}
+.technician-service .technician-quick-actions svg { flex-shrink: 0; }
 .technician-quick-actions a {
   display: inline-flex;
   min-height: 44px;

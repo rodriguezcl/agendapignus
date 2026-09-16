@@ -81,7 +81,8 @@ test('la interfaz ofrece el flujo administrativo y alinea Formulario en móviles
   const styles = fs.readFileSync(path.join(root, 'src/ui-polish.css'), 'utf8')
   const api = fs.readFileSync(path.join(root, 'api/index.js'), 'utf8')
 
-  assert.match(app, /Adelantar servicios/)
+  assert.match(app, /'Adelantar servicio'/)
+  assert.doesNotMatch(app, /'Adelantar servicios'/)
   assert.match(app, /Confirmar solicitud/)
   assert.match(app, /Aprobar adelanto/)
   assert.match(app, /Denegar/)
