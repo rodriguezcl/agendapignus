@@ -5,6 +5,20 @@ const vm = require('node:vm')
 const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
 const start = source.indexOf('  const requestWeeklyLeave =')
 const body = source.slice(start, source.indexOf('  useEffect(', start))
+test('discard closes the local draft and continues without saving or deleting records', () => {
+  const start = source.indexOf('  const discardAndLeave =')
+  const code = source.slice(start, source.indexOf('\n  }', start) + 4)
+  const calls = []
+  const discard = vm.runInNewContext(code + '\ndiscardAndLeave', {
+    leaveRequest: { action: () => calls.push('continue') },
+    taskEditorSaveGuardRef: { current: false },
+    setLeaveRequest: value => calls.push(['request', value]),
+    setTaskEditor: value => calls.push(['editor', value])
+  })
+  discard()
+  assert.deepEqual(calls, [['request', null], ['editor', null], 'continue'])
+  assert.doesNotMatch(code, /persistWeeklyService|setHistory|setWeekly/)
+})
 function harness(overrides = {}) {
   const requests = [], opened = []
   const context = { taskEditorSaveGuardRef: { current: false }, taskEditor: null, weekly: {}, authUser: { id: 'me' }, operationalHistory: [], taskHasContent: task => Boolean(task.client), taskWithServiceEstimate: task => task, serviceForWeeklyTask: () => null, historyRecordForTask: task => task.saved, dayHasFinished: () => false, dayPlan: day => context.weekly[day], setLeaveRequest: request => requests.push(request), openTaskEditor: (...args) => opened.push(args), ...overrides }
