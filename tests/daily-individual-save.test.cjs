@@ -8,7 +8,7 @@ test('editable daily view renders the pending-services dialog with all three cho
   assert.match(daily, /return <>\{dailyLeaveModal\}<div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA<\/p><h1>Organizá/)
   assert.match(daily, /onClick=\{cancelDailyAndContinue\}>Cancelar carga/)
   assert.match(daily, /onClick=\{saveDailyAndContinue\}>Guardar y continuar/)
-  assert.match(daily, /onClick=\{\(\) => setDailyLeave\(null\)\}>Seguir editando/)
+  assert.match(daily, /onClick=\{continueDailyEditing\}>Seguir editando/)
 })
 test('saving from dialog marks the target card and cancellation preserves saved services', () => {
   assert.match(daily, /pignus:validate-required/)

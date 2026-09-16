@@ -2684,3 +2684,10 @@ body:has(.modal-backdrop, .modal-layer) .app-shell[data-theme="dark"] .content >
   line-height: 1.3;
   white-space: normal;
 }
+.task-row[data-daily-task-id] {
+  scroll-margin-top: 90px;
+}
+.task-row[data-daily-task-id]:focus {
+  outline: 2px solid #c99100;
+  outline-offset: 2px;
+}
