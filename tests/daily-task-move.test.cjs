@@ -1,0 +1,17 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+const app = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+
+test('daily reassignment offers a date and persists through the atomic weekly operation', () => {
+  const block = app.slice(app.indexOf('  const moveDayPlan ='), app.indexOf('  const dailyCustomerField ='))
+  assert.match(block, /dateInput.type = 'date'/)
+  assert.match(block, /await persistWeeklyService\(/)
+  assert.match(block, /sourceDay: date, sourceTeamId: sourceTeam.teamId/)
+  assert.match(block, /taskMoveSavingRef.current = true/)
+  assert.match(block, /rescheduledFrom: date/)
+  assert.match(block, /minimumServiceGapConflicts/)
+  assert.match(block, /holidayIsBlocked/)
+  assert.match(app, /taskHasContent\(task\) && <button type="button" className="icon-btn move daily-move-button"/)
+})
