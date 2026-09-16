@@ -1,6 +1,10 @@
 import { normalizeServiceEstimatedMinutes } from '../agenda/service-scheduling.mjs'
 import { normalizeServiceName } from '../shared/normalization.mjs'
 
+export const isTrainingService = service => normalizeServiceName(service?.name) === 'capacitacion'
+
+export const trainingClientPatch = client => ({ client, clientNameAtService: client, customerId: '', clientAccount: '', newCustomer: false, subscriberReservation: false })
+
 export const serviceCode = service => service?.code || (
   normalizeServiceName(service?.name) === 'instalacion de alarma'
     ? 'alarm-installation'
