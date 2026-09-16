@@ -282,6 +282,9 @@ body { font-family: var(--pignus-font-family); }
   line-height: 1.3;
 }
 .technician-service .technician-quick-actions svg { flex-shrink: 0; }
+.weekly-time-gap { display: grid; gap: 10px; margin: 10px; padding: 14px; border: 1px solid #91c9a4; border-radius: 10px; background: #e4f5e9; color: #205b36; font-size: 13px; line-height: 1.5; }
+.weekly-time-gap button { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 40px; }
+.app-shell[data-theme='dark'] .weekly-time-gap { background: #183c29; color: #c6ebd1; border-color: #477b59; }
 .technician-quick-actions a {
   display: inline-flex;
   min-height: 44px;

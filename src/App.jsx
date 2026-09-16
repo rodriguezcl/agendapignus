@@ -1,4 +1,5 @@
 import { focusPendingService } from './presentation/components/forms/focus-pending-service.mjs'
+import { serviceGaps } from './domain/agenda/service-gaps.mjs'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icon, { createIconElement } from './components/ui/Icon.jsx'
 import EditorModal from './components/ui/EditorModal.jsx'
@@ -3934,7 +3935,7 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
   const selectWeeklyCustomerResult = (day, teamIndex, taskIndex, customer) => updateTask(day, teamIndex, taskIndex, customerLinkPatch(dayPlan(day).teams[teamIndex]?.tasks?.[taskIndex], customer, authUser))
   const beginWeeklyNewCustomer = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, { newCustomer: true, subscriberReservation: false, customerId: '', client: value, clientAccount: '', clientNameAtService: normalizeCustomerName(value), address: '', phone: '' })
   const beginWeeklySubscriberReservation = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, subscriberReservationPatch(value, authUser))
-  const addTask = (day, teamIndex) => {
+  const addTask = (day, teamIndex, startTime = '') => {
     if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
     const holidayState = holidayStateForDay(day)
     if (holidayState.blocked) {
@@ -3946,7 +3947,10 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
       setNotice(advancedSaturdayGuardMessage(advance))
       return
     }
-    updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, tasks: [...team.tasks, { ...blankTask(), time: '', manualSlot: true }] } : team) }))
+    const task = { ...blankTask(), time: startTime, manualSlot: true }
+    const taskIndex = dayPlan(day).teams[teamIndex].tasks.length
+    updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, tasks: [...team.tasks, task] } : team) }))
+    if (startTime) setTaskEditor({ day, teamIndex, taskIndex, baseTask: structuredClone(task), baseRecord: null, draft: task, photoData: '', photoRemoved: false })
   }
   const removeWeeklyTask = async ({ day, teamId, teamIndex, taskId, historyId, taskIndex, time, wasPlaceholder }) => {
     const selectedTeam = dayPlan(day).teams.find((team, index) => (teamId && String(team.teamId || '') === String(teamId)) || index === teamIndex)
@@ -4336,9 +4340,10 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
             {gapConflicts.length > 0 && <p className="weekly-conflict">{planningConflictMessage(day, plan.teams[gapConflicts[0].teamIndex], gapConflicts[0].teamIndex, gapConflicts[0])}</p>}
             <fieldset className="week-teams weekly-day-fields" disabled={finishedDay}>{plan.teams.map((team, teamIndex) => {
               const pickerKey = `${day}-${teamIndex}`
+              const gaps = serviceGaps(team.tasks.map(task => taskWithServiceEstimate({ ...task, ...historyRecordForTask(task, day, operationalHistory), date: day }, serviceForWeeklyTask(task))), hours)
               return <article className="week-team" key={team.teamId || teamIndex}>
                 <div className="week-team-header"><div className="week-team-identity"><strong>{team.label || `Equipo ${teamIndex + 1}`}</strong><span title={team.members?.join(' · ') || 'Sin técnicos'}>{team.members?.length ? team.members.map(weeklyTechnicianName).join(' · ') : 'Sin técnicos'}</span></div><div className="weekly-team-actions">{plan.teams.length > 1 && <button className="weekly-remove-team" title="Quitar equipo" aria-label={`Quitar ${team.label || `Equipo ${teamIndex + 1}`}`} onClick={() => setTeamRemoval({ day, teamIndex, label: team.label || `Equipo ${teamIndex + 1}` })}><Icon name="trash" size={15} /></button>}<div className="weekly-technicians-picker"><button className="secondary small weekly-add-tech-button" title="Agregar técnicos" aria-label="Agregar técnicos" onClick={() => { setTechPicker(techPicker === pickerKey ? null : pickerKey); setTechFilter('') }}><Icon name="users" size={16} /><span aria-hidden="true">+</span></button>{techPicker === pickerKey && <div className="tech-popover weekly-tech-popover"><div className="weekly-tech-popover-title"><div><strong>Asignar técnicos</strong><small>{team.label || `Equipo ${teamIndex + 1}`}</small></div><span>{team.members?.length || 0} seleccionados</span></div><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={event => setTechFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(techFilter.toLowerCase())).map(tech => <label key={tech.id} title={tech.name}><input type="checkbox" checked={(team.members || []).includes(tech.name)} onChange={() => toggleWeeklyTech(day, teamIndex, tech.name)} />{tech.firstName || tech.name.split(' ')[0]}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div></div>}</div></div></div>
-                {team.tasks.map((task, taskIndex) => <div className={`week-task week-task-summary ${!task.client ? 'available-slot' : ''}`} key={task.taskId || taskIndex} role="button" tabIndex={0} onClick={() => openTaskEditor(day, teamIndex, taskIndex)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openTaskEditor(day, teamIndex, taskIndex) } }}>
+                {team.tasks.map((task, taskIndex) => <React.Fragment key={task.taskId || taskIndex}>{gaps.filter(gap => gap.beforeIndex === taskIndex).map(gap => <div className="weekly-time-gap" key={gap.start}><strong>Disponibilidad horaria desde las {gap.start} hs hasta las {gap.end} hs</strong>{!advancedGuard && <button type="button" className="secondary" onClick={() => addTask(day, teamIndex, gap.start)}><Icon name="plus" size={16} />Agregar servicio</button>}</div>)}<div className={`week-task week-task-summary ${!task.client ? 'available-slot' : ''}`} role="button" tabIndex={0} onClick={() => openTaskEditor(day, teamIndex, taskIndex)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openTaskEditor(day, teamIndex, taskIndex) } }}>
                   <div className="week-task-title"><span>Servicio {taskIndex + 1}</span><div className="week-task-title-actions"><small>{task.time || '--:--'} Hs</small>{(task.customerId || task.client || task.service) && !taskIsResolvedForPlanning(task, day, operationalHistory) && <button type="button" className="weekly-task-move" title="Reasignar equipo o fecha" aria-label={`Reasignar Servicio ${taskIndex + 1} a otro equipo o fecha`} onClick={event => openWeeklyTaskMove(event, day, teamIndex, taskIndex)}><span aria-hidden="true">⇄</span></button>}{(!task.vehicleControl || isAdministrator) && <button type="button" className="weekly-task-delete" title={task.vehicleControl ? 'Omitir control vehicular esta semana' : 'Eliminar servicio'} aria-label={task.vehicleControl ? `Omitir control vehicular del ${prettyDate(day)}` : `Eliminar Servicio ${taskIndex + 1}`} onClick={event => { event.stopPropagation(); setTaskRemoval({ day, teamId: team.teamId, teamIndex, taskIndex, taskId: task.taskId, historyId: task.historyId, time: task.time || task.scheduledTime || '', wasPlaceholder: !taskHasContent(task), vehicleControl: Boolean(task.vehicleControl), label: team.label || `Equipo ${teamIndex + 1}` }) }}><Icon name="trash" size={14} /></button>}</div></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>
                   <TaskStatusBadge task={task} date={day} history={operationalHistory} weekly />
                   {!task.vehicleControl && <ServicePhoto record={historyRecordForTask(task, day, operationalHistory) || task} className="weekly-service-photo" />}
@@ -4354,7 +4359,7 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
                   <label><RequiredLabel>Detalle</RequiredLabel><BufferedTextarea aria-required="true" value={task.detail} onCommit={value => updateTask(day, teamIndex, taskIndex, { detail: value })} /></label>
                   <ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} buffered onChange={patch => updateTask(day, teamIndex, taskIndex, patch)} />
                   </>}
-                </div>)}
+                </div></React.Fragment>)}
                 {!advancedGuard && <button className="weekly-add-task" onClick={() => addTask(day, teamIndex)}><Icon name="plus" size={15} />Agregar servicio</button>}
               </article>
             })}</fieldset>

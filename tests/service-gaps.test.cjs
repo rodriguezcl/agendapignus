@@ -1,0 +1,11 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+test('brechas de al menos una hora, sin contar tarjetas vacías ni superposiciones', async () => {
+  const { serviceGaps } = await import('../src/domain/agenda/service-gaps.mjs')
+  const task = (time, estimatedMinutes) => ({ serviceId: 's', time, estimatedMinutes })
+  assert.deepEqual(serviceGaps([task('09:00', 150), { time: '12:00' }, task('13:30', 60)]), [{ beforeIndex: 2, start: '11:30', end: '13:30' }])
+  assert.equal(serviceGaps([task('09:00', 60), task('10:45', 60)]).length, 0)
+  assert.equal(serviceGaps([task('09:00', 240), task('10:00', 60), task('13:30', 60)]).length, 0)
+  assert.equal(serviceGaps([task('09:00', 60)]).length, 0)
+  assert.equal(serviceGaps([task('09:00', 60), task('11:00', 60)]).length, 1)
+})
