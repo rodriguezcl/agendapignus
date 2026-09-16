@@ -4802,11 +4802,12 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
           lockedInfo.textContent = `Completá primero el control vencido de ${vehicleLabel(blockingControl.vehicle || blockingControl)}. El domicilio y el contacto permanecerán ocultos hasta informarlo.`
         }
         if (!blockingControl && !serviceRecord?.vehicleControl) {
+          const serviceUnlocked = !card.classList.contains('locked')
           const quickActions = document.createElement('div')
           quickActions.className = 'technician-quick-actions'
           quickActions.setAttribute('role', 'group')
           quickActions.setAttribute('aria-label', `Acciones rápidas para ${serviceRecord.client || 'el servicio'}`)
-          if (serviceRecord.address) {
+          if (serviceUnlocked && serviceRecord.address) {
             const directions = document.createElement('a')
             directions.className = 'secondary'
             directions.target = '_blank'
@@ -4817,7 +4818,7 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
             directions.setAttribute('aria-label', `Cómo llegar a ${serviceRecord.client || serviceRecord.address}`)
             quickActions.append(directions)
           }
-          if (serviceRecord.phone) {
+          if (serviceUnlocked && serviceRecord.phone) {
             const call = document.createElement('a')
             call.className = 'secondary'
             call.href = `tel:${String(serviceRecord.phone).replace(/[^+\d]/g, '')}`
@@ -4875,7 +4876,7 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
               quickActions.insertAdjacentElement('afterend', message)
             }
           }
-          quickActions.prepend(start)
+          if (serviceUnlocked) quickActions.prepend(start)
           if (actions) card.insertBefore(quickActions, actions)
           else card.append(quickActions)
           if (serviceRecord.startedAt) {
