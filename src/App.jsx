@@ -3370,6 +3370,7 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
   const operationalHistory = history || globalThis.__pignusHistory || []
   const localToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const [today, setToday] = useState(localToday)
+  const [planningClock, setPlanningClock] = useState(Date.now)
   const [anchor, setAnchor] = useState(defaultWeeklyAnchor)
   const weeklyAnchorFollowsCurrentRef = useRef(true)
   const [monthlySetup, setMonthlySetup] = useState(null)
@@ -3502,6 +3503,7 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
     // Mantiene la fecha vigente y, mientras el usuario no navegue manualmente,
     // adelanta la vista al lunes siguiente al finalizar el sábado operativo.
     const refreshPlanningWindow = () => {
+      setPlanningClock(Date.now())
       setToday(localToday())
       if (weeklyAnchorFollowsCurrentRef.current) setAnchor(defaultWeeklyAnchor())
     }
@@ -4340,7 +4342,7 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
             {gapConflicts.length > 0 && <p className="weekly-conflict">{planningConflictMessage(day, plan.teams[gapConflicts[0].teamIndex], gapConflicts[0].teamIndex, gapConflicts[0])}</p>}
             <fieldset className="week-teams weekly-day-fields" disabled={finishedDay}>{plan.teams.map((team, teamIndex) => {
               const pickerKey = `${day}-${teamIndex}`
-              const gaps = serviceGaps(team.tasks.map(task => taskWithServiceEstimate({ ...task, ...historyRecordForTask(task, day, operationalHistory), date: day }, serviceForWeeklyTask(task))), hours)
+              const gaps = serviceGaps(team.tasks.map(task => taskWithServiceEstimate({ ...task, ...historyRecordForTask(task, day, operationalHistory), date: day }, serviceForWeeklyTask(task))), { ...hours, day, now: planningClock })
               return <article className="week-team" key={team.teamId || teamIndex}>
                 <div className="week-team-header"><div className="week-team-identity"><strong>{team.label || `Equipo ${teamIndex + 1}`}</strong><span title={team.members?.join(' · ') || 'Sin técnicos'}>{team.members?.length ? team.members.map(weeklyTechnicianName).join(' · ') : 'Sin técnicos'}</span></div><div className="weekly-team-actions">{plan.teams.length > 1 && <button className="weekly-remove-team" title="Quitar equipo" aria-label={`Quitar ${team.label || `Equipo ${teamIndex + 1}`}`} onClick={() => setTeamRemoval({ day, teamIndex, label: team.label || `Equipo ${teamIndex + 1}` })}><Icon name="trash" size={15} /></button>}<div className="weekly-technicians-picker"><button className="secondary small weekly-add-tech-button" title="Agregar técnicos" aria-label="Agregar técnicos" onClick={() => { setTechPicker(techPicker === pickerKey ? null : pickerKey); setTechFilter('') }}><Icon name="users" size={16} /><span aria-hidden="true">+</span></button>{techPicker === pickerKey && <div className="tech-popover weekly-tech-popover"><div className="weekly-tech-popover-title"><div><strong>Asignar técnicos</strong><small>{team.label || `Equipo ${teamIndex + 1}`}</small></div><span>{team.members?.length || 0} seleccionados</span></div><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={event => setTechFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(techFilter.toLowerCase())).map(tech => <label key={tech.id} title={tech.name}><input type="checkbox" checked={(team.members || []).includes(tech.name)} onChange={() => toggleWeeklyTech(day, teamIndex, tech.name)} />{tech.firstName || tech.name.split(' ')[0]}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div></div>}</div></div></div>
                 {team.tasks.map((task, taskIndex) => <React.Fragment key={task.taskId || taskIndex}>{gaps.filter(gap => gap.beforeIndex === taskIndex).map(gap => <div className="weekly-time-gap" key={gap.start}><strong>Disponibilidad horaria desde las {gap.start} hs hasta las {gap.end} hs</strong>{!advancedGuard && <button type="button" className="secondary" onClick={() => addTask(day, teamIndex, gap.start)}><Icon name="plus" size={16} />Agregar servicio</button>}</div>)}<div className={`week-task week-task-summary ${!task.client ? 'available-slot' : ''}`} role="button" tabIndex={0} onClick={() => openTaskEditor(day, teamIndex, taskIndex)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openTaskEditor(day, teamIndex, taskIndex) } }}>
