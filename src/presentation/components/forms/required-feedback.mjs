@@ -17,7 +17,7 @@ export function requiredControlMissing(control, scope) {
 // Visual feedback only: existing business validation and messages remain authoritative.
 export function installRequiredFeedback(root = document) {
   const attempted = new Set()
-  const scopeFor = target => target.closest('form, .modal, [role="dialog"], .content')
+  const scopeFor = target => target.closest('form, .modal, [role="dialog"], .task-row, .content')
   const update = (scope, fields = scope.querySelectorAll(controls)) => {
     fields.forEach(control => {
       const missing = requiredControlMissing(control, scope)
@@ -44,10 +44,16 @@ export function installRequiredFeedback(root = document) {
   }
   const submit = event => attempt(event.target)
   const invalid = event => attempt(event.target)
+  const explicit = event => {
+    const scope = event.detail?.scope
+    if (!scope?.querySelectorAll) return
+    attempted.add(scope)
+    update(scope)
+  }
   const input = event => {
     // Only refresh the attempted form; no application state updates or network calls.
     const scope = scopeFor(event.target)
-    if (scope && attempted.has(scope) && event.target.matches(controls)) {
+    if (scope && [...attempted].some(attempt => attempt.contains(event.target)) && event.target.matches(controls)) {
       const fields = event.target.type === 'radio'
         ? [...scope.querySelectorAll('input[type="radio"]')].filter(control => control.name === event.target.name)
         : [event.target]
@@ -64,10 +70,12 @@ export function installRequiredFeedback(root = document) {
   root.addEventListener('click', click, true)
   root.addEventListener('submit', submit, true)
   root.addEventListener('invalid', invalid, true)
+  root.addEventListener('pignus:validate-required', explicit)
   root.addEventListener('input', input)
   root.addEventListener('change', input)
   return () => {
     observer.disconnect()
+    root.removeEventListener('pignus:validate-required', explicit)
     for (const [name, handler, capture] of [['click', click, true], ['submit', submit, true], ['invalid', invalid, true], ['input', input, false], ['change', input, false]]) root.removeEventListener(name, handler, capture)
     attempted.clear()
   }
