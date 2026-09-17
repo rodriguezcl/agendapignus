@@ -26,7 +26,7 @@ export function serviceGaps(tasks, { min, max, day, now = new Date() } = {}) {
   let end = null
   for (const { index, interval } of occupied) {
     const start = Math.max(end ?? lower, lower), stop = Math.min(interval.start, upper)
-    if (end !== null && stop - start >= 60) gaps.push({ beforeIndex: index, start: minutesAsTime(start), end: minutesAsTime(stop) })
+    if (end !== null && stop - start >= 90) gaps.push({ beforeIndex: index, start: minutesAsTime(start), end: minutesAsTime(stop) })
     end = Math.max(end ?? 0, interval.end)
   }
   return gaps
