@@ -1,8 +1,33 @@
 import { stateOperations } from './state-operations.mjs'
 
+export const vehicleControlSwapCandidate = (task, destination, sourceDay, destinationDay) => {
+  if (!task?.vehicleControl || sourceDay !== destinationDay) return null
+  const candidates = (destination?.tasks || []).filter(item => item.vehicleControl && item.time === task.time && item.taskId !== task.taskId)
+  if (candidates.length > 1) throw new Error('Hay más de un control vehicular en ese horario. Revisá el equipo de destino antes de intercambiar.')
+  return candidates[0] || null
+}
+
 // A move has no service form draft to save. Compare each persisted projection
 // against its own server version, never against the reconciled display card.
 export function weeklyServiceMoveOperations(snapshot, command) {
+  const destination = snapshot.agenda?.weekly?.[command.day]?.teams?.find(team => String(team.teamId) === String(command.team.teamId))
+  const swap = vehicleControlSwapCandidate(command.task, destination, command.sourceDay, command.day)
+  if (String(swap?.taskId || '') !== String(command.swapTaskId || '')) throw new Error('El control del equipo de destino cambió. Volvé a abrir la reasignación para revisar el intercambio.')
+  const operations = singleServiceMoveOperations(snapshot, command)
+  if (!swap) return operations
+  const source = snapshot.agenda.weekly[command.sourceDay].teams.find(team => String(team.teamId) === String(command.sourceTeamId))
+  const record = snapshot.history.find(item => String(item.id) === String(swap.historyId) || String(item.sourceTaskId || '') === String(swap.taskId))
+  const resolved = item => !item || item.technicalStatus || ['Completado', 'Cancelado', 'Reprogramado'].includes(item.status)
+  const originalRecord = snapshot.history.find(item => String(item.id) === String(command.record.id))
+  if (resolved(record) || resolved(originalRecord)) throw new Error('Solo se pueden intercambiar controles vehiculares pendientes.')
+  return [...operations, ...singleServiceMoveOperations(snapshot, {
+    day: command.sourceDay, sourceDay: command.day, sourceTeamId: destination.teamId,
+    team: source, task: { ...swap },
+    record: { ...record, teamId: source.teamId, team: source.label },
+  })]
+}
+
+function singleServiceMoveOperations(snapshot, command) {
   const matches = item => (command.task.taskId && String(item.taskId || '') === String(command.task.taskId)) ||
     (command.task.historyId && String(item.historyId || '') === String(command.task.historyId))
   const sourceTeams = snapshot.agenda?.weekly?.[command.sourceDay]?.teams || []

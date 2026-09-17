@@ -72,3 +72,47 @@ test('vehicle moves use captured server snapshots without mixing pending edits',
   assert.match(source, /if \(serialized !== lastPersistedSnapshotRef.current\) throw new Error\('Guardá los cambios pendientes/)
   assert.match(source, /isolatedMove: Boolean\(command.sourceDay && command.task\?\.vehicleControl\)/)
 })
+
+test('swaps same-time controls atomically in both agendas and history', async () => {
+  const { weeklyServiceMoveOperations } = await import('../src/features/state/application/weekly-service-save.mjs')
+  const { stored, command } = fixture()
+  const ford = { ...command.task, taskId: 'control-ford', historyId: 'control-ford', technicianIds: ['mariano'], technicians: ['Mariano'] }
+  stored.agenda.weekly[day].teams[1].tasks.push(ford)
+  stored.agenda.teams[1].tasks.push(structuredClone(ford))
+  stored.history.push({ ...stored.history[0], id: ford.historyId, sourceTaskId: ford.taskId, vehicleId: 'ford', teamId: 't3', technicianIds: ['mariano'], technicians: ['Mariano'] })
+  stored.agenda.weekly._monthlyTeams['2026-09'].vehicleAssignments.push({ vehicleId: 'ford', technicianId: 'mariano' })
+  command.swapTaskId = ford.taskId
+  const operations = weeklyServiceMoveOperations(stored, command)
+  const applied = applyStateOperations(stored, operations)
+  const next = synchronizeVehicleControlAssignments(applied, stored)
+  for (const teams of [next.agenda.teams, next.agenda.weekly[day].teams]) {
+    assert.deepEqual(teams.map(team => team.tasks.map(task => task.taskId)), [['control-ford'], ['control-kangoo']])
+    assert.deepEqual(teams[0].tasks[0].technicianIds, ['santos'])
+    assert.deepEqual(teams[1].tasks[0].technicianIds, ['mariano'])
+  }
+  assert.equal(next.history.length, 2)
+  assert.deepEqual(next.history.map(record => record.teamId), ['t3', 't2'])
+  assert.deepEqual(next.history.map(record => record.technicianIds), [['mariano'], ['santos']])
+  const assignments = next.agenda.weekly._monthlyTeams['2026-09'].vehicleAssignments
+  assert.deepEqual(assignments.map(item => item.technicianId), ['santos', 'mariano'])
+  assert.deepEqual(assignments.map(item => item.weeklyOverrides[day]), ['mariano', 'santos'])
+  assert.deepEqual(applyStateOperations(applied, operations), applied)
+  const concurrent = structuredClone(stored)
+  concurrent.history[1].status = 'Completado'
+  const unchanged = structuredClone(concurrent)
+  assert.throws(() => applyStateOperations(concurrent, operations), { code: 'RECORD_WRITE_CONFLICT' })
+  assert.deepEqual(concurrent, unchanged)
+  assert.throws(() => weeklyServiceMoveOperations(stored, { ...command, swapTaskId: '' }), /destino cambió/)
+  assert.throws(() => weeklyServiceMoveOperations(concurrent, command), /pendientes/)
+})
+
+test('swap candidates require same date, time and a vehicle control', async () => {
+  const { vehicleControlSwapCandidate: candidate } = await import('../src/features/state/application/weekly-service-save.mjs')
+  const task = { taskId: 'a', vehicleControl: true, time: '15:30' }
+  const other = { ...task, taskId: 'b' }
+  assert.equal(candidate(task, { tasks: [other] }, day, day), other)
+  assert.equal(candidate(task, { tasks: [other] }, day, '2026-09-25'), null)
+  assert.equal(candidate(task, { tasks: [{ ...other, time: '16:00' }] }, day, day), null)
+  assert.equal(candidate({ ...task, vehicleControl: false }, { tasks: [other] }, day, day), null)
+  assert.throws(() => candidate(task, { tasks: [other, { ...other, taskId: 'c' }] }, day, day), /más de un control/)
+})
