@@ -2957,7 +2957,9 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
     if (!validateAgenda(agendaTeams, onlyTaskId)) return false
     const previous = history
     try {
-      const records = agendaTeams.flatMap((team, teamIndex) => team.tasks.filter(task => !onlyTaskId || task.taskId === onlyTaskId).map((task, taskIndex) => ({
+      // Automatic vehicle controls already have their own persisted record and assignee.
+      // Saving/copying the daily agenda must not rebuild them with the team's members.
+      const records = agendaTeams.flatMap((team, teamIndex) => team.tasks.filter(task => !task.vehicleControl && (!onlyTaskId || task.taskId === onlyTaskId)).map((task, taskIndex) => ({
         // historyId se conserva al recuperar o editar una agenda ya registrada.
         // Para un servicio nuevo se usa el taskId, que permanece aunque cambien sus datos.
         id: task.historyId || `work-${task.taskId || `${date}-${teamIndex}-${taskIndex}`}`,
@@ -2972,6 +2974,7 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
         ...applicableServiceExtras(task, serviceForTask(task)),
         address: task.address, phone: task.phone, installationZone: task.installationZone || '', servicePhotoAttached: Boolean(task.servicePhotoAttached), servicePhotoUrl: task.servicePhotoUrl || '', servicePhotoAttachedAt: task.servicePhotoAttachedAt || '', ...serviceTrace(task)
       })))
+      if (!records.length) return true
       const accountKey = record => String(record.clientAccount || record.account || String(record.client || '').trim().split(' ')[0] || '').trim().toUpperCase()
       const serviceKey = record => String(record.service || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/nueva/g, '').replace(/\s+/g, ' ').trim()
       const timeKey = record => String(record.time || record.scheduledTime || '').trim()
