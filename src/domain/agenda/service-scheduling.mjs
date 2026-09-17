@@ -62,7 +62,7 @@ export const completedServiceRelease = task => {
 }
 
 export const taskReservationMinutes = task => Math.max(
-  MINIMUM_SERVICE_RESERVATION_MINUTES,
+  task?.vehicleControl ? 15 : MINIMUM_SERVICE_RESERVATION_MINUTES,
   normalizeServiceEstimatedMinutes(task?.estimatedMinutes)
 )
 

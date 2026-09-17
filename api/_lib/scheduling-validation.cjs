@@ -191,7 +191,7 @@ function validateChangedAgendaSchedules(state, previousState = null) {
         const [hours, minutes] = task.time.split(':').map(Number)
         const start = hours * 60 + minutes
         const actualRelease = completedReleaseMinute(task)
-        const plannedEnd = start + Math.max(60, estimatedMinutesFor(task, serviceMap))
+        const plannedEnd = start + Math.max(task.vehicleControl ? 15 : 60, estimatedMinutesFor(task, serviceMap))
         return { task, taskIndex, start, end: actualRelease == null ? plannedEnd : Math.min(actualRelease, plannedEnd) }
       }).sort((first, second) => first.start - second.start)
       scheduled.forEach((current, index) => {
@@ -210,7 +210,7 @@ function validateChangedAgendaSchedules(state, previousState = null) {
         if (!task || !(task.serviceId || task.service) || !match) return
         const start = Number(match[1]) * 60 + Number(match[2])
         const actualRelease = completedReleaseMinute(task)
-        const plannedEnd = start + Math.max(60, estimatedMinutesFor(task, serviceMap))
+        const plannedEnd = start + Math.max(task.vehicleControl ? 15 : 60, estimatedMinutesFor(task, serviceMap))
         const end = actualRelease == null ? plannedEnd : Math.min(actualRelease, plannedEnd)
         const technicianIds = task.vehicleControl && task.technicianIds?.length ? task.technicianIds : team.memberIds || []
         const technicianNames = task.vehicleControl && task.technicians?.length ? task.technicians : team.members || []

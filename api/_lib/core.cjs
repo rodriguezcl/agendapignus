@@ -2,6 +2,7 @@ const crypto = require('node:crypto')
 const { validateChangedAgendaSchedules } = require('./scheduling-validation.cjs')
 const { migrateLegacyEstimatedMinutes } = require('./legacy-estimated-minutes.cjs')
 const { ensureVehicleControlService } = require('./vehicle-control-service.cjs')
+const { synchronizeVehicleControlAssignments } = require('./vehicle-control-assignment.cjs')
 const { assertNoPastWeeklyServiceAdditions } = require('./past-agenda.cjs')
 
 const normalizedText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
@@ -417,7 +418,7 @@ function normalizeStateForSave(state, current, { allowEarlyCompletion = false } 
     ? [key, Object.fromEntries(Object.entries(value || {}).map(([month, config]) => [month, { ...config, teams: normalizeTeams(config?.teams) }]))]
     : [key, key.startsWith('_') ? value : { ...value, teams: normalizeTeams(value?.teams) }]))
   const agenda = { ...incomingAgenda, teams: normalizeTeams(incomingAgenda.teams), weekly }
-  return normalizeRetirementCustomers({ ...state, roles, employees, services, vehicles, customers, history, agenda, reviews: state.reviews || current.reviews || [] }).state
+  return normalizeRetirementCustomers(synchronizeVehicleControlAssignments({ ...state, roles, employees, services, vehicles, customers, history, agenda, reviews: state.reviews || current.reviews || [] }, current)).state
 }
 
 function deduplicateScheduledTasks(teams = []) {
