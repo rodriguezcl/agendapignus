@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { sessionRepository } from '../../../infrastructure/repositories/session-repository.mjs'
 
-export const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000
+export const SESSION_IDLE_TIMEOUT_MS = 60 * 60 * 1000
 export const TECHNICIAN_SESSION_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000
 export const SESSION_STATUS_INTERVAL_MS = 5 * 1000
 export const TECHNICIAN_SESSION_STATUS_INTERVAL_MS = 15 * 1000

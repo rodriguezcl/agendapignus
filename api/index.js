@@ -36,7 +36,7 @@ const {
   technicianSafeRecord, visibleStateForUser
 } = require('./_lib/core.cjs')
 
-const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000
+const SESSION_IDLE_TIMEOUT_MS = 60 * 60 * 1000
 const TECHNICIAN_SESSION_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000
 const LOGIN_WINDOW = 15 * 60 * 1000
 const LOGIN_MAX_ATTEMPTS = 5
