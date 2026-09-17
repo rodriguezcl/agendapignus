@@ -26,7 +26,14 @@ export function serviceGaps(tasks, { min, max, day, now = new Date() } = {}) {
   let end = null
   for (const { index, interval } of occupied) {
     const start = Math.max(end ?? lower, lower), stop = Math.min(interval.start, upper)
-    if (end !== null && stop - start >= 90) gaps.push({ beforeIndex: index, start: minutesAsTime(start), end: minutesAsTime(stop) })
+    // Lunch is not bookable: require 90 continuous minutes on either side,
+    // rather than adding together time separated by the 13:30–14:00 break.
+    if (end !== null) {
+      const available = [[start, Math.min(stop, 13 * 60 + 30)], [Math.max(start, 14 * 60), stop]]
+      for (const [from, to] of available) {
+        if (to - from >= 90) gaps.push({ beforeIndex: index, start: minutesAsTime(from), end: minutesAsTime(to) })
+      }
+    }
     end = Math.max(end ?? 0, interval.end)
   }
   return gaps
