@@ -33,11 +33,28 @@ test('oculta el pasado y exige al menos 90 minutos futuros en Argentina', async 
 test('brechas de al menos 90 minutos, sin contar tarjetas vacías ni superposiciones', async () => {
   const { serviceGaps } = await import('../src/domain/agenda/service-gaps.mjs')
   const task = (time, estimatedMinutes) => ({ serviceId: 's', time, estimatedMinutes })
-  assert.deepEqual(serviceGaps([task('09:00', 150), { time: '12:00' }, task('13:30', 60)]), [{ beforeIndex: 2, start: '11:30', end: '13:30' }])
+  assert.deepEqual(serviceGaps([task('09:00', 150), { time: '12:00' }, task('13:30', 60)]), [{ beforeIndex: 1, start: '11:30', end: '13:30' }])
   assert.equal(serviceGaps([task('09:00', 60), task('10:45', 60)]).length, 0)
   assert.equal(serviceGaps([task('09:00', 240), task('10:00', 60), task('13:30', 60)]).length, 0)
   assert.equal(serviceGaps([task('09:00', 60)]).length, 0)
   assert.equal(serviceGaps([task('09:00', 60), task('11:00', 60)]).length, 0)
   assert.equal(serviceGaps([task('09:00', 60), task('11:29', 60)]).length, 0)
   assert.equal(serviceGaps([task('09:00', 60), task('11:30', 60)]).length, 1)
+})
+
+test('ordena la brecha antes del turno vacío y no duplica su disponibilidad', async () => {
+  const { serviceGaps } = await import('../src/domain/agenda/service-gaps.mjs')
+  const tasks = [
+    { serviceId: 'installation', time: '08:45', estimatedMinutes: 150 },
+    { taskId: 'empty', time: '14:00' },
+    { vehicleControl: true, time: '15:30', estimatedMinutes: 15 }
+  ]
+  assert.deepEqual(serviceGaps(tasks), [{ beforeIndex: 1, start: '11:15', end: '13:30' }])
+  assert.deepEqual(serviceGaps([tasks[0], tasks[2]]), [
+    { beforeIndex: 1, start: '11:15', end: '13:30' },
+    { beforeIndex: 1, start: '14:00', end: '15:30' }
+  ])
+  assert.deepEqual(serviceGaps([tasks[0], { ...tasks[1], serviceId: 's', estimatedMinutes: 60 }, tasks[2]]), [
+    { beforeIndex: 1, start: '11:15', end: '13:30' }
+  ])
 })
