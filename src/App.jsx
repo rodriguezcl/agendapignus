@@ -2811,7 +2811,7 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
         current.members = record.technicians?.length ? record.technicians : current.members
       }
       // Se aceptan los nombres anteriores del campo para recuperar también agendas ya existentes.
-      const recoveredTask = taskWithServiceEstimate({ taskId: record.sourceTaskId || record.id || createTaskId(), historyId: record.id, time: record.time || record.scheduledTime || record.hora || record.Hora || '', serviceId: record.serviceId || '', service: record.service || '', estimatedMinutes: record.estimatedMinutes, estimatedMinutesCustomized: record.estimatedMinutesCustomized, customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', internalNote: record.internalNote || '', internalChecklist: normalizeInternalChecklist(record.internalChecklist), paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', ...serviceTrace(record) }, resolveServiceForTask(record, services))
+      const recoveredTask = taskWithServiceEstimate({ vehicleControl: Boolean(record.vehicleControl), taskId: record.sourceTaskId || record.id || createTaskId(), historyId: record.id, time: record.time || record.scheduledTime || record.hora || record.Hora || '', serviceId: record.serviceId || '', service: record.service || '', estimatedMinutes: record.estimatedMinutes, estimatedMinutesCustomized: record.estimatedMinutesCustomized, customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', internalNote: record.internalNote || '', internalChecklist: normalizeInternalChecklist(record.internalChecklist), paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', form: record.form || '', installationZone: record.installationZone || '', ...serviceTrace(record) }, resolveServiceForTask(record, services))
       const sameTask = task => (record.id && String(task.historyId || '') === String(record.id)) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
       if (current.tasks.some(sameTask)) current.tasks = current.tasks.map(task => sameTask(task) ? { ...task, ...recoveredTask } : task)
       else current.tasks.push(recoveredTask)
@@ -2878,8 +2878,8 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
   const showSaveAgenda = hasPendingAgendaServices || !hasResolvedAgendaServices
   const validateAgenda = (agendaTeams = teams, onlyTaskId = null) => {
     const missing = []
-    const realServiceTeams = agendaTeamsWithRealServices(agendaTeams)
-    realServiceTeams.forEach((team, teamIndex) => team.tasks.forEach((task, taskIndex) => {
+    agendaTeams.forEach((team, teamIndex) => team.tasks.forEach((task, taskIndex) => {
+      if (task.vehicleControl || !taskHasContent(task) || taskIsResolvedForPlanning(task, date, history)) return
       if (onlyTaskId && task.taskId !== onlyTaskId) return
       const fields = []
       if (!task.time) fields.push('hora')

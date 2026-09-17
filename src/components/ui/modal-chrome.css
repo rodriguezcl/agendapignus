@@ -29,7 +29,7 @@
   .modal::-webkit-scrollbar-button, .modal *::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
   .modal::-webkit-scrollbar-corner, .modal *::-webkit-scrollbar-corner { background: transparent; }
 }
-.modal.modal :is(.close-modal, .modal-close, .modal-dismiss) {
+.modal.modal :is(.close-modal, .modal-close) {
   box-sizing: border-box;
   width: 36px !important;
   min-width: 36px !important;
@@ -46,12 +46,12 @@
   font-size: 22px;
   line-height: 1;
 }
-.modal.modal :is(.close-modal, .modal-close, .modal-dismiss):hover {
+.modal.modal :is(.close-modal, .modal-close):hover {
   background: var(--modal-close-bg);
   border-color: var(--modal-close-color);
 }
-.modal.modal :is(.close-modal, .modal-close, .modal-dismiss):focus-visible {
+.modal.modal :is(.close-modal, .modal-close):focus-visible {
   outline: 2px solid var(--modal-close-color);
   outline-offset: 2px;
 }
-.modal.modal :is(.close-modal, .modal-close, .modal-dismiss) svg { width: 18px; height: 18px; }
+.modal.modal :is(.close-modal, .modal-close) svg { width: 18px; height: 18px; }
