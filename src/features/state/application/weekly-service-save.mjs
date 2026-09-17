@@ -1,5 +1,39 @@
 import { stateOperations } from './state-operations.mjs'
 
+// A move has no service form draft to save. Compare each persisted projection
+// against its own server version, never against the reconciled display card.
+export function weeklyServiceMoveOperations(snapshot, command) {
+  const matches = item => (command.task.taskId && String(item.taskId || '') === String(command.task.taskId)) ||
+    (command.task.historyId && String(item.historyId || '') === String(command.task.historyId))
+  const sourceTeams = snapshot.agenda?.weekly?.[command.sourceDay]?.teams || []
+  const source = sourceTeams.find(team => String(team.teamId) === String(command.sourceTeamId))
+  const baseTask = source?.tasks?.find(matches)
+  const baseRecord = snapshot.history?.find(record => String(record.id) === String(command.record.id))
+  if (!baseTask || !baseRecord) throw new Error('No se encontró la versión guardada del servicio. Actualizá la agenda antes de reasignar.')
+  const record = { ...command.record }
+  const task = { ...command.task }
+  if (baseRecord.vehicleControl) {
+    const ids = command.team.memberIds || []
+    const selected = ids.find(id => String(id) === String(baseRecord.technicianIds?.[0])) || (ids.length === 1 ? ids[0] : null)
+    const position = ids.findIndex(id => String(id) === String(selected))
+    const name = command.team.members?.[position]
+    if (selected == null || !name) throw new Error('El control vehicular necesita un responsable único en el equipo de destino.')
+    record.technicianIds = task.technicianIds = [selected]
+    record.technicians = task.technicians = [name]
+  }
+  const operations = weeklyServiceOperations(snapshot, { ...command, task, record, baseTask, baseRecord })
+  const destination = snapshot.agenda?.weekly?.[command.day]?.teams?.find(team => String(team.teamId) === String(command.team.teamId))
+  if (destination) {
+    // Membership is part of the user's choice of responsible technician.
+    // These no-op checks reject a concurrent change without overwriting it.
+    for (const key of ['memberIds', 'members']) {
+      const existed = Object.hasOwn(destination, key)
+      operations.unshift({ path: ['agenda', 'weekly', command.day, 'teams', { key: 'teamId', id: String(destination.teamId) }, key], before: destination[key] ?? null, after: destination[key] ?? null, existed, exists: existed })
+    }
+  }
+  return operations
+}
+
 // One logical command: create/update the history record and both projections.
 // The modal's original record is kept as the compare-and-swap baseline.
 export function weeklyServiceOperations(snapshot, { day, team, task, record, baseRecord, baseTask, customer, sourceDay = '', sourceTeamId = '' }) {
