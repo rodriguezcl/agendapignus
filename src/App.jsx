@@ -1,6 +1,7 @@
 import { focusPendingService } from './presentation/components/forms/focus-pending-service.mjs'
 import { useDeploymentUpdate } from './components/DeploymentUpdate.jsx'
 import { serviceGaps } from './domain/agenda/service-gaps.mjs'
+import { completionLabel } from './domain/agenda/completion-label.mjs'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icon, { createIconElement } from './components/ui/Icon.jsx'
 import EditorModal from './components/ui/EditorModal.jsx'
@@ -469,9 +470,8 @@ function TaskStatusBadge({ task, date, history, weekly = false }) {
   if (!status) return null
   const service = String(task?.service || 'Sin tipo de servicio').trim()
   const occupancyTask = taskForScheduleOccupancy(task, date, history)
-  const interval = occupancyTask ? taskOccupiedInterval(occupancyTask) : null
-  const releaseLabel = interval?.actualCompletion ? `Finalizó ${interval.completedTime} · equipo disponible ${interval.releaseTime}` : ''
-  return <div className={`agenda-task-status ${weekly ? 'weekly-agenda-task-status' : 'daily-agenda-task-status'}`}><em className={`work-status ${statusClassName(status)}`}>{status}</em>{status === 'Sin guardar' && <small className="unsaved-service-help">Guardá la agenda para habilitarlo al técnico.</small>}{weekly && task?.subscriberReservation && <em className="role-chip subscriber-reservation-chip">Reserva · PIG pendiente</em>}{weekly && <em className={`role-chip agenda-service-chip ${serviceColorClass(service)}`} title={service}>{service}</em>}{releaseLabel && <small title="La disponibilidad se redondea al siguiente bloque de 15 minutos.">{releaseLabel}</small>}</div>
+  const releaseLabel = occupancyTask ? completionLabel(occupancyTask) : ''
+return <div className={`agenda-task-status ${weekly ? 'weekly-agenda-task-status' : 'daily-agenda-task-status'}`}><em className={`work-status ${statusClassName(status)}`}>{status}</em>{status === 'Sin guardar' && <small className="unsaved-service-help">Guardá la agenda para habilitarlo al técnico.</small>}{weekly && task?.subscriberReservation && <em className="role-chip subscriber-reservation-chip">Reserva · PIG pendiente</em>}{weekly && <em className={`role-chip agenda-service-chip ${serviceColorClass(service)}`} title={service}>{service}</em>}{releaseLabel && <small title="Hora de finalización; la demora se calcula respecto del tiempo estimado.">{releaseLabel}</small>}</div>
 }
 const serviceActor = user => {
   const current = user || globalThis.__pignusCurrentUser
