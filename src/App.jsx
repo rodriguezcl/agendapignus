@@ -3398,6 +3398,7 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
   const [techPicker, setTechPicker] = useState(null)
   const [techFilter, setTechFilter] = useState('')
   const [taskEditor, setTaskEditor] = useState(null)
+  const [pastService, setPastService] = useState(null)
   const [taskEditorSaving, setTaskEditorSaving] = useState(false)
   const [leaveRequest, setLeaveRequest] = useState(null)
   const [resumeNavigation, setResumeNavigation] = useState(null)
@@ -3592,7 +3593,12 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
     return { ...previous, [day]: sortPlanTasksByTime(normalized) }
   })
   const openTaskEditor = (day, teamIndex, taskIndex) => {
-    if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
+    if (dayHasFinished(day)) {
+      const team = dayPlan(day).teams[teamIndex]
+      const task = team?.tasks?.[taskIndex]
+      if (task && taskHasContent(task)) setPastService({ ...task, date: day, team: team.label || `Equipo ${teamIndex + 1}`, technicians: task.technicians || team.members, ...(historyRecordForTask(task, day, operationalHistory) || {}) })
+      return
+    }
     taskEditorSaveGuardRef.current = false
     setTaskEditorSaving(false)
     const teamSnapshot = dayPlan(day).teams[teamIndex]
@@ -4328,6 +4334,14 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
       })}</div><button type="button" className="secondary annual-guard-add" disabled={!activeTechs.length || !validYear} onClick={addAnnualGuardTechnician}><Icon name="plus" size={15} />Agregar técnico</button>{!validYear && <p className="field-error">Ingresá un año válido.</p>}{duplicated && <p className="field-error">Cada técnico puede aparecer una sola vez en la rotación.</p>}{validYear && !annualGuardSetup.rotation.length && <p className="field-error">Agregá al menos un técnico para generar el cronograma.</p>}<p className="annual-guard-help">Los cambios manuales realizados en un sábado específico se conservan como excepción.</p><ConfigurationHistoryPanel history={weekly._annualGuards?.[annualGuardSetup.year]?.configurationHistory} type="guards" /><div className="modal-actions"><button className="secondary" onClick={() => setAnnualGuardSetup(null)}><Icon name="close" size={16} />Cancelar</button><button className="primary" disabled={!validYear || !annualGuardSetup.rotation.length || duplicated} onClick={saveAnnualGuardSetup}><Icon name="check" size={16} />Guardar guardias del año</button></div></section></div>
     })()}
     <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Guardá cada servicio desde su formulario. Los cambios confirmados se comparten con todos los usuarios.</p></div><div className="weekly-actions">{canConfigureWeekly('weeklyTeams') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button>}{canConfigureWeekly('weeklyHours') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button>}{canConfigureWeekly('weeklyVehicles') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlyVehicleSetup}><Icon name="vehicle" size={16} />Vehículos del mes</button>}{canConfigureWeekly('weeklyGuards') && <button className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button>}<label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => { weeklyAnchorFollowsCurrentRef.current = false; setAnchor(event.target.value) }} /></label></div></div>
+    {pastService && <div className="modal-layer"><section className="modal detail-modal history-detail" role="dialog" aria-modal="true" aria-label="Servicio pasado · solo lectura"><button type="button" className="close-modal" aria-label="Cerrar" onClick={() => setPastService(null)}><Icon name="close" /></button><p className="eyebrow">{prettyDate(pastService.date)} · SOLO LECTURA</p><h2>{pastService.client || pastService.service}</h2><div className="history-detail-grid">{[
+      ['Servicio', pastService.service], ['Estado', pastService.technicalStatus || pastService.status],
+      ['Hora', pastService.time || pastService.scheduledTime], ['Tiempo estimado', pastService.estimatedMinutes ? `${pastService.estimatedMinutes} minutos` : ''],
+      ['Equipo', pastService.team], ['Técnicos asignados', pastService.technicians?.join(' / ')],
+      ['Dirección', pastService.address], ['Contacto', pastService.phone],
+      ['Forma de pago', pastService.paymentMethod], ['Monto', pastService.amount], ['Abono mensual', pastService.monthlyFee], ['Formulario', pastService.form],
+      ['Ubicación de la instalación', pastService.installationZone], ['Detalle / observaciones', pastService.detail], ['Informe técnico', pastService.technicalObservation], ['Nota interna', pastService.internalNote]
+    ].map(([label, value]) => <div key={label}><b>{label}</b><span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{value === '' || value == null ? 'Sin información' : String(value)}</span></div>)}</div>{pastService.internalChecklist?.length > 0 && <section><h3>Checklist</h3>{pastService.internalChecklist.map((item, index) => <p key={item.id || index}>{item.completed ? '✓' : '○'} {item.text}</p>)}</section>}<ServicePhoto record={pastService} className="history-service-photo" /><div className="modal-actions"><button type="button" className="secondary" onClick={() => setPastService(null)}><Icon name="close" size={16} />Cerrar</button></div></section></div>}
     {taskEditor && (() => {
       const { day, teamIndex, taskIndex } = taskEditor
       const task = taskEditor.draft
