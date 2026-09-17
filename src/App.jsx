@@ -2339,7 +2339,7 @@ export default function App() {
     onIdle: async () => {
       setSessionEndedMessage(authUser?.roleCode === 'technician'
         ? 'La sesión técnica se cerró por seguridad después de 24 horas sin actividad. Iniciá sesión nuevamente para continuar.'
-        : 'La sesión se cerró por seguridad después de 30 minutos sin actividad. Iniciá sesión nuevamente para continuar.')
+        : 'La sesión se cerró por seguridad después de 1 hora sin actividad. Iniciá sesión nuevamente para continuar.')
       await logout()
     }
   })

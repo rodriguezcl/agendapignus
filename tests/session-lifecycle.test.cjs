@@ -5,14 +5,16 @@ const path = require('node:path')
 
 const read = relativePath => fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
 
-test('la sesión técnica dura 24 horas y los demás roles conservan 30 minutos en ambos servidores', () => {
+test('la sesión técnica dura 24 horas y usuario, administrador y supervisor duran 1 hora en ambos servidores', () => {
   for (const source of [read('api/index.js'), read('server.cjs')]) {
-    assert.match(source, /SESSION_IDLE_TIMEOUT_MS = 30 \* 60 \* 1000/)
+    assert.match(source, /SESSION_IDLE_TIMEOUT_MS = 60 \* 60 \* 1000/)
     assert.match(source, /TECHNICIAN_SESSION_IDLE_TIMEOUT_MS = 24 \* 60 \* 60 \* 1000/)
     assert.match(source, /sessionIdleTimeoutFor/)
     assert.match(source, /Max-Age=\$\{sessionIdleTimeoutMs \/ 1000\}/)
   }
   const hook = read('src/features/auth/application/useSessionLifecycle.js')
+  assert.match(hook, /SESSION_IDLE_TIMEOUT_MS = 60 \* 60 \* 1000/)
+  assert.match(read('src/App.jsx'), /después de 1 hora sin actividad/)
   assert.match(hook, /TECHNICIAN_SESSION_IDLE_TIMEOUT_MS = 24 \* 60 \* 60 \* 1000/)
   assert.match(read('src/App.jsx'), /idleTimeoutMs: authUser\?\.roleCode === 'technician' \? TECHNICIAN_SESSION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS/)
 })
