@@ -26,6 +26,13 @@ export function useDeploymentUpdate({ active, busy, guard, logout }) {
   }
   const proceed = () => {
     if (latest.current.busy || running.current) return
+    // Login inputs (including autofill) are not unsaved operational drafts.
+    // A session may expire while the update banner is already displayed.
+    if (!latest.current.active) {
+      edited.current.clear()
+      void reload()
+      return
+    }
     const unguardedModal = [...document.querySelectorAll('.modal')].some(modal =>
       !modal.matches('.weekly-task-modal, .unsaved-service-modal') && modal.querySelector('input, textarea, select'))
     if (unguardedModal) {
