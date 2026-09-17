@@ -50,7 +50,7 @@ import { recoverStateRevisionConflict } from './features/state/application/state
 import { compactStateBase } from './features/state/application/compact-state-base.mjs'
 import { historyRecordRepository } from './infrastructure/repositories/history-record-repository.mjs'
 import { servicePhotoRepository } from './infrastructure/repositories/service-photo-repository.mjs'
-import { weeklyServiceOperations } from './features/state/application/weekly-service-save.mjs'
+import { weeklyServiceOperations, weeklyServiceMoveOperations } from './features/state/application/weekly-service-save.mjs'
 import { weeklyTeamMemberOperations } from './features/state/application/weekly-team-members-save.mjs'
 import { weeklyTeamRemovalOperations } from './features/state/application/weekly-team-removal.mjs'
 import { weeklyTaskRemovalOperations } from './features/state/application/weekly-task-removal.mjs'
@@ -1256,6 +1256,7 @@ export default function App() {
   const hydratingStateRef = useRef(false)
   const hydrationTimerRef = useRef(null)
   const lastPersistedSnapshotRef = useRef(null)
+  const lastServerSnapshotRef = useRef(null)
   const currentSnapshotRef = useRef(null)
   const remoteConflictRevisionRef = useRef(null)
   const serviceDefaultsRef = useRef(new Map())
@@ -1924,6 +1925,9 @@ export default function App() {
   }, [weekly, date])
   const applyRemoteState = data => {
     data = migrateLegacyEstimatedMinutes(data, { repairUnidentifiedAgenda: true }).state
+    // Keep the server's projections before display effects reconcile daily and
+    // weekly cards. Those effects are not persisted writes or CAS baselines.
+    lastServerSnapshotRef.current = structuredClone(data)
     hydratingStateRef.current = true
     serviceDefaultsRef.current = new Map()
     remoteConflictRevisionRef.current = null
@@ -1951,8 +1955,9 @@ export default function App() {
   const refreshRemoteState = async () => {
     applyRemoteState(await stateRepository.load())
   }
-  const persistStateCommand = async (buildOperations, { combinePendingState = false, rebaseOnRecordConflict = false } = {}) => {
+  const persistStateCommand = async (buildOperations, { combinePendingState = false, rebaseOnRecordConflict = false, isolatedMove = false } = {}) => {
     if (confirmedSaveRef.current) throw new Error('Ya hay un guardado en curso.')
+    const moveSnapshot = isolatedMove ? lastServerSnapshotRef.current : null
     confirmedSaveRef.current = true
     setConfirmedSaving(true)
     if (stateSaveTimerRef.current) pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1)
@@ -1968,6 +1973,14 @@ export default function App() {
       const local = JSON.parse(serialized)
       const base = JSON.parse(lastPersistedSnapshotRef.current || 'null')
       if (!base) throw new Error('Esperá a que termine de cargar la agenda.')
+      if (isolatedMove) {
+        if (serialized !== lastPersistedSnapshotRef.current) throw new Error('Guardá los cambios pendientes de la agenda antes de reasignar el servicio.')
+        const serverSnapshot = moveSnapshot
+        if (!serverSnapshot) throw new Error('Esperá a que termine de cargar la agenda.')
+        const payload = await stateRepository.commit(await buildOperations(serverSnapshot), serverSnapshot.revision)
+        applyRemoteState(payload.state)
+        return payload
+      }
       let snapshot = local
       if (combinePendingState) {
         const pendingOperations = serialized !== lastPersistedSnapshotRef.current ? stateOperations(base, local) : []
@@ -2003,14 +2016,16 @@ export default function App() {
     }
   }
   const persistWeeklyService = command => persistStateCommand(snapshot => (
-    command.operation === 'team-members'
+    command.sourceDay && command.task?.vehicleControl
+      ? weeklyServiceMoveOperations(snapshot, command)
+      : command.operation === 'team-members'
       ? weeklyTeamMemberOperations(snapshot, command)
       : command.operation === 'team-remove'
         ? weeklyTeamRemovalOperations(snapshot, command)
         : command.operation === 'task-remove'
           ? weeklyTaskRemovalOperations(snapshot, command)
       : weeklyServiceOperations(snapshot, command)
-  ), { combinePendingState: true })
+  ), { combinePendingState: true, isolatedMove: Boolean(command.sourceDay && command.task?.vehicleControl) })
   const persistWeeklyConfiguration = buildNext => persistStateCommand(snapshot => stateOperations(snapshot, buildNext(snapshot)), { combinePendingState: true, rebaseOnRecordConflict: true })
   const persistAgendaRecords = (before, records) => persistStateCommand(() => stateRepository.commit(stateOperations({ history: before }, { history: records }), stateRevisionRef.current))
   const persistHistoryRecord = async (base, record) => {
