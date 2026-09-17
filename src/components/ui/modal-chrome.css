@@ -55,3 +55,23 @@
   outline-offset: 2px;
 }
 .modal.modal :is(.close-modal, .modal-close) svg { width: 18px; height: 18px; }
+
+.modal.history-detail.past-service-detail { width: min(1080px, calc(100vw - 32px)); max-width: 1080px; }
+.past-service-detail > h2 { padding-right: 28px; overflow-wrap: anywhere; }
+.past-service-detail .past-detail-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--modal-close-border, #d5e2d9); }
+.past-service-detail .past-detail-section h3 { margin: 0 0 14px; font-size: 15px; }
+.past-service-detail .past-detail-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px 24px; margin: 0; }
+.past-service-detail .past-detail-fields > div { min-width: 0; }
+.past-service-detail dt { font-size: 12px; opacity: .75; font-weight: 600; margin-bottom: 5px; }
+.past-service-detail dd { margin: 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.past-service-detail .past-field-double { grid-column: span 2; }
+.past-service-detail .past-field-wide { grid-column: 1 / -1; }
+.past-service-detail .past-field-money { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.past-service-detail .past-field-empty { font-size: 13px; font-weight: 400; opacity: .65; }
+@media (max-width: 800px) {
+  .past-service-detail .past-detail-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .past-service-detail .past-detail-fields { grid-template-columns: minmax(0, 1fr); }
+  .past-service-detail .past-field-double { grid-column: auto; }
+}
