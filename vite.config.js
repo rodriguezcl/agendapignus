@@ -1,6 +1,15 @@
 
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { randomUUID } from 'node:crypto'
+
+const buildId = randomUUID()
+const versionManifest = {
+  name: 'deployment-version',
+  generateBundle() {
+    this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ buildId }) })
+  }
+}
 
 const securityHeaders = {
   'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
@@ -18,7 +27,8 @@ const developmentSecurityHeaders = {
 }
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), versionManifest],
+  define: { __APP_BUILD_ID__: JSON.stringify(buildId) },
   server: { host: '127.0.0.1', headers: developmentSecurityHeaders, proxy: { '/api': 'http://127.0.0.1:3001' } },
   preview: { host: '127.0.0.1', headers: securityHeaders, proxy: { '/api': 'http://127.0.0.1:3001' } },
 })

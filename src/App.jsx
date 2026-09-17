@@ -1,4 +1,5 @@
 import { focusPendingService } from './presentation/components/forms/focus-pending-service.mjs'
+import { useDeploymentUpdate } from './components/DeploymentUpdate.jsx'
 import { serviceGaps } from './domain/agenda/service-gaps.mjs'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icon, { createIconElement } from './components/ui/Icon.jsx'
@@ -2269,7 +2270,7 @@ export default function App() {
   // Sólo un servicio nuevo o editado requiere advertir sobre descarte. Un
   // equipo asignado o un turno vacío no representan información pendiente.
   const hasUnsavedAgenda = agendaHasUnsavedServices({ teams, history, date })
-  const logout = async ({ discardDailyAgenda = false } = {}) => {
+  const logout = async ({ discardDailyAgenda = false, requireServerLogout = false } = {}) => {
     if (loggingOutRef.current) return
     loggingOutRef.current = true
     const hadPendingStateSave = pendingStateSaves.current > 0 || Boolean(stateSaveTimerRef.current)
@@ -2312,7 +2313,13 @@ export default function App() {
       if (!response.ok) throw new Error('No se pudo invalidar la sesión en el servidor.')
     } catch (error) {
       console.error('Error al cerrar la sesión en el servidor.', error)
-    } finally {
+      if (requireServerLogout) {
+        loggingOutRef.current = false
+        setLoggingOut(false)
+        throw error
+      }
+    }
+    {
       clearOperationalStorage()
       setRoles([]); setEmployees([]); setServices([]); setVehicles([]); setHistory([]); setCustomers([]); setWeekly({})
       setAuthUser(null); setDatabaseReady(false); setDatabaseError(''); setStateRevision(null); setModule('dashboard'); setNotice('')
@@ -2320,6 +2327,7 @@ export default function App() {
       setLoggingOut(false)
     }
   }
+  useDeploymentUpdate({ active: Boolean(authUser), busy: confirmedSaving || loggingOut, guard: weeklyNavigationGuard, logout })
   const requestLogout = () => setConfirmation(hasUnsavedAgenda
     ? { title: 'Agenda sin guardar', detail: 'Hay servicios cargados que aún no fueron guardados en el historial. Si cerrás sesión, la agenda se limpiará y esos datos se perderán.', action: () => logout({ discardDailyAgenda: true }), destructive: true, confirmLabel: 'Cerrar sesión y descartar agenda' }
     : { title: 'Cerrar sesión', detail: '¿Querés cerrar sesión?', action: logout, confirmLabel: 'Sí, cerrar sesión' })
