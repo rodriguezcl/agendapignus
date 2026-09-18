@@ -401,3 +401,5 @@ body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice[data-tone=
     transition-duration: .01ms !important;
   }
 }
+.pending-reminder-rescheduling { background: #f3ebff; border-color: #c6afe5; color: #633c8e; }
+.app-shell[data-theme="dark"] .pending-reminder-rescheduling { background: #352445; border-color: #82649e; color: #e2ccf5; }
