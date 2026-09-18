@@ -5,6 +5,19 @@ const vm = require('node:vm')
 const app = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
 const source = app.slice(app.indexOf('function HistoryManagementDetail'), app.indexOf('function HistoryDetail('))
 
+test('actual readiness validation accepts valid hours including 14:00 and rejects incomplete inputs', () => {
+  const expression = source.split(/\r?\n/).find(line => line.includes('const rescheduleReady ='))
+  const ready = (patch = {}) => vm.runInNewContext(expression + '\nrescheduleReady', {
+    rescheduleDate: '2026-09-21', minimumRescheduleDate: '2026-09-18',
+    selectedRescheduleTeam: { teamId: '1' }, rescheduleTime: '14:00', ...patch
+  })
+  for (const time of ['00:00', '08:30', '14:00', '19:59', '20:00', '23:59']) assert.equal(ready({ rescheduleTime: time }), true, time)
+  for (const time of ['', '24:00', '14:60', '200:00', '2:30', '14:00:00']) assert.equal(ready({ rescheduleTime: time }), false, time)
+  assert.equal(ready({ selectedRescheduleTeam: undefined }), false)
+  assert.equal(ready({ rescheduleDate: '' }), false)
+  assert.equal(ready({ rescheduleDate: '2026-09-17' }), false)
+})
+
 test('closing an unfinished reschedule prompts, an empty one closes, saving cannot close', () => {
   const start = source.indexOf('  const requestClose = () => {')
   const end = source.indexOf('  useEffect(', start)
