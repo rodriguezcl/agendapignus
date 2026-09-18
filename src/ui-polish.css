@@ -423,7 +423,7 @@ body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #34
 /* Historial operativo: hora visible y lectura priorizada sin abandonar la tabla. */
 .history-bulk .table-head,
 .history-bulk .history-row {
-  grid-template-columns: 42px minmax(128px, .75fr) 78px minmax(235px, 1.6fr) minmax(125px, .75fr) minmax(120px, .75fr) 128px 125px !important;
+  grid-template-columns: 42px minmax(128px, .75fr) 78px minmax(235px, 1.6fr) minmax(125px, .75fr) minmax(120px, .75fr) 190px 125px !important;
 }
 
 .history-bulk .history-time {
@@ -443,9 +443,12 @@ body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #34
 }
 
 .history-bulk .history-row > div:nth-child(7) .work-status {
+  box-sizing: border-box;
   width: max-content;
   max-width: 100%;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
 }
 
 /* La acción conserva un margen propio para no quedar cortada por el borde de la tarjeta. */
@@ -497,7 +500,7 @@ body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #34
 
   .history-bulk .table-head,
   .history-bulk .history-row {
-    grid-template-columns: 42px minmax(130px, .7fr) 82px minmax(280px, 1.55fr) minmax(175px, .9fr) minmax(145px, .78fr) 128px 132px !important;
+    grid-template-columns: 42px minmax(130px, .7fr) 82px minmax(280px, 1.55fr) minmax(175px, .9fr) minmax(145px, .78fr) 190px 132px !important;
   }
 }
 
@@ -513,7 +516,7 @@ body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #34
   .history-bulk .table-head,
   .history-bulk .history-row {
     min-width: 760px;
-    grid-template-columns: 35px 125px 72px minmax(190px, 1fr) minmax(135px, .8fr) 102px 110px !important;
+    grid-template-columns: 35px 125px 72px minmax(190px, 1fr) minmax(135px, .8fr) 190px 110px !important;
   }
 
   .history-bulk .history-technicians {
@@ -642,7 +645,10 @@ body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #34
 }
 
 .agenda-task-status > .work-status {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .agenda-task-status > .agenda-service-chip {
