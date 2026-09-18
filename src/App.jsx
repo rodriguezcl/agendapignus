@@ -3962,6 +3962,9 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
         teamIndex: actualIndex,
         baseMemberIds: target.memberIds || [],
         baseMembers: target.members || [],
+        materializeTeam: !(weekly[day]?.teams || []).some((team, index) => team.teamId
+          ? String(team.teamId) === String(target.teamId)
+          : team.label ? teamLabelNumber(team) === teamLabelNumber(target) : index === actualIndex),
         memberIds,
         members,
         guardOverride: isSaturday(day) ? true : undefined,
