@@ -1829,3 +1829,13 @@ body.dark .week-task-summary.available-slot:focus-visible {
   padding: 24px 32px;
   box-shadow: 0 8px 40px #0003;
 }
+.historical-day-services { padding: 20px; }
+.historical-day-service { padding: 20px 0; border-bottom: 1px solid var(--border, #d5e2d8); }
+.historical-day-service:last-child { border-bottom: 0; }
+.historical-day-service .past-detail-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px 24px; }
+.historical-day-service .past-detail-fields > div { min-width: 0; }
+.historical-day-service dt { font-size: 12px; font-weight: 600; opacity: .8; }
+.historical-day-service dd { margin: 6px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.historical-day-service .past-field-wide { grid-column: 1 / -1; }
+.historical-day-service .past-detail-section { margin-top: 24px; }
+.historical-day-service .past-field-money { font-weight: 700; }
