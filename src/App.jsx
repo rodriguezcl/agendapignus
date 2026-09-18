@@ -4066,9 +4066,11 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
       return
     }
     const task = { ...blankTask(), time: startTime, manualSlot: true }
-    const taskIndex = dayPlan(day).teams[teamIndex].tasks.length
+    const teamSnapshot = dayPlan(day).teams[teamIndex]
+    if (!teamSnapshot) { setNotice('El equipo ya no está disponible. Revisá la planificación.'); return }
+    const taskIndex = teamSnapshot.tasks.length
     updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, tasks: [...team.tasks, task] } : team) }))
-    if (startTime) setTaskEditor({ day, teamIndex, taskIndex, baseTask: structuredClone(task), baseRecord: null, draft: task, photoData: '', photoRemoved: false })
+    if (startTime) setTaskEditor({ day, teamIndex, taskIndex, teamId: teamSnapshot.teamId, teamSnapshot: structuredClone(teamSnapshot), persistedTeam: Boolean(weekly[day]?.teams?.some(team => String(team.teamId) === String(teamSnapshot.teamId))), taskId: task.taskId, baseTask: structuredClone(task), baseRecord: null, draft: task, photoData: '', photoRemoved: false })
   }
   const removeWeeklyTask = async ({ day, teamId, teamIndex, taskId, historyId, taskIndex, time, wasPlaceholder }) => {
     const selectedTeam = dayPlan(day).teams.find((team, index) => (teamId && String(team.teamId || '') === String(teamId)) || index === teamIndex)
