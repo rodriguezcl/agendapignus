@@ -5584,7 +5584,7 @@ function HistoryManagementDetail({ record, setHistory, close, customers, service
   const interactionBlocked = remotelyUpdated || saving
   const selectedRescheduleTeam = destinationTeams.find(team => String(team.teamId) === String(rescheduleTeam))
   const hasRescheduleDraft = rescheduling && Boolean(rescheduleDate || rescheduleTime || rescheduleTeam)
-  const rescheduleReady = Boolean(rescheduleDate >= minimumRescheduleDate && selectedRescheduleTeam && /^([01]\\d|2[0-3]\\d):[0-5]\\d$/.test(rescheduleTime))
+  const rescheduleReady = Boolean(rescheduleDate >= minimumRescheduleDate && selectedRescheduleTeam && /^([01]\d|2[0-3]):[0-5]\d$/.test(rescheduleTime))
   const requestClose = () => {
     if (saving) return
     if (hasRescheduleDraft) { setReschedulePrompt('leave'); return }
