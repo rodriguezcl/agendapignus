@@ -153,6 +153,14 @@ body { font-family: var(--pignus-font-family); }
   color: var(--pignus-color-success);
   background: var(--pignus-color-success-surface);
 }
+.work-status.en-proceso {
+  color: #17549b;
+  background: #e4efff;
+}
+.app-shell[data-theme="dark"] .work-status.en-proceso {
+  color: #b6d7ff;
+  background: #193b60;
+}
 .work-status.cancelado {
   color: var(--pignus-color-danger);
   background: var(--pignus-color-danger-surface);
