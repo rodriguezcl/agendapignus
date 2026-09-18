@@ -1931,6 +1931,11 @@ export default function App() {
   useEffect(() => {
     // Compatibilidad con equipos históricos cuyos teamId semanal y diario no
     // coinciden: el taskId es la identidad canónica del servicio.
+    // While the daily editor is mounted it owns its draft and projects changes
+    // to weekly. Copying weekly back during the same render can exchange two
+    // successive edits forever. Initial loading and confirmed remote saves
+    // already hydrate the daily form through their explicit paths.
+    if (module === 'agenda') return
     const weeklyTasks = weekly?.[date]?.teams?.flatMap(team => team.tasks || []) || []
     if (!weeklyTasks.length) return
     const byTaskId = new Map(weeklyTasks.filter(task => task.taskId).map(task => [String(task.taskId), task]))
@@ -1941,7 +1946,7 @@ export default function App() {
       })) }))
       return JSON.stringify(next) === JSON.stringify(previous) ? previous : next
     })
-  }, [weekly, date])
+  }, [weekly, date, module])
   const applyRemoteState = data => {
     data = migrateLegacyEstimatedMinutes(data, { repairUnidentifiedAgenda: true }).state
     // Keep the server's projections before display effects reconcile daily and
