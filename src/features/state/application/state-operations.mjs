@@ -32,6 +32,7 @@ export function stateOperations(base, next) {
     operations.push({ path, before: before ?? null, after: after ?? null, existed: before !== undefined, exists: after !== undefined })
   }
   for (const section of ['roles', 'employees', 'services', 'vehicles', 'customers', 'history', 'reviews', 'agenda', 'preferences']) {
+    if (section === 'preferences' && !Object.hasOwn(next, section)) continue
     if (Object.hasOwn(base, section)) visit(base[section], next[section], [section])
   }
   return operations
