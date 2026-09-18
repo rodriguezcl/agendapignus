@@ -1266,7 +1266,7 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readLocalValue('pignus-sidebar-collapsed') === 'true')
   const [desktopSidebar, setDesktopSidebar] = useState(() => globalThis.matchMedia?.('(min-width: 641px)').matches ?? true)
-  const [theme, setTheme] = useState(() => readLocalValue('pignus-theme', 'light'))
+  const [theme, setThemeState] = useState('light')
   const [roles, setRoles] = useState([])
   const [employees, setEmployees] = useState([])
   const employeeRole = employee => roles.find(role => String(role.id) === String(employee.roleId)) || roles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role))
@@ -1301,6 +1301,15 @@ export default function App() {
   const remoteConflictRevisionRef = useRef(null)
   const serviceDefaultsRef = useRef(new Map())
   const [authUser, setAuthUser] = useState(null)
+  const themeAccountKey = authUser?.id || authUser?.email || ''
+  const setTheme = value => {
+    setThemeState(value)
+    if (themeAccountKey) writeLocalValue(`pignus-theme-account:${themeAccountKey}`, value)
+  }
+  useEffect(() => {
+    const saved = themeAccountKey ? readLocalValue(`pignus-theme-account:${themeAccountKey}`, 'light') : 'light'
+    setThemeState(saved === 'dark' ? 'dark' : 'light')
+  }, [themeAccountKey])
   const activeRole = roles.find(role => String(role.id) === String(authUser?.roleId)) || roles.find(role => role.name === authUser?.role)
   const isSupervisor = authUser?.roleCode === 'supervisor' || normalizeRoleName(authUser?.role) === 'supervisor' || roleCode(activeRole) === 'supervisor'
   // Resolve before rendering: restoring a session must never flash statistics.
@@ -1315,10 +1324,9 @@ export default function App() {
   const [databaseError, setDatabaseError] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
-  const stateSnapshot = { roles, employees, services, vehicles, history, customers, agenda: { date, teams, weekly }, preferences: isSupervisor ? {} : { theme } }
+  const stateSnapshot = { roles, employees, services, vehicles, history, customers, agenda: { date, teams, weekly } }
   const serializedStateSnapshot = JSON.stringify(stateSnapshot)
   currentSnapshotRef.current = serializedStateSnapshot
-  useEffect(() => writeLocalValue('pignus-theme', theme), [theme])
   useEffect(() => {
     if (!notice) return undefined
     if (notice.startsWith('No se guardó') || notice.startsWith('Hay cambios guardados desde otra sesión')) return undefined
@@ -1994,7 +2002,6 @@ export default function App() {
     setTeams(data.agenda?.teams?.length ? data.agenda.teams : [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])
     setDate(persistedAgendaDate)
     setWeekly(data.agenda?.weekly && typeof data.agenda.weekly === 'object' ? data.agenda.weekly : {})
-    if (!isSupervisor && data.preferences?.theme) setTheme(data.preferences.theme)
     setDatabaseReady(true)
   }
   const refreshRemoteState = async () => {

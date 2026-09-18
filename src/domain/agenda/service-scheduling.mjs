@@ -61,8 +61,11 @@ export const completedServiceRelease = task => {
   }
 }
 
+export const isMonthlyMeeting = task => String(task?.service || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ') === 'reunion mensual'
+export const allowedMeetingControlOverlap = (first, second) => Boolean((isMonthlyMeeting(first) && second?.vehicleControl) || (first?.vehicleControl && isMonthlyMeeting(second)))
+
 export const taskReservationMinutes = task => Math.max(
-  task?.vehicleControl ? 15 : MINIMUM_SERVICE_RESERVATION_MINUTES,
+  task?.vehicleControl || isMonthlyMeeting(task) ? 15 : MINIMUM_SERVICE_RESERVATION_MINUTES,
   normalizeServiceEstimatedMinutes(task?.estimatedMinutes)
 )
 
@@ -106,7 +109,7 @@ export const serviceScheduleConflicts = (teams = [], hasContent = task => Boolea
   const conflicts = []
   scheduled.forEach((current, currentIndex) => {
     scheduled.slice(0, currentIndex).forEach(previous => {
-      if (current.interval.start < previous.interval.end && previous.interval.start < current.interval.end) {
+      if (!allowedMeetingControlOverlap(current.task, previous.task) && current.interval.start < previous.interval.end && previous.interval.start < current.interval.end) {
         conflicts.push({ teamIndex, firstTaskIndex: previous.taskIndex, secondTaskIndex: current.taskIndex, firstTask: previous.task, secondTask: current.task, first: previous.interval, second: current.interval })
       }
     })

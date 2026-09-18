@@ -1,4 +1,7 @@
 const normalizedName = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+const minimumReservation = (task, serviceMap) => task.vehicleControl || normalizedName(task.service || serviceMap.get(String(task.serviceId))?.name).replace(/\s+/g, ' ') === 'reunion mensual' ? 15 : 60
+const isMonthlyMeeting = (task, serviceMap) => normalizedName(task.service || serviceMap.get(String(task.serviceId))?.name).replace(/\s+/g, ' ') === 'reunion mensual'
+const allowedMeetingControlOverlap = (first, second, serviceMap) => (isMonthlyMeeting(first, serviceMap) && second.vehicleControl) || (first.vehicleControl && isMonthlyMeeting(second, serviceMap))
 
 const argentinaToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
 const nextArgentinaQuarterMinute = (now = new Date()) => {
@@ -191,11 +194,11 @@ function validateChangedAgendaSchedules(state, previousState = null) {
         const [hours, minutes] = task.time.split(':').map(Number)
         const start = hours * 60 + minutes
         const actualRelease = completedReleaseMinute(task)
-        const plannedEnd = start + Math.max(task.vehicleControl ? 15 : 60, estimatedMinutesFor(task, serviceMap))
+        const plannedEnd = start + Math.max(minimumReservation(task, serviceMap), estimatedMinutesFor(task, serviceMap))
         return { task, taskIndex, start, end: actualRelease == null ? plannedEnd : Math.min(actualRelease, plannedEnd) }
       }).sort((first, second) => first.start - second.start)
       scheduled.forEach((current, index) => {
-        const conflict = scheduled.slice(0, index).find(previousTask => current.start < previousTask.end)
+        const conflict = scheduled.slice(0, index).find(previousTask => current.start < previousTask.end && !allowedMeetingControlOverlap(current.task, previousTask.task, serviceMap))
         if (!conflict) return
         throw new Error(`${teamDescription(team, teamIndex)} del ${longDate(plan.date)} tiene un conflicto de horarios entre el ${taskDescription(conflict.task, conflict.taskIndex)} a las ${conflict.task.time} y el ${taskDescription(current.task, current.taskIndex)} a las ${current.task.time}. Ajustá el horario o el tiempo estimado de uno de los servicios.`)
       })
@@ -210,7 +213,7 @@ function validateChangedAgendaSchedules(state, previousState = null) {
         if (!task || !(task.serviceId || task.service) || !match) return
         const start = Number(match[1]) * 60 + Number(match[2])
         const actualRelease = completedReleaseMinute(task)
-        const plannedEnd = start + Math.max(task.vehicleControl ? 15 : 60, estimatedMinutesFor(task, serviceMap))
+        const plannedEnd = start + Math.max(minimumReservation(task, serviceMap), estimatedMinutesFor(task, serviceMap))
         const end = actualRelease == null ? plannedEnd : Math.min(actualRelease, plannedEnd)
         const technicianIds = task.vehicleControl && task.technicianIds?.length ? task.technicianIds : team.memberIds || []
         const technicianNames = task.vehicleControl && task.technicians?.length ? task.technicians : team.members || []
@@ -227,7 +230,7 @@ function validateChangedAgendaSchedules(state, previousState = null) {
     assignmentsByTechnician.forEach(({ name, entries }) => {
       const ordered = entries.sort((left, right) => left.start - right.start)
       ordered.forEach((current, index) => {
-        const conflict = ordered.slice(0, index).find(previousAssignment => current.start < previousAssignment.end)
+        const conflict = ordered.slice(0, index).find(previousAssignment => current.start < previousAssignment.end && !allowedMeetingControlOverlap(current.task, previousAssignment.task, serviceMap))
         if (!conflict || conflict.teamIndex === current.teamIndex) return
         throw new Error(`${name || 'El técnico'} tiene servicios incompatibles el ${longDate(plan.date)}: ${taskDescription(conflict.task, conflict.taskIndex)} en ${conflict.team.label || `Equipo ${conflict.teamIndex + 1}`} y ${taskDescription(current.task, current.taskIndex)} en ${current.team.label || `Equipo ${current.teamIndex + 1}`}. Reasigná el técnico o ajustá los horarios.`)
       })
