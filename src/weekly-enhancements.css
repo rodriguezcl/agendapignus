@@ -44,6 +44,10 @@
   font-weight: 700;
 }
 
+.weekly-board .week-day > .weekly-guard-advanced {
+  margin-bottom: 12px;
+}
+
 .weekly-guard-advanced svg {
   flex: 0 0 auto;
   margin-top: 1px;
