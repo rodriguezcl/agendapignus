@@ -421,6 +421,14 @@ body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #34
 }
 
 /* Historial operativo: hora visible y lectura priorizada sin abandonar la tabla. */
+.history-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .history-bulk .table-head,
 .history-bulk .history-row {
   grid-template-columns: 42px minmax(128px, .75fr) 78px minmax(235px, 1.6fr) minmax(125px, .75fr) minmax(120px, .75fr) 190px 125px !important;
