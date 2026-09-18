@@ -678,6 +678,24 @@ const renumberVisibleWeeklyTeams = (teams = []) => teams.map((team, teamIndex) =
   ...team,
   label: /^Equipo \d+$/.test(team?.label || '') ? `Equipo ${teamIndex + 1}` : team?.label
 }))
+const dailyPlanWithMonthlyTeams = (day, weekly) => {
+  const stored = weekly?.[day]
+  const monthlyTeams = weekly?._monthlyTeams?.[day.slice(0, 7)]?.teams
+  // Saturdays use the annual guard, not the ordinary monthly crews.
+  if (isSaturday(day) || !monthlyTeams?.length) return stored
+  const defaults = monthlyTeams.map((team, index) => ({
+    teamId: team.teamId || createTeamId(),
+    label: team.label || `Equipo ${index + 1}`,
+    memberIds: team.memberIds || [],
+    members: team.members || [],
+    tasks: defaultServiceTasksForDate(day, weekly)
+  }))
+  const targetTimes = defaultServiceTimesForDate(day, weekly)
+  const storedTeams = alignDefaultServiceTimes(stored?.teams || [], day, targetTimes, fallbackDefaultServiceTimesForDate(day))
+  // Use the same identity-based merge as the weekly board. Day exceptions win;
+  // removal markers are preserved for the loader to apply after this merge.
+  return { ...stored, teams: mergeStoredTeamsWithDefaults(defaults, storedTeams) }
+}
 const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?.rescheduledFrom || record?.date, activeTechs = []) => {
   if (!record?.id || !sourceDate || !nextDate) return weekly
   const matchesRecord = task => String(task.historyId || '') === String(record.id) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
@@ -2789,6 +2807,7 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
     // Ambos módulos escriben sobre el mismo día: los cambios de la agenda del día
     // se reflejan inmediatamente en la agenda semanal, conservando campos extra.
     if (pastDayBlocked) return
+    if (loadedAgendaDate.current !== date) return
     if (advancedGuard || sundayBlocked || holidayBlocked || holidayCalendarUnavailable) return
     const hasContent = teams.some(team => team.members?.length || team.tasks.some(task => Object.entries(task).some(([key, value]) => !['time', 'taskId', 'historyId'].includes(key) && String(value || '').trim())))
     if (!hasContent) return
@@ -2847,7 +2866,7 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
       return
     }
     const saved = history.filter(record => record.date === nextDate && ['Pendiente', 'Reprogramado', 'Requiere revisión'].includes(record.status || 'Pendiente'))
-    const weeklyDay = weekly?.[nextDate]
+    const weeklyDay = dailyPlanWithMonthlyTeams(nextDate, weekly)
     if (!saved.length && !weeklyDay?.teams?.length) {
       const tasks = isSaturday(nextDate) ? defaultServiceTasksForDate(nextDate, weekly).slice(0, 1) : defaultServiceTasksForDate(nextDate, weekly)
       const emptyTeams = [{ teamId: createTeamId(), memberIds: [], members: [], tasks }]
