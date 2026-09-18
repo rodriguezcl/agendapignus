@@ -2161,8 +2161,23 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
 
 /* Acciones compactas, con la misma altura que la confirmación de cambios. */
 .modal.history-detail > .history-actions {
-  grid-template-columns: repeat(3, minmax(0, 160px));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+
+.history-reschedule-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, .8fr) minmax(0, 1.5fr);
+  gap: 12px;
+  margin-top: 16px;
+}
+.history-reschedule-fields label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12px; font-weight: 600; }
+.history-reschedule-fields :is(input, select) { width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--pignus-border, #c9dacd); border-radius: 7px; }
+.history-reschedule-fields .field-error { grid-column: 1 / -1; }
+@media (max-width: 640px) {
+  .modal.history-detail > .history-actions { grid-template-columns: 1fr 1fr; }
+  .modal.history-detail > .history-actions > button { grid-row: auto; }
+  .history-reschedule-fields { gap: 8px; }
 }
 
 .modal.history-detail > .history-actions > button {
