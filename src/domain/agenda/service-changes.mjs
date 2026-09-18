@@ -1,5 +1,5 @@
 // Compare editable values only; persistence/audit metadata does not make a draft dirty.
-export const serviceEditableFields = ['time', 'serviceId', 'service', 'customerId', 'client', 'address', 'phone', 'detail', 'internalNote', 'paymentMethod', 'amount', 'monthlyFee', 'form', 'installationZone', 'estimatedMinutes', 'servicePhotoUrl', 'servicePhotoAttachedAt']
+export const serviceEditableFields = ['time', 'serviceId', 'service', 'customerId', 'client', 'address', 'phone', 'detail', 'internalNote', 'paymentMethod', 'amount', 'monthlyFee', 'form', 'formEmail', 'installationZone', 'estimatedMinutes', 'servicePhotoUrl', 'servicePhotoAttachedAt']
 
 export function serviceHasChanges(task, saved) {
   if (!saved) return true

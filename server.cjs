@@ -750,6 +750,7 @@ function technicianSafeRecord(record = {}) {
     delete visible.amount
   }
   if (!handwrittenForm) delete visible.form
+  delete visible.formEmail
   return visible
 }
 
@@ -795,7 +796,7 @@ function readStateForUser(user) {
       const account = String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()
       return (customerId && customerIds.has(customerId)) || (account && accounts.has(account))
     }).map(record => {
-      const { internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, ...visible } = record
+      const { internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, formEmail: _formEmail, ...visible } = record
       return visible
     })
     return { revision: state.revision, roles: [], employees: [], services: [], vehicles: [], customers: trackedCustomers, history, agenda: null, preferences: {} }
