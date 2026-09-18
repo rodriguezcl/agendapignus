@@ -469,7 +469,7 @@ const agendaServiceProgress = (record, fallbackStatus) => {
   const started = record?.startedAt ? new Date(record.startedAt) : null
   const inProgress = fallbackStatus === 'Pendiente' && !record?.technicalStatus && !record?.vehicleControl && started && Number.isFinite(started.getTime())
   return {
-    status: inProgress ? 'En proceso' : fallbackStatus,
+    status: inProgress ? 'En proceso' : record ? historyStatusLabel({ ...record, status: fallbackStatus }) : fallbackStatus,
     startedLabel: inProgress ? `Inició a las ${started.toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false })}` : ''
   }
 }

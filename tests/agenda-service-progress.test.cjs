@@ -4,7 +4,11 @@ const fs = require('node:fs')
 const vm = require('node:vm')
 const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
 const start = source.indexOf('const agendaServiceProgress =')
-const progress = vm.runInNewContext(source.slice(start, source.indexOf('function TaskStatusBadge', start)) + '\nagendaServiceProgress')
+let historyStatusLabel
+test.before(async () => {
+  ;({ historyStatusLabel } = await import('../src/domain/dashboard/dashboard-metrics.mjs'))
+})
+const progress = vm.runInNewContext(source.slice(start, source.indexOf('function TaskStatusBadge', start)) + '\nagendaServiceProgress', { historyStatusLabel: record => historyStatusLabel(record) })
 const startedAt = '2026-09-18T14:32:00.000Z'
 
 test('confirmed technician start displays En proceso and Argentina local start time', () => {
@@ -40,4 +44,15 @@ test('daily and weekly badges use the authoritative history record and show star
   assert.match(badge, /service-started-label/)
   assert.match(source, /<TaskStatusBadge task=\{task\} date=\{date\} history=\{history\} \/>/)
   assert.match(source, /<TaskStatusBadge task=\{task\} date=\{day\} history=\{operationalHistory\} weekly \/>/)
+})
+
+test('agendas label rescheduling requests without renaming other reviews or changing stored status', () => {
+  for (const field of ['technicalStatus', 'technicianRequest']) {
+    const record = { status: 'Requiere revisión', [field]: 'Reprogramación solicitada', startedAt }
+    assert.equal(progress(record, record.status).status, 'Reprogramación pendiente')
+    assert.equal(progress(record, record.status).startedLabel, '')
+    assert.equal(record.status, 'Requiere revisión')
+  }
+  const cancellation = { status: 'Requiere revisión', technicalStatus: 'Cancelación solicitada' }
+  assert.equal(progress(cancellation, cancellation.status).status, 'Requiere revisión')
 })
