@@ -22,6 +22,22 @@ export function countYearToDateAlarmInstallations(records, { throughDate, zone =
 
 const pendingDefinitionStatuses = new Set(['Pendiente', 'Reprogramado', 'Requiere revisión'])
 
+export function pendingReschedulingRecords(records) {
+  return (records || []).filter(record => record?.status === 'Requiere revisión'
+    && (record.technicalStatus === 'Reprogramación solicitada' || record.technicianRequest === 'Reprogramación solicitada'))
+}
+
+export function dashboardPendingGroups(records, today) {
+  const rescheduling = pendingReschedulingRecords(records)
+  const requests = new Set(rescheduling)
+  const pending = pendingDefinitionRecords(records, today).filter(record => !requests.has(record))
+  return {
+    today: pending.filter(record => String(record.scheduledDate || record.date || '') === today),
+    overdue: pending.filter(record => String(record.scheduledDate || record.date || '') < today),
+    rescheduling
+  }
+}
+
 export function pendingDefinitionRecords(records, today) {
   return (records || []).filter(record => {
     const status = record?.status || 'Pendiente'

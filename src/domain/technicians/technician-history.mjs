@@ -47,6 +47,7 @@ export function technicianTeamLabel(record) {
 
 export function technicianRecordResolved(record) {
   if (record?.vehicleControl) return record?.technicalStatus === 'Completado' || record?.status === 'Completado'
+  if (record?.status === 'Requiere revisión' && record?.technicianRequest === 'Reprogramación solicitada') return true
   return Boolean(record?.technicalStatus || record?.status === 'Completado' || record?.status === 'Cancelado' || record?.status === 'Reprogramado')
 }
 
