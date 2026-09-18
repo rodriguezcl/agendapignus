@@ -403,3 +403,5 @@ body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice[data-tone=
 }
 .pending-reminder-rescheduling { background: #f3ebff; border-color: #c6afe5; color: #633c8e; }
 .app-shell[data-theme="dark"] .pending-reminder-rescheduling { background: #352445; border-color: #82649e; color: #e2ccf5; }
+.work-status.reprogramación-pendiente { color: #633c8e; background: #f3ebff; }
+.app-shell[data-theme="dark"] .work-status.reprogramación-pendiente { color: #e2ccf5; background: #352445; }

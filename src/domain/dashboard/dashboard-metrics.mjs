@@ -38,6 +38,15 @@ export function dashboardPendingGroups(records, today) {
   }
 }
 
+export function historyReminderRecords(records, filter) {
+  if (!filter || !['today', 'overdue', 'rescheduling'].includes(filter.pendingGroup)) return records
+  return dashboardPendingGroups(records, filter.date)[filter.pendingGroup]
+}
+
+export function historyStatusLabel(record) {
+  return pendingReschedulingRecords([record]).length ? 'Reprogramación pendiente' : record?.status || 'Pendiente'
+}
+
 export function pendingDefinitionRecords(records, today) {
   return (records || []).filter(record => {
     const status = record?.status || 'Pendiente'
