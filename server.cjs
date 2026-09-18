@@ -1849,6 +1849,19 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/api/state') {
     const user = requireSession(req, res)
     if (!user) return
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      const result = require('./api/_lib/monthly-meeting-completion.cjs').completeExpiredMonthlyMeetings(readState())
+      for (const { previous, next } of result.changes) {
+        db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(next), String(next.id))
+        writeAudit({ id: 'system', name: 'Sistema', role: 'Sistema' }, 'Completó automáticamente al finalizar la jornada', 'Servicio / historial', String(next.id), previous, next)
+      }
+      if (result.changes.length) {
+        db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(result.state.agenda), 'current')
+        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(currentStateRevision() + 1))
+      }
+      db.exec('COMMIT')
+    } catch (error) { db.exec('ROLLBACK'); throw error }
     return send(res, 200, readStateForUser(user))
   }
   if (req.method === 'PATCH' && url.pathname === '/api/history/bulk') {

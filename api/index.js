@@ -1,4 +1,25 @@
 const crypto = require('node:crypto')
+const { completeExpiredMonthlyMeetings } = require('./_lib/monthly-meeting-completion.cjs')
+let lastMeetingCompletionScan = 0
+
+async function processExpiredMonthlyMeetings(sql) {
+  const scanTime = Date.now()
+  if (scanTime - lastMeetingCompletionScan < 60000) return
+  const snapshot = await readState(sql)
+  if (!completeExpiredMonthlyMeetings(snapshot).changes.length) { lastMeetingCompletionScan = scanTime; return }
+  await sql.begin(async transaction => {
+    await transaction`set local lock_timeout = '5s'`
+    await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+    await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+    const current = await readState(transaction)
+    const result = completeExpiredMonthlyMeetings(current)
+    if (!result.changes.length) return
+    await persistStateCollections(transaction, current, result.state, Number(current.revision || 0) + 1)
+    const actor = { id: 'system', name: 'Sistema', role: 'Sistema' }
+    await appendAudit(transaction, result.changes.map(({ previous, next }) => auditEntry(actor, 'Completó automáticamente al finalizar la jornada', 'Servicio / historial', String(next.id), previous, next)))
+  })
+  lastMeetingCompletionScan = scanTime
+}
 const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
 const { database, readTechnicianState, replaceCollections } = require('./_lib/database.cjs')
 const { readApplicationRevision: readRevision, readApplicationState: readState } = require('./_lib/storage-router.cjs')
@@ -991,6 +1012,7 @@ module.exports = async function handler(req, res) {
       if (req.method === 'GET') return send(res, 200, { requests: await readPasswordResetRequests(sql) })
       if (req.method === 'DELETE') return await resolvePasswordResetRequest(req, res, sql, session.user)
     }
+    if (req.method === 'GET' && ['/state', '/state/revision'].includes(route)) await processExpiredMonthlyMeetings(sql)
     if (req.method === 'GET' && route === '/state/revision') return send(res, 200, { revision: await readRevision(sql) })
     if (req.method === 'GET' && route === '/state') {
       const state = session.user.roleCode === 'technician'
