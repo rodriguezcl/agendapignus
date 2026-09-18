@@ -6,8 +6,8 @@ const app = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
 const source = app.slice(app.indexOf('function HistoryManagementDetail'), app.indexOf('function HistoryDetail('))
 
 test('history edit displays team and technicians read-only', () => {
-  assert.match(source, /<label>Equipo<input readOnly/)
-  assert.match(source, /<label>Técnicos asignados<input readOnly/)
+  assert.match(source, /<label>Equipo y técnicos<select disabled/)
+  assert.doesNotMatch(source, /<label>Técnicos asignados<input/)
   assert.doesNotMatch(source, /<select multiple/)
 })
 

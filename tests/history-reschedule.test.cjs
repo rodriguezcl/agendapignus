@@ -57,6 +57,8 @@ test('destination overlap is rejected by the same server validation as agenda sa
 test('same-day reassignment and history-only records do not duplicate the service', async () => {
   const { historyRescheduleOperations } = await import('../src/features/state/application/history-reschedule.mjs')
   const state = fixture()
+  state.history[0].technicalStatus = ''
+  state.history[0].technicianRequest = ''
   state.agenda.weekly[sourceDay].teams.push({ ...state.agenda.weekly[day].teams[0] })
   const next = applyStateOperations(state, historyRescheduleOperations(state, { ...command(state), day: sourceDay }))
   assert.equal(next.agenda.weekly[sourceDay].teams[0].tasks.length, 0)
