@@ -1,22 +1,32 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const vm = require('node:vm')
+const { synchronizeAgendaHistoryRecord } = require('../api/_lib/history-record-operation.cjs')
 
-test('started, reported and previously rescheduled services protect identity', async () => {
-  const { hasServiceActivity, protectServiceIdentity } = await import('../src/domain/history/history-edit-policy.mjs')
-  for (const activity of [{ startedAt: '2026-09-18T14:00:00Z' }, { technicalStatus: 'Reprogramación solicitada' }, { technicalObservation: 'Trabajo realizado' }, { status: 'Completado' }, { reschedulingHistory: [{}] }]) {
-    const record = { ...activity, customerId: 'c', client: 'Cliente', serviceId: 's', service: 'Service', address: 'Dirección original', phone: '123' }
-    assert.equal(hasServiceActivity(record), true)
-    const patch = protectServiceIdentity(record, { customerId: 'otro', serviceId: 'otro', address: 'otra', phone: '456', estimatedMinutes: 120, detail: 'Nueva visita', internalNote: 'Preparar' })
-    for (const key of ['customerId', 'client', 'serviceId', 'service', 'address', 'phone']) assert.equal(patch[key], record[key])
-    assert.equal(patch.estimatedMinutes, 120)
-    assert.equal(patch.detail, 'Nueva visita')
-    assert.equal(patch.internalNote, 'Preparar')
+test('identity edits preserve manual contact and synchronize both agendas', () => {
+  const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+  const line = source.split(/\r?\n/).find(line => line.includes('const patch = { ...draft,'))
+  const record = { id: 'h', status: 'Requiere revisión', customerId: 'old', technicianIds: ['t'] }
+  const draft = { customerId: 'new', address: 'Manual', phone: '456', estimatedMinutes: 120 }
+  const patch = vm.runInNewContext(line + '\npatch', { record, draft, customer: {}, service: { id: 'new-service', name: 'Nuevo servicio' }, authUser: {}, customerLinkPatch: () => ({ customerId: 'new', client: 'Nuevo cliente', address: 'Ficha', phone: '123' }) })
+  const task = { historyId: 'h', customerId: 'old' }
+  const agenda = { teams: [{ tasks: [task] }], weekly: { day: { teams: [{ tasks: [task] }] } } }
+  const result = synchronizeAgendaHistoryRecord(agenda, record, { ...record, ...patch })
+  for (const updated of [result.teams[0].tasks[0], result.weekly.day.teams[0].tasks[0]]) {
+    assert.equal(updated.address, 'Manual')
+    assert.equal(updated.phone, '456')
+    assert.equal(updated.customerId, 'new')
+    assert.equal(updated.serviceId, 'new-service')
+    assert.equal(updated.estimatedMinutes, 120)
   }
+  assert.equal(task.customerId, 'old')
+  assert.doesNotMatch(source, /identityLocked|protectServiceIdentity/)
 })
 
-test('unstarted pending services remain editable and missing legacy fields are not fabricated', async () => {
-  const { hasServiceActivity, protectServiceIdentity } = await import('../src/domain/history/history-edit-policy.mjs')
-  assert.equal(hasServiceActivity({ status: 'Pendiente' }), false)
-  assert.equal(protectServiceIdentity({ status: 'Pendiente' }, { customerId: 'nuevo' }).customerId, 'nuevo')
-  assert.equal(Object.hasOwn(protectServiceIdentity({ technicalStatus: 'Completado' }, { customerId: 'inventado' }), 'customerId'), false)
+test('pending rescheduling requires a different date', async () => {
+  const { historyRescheduleOperations } = await import('../src/features/state/application/history-reschedule.mjs')
+  for (const flag of [{ technicalStatus: 'Reprogramación solicitada' }, { technicianRequest: 'Reprogramación solicitada' }, { status: 'Reprogramación pendiente' }]) {
+    assert.throws(() => historyRescheduleOperations({}, { base: { date: '2026-09-18', ...flag }, day: '2026-09-18' }), /fecha distinta/)
+  }
 })

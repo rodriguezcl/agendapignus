@@ -1,7 +1,9 @@
 import { weeklyServiceOperations } from './weekly-service-save.mjs'
+import { requiresDifferentRescheduleDay } from '../../../domain/history/history-edit-policy.mjs'
 import { serviceRecordFingerprint } from '../../../domain/history/service-concurrency.mjs'
 
 export function historyRescheduleOperations(snapshot, { base, day, time, team, today, now = new Date().toISOString() }) {
+  if (day === base.date && requiresDifferentRescheduleDay(base)) throw new Error('La reprogramación pendiente requiere una fecha distinta del día original.')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < today || new Date(`${day}T12:00:00Z`).getUTCDay() === 0) throw new Error('Elegí una fecha habilitada, desde hoy en adelante.')
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('Indicá un horario válido.')
   if (!team?.teamId || !team.memberIds?.length) throw new Error('Seleccioná un equipo con técnicos asignados.')

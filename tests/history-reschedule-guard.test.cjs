@@ -5,9 +5,11 @@ const vm = require('node:vm')
 const app = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
 const source = app.slice(app.indexOf('function HistoryManagementDetail'), app.indexOf('function HistoryDetail('))
 
-test('actual readiness validation accepts valid hours including 14:00 and rejects incomplete inputs', () => {
+test('actual readiness validation accepts valid hours including 14:00 and rejects incomplete inputs', async () => {
+  const { requiresDifferentRescheduleDay } = await import('../src/domain/history/history-edit-policy.mjs')
   const expression = source.split(/\r?\n/).find(line => line.includes('const rescheduleReady ='))
   const ready = (patch = {}) => vm.runInNewContext(expression + '\nrescheduleReady', {
+    requiresDifferentRescheduleDay, record: { date: '2026-09-18', technicalStatus: 'Reprogramación solicitada' },
     rescheduleDate: '2026-09-21', minimumRescheduleDate: '2026-09-18',
     selectedRescheduleTeam: { teamId: '1' }, rescheduleTime: '14:00', ...patch
   })
@@ -16,6 +18,7 @@ test('actual readiness validation accepts valid hours including 14:00 and reject
   assert.equal(ready({ selectedRescheduleTeam: undefined }), false)
   assert.equal(ready({ rescheduleDate: '' }), false)
   assert.equal(ready({ rescheduleDate: '2026-09-17' }), false)
+  assert.equal(ready({ rescheduleDate: '2026-09-18' }), false)
 })
 
 test('closing an unfinished reschedule prompts, an empty one closes, saving cannot close', () => {
