@@ -26,7 +26,15 @@ test('history displays duration and exposes the shared duration editor while con
   const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
   const detail = source.slice(source.indexOf('function HistoryManagementDetail'), source.indexOf('function HistoryDetail('))
   assert.match(detail, /<b>Tiempo estimado<\/b>/)
+  assert.match(detail, /durationLabel\(serviceEstimateForTask\(record/)
   assert.match(detail, /ServiceEstimatedDurationField value=\{draft.estimatedMinutes\}/)
   assert.match(detail, /estimatedMinutesCustomized: true/)
   assert.match(detail, /record.vehicleControl \? <label>Tiempo estimado<input value="15 minutos" readOnly/)
+})
+
+test('duration label renders hours and minutes without changing the stored duration', async () => {
+  const { durationLabel } = await import('../src/domain/agenda/duration-label.mjs')
+  for (const [minutes, label] of [[15, '0 h 15 min'], [60, '1 h 0 min'], [90, '1 h 30 min'], [150, '2 h 30 min'], [450, '7 h 30 min']]) {
+    assert.equal(durationLabel(minutes), label)
+  }
 })
