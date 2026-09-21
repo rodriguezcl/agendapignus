@@ -1,5 +1,12 @@
 import { taskOccupiedInterval, minutesAsTime } from './service-scheduling.mjs'
 
+export function planningHoursForDay(day) {
+  const weekDay = new Date(`${day}T12:00:00`).getDay()
+  if (!Number.isInteger(weekDay) || weekDay === 0) return null
+  const max = weekDay === 5 ? '20:00' : weekDay === 6 ? '12:00' : '17:00'
+  return { min: '08:00', max, label: `08:00 a ${max}` }
+}
+
 // Only internal gaps: empty placeholders do not reserve working time.
 export function serviceGaps(tasks, { min, max, day, now = new Date() } = {}) {
   const minutes = value => /^\d{2}:\d{2}$/.test(value || '') ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : null

@@ -1,6 +1,25 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
+test('daily and weekly availability share working hours', async () => {
+  const { planningHoursForDay } = await import('../src/domain/agenda/service-gaps.mjs')
+  assert.equal(planningHoursForDay('2026-09-21').max, '17:00')
+  assert.equal(planningHoursForDay('2026-09-25').max, '20:00')
+  assert.equal(planningHoursForDay('2026-09-26').max, '12:00')
+  assert.equal(planningHoursForDay('2026-09-27'), null)
+})
+
+test('daily gap insertion exposes a draft at the available time and does not duplicate that window', async () => {
+  const { serviceGaps, planningHoursForDay } = await import('../src/domain/agenda/service-gaps.mjs')
+  const tasks = [{ time: '08:45', serviceId: 's', estimatedMinutes: 150 }, { time: '13:00', serviceId: 's', estimatedMinutes: 60 }]
+  const options = { ...planningHoursForDay('2026-09-21'), day: '2026-09-21', now: '2026-09-21T12:00:00Z' }
+  const [gap] = serviceGaps(tasks, options)
+  assert.deepEqual(gap, { start: '11:15', end: '13:00', beforeIndex: 1 })
+  const next = [...tasks.slice(0, gap.beforeIndex), { taskId: 'draft', time: gap.start }, ...tasks.slice(gap.beforeIndex)]
+  assert.equal(next[1].time, '11:15')
+  assert.deepEqual(serviceGaps(next, options), [])
+})
+
 test('excluye el almuerzo y exige 90 minutos continuos por tramo', async () => {
   const { serviceGaps } = await import('../src/domain/agenda/service-gaps.mjs')
   const gap = (start, end, options) => serviceGaps([
