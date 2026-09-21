@@ -405,3 +405,30 @@ body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice[data-tone=
 .app-shell[data-theme="dark"] .pending-reminder-rescheduling { background: #352445; border-color: #82649e; color: #e2ccf5; }
 .work-status.reprogramación-pendiente { color: #633c8e; background: #f3ebff; }
 .app-shell[data-theme="dark"] .work-status.reprogramación-pendiente { color: #e2ccf5; background: #352445; }
+
+/* Customer approval is independent from the amber operational pending status. */
+:root {
+  --confirmation-text: #1d4e89;
+  --confirmation-background: #eaf3ff;
+  --confirmation-border: #9bbce5;
+}
+.app-shell[data-theme="dark"], body.dark {
+  --confirmation-text: #c8e0ff;
+  --confirmation-background: #19334f;
+  --confirmation-border: #557dab;
+}
+.app-shell .pending-reminder-confirmation,
+.app-shell[data-theme="dark"] .pending-reminder-confirmation,
+.app-shell .service-confirmation-button.awaiting,
+.modal.history-detail > .history-actions > .service-confirmation-button.awaiting,
+.modal.history-detail > .history-actions > .service-confirmation-button.awaiting:hover {
+  color: var(--confirmation-text);
+  background: var(--confirmation-background);
+  border-color: var(--confirmation-border);
+}
+.app-shell .service-confirmation-label,
+.week-task-summary > .service-confirmation-label {
+  color: var(--confirmation-text);
+}
+.pending-reminder-confirmation > svg,
+.service-confirmation-button.awaiting > svg { color: inherit; }
