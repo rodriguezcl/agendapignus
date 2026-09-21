@@ -1,6 +1,6 @@
 const normalizedName = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
-const minimumReservation = (task, serviceMap) => task.vehicleControl || normalizedName(task.service || serviceMap.get(String(task.serviceId))?.name).replace(/\s+/g, ' ') === 'reunion mensual' ? 15 : 60
-const isMonthlyMeeting = (task, serviceMap) => normalizedName(task.service || serviceMap.get(String(task.serviceId))?.name).replace(/\s+/g, ' ') === 'reunion mensual'
+const isMonthlyMeeting = (task, serviceMap) => normalizedName(task.service || serviceMap.byId.get(String(task.serviceId))?.name).replace(/\s+/g, ' ') === 'reunion mensual'
+const minimumReservation = (task, serviceMap) => task.vehicleControl || isMonthlyMeeting(task, serviceMap) ? 15 : 60
 const allowedMeetingControlOverlap = (first, second, serviceMap) => (isMonthlyMeeting(first, serviceMap) && second.vehicleControl) || (first.vehicleControl && isMonthlyMeeting(second, serviceMap))
 
 const argentinaToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })

@@ -3,6 +3,22 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const { validateChangedAgendaSchedules } = require('../api/_lib/scheduling-validation.cjs')
 
+test('server resolves meeting names from catalogue IDs and keeps the ordinary minimum reservation', () => {
+  const state = { services: [{ id: 'meeting', name: 'Reunión Mensual' }, { id: 'ordinary', name: 'Service de alarma' }], history: [], agenda: { date: '2099-01-02', teams: [
+    { teamId: 'a', tasks: [
+      { serviceId: 'meeting', time: '15:15', estimatedMinutes: 15 },
+      { serviceId: 'ordinary', time: '15:30', estimatedMinutes: 15 }
+    ] }
+  ] } }
+  assert.doesNotThrow(() => validateChangedAgendaSchedules(state))
+  state.agenda.teams[0].tasks[0].serviceId = 'ordinary'
+  assert.throws(() => validateChangedAgendaSchedules(state), /conflicto de horarios/)
+  state.agenda.teams[0].tasks[0].serviceId = 'meeting'
+  state.agenda.teams[0].tasks[0].estimatedMinutes = 30
+  state.agenda.teams[0].tasks[1].vehicleControl = true
+  assert.doesNotThrow(() => validateChangedAgendaSchedules(state))
+})
+
 test('monthly meeting uses duration; vehicle controls and ordinary services retain their rules', async () => {
   const { taskReservationMinutes } = await import('../src/domain/agenda/service-scheduling.mjs')
   assert.equal(taskReservationMinutes({ service: 'Reunión Mensual', estimatedMinutes: 15 }), 15)
