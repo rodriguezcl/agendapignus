@@ -1585,14 +1585,14 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
     gap: 8px;
   }
 
-  .content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button) {
+  .content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button, .service-confirmation-button) {
     width: 100%;
     min-width: 0;
     min-height: 44px;
     gap: 7px;
   }
 
-  .content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button) > span:not([aria-hidden="true"]) {
+  .content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button, .service-confirmation-button) > span:not([aria-hidden="true"]) {
     display: inline;
   }
 
@@ -2161,7 +2161,8 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
 
 /* Acciones compactas, con la misma altura que la confirmación de cambios. */
 .modal.history-detail > .history-actions {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  align-items: stretch;
   gap: 8px;
 }
 
@@ -2184,13 +2185,18 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
   /* Neutraliza las posiciones legadas que enviaban Reprogramar a la fila 2. */
   grid-column: auto;
   grid-row: auto;
-  height: auto !important;
-  min-height: 44px !important;
+  align-self: stretch;
+  height: 100% !important;
+  min-height: 56px !important;
+  width: 100%;
+  margin: 0;
   padding: 10px 8px !important;
   font-size: 13px;
   line-height: 1.3;
   white-space: normal;
 }
+
+.modal.history-detail > .history-actions > button > svg { flex-shrink: 0; }
 
 .modal.history-detail > .history-actions > label input {
   height: 44px !important;
@@ -2554,7 +2560,24 @@ html.modal-open body {
   border-left: 1px solid #e1e9e2;
 }
 
-.content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button) {
+.content > .team-card .tasks > .daily-time-gap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 16px;
+}
+.daily-time-gap > .secondary { width: auto; max-width: 100%; }
+@media (max-width: 640px) {
+  .daily-time-gap > .secondary { width: 100%; }
+}
+
+.content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button, .service-confirmation-button) {
+  box-sizing: border-box;
+  max-width: 100%;
+  white-space: normal;
   width: 100%;
   min-width: 0;
   min-height: 40px;
@@ -2565,9 +2588,13 @@ html.modal-open body {
   font-weight: 700;
 }
 
-.content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button) > span:not([aria-hidden='true']) {
+.content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button, .service-confirmation-button) > span:not([aria-hidden='true']) {
   display: inline;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
+
+.content > .team-card .daily-task-actions > .service-confirmation-button > svg { flex-shrink: 0; }
 
 .app-shell[data-theme='dark'] .content > .team-card .task-row {
   border-color: #334a3c;
@@ -2603,7 +2630,7 @@ html.modal-open body {
     border-top: 1px solid #e1e9e2;
   }
 
-  .content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button) {
+  .content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button, .service-confirmation-button) {
     width: auto;
     min-width: 106px;
   }
@@ -2648,7 +2675,7 @@ html.modal-open body {
     padding-top: 12px;
   }
 
-  .content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button) {
+  .content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button, .service-confirmation-button) {
     width: 100%;
     min-width: 0;
     min-height: 44px;
