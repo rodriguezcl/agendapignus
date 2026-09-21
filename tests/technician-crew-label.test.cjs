@@ -1,0 +1,10 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+test('crew describes solo, pairs and larger teams excluding current user', async () => {
+  const { technicianCrewLabel: label } = await import('../src/domain/agenda/technician-crew-label.mjs')
+  assert.equal(label({ technicianIds: [1], technicians: ['Pascual'] }, '1'), 'Vas solo')
+  assert.equal(label({ technicianIds: [1, 2], technicians: ['Pascual', 'Rodrigo'] }, '1'), 'Compartís equipo con Rodrigo')
+  assert.equal(label({ technicianIds: [1, 2, 3], technicians: ['Pascual', 'Rodrigo', 'Mariano'] }, 2), 'Compartís equipo con Pascual y Mariano')
+  assert.equal(label({ technicianIds: [1, 2], technicians: ['Pascual'] }, 1), 'Compartís equipo con un técnico (nombre no disponible)')
+  assert.equal(label({}, 1), 'Asignación de compañeros no disponible')
+})

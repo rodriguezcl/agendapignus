@@ -2488,6 +2488,21 @@ html.modal-open body {
 .task-duration-field :is(input, select) { min-width: 0; width: 100%; }
 .task-duration-field small { color: #718174; font-weight: 600; }
 
+.technician-crew-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #c8dfcf;
+  border-radius: 8px;
+  background: #edf7f0;
+  color: #244f36;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 /* Keep duration controls aligned with the adjacent team selector and its help text. */
 .history-edit-grid { align-items: start; }
 .history-edit-grid > .task-duration-field { align-content: start; }
