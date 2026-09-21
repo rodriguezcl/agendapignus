@@ -3,6 +3,7 @@ export const serviceEditableFields = ['time', 'serviceId', 'service', 'customerI
 
 export function serviceHasChanges(task, saved) {
   if (!saved) return true
+  if (Boolean(task.awaitingConfirmation) !== Boolean(saved.awaitingConfirmation)) return true
   if (serviceEditableFields.some(key => String(task?.[key] ?? '') !== String(saved?.[key] ?? ''))) return true
   if (Boolean(task?.servicePhotoAttached) !== Boolean(saved?.servicePhotoAttached)) return true
   const checklist = value => (value || []).map(item => ({ text: String(item?.text || ''), completed: Boolean(item?.completed) }))
@@ -14,6 +15,7 @@ export function restoreSavedService(task, saved) {
   for (const key of serviceEditableFields) restored[key] = saved[key] ?? ''
   return {
     ...restored,
+    awaitingConfirmation: saved.awaitingConfirmation === true,
     historyId: saved.id,
     time: saved.time || saved.scheduledTime || '',
     clientAccount: saved.clientAccount || saved.account || '',

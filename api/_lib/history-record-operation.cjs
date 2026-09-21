@@ -11,6 +11,7 @@ function synchronizeAgendaHistoryRecord(value, previous, next) {
   const updated = historyRecordMatchesTask(value, previous) ? {
     ...value,
     status: next.status,
+    awaitingConfirmation: next.awaitingConfirmation === true,
     scheduledDate: next.scheduledDate || '',
     customerId: next.customerId ?? value.customerId,
     clientAccount: next.clientAccount ?? value.clientAccount,

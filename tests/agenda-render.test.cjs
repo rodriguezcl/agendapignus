@@ -10,7 +10,7 @@ const { buildSync } = require('esbuild')
 test('daily and weekly components render through their actual prop forwarding chain', () => {
   const root = path.resolve(__dirname, '..')
   const source = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8')
-  const bundle = buildSync({ stdin: { contents: `${source}\nexport { Agenda, WeeklyPlanner };`, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent' })
+  const bundle = buildSync({ stdin: { contents: `${source}\nexport { Agenda, WeeklyPlanner, ServiceConfirmationButton };`, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent' })
   const compiled = new Module(path.join(root, 'test-render.cjs'), module)
   compiled.paths = module.paths
   compiled._compile(bundle.outputFiles[0].text, path.join(root, 'test-render.cjs'))
@@ -21,6 +21,14 @@ test('daily and weekly components render through their actual prop forwarding ch
   const weekly = renderToString(React.createElement(compiled.exports.WeeklyPlanner, props))
   assert.match(weekly, /Agenda semanal/)
   assert.doesNotMatch(weekly, /weekly-save-day/)
+  const confirmation = awaitingConfirmation => renderToString(React.createElement(compiled.exports.ServiceConfirmationButton, {
+    task: { client: 'Cliente', awaitingConfirmation }, day: '2099-01-05', onDraftChange: noop
+  }))
+  assert.match(confirmation(false), /Marcar A CONFIRMAR/)
+  assert.match(confirmation(true), /Confirmar servicio/)
+  assert.equal(renderToString(React.createElement(compiled.exports.ServiceConfirmationButton, {
+    task: { client: 'Vehículo', vehicleControl: true }, day: '2099-01-05', onDraftChange: noop
+  })), '')
 })
 
 test('la agenda distingue servicios sin persistir y confirma su alta en historial', () => {

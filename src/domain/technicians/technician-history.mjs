@@ -61,7 +61,7 @@ const nextCalendarDate = value => {
 export function technicianAgendaServices(records, today) {
   const tomorrow = nextCalendarDate(today)
   return (records || []).filter(record => {
-    if (technicianRecordResolved(record)) return false
+    if (record.awaitingConfirmation === true || technicianRecordResolved(record)) return false
     const date = String(record?.date || '')
     // La agenda operativa incluye cualquier pendiente vencido y limita el
     // futuro al día siguiente. La misma regla se aplica a controles vehiculares

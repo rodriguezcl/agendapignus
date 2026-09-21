@@ -669,6 +669,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
         const error = new Error('Este servicio ya fue informado desde otra sesión.'); error.statusCode = 409; throw error
       }
       const completingVehicleControl = Boolean(record.vehicleControl && type === 'Completado')
+      require('./_lib/service-confirmation.cjs').assertServiceConfirmed(record)
       let vehicleChange = null
       let photo = null
       const currentState = await readState(transaction)
@@ -741,6 +742,7 @@ async function clearDailyAgenda(sql, user) {
 }
 
 function managedHistoryRecord(current, proposed, user, now) {
+  require('./_lib/service-confirmation.cjs').assertServiceConfirmationChange(current, { ...current, ...proposed }, now)
   const allowedStatuses = ['Pendiente', 'Completado', 'Cancelado', 'Reprogramado', 'Requiere revisión']
   if (!allowedStatuses.includes(proposed.status || 'Pendiente')) throw new Error('El estado solicitado no es válido.')
   let next = { ...current, ...proposed, id: current.id, status: proposed.status || 'Pendiente' }
