@@ -28,18 +28,20 @@ export function pendingReschedulingRecords(records) {
 }
 
 export function dashboardPendingGroups(records, today) {
+  const confirmation = (records || []).filter(record => record.awaitingConfirmation === true && !['Completado', 'Cancelado', 'Reprogramado'].includes(record.status))
   const rescheduling = pendingReschedulingRecords(records)
   const requests = new Set(rescheduling)
-  const pending = pendingDefinitionRecords(records, today).filter(record => !requests.has(record))
+  const pending = pendingDefinitionRecords(records, today).filter(record => !requests.has(record) && record.awaitingConfirmation !== true)
   return {
     today: pending.filter(record => String(record.scheduledDate || record.date || '') === today),
     overdue: pending.filter(record => String(record.scheduledDate || record.date || '') < today),
-    rescheduling
+    rescheduling,
+    confirmation
   }
 }
 
 export function historyReminderRecords(records, filter) {
-  if (!filter || !['today', 'overdue', 'rescheduling'].includes(filter.pendingGroup)) return records
+  if (!filter || !['today', 'overdue', 'rescheduling', 'confirmation'].includes(filter.pendingGroup)) return records
   return dashboardPendingGroups(records, filter.date)[filter.pendingGroup]
 }
 

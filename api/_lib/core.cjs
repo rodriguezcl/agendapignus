@@ -201,6 +201,7 @@ function internalPlanningIsValid(record = {}) {
 
 function visibleStateForUser(state, user) {
   if (user.roleCode === 'technician') {
+    state = { ...state, history: state.history.filter(record => record.awaitingConfirmation !== true) }
     const technicianId = String(user.id)
     const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
     const assignedHistory = state.history.filter(record => record.technicianIds?.some(id => String(id) === technicianId))
@@ -506,6 +507,8 @@ function secureEmployees(employees, previousEmployees) {
 }
 
 function validateState(state, previousState = null) {
+  const previousConfirmationRecords = new Map((previousState?.history || []).map(record => [String(record.id), record]))
+  for (const record of state?.history || []) require('./service-confirmation.cjs').assertServiceConfirmationChange(previousConfirmationRecords.get(String(record.id)), record)
   if (!state || typeof state !== 'object') throw new Error('El estado recibido no es válido.')
   for (const name of ['roles', 'employees', 'services', 'vehicles', 'customers', 'history']) if (!Array.isArray(state[name])) throw new Error(`La colección ${name} no es válida.`)
   const unique = (items, key, label) => {

@@ -763,7 +763,7 @@ function internalPlanningIsValid(record = {}) {
 function readTechnicianState(user) {
   const technicianId = String(user.id)
   const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
-  const history = rows('work_history')
+  const history = rows('work_history').filter(record => record.awaitingConfirmation !== true)
   const assignedHistory = history.filter(record => record.technicianIds?.some(id => String(id) === technicianId))
   const activeAssigned = assignedHistory.filter(record => String(record.date || '') >= today && !record.technicalStatus && !['Completado', 'Cancelado', 'Reprogramado'].includes(record.status))
   const activeCustomerIds = new Set(activeAssigned.map(record => String(record.customerId || '')).filter(Boolean))
@@ -1006,6 +1006,8 @@ function replaceRows(table, records, key) {
 
 /** Guarda todas las entidades dentro de una transacción para evitar estados parciales. */
 function validateState(state, previousState = null) {
+  const previousConfirmationRecords = new Map((previousState?.history || []).map(record => [String(record.id), record]))
+  for (const record of state?.history || []) require('./api/_lib/service-confirmation.cjs').assertServiceConfirmationChange(previousConfirmationRecords.get(String(record.id)), record)
   if (!state || typeof state !== 'object') throw new Error('El estado recibido no es válido.')
 
   const collections = ['roles', 'employees', 'services', 'vehicles', 'customers', 'history']
@@ -1179,6 +1181,7 @@ function assertServiceCanBeCompleted(record, now = new Date().toISOString()) {
 }
 
 function managedHistoryRecord(current, proposed, user, now = new Date().toISOString()) {
+  require('./api/_lib/service-confirmation.cjs').assertServiceConfirmationChange(current, { ...current, ...proposed }, now)
   const allowedStatuses = ['Pendiente', 'Completado', 'Cancelado', 'Reprogramado', 'Requiere revisión']
   if (!allowedStatuses.includes(proposed.status || 'Pendiente')) throw new Error('El estado solicitado no es válido.')
   let next = { ...current, ...proposed, id: current.id, status: proposed.status || 'Pendiente' }
@@ -2177,6 +2180,7 @@ const server = http.createServer((req, res) => {
       const allowed = ['Completado', 'Cancelado', 'Reprogramación solicitada']
       if (!record) return send(res, 404, { error: 'El servicio no existe.' })
       const assigned = record.technicianIds?.some(id => String(id) === String(user.id))
+      require('./api/_lib/service-confirmation.cjs').assertServiceConfirmed(record)
       if (!assigned) return send(res, 403, { error: 'El servicio no está asignado al técnico autenticado.' })
         if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
         if (record.vehicleControl && type !== 'Completado') return send(res, 400, { error: 'El control vehicular debe completarse con foto y kilometraje; no admite cancelación ni reprogramación.' })

@@ -5,6 +5,7 @@ function completeExpiredMonthlyMeetings(state, now = new Date()) {
   const changes = []
   let agenda = state.agenda
   const history = (state.history || []).map(record => {
+    if (record.awaitingConfirmation === true) return record
     const name = String(record.service || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ')
     if (name !== 'reunion mensual' || record.vehicleControl || !['Pendiente', 'En proceso', 'Iniciado'].includes(record.status || 'Pendiente') || record.completedAt || record.technicalStatus || record.technicianRequest || record.scheduledDate) return record
     if (!/^\d{4}-\d{2}-\d{2}$/.test(record.date || '')) return record

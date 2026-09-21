@@ -24,6 +24,7 @@ function assignedTo(record, user) {
 }
 
 function requestServiceAdvance(record, user, now = Date.now()) {
+  require('./service-confirmation.cjs').assertServiceConfirmed(record)
   if (!record) throw businessError('El servicio no existe.', 404)
   if (!assignedTo(record, user)) throw businessError('El servicio no está asignado al técnico autenticado.', 403)
   if (record.advanceRequest?.status === 'pending') return record
@@ -46,6 +47,7 @@ function requestServiceAdvance(record, user, now = Date.now()) {
 }
 
 function resolveServiceAdvance(record, administrator, decision, now = Date.now()) {
+  if (decision === 'approved') require('./service-confirmation.cjs').assertServiceConfirmed(record)
   if (!record) throw businessError('El servicio no existe.', 404)
   if (!['approved', 'denied'].includes(decision)) throw businessError('La decisión indicada no es válida.')
   if (record.advanceRequest?.status !== 'pending') throw businessError('La solicitud ya fue resuelta o dejó de estar disponible.', 409)

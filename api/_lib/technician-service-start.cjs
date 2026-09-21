@@ -1,4 +1,5 @@
 function startTechnicianServiceRecord(record, user, now = new Date().toISOString()) {
+  require('./service-confirmation.cjs').assertServiceConfirmed(record)
   if (!record) {
     const error = new Error('El servicio no existe.')
     error.statusCode = 404

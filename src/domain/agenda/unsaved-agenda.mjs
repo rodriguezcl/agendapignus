@@ -23,6 +23,7 @@ const taskMatchesRecord = (task, team, teamIndex, record, date) => {
   if (!identityMatches) return false
   const teamMatches = team.teamId && record.teamId ? text(team.teamId) === text(record.teamId) : text(record.team) === `Equipo ${teamIndex + 1}`
   return teamMatches &&
+    Boolean(task.awaitingConfirmation) === Boolean(record.awaitingConfirmation) &&
     sameIds(team.memberIds, record.technicianIds) &&
     text(record.time || record.scheduledTime) === text(task.time) &&
     sameReference(task, record, 'serviceId', 'service') &&
