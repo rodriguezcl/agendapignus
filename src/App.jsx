@@ -1,6 +1,7 @@
 import { requiresDifferentRescheduleDay } from './domain/history/history-edit-policy.mjs'
 import { createPortal } from 'react-dom'
 import { canChangeServiceConfirmation } from './domain/agenda/service-confirmation.mjs'
+import { agendaPreviewTasks } from './domain/agenda/preview-tasks.mjs'
 import { serviceConfirmationOperations } from './features/state/application/service-confirmation.mjs'
 import { technicianCrewLabel } from './domain/agenda/technician-crew-label.mjs'
 import { durationLabel } from './domain/agenda/duration-label.mjs'
@@ -482,13 +483,14 @@ const agendaServiceProgress = (record, fallbackStatus) => {
   }
 }
 function TaskStatusBadge({ task, date, history, weekly = false }) {
+  const [reportOpen, setReportOpen] = useState(false)
   const record = historyRecordForTask(task, date, history)
   const { status, startedLabel } = agendaServiceProgress(record, taskStatus(task, date, history))
   if (!status) return null
   const service = String(task?.service || 'Sin tipo de servicio').trim()
   const occupancyTask = taskForScheduleOccupancy(task, date, history)
   const releaseLabel = occupancyTask ? completionLabel(occupancyTask) : ''
-return <div className={`agenda-task-status ${weekly ? 'weekly-agenda-task-status' : 'daily-agenda-task-status'}`}><em className={`work-status ${statusClassName(status)}`}>{status}</em>{startedLabel && <small className="service-started-label" title="Hora de inicio registrada al presionar Iniciar servicio">{startedLabel}</small>}{status === 'Sin guardar' && <small className="unsaved-service-help">Guardá la agenda para habilitarlo al técnico.</small>}{weekly && task?.subscriberReservation && <em className="role-chip subscriber-reservation-chip">Reserva · PIG pendiente</em>}{weekly && <em className={`role-chip agenda-service-chip ${serviceColorClass(service)}`} title={service}>{service}</em>}{releaseLabel && <small title="Hora de finalización; la demora se calcula respecto del tiempo estimado.">{releaseLabel}</small>}</div>
+return <><div className={`agenda-task-status ${weekly ? 'weekly-agenda-task-status' : 'daily-agenda-task-status'}`}><em className={`work-status ${statusClassName(status)}`}>{status}</em>{startedLabel && <small className="service-started-label" title="Hora de inicio registrada al presionar Iniciar servicio">{startedLabel}</small>}{status === 'Sin guardar' && <small className="unsaved-service-help">Guardá la agenda para habilitarlo al técnico.</small>}{weekly && task?.subscriberReservation && <em className="role-chip subscriber-reservation-chip">Reserva · PIG pendiente</em>}{weekly && <em className={`role-chip agenda-service-chip ${serviceColorClass(service)}`} title={service}>{service}</em>}{releaseLabel && <small title="Hora de finalización; la demora se calcula respecto del tiempo estimado.">{releaseLabel}</small>}{!weekly && status === 'Completado' && <button type="button" className="link-button completed-service-report" onClick={() => setReportOpen(true)}>Ver informe técnico</button>}</div>{reportOpen && createPortal(<HistoryDetail record={{ ...task, date, ...record }} close={() => setReportOpen(false)} />, document.body)}</>
 }
 const serviceActor = user => {
   const current = user || globalThis.__pignusCurrentUser
@@ -3106,7 +3108,10 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
   const taskMessage = task => `🕒 ${task.time || '--:--'} Hs\n🛠️ *${task.service || 'Servicio'}*\n👤 *${task.client || 'Cliente'}*${task.awaitingConfirmation === true ? '\n🟡 *(A CONFIRMAR)*' : ''}${task.subscriberReservation ? '\n🟡 *Reserva de nuevo abonado · PIG pendiente*' : ''}${previewDetails(task)}${task.address ? `\n📍 *Dirección:* ${task.address}` : ''}${task.phone ? `\n📞 *Contacto:* ${task.phone}` : ''}`
   const teamMessage = (team, index) => `👥 *Equipo ${index + 1}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${team.tasks.filter(taskHasContent).map(taskMessage).join('\n\n')}`
   const individualTaskMessage = (task, team, teamIndex) => `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n👥 *Equipo ${teamIndex + 1}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${taskMessage(task)}`
-  const messageSections = teams.flatMap((team, index) => team.tasks.some(taskHasContent) ? [teamMessage(team, index)] : [])
+  const messageSections = teams.flatMap((team, index) => {
+    const tasks = agendaPreviewTasks(team.tasks.filter(taskHasContent))
+    return tasks.length ? [teamMessage({ ...team, tasks }, index)] : []
+  })
   const message = `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n${messageSections.join('\n\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n')}`
   const copySingleTask = async (task, team, teamIndex, taskIndex) => {
     const copied = await copyTextToClipboard(individualTaskMessage(task, team, teamIndex))
@@ -3579,6 +3584,7 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
   const [techFilter, setTechFilter] = useState('')
   const [taskEditor, setTaskEditor] = useState(null)
   const [pastService, setPastService] = useState(null)
+  const [completedService, setCompletedService] = useState(null)
   const [taskEditorSaving, setTaskEditorSaving] = useState(false)
   const [leaveRequest, setLeaveRequest] = useState(null)
   const [resumeNavigation, setResumeNavigation] = useState(null)
@@ -3773,6 +3779,12 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
     return { ...previous, [day]: sortPlanTasksByTime(normalized) }
   })
   const openTaskEditor = (day, teamIndex, taskIndex) => {
+    const selectedTeam = dayPlan(day).teams[teamIndex]
+    const selectedTask = selectedTeam?.tasks?.[taskIndex]
+    if (selectedTask && taskStatus(selectedTask, day, operationalHistory) === 'Completado') {
+      setCompletedService({ ...selectedTask, date: day, team: selectedTeam.label || `Equipo ${teamIndex + 1}`, technicians: selectedTask.technicians || selectedTeam.members, ...(historyRecordForTask(selectedTask, day, operationalHistory) || {}) })
+      return
+    }
     if (dayHasFinished(day)) {
       const team = dayPlan(day).teams[teamIndex]
       const task = team?.tasks?.[taskIndex]
@@ -4523,6 +4535,7 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
       })}</div><button type="button" className="secondary annual-guard-add" disabled={!activeTechs.length || !validYear} onClick={addAnnualGuardTechnician}><Icon name="plus" size={15} />Agregar técnico</button>{!validYear && <p className="field-error">Ingresá un año válido.</p>}{duplicated && <p className="field-error">Cada técnico puede aparecer una sola vez en la rotación.</p>}{validYear && !annualGuardSetup.rotation.length && <p className="field-error">Agregá al menos un técnico para generar el cronograma.</p>}<p className="annual-guard-help">Los cambios manuales realizados en un sábado específico se conservan como excepción.</p><ConfigurationHistoryPanel history={weekly._annualGuards?.[annualGuardSetup.year]?.configurationHistory} type="guards" /><div className="modal-actions"><button className="secondary" onClick={() => setAnnualGuardSetup(null)}><Icon name="close" size={16} />Cancelar</button><button className="primary" disabled={!validYear || !annualGuardSetup.rotation.length || duplicated} onClick={saveAnnualGuardSetup}><Icon name="check" size={16} />Guardar guardias del año</button></div></section></div>
     })()}
     <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>Guardá cada servicio desde su formulario. Los cambios confirmados se comparten con todos los usuarios.</p></div><div className="weekly-actions">{canConfigureWeekly('weeklyTeams') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button>}{canConfigureWeekly('weeklyHours') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button>}{canConfigureWeekly('weeklyVehicles') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : ''} onClick={openMonthlyVehicleSetup}><Icon name="vehicle" size={16} />Vehículos del mes</button>}{canConfigureWeekly('weeklyGuards') && <button className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button>}<label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => { weeklyAnchorFollowsCurrentRef.current = false; setAnchor(event.target.value) }} /></label></div></div>
+    {completedService && <HistoryDetail record={completedService} close={() => setCompletedService(null)} />}
     {pastService && <div className="modal-layer"><section className="modal detail-modal history-detail past-service-detail" role="dialog" aria-modal="true" aria-label="Servicio pasado · solo lectura"><button type="button" className="close-modal" aria-label="Cerrar" onClick={() => setPastService(null)}><Icon name="close" /></button><p className="eyebrow">{prettyDate(pastService.date)} · SOLO LECTURA</p><h2>{pastService.client || pastService.service}</h2>{[
       ['Resumen del servicio', [
         ['Servicio', pastService.service], ['Estado', pastService.technicalStatus || pastService.status],
