@@ -11,7 +11,7 @@ test('ignora controles y espacios vacíos, y conserva la numeración visual', ()
     teams: [], date: '2099-09-18', history: [],
     taskHasContent: task => Boolean(task.service), taskIsResolvedForPlanning: () => false,
     serviceForTask: () => ({}), isTrainingService: () => false, serviceCode: () => '',
-    requiresPaymentAmount: () => false, serviceTimeInMinutes: () => null,
+    requiresPaymentAmount: () => false, invalidFormEmail: () => false, serviceTimeInMinutes: () => null,
     currentLocalDate: () => '2026-09-17', taskForScheduleOccupancy: () => null,
     minimumServiceGapConflicts: () => [], showAgendaValidationModal: value => { errors = value }
   })

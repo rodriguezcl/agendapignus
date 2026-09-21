@@ -579,7 +579,9 @@ test('ordena los campos y centra las acciones de cada servicio diario', () => {
   assert.match(source, /className="daily-field-contact"/)
   assert.match(source, /className="observations daily-field-observations"/)
   assert.match(source, /className="icon-btn move daily-move-button"/)
-  assert.doesNotMatch(source, /document\.querySelectorAll\('\.content \.team-card \.task-row'\)/)
+  // La consulta actual enfoca y valida la fila al guardar; ya no construye sus acciones.
+  assert.match(source, /const saveDailyService = async taskId => \{[\s\S]*?pignus:validate-required[\s\S]*?registerHistory\(teams, taskId\)/)
+  assert.match(source, /<div className="daily-task-actions">/)
   assert.match(styles, /\.content > \.team-card \.task-row > \.daily-field-observations \{[\s\S]*?grid-column: 2 \/ 5 !important;/)
   assert.match(styles, /\.content > \.team-card \.task-row > \.daily-task-actions \{[\s\S]*?align-self: stretch;[\s\S]*?justify-content: center;/)
 })
@@ -589,7 +591,7 @@ test('la agenda diaria renderiza sus acciones inmediatamente y separa hora de se
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(source, /className="secondary save-agenda-button" onClick=\{saveAgenda\}/)
   assert.doesNotMatch(source, /actionGroup\.querySelector\('\.save-agenda-button'\)\?\.remove\(\)/)
-  assert.match(source, /taskHasContent\(task\) && <button type="button" className="icon-btn delete daily-delete-button"/)
+  assert.match(source, /\(team.tasks.length > 1 \|\| taskHasContent\(task\)\) && <button type="button" className="icon-btn delete daily-delete-button"/)
   assert.match(styles, /grid-template-columns: 132px minmax\(220px, 1fr\) minmax\(220px, 1fr\)/)
   assert.match(styles, /\.daily-field-time input\[type='time'\] \{[\s\S]*?max-width: 100%;/)
   assert.match(styles, /label\.daily-field-time,[\s\S]*?label\.daily-field-service \{\s*grid-column: 1 \/ -1 !important;/)
@@ -946,16 +948,16 @@ test('el escritorio aprovecha el ancho y el servicio del historial no ocupa dos 
   assert.match(styles, /minmax\(175px, \.9fr\)/)
 })
 
-test('la columna Estado conserva sus óvalos en una sola línea', () => {
+test('la columna Estado reserva espacio para reprogramación y contiene etiquetas largas', () => {
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
-  assert.match(styles, /minmax\(120px, \.75fr\) 128px 125px/)
-  assert.match(styles, /\.history-bulk \.history-row > div:nth-child\(7\) \.work-status \{[\s\S]*?width: max-content;[\s\S]*?white-space: nowrap;/)
+  assert.match(styles, /minmax\(120px, \.75fr\) 190px 125px/)
+  assert.match(styles, /\.history-bulk \.history-row > div:nth-child\(7\) \.work-status \{[\s\S]*?width: max-content;[\s\S]*?max-width: 100%;[\s\S]*?white-space: normal;[\s\S]*?overflow-wrap: anywhere;/)
 })
 
 test('el historial reduce Fecha y reserva ancho suficiente para Gestionar', () => {
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
-  assert.match(styles, /grid-template-columns: 42px minmax\(128px, \.75fr\)[^;]+128px 125px !important;/)
-  assert.match(styles, /@media \(min-width: 1200px\)[\s\S]*?grid-template-columns: 42px minmax\(130px, \.7fr\)[^;]+128px 132px !important;/)
+  assert.match(styles, /grid-template-columns: 42px minmax\(128px, \.75fr\)[^;]+190px 125px !important;/)
+  assert.match(styles, /@media \(min-width: 1200px\)[\s\S]*?grid-template-columns: 42px minmax\(130px, \.7fr\)[^;]+190px 132px !important;/)
   assert.match(styles, /\.history-bulk \.history-row > div:last-child \{[\s\S]*?padding-right: 14px;[\s\S]*?justify-self: stretch;/)
   assert.match(styles, /\.history-bulk \.history-row > div:last-child > \.detail-button \{[\s\S]*?width: 100%;[\s\S]*?min-inline-size: 0 !important;[\s\S]*?padding-inline: 8px !important;/)
 })
@@ -1293,7 +1295,8 @@ test('las agendas comparten las ubicaciones de instalación y distinguen reserva
   assert.match(source, /const customerLinkPatch/)
   assert.match(source, /Reserva · PIG pendiente/)
   assert.match(source, /function SubscriberReservationReminders/)
-  assert.match(source, /customers\.filter\(customer => !record\.subscriberReservation \|\| customerKind\(customer\) === 'subscriber'\)/)
+  assert.match(source, /subscriberReservation \? customers.filter\(customer => customerKind\(customer\) === 'subscriber'\) : customers/)
+  assert.match(source, /subscriberReservation=\{record.subscriberReservation\}/)
   assert.match(source, /kind: 'client'/)
   assert.match(source, /zoneOf\(record\) !== 'no-monitoreada'/)
   assert.match(api, /!record\.subscriberReservation && installationCategory !== 'no-monitoreada'/)

@@ -12,6 +12,7 @@ test('el filtro de servicio usa coincidencia exacta y se combina con los otros f
 test('el filtro enumera servicios históricos y restablece selección, página y limpieza', () => {
   assert.match(app, /historyServiceOptions = useMemo\(\(\) => \[\.\.\.new Map\(history.filter/)
   assert.match(app, /setHistoryPage\(1\); setSelected\(\[\]\).*serviceFilter/)
-  assert.match(app, /clear.onclick = .*setServiceFilter\(''\)/)
+  assert.match(app, /const clearFilters = \(\) => \{[\s\S]*?setServiceFilter\(''\)/)
+  assert.match(app, /onClick=\{clearFilters\}/)
   assert.match(app, /all.textContent = 'Todos los servicios'/)
 })

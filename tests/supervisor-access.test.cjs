@@ -6,9 +6,10 @@ const supervisor = { id: 'supervisor-1', roleCode: 'supervisor', role: 'Supervis
 
 test('el tema de Supervisor es local y no dispara escrituras ni bloquea la actualización', () => {
   const app = require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/App.jsx'), 'utf8')
-  assert.match(app, /preferences: isSupervisor \? \{\} : \{ theme \}/)
-  assert.match(app, /useEffect\(\(\) => writeLocalValue\('pignus-theme', theme\), \[theme\]\)/)
-  assert.match(app, /if \(!isSupervisor && data.preferences\?\.theme\) setTheme/)
+  assert.doesNotMatch(app, /preferences:.*\{ theme \}/)
+  assert.match(app, /writeLocalValue\(`pignus-theme-account:\$\{themeAccountKey\}`, value\)/)
+  assert.match(app, /readLocalValue\(`pignus-theme-account:\$\{themeAccountKey\}`, 'light'\)/)
+  assert.doesNotMatch(app, /data.preferences\?\.theme\) setTheme/)
   assert.match(app, /if \(isSupervisor\) return\s+if \(confirmedSaveRef.current/)
   assert.match(app, /const hasLocalChanges = !isSupervisor &&/)
   assert.match(app, /const canPersistLatestSnapshot = !isSupervisor &&/)

@@ -36,7 +36,8 @@ for (const name of ['BufferedInput', 'BufferedTextarea']) {
 
 test('weekly manual fields use local buffering, including internal notes and amounts', () => {
   const start = source.lastIndexOf('return <div className="modal-backdrop weekly-editor-backdrop"')
-  const modal = source.slice(start, start + 11000)
+  assert.ok(start >= 0, 'weekly service editor exists')
+  const modal = source.slice(start, source.indexOf('\n  return ', start + 1))
   assert.match(modal, /BufferedInput[^>]+value=\{task.client\}/)
   assert.match(modal, /BufferedInput[^>]+value=\{task.address\}/)
   assert.match(modal, /BufferedInput[^>]+value=\{task.phone\}/)

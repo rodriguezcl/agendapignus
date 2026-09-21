@@ -18,7 +18,7 @@ test('Capacitación permits a descriptive name without a customer or contact', a
   assert.equal(isTrainingService({ name: 'Instalación de cámaras' }), false)
   const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
   const body = source.slice(source.indexOf('const weeklyTaskMissingFields ='), source.indexOf('const weeklyTaskReadyToSave ='))
-  const missing = vm.runInNewContext(body + '\nweeklyTaskMissingFields', { isTrainingService, serviceCode, requiresPaymentAmount: () => false })
+  const missing = vm.runInNewContext(body + '\nweeklyTaskMissingFields', { isTrainingService, serviceCode, requiresPaymentAmount: () => false, invalidFormEmail: () => false })
   const task = { ...trainingClientPatch('CAPACITACIÓN CERCO ELÉCTRICO'), time: '14:00', service: 'Capacitación', address: 'Sala de capacitación', detail: 'Práctica de instalación', phone: '' }
   assert.equal(missing(task, { name: 'Capacitación' }).length, 0)
   assert.ok(missing({ ...task, client: '' }, { name: 'Capacitación' }).includes('cliente'))
