@@ -2203,6 +2203,10 @@ body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-ro
   min-height: 44px !important;
 }
 
+.modal.history-detail > .history-reservation-linked {
+  margin-top: 16px;
+}
+
 .history-detail-heading {
   display: flex;
   flex-direction: row;
