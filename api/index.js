@@ -33,6 +33,8 @@ const { stateForOperationComparison } = require('./_lib/legacy-estimated-minutes
 const { stateWriteError } = require('./_lib/state-write-error.cjs')
 
 async function persistStateCollections(transaction, current, next, nextRevision) {
+  require('./_lib/journey-identity.cjs').synchronizeJourneyIdentity(next, current)
+  require('./_lib/service-journeys.cjs').validateServiceJourneys(next, current)
   const versionedNext = { ...next, revision: Number(nextRevision) }
   return coordinateStateWrite(transaction, current, versionedNext, {
     mode: 'controlled',
@@ -642,7 +644,7 @@ async function handleTechnicianStart(req, res, sql, user) {
 async function handleTechnicianStatus(req, res, sql, user) {
   if (user.roleCode !== 'technician') return send(res, 403, { error: 'Esta acción es exclusiva del rol técnico.' })
   const { recordId, type, observation, vehicleMileage, vehiclePhoto } = requestBody(req)
-  const allowed = ['Completado', 'Cancelado', 'Reprogramación solicitada']
+  const allowed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramación solicitada']
   if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
   try {
     const updated = await sql.begin(async transaction => {
@@ -673,6 +675,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
       let vehicleChange = null
       let photo = null
       const currentState = await readState(transaction)
+      require('./_lib/service-journeys.cjs').assertJourneyReport(record, type, currentState.history)
       const workingState = structuredClone(currentState)
       if (completingVehicleControl) {
         const mileage = Number(vehicleMileage)
@@ -695,15 +698,16 @@ async function handleTechnicianStatus(req, res, sql, user) {
         photo = { recordId: record.id, vehicleId: record.vehicleId, mimeType: photoMatch[1].toLowerCase(), data: photoBuffer, createdAt: new Date().toISOString() }
         workingState.vehicles = vehicles
       } else if (!String(observation || '').trim()) throw new Error('La observación es obligatoria para informar el servicio.')
-      if (type === 'Completado' && !record.vehicleControl) {
+      if (['Completado', 'Avance registrado'].includes(type) && !record.vehicleControl) {
         assertTechnicianServiceStarted(record)
         assertServiceCanBeCompleted(record)
       }
       const now = new Date().toISOString()
-      const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
+      const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: ['Completado', 'Avance registrado'].includes(type) ? type : 'Requiere revisión', technicianRequest: ['Completado', 'Avance registrado'].includes(type) ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
       const entries = [auditEntry(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, next)]
       if (vehicleChange) entries.push(auditEntry(user, 'Actualizó kilometraje por control semanal', 'Vehículo', String(record.vehicleId), vehicleChange.before, vehicleChange.after))
       workingState.history = workingState.history.map(item => String(item.id) === String(next.id) ? next : item)
+      if (record.serviceJourney && workingState.agenda) workingState.agenda = synchronizeAgendaHistoryRecord(workingState.agenda, record, next)
       let nextState = workingState
       if (next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo')) {
         const normalized = normalizeRetirementCustomers(nextState)
@@ -743,9 +747,13 @@ async function clearDailyAgenda(sql, user) {
 
 function managedHistoryRecord(current, proposed, user, now) {
   require('./_lib/service-confirmation.cjs').assertServiceConfirmationChange(current, { ...current, ...proposed }, now)
-  const allowedStatuses = ['Pendiente', 'Completado', 'Cancelado', 'Reprogramado', 'Requiere revisión']
+  const allowedStatuses = ['Pendiente', 'Completado', 'Avance registrado', 'Cancelado', 'Reprogramado', 'Requiere revisión']
   if (!allowedStatuses.includes(proposed.status || 'Pendiente')) throw new Error('El estado solicitado no es válido.')
   let next = { ...current, ...proposed, id: current.id, status: proposed.status || 'Pendiente' }
+  if (next.status === 'Avance registrado' && current.status !== 'Avance registrado') {
+    if (user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
+    next = { ...next, journeyClosedAt: now }
+  } else if (next.status !== 'Avance registrado') delete next.journeyClosedAt
   if (next.status === 'Completado' && current.status !== 'Completado') {
     if (user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
     next = { ...next, completedAt: next.completedAt || now }

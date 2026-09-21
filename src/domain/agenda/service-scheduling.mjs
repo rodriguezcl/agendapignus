@@ -44,8 +44,8 @@ const zonedDateTime = value => {
 }
 
 export const completedServiceRelease = task => {
-  const completed = task?.status === 'Completado' || task?.technicalStatus === 'Completado'
-  const completedAt = task?.completedAt || task?.technicalReportedAt
+  const completed = ['Completado', 'Avance registrado'].includes(task?.status) || ['Completado', 'Avance registrado'].includes(task?.technicalStatus)
+  const completedAt = task?.completedAt || task?.journeyClosedAt || task?.technicalReportedAt
   const completion = completed && completedAt ? zonedDateTime(completedAt) : null
   const taskDate = String(task?.date || '')
   const start = timeInMinutes(task?.time || task?.scheduledTime)

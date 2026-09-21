@@ -10,7 +10,7 @@ const { buildSync } = require('esbuild')
 test('daily and weekly components render through their actual prop forwarding chain', () => {
   const root = path.resolve(__dirname, '..')
   const source = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8')
-  const bundle = buildSync({ stdin: { contents: `${source}\nexport { Agenda, WeeklyPlanner, ServiceConfirmationButton };`, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent' })
+  const bundle = buildSync({ stdin: { contents: `${source}\nexport { Agenda, WeeklyPlanner, ServiceConfirmationButton, ServiceJourneys, ServiceJourneysContext, JourneyHistory, TechnicianPortal };`, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent' })
   const compiled = new Module(path.join(root, 'test-render.cjs'), module)
   compiled.paths = module.paths
   compiled._compile(bundle.outputFiles[0].text, path.join(root, 'test-render.cjs'))
@@ -30,6 +30,26 @@ test('daily and weekly components render through their actual prop forwarding ch
   assert.equal(renderToString(React.createElement(compiled.exports.ServiceConfirmationButton, {
     task: { client: 'Vehículo', vehicleControl: true }, day: '2099-01-05', onDraftChange: noop
   })), '')
+  const { ServiceJourneys, ServiceJourneysContext, JourneyHistory, TechnicianPortal } = compiled.exports
+  const record = { id:'journey-first',date:'2099-01-05',time:'09:00',service:'Instalación de alarma',status:'Pendiente',client:'Cliente',team:'Equipo 1',technicians:['Técnico'],estimatedMinutes:120 }
+  const provider = (enabled, content, history = [record]) => React.createElement(ServiceJourneysContext.Provider, {value:{enabled,today:'2026-09-21',history}}, content)
+  assert.match(renderToString(provider(true,React.createElement(ServiceJourneys,{record}))),/Planificar varias jornadas/)
+  assert.equal(renderToString(provider(false,React.createElement(ServiceJourneys,{record}))), '')
+  const first={...record,technicianIds:['tech'],serviceJourney:{id:record.id,index:1,total:2}}
+  const last={...first,id:'journey-last',date:'2099-01-06',serviceJourney:{id:record.id,index:2,total:2},technicalObservation:'Informe de prueba'}
+  const detail=renderToString(provider(false,React.createElement(JourneyHistory,{record:first}),[first,last]))
+  assert.match(detail,/Jornada 1 de 2/)
+  assert.match(detail,/Jornada 2 de 2/)
+  assert.match(detail,/Informe de prueba/)
+  const today=new Date().toLocaleDateString('sv-SE',{timeZone:'America/Argentina/Buenos_Aires'})
+  const tomorrow=new Date(`${today}T12:00:00Z`);tomorrow.setUTCDate(tomorrow.getUTCDate()+1)
+  const technical=renderToString(React.createElement(TechnicianPortal,{user:{id:'tech',name:'Técnico'},history:[{...first,date:today,time:'00:00',startedAt:'2020-01-01T12:00:00Z'},{...last,date:tomorrow.toISOString().slice(0,10)}],setHistory:noop,logout:noop}))
+  assert.match(technical,/Registrar avance/)
+  assert.doesNotMatch(technical,/Completar servicio/)
+  const finalVisit=renderToString(React.createElement(TechnicianPortal,{user:{id:'tech',name:'Técnico'},history:[{...first,date:today,status:'Avance registrado'},{...last,date:tomorrow.toISOString().slice(0,10)}],setHistory:noop,logout:noop}))
+  assert.match(finalVisit,/Completar servicio/)
+  assert.doesNotMatch(finalVisit,/Registrar avance/)
+  assert.doesNotMatch(technical,/>Marcar completado</)
 })
 
 test('la agenda distingue servicios sin persistir y confirma su alta en historial', () => {

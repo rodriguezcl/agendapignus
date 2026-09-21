@@ -40,7 +40,7 @@ function analyzeNormalization(state) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(key(record.date)) || Number.isNaN(Date.parse(`${record.date}T12:00:00Z`))) add('invalid_date', 'error', location, id)
     if (record.time && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(record.time)) add('invalid_time', 'error', location, id)
     if (!Number.isInteger(Number(record.estimatedMinutes)) || Number(record.estimatedMinutes) < 15 || Number(record.estimatedMinutes) > 720) add('invalid_duration', 'error', location, id)
-    if (!['Pendiente', 'Completado', 'Cancelado', 'Reprogramado', 'Requiere revisión'].includes(record.status)) add('invalid_status', 'error', location, id)
+    if (!['Pendiente', 'Completado', 'Avance registrado', 'Cancelado', 'Reprogramado', 'Requiere revisión'].includes(record.status)) add('invalid_status', 'error', location, id)
     if (!record.sourceTaskId) add('legacy_missing_task_id', 'info', location, id)
     else if (byTask.has(key(record.sourceTaskId))) add('duplicate_task_identity', 'error', location, id)
     else byTask.set(key(record.sourceTaskId), record)

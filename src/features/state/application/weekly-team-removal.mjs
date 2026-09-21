@@ -1,5 +1,5 @@
 const sameId = (left, right) => String(left || '') === String(right || '')
-const closedRecord = record => ['Completado', 'Cancelado', 'Reprogramado'].includes(record?.status) || Boolean(record?.technicalStatus)
+const closedRecord = record => ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(record?.status) || Boolean(record?.technicalStatus)
 const operation = (path, before, after) => ({
   path,
   before: before ?? null,

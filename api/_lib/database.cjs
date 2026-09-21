@@ -74,7 +74,7 @@ async function readTechnicianState(sql, technicianId, today) {
       )
         and coalesce(data->>'date', '') >= ${String(today)}
         and coalesce(data->>'technicalStatus', '') = ''
-        and coalesce(data->>'status', 'Pendiente') not in ('Completado', 'Cancelado', 'Reprogramado')
+        and coalesce(data->>'status', 'Pendiente') not in ('Completado', 'Avance registrado', 'Cancelado', 'Reprogramado')
     )
     select
       coalesce((

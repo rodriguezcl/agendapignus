@@ -28,7 +28,7 @@ export function pendingReschedulingRecords(records) {
 }
 
 export function dashboardPendingGroups(records, today) {
-  const confirmation = (records || []).filter(record => record.awaitingConfirmation === true && !['Completado', 'Cancelado', 'Reprogramado'].includes(record.status))
+  const confirmation = (records || []).filter(record => record.awaitingConfirmation === true && !['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(record.status))
   const rescheduling = pendingReschedulingRecords(records)
   const requests = new Set(rescheduling)
   const pending = pendingDefinitionRecords(records, today).filter(record => !requests.has(record) && record.awaitingConfirmation !== true)

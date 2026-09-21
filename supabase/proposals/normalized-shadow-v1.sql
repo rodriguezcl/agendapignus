@@ -127,7 +127,7 @@ create table if not exists normalized_shadow.jobs (
   scheduled_date_snapshot text,
   scheduled_time time,
   estimated_minutes integer not null check (estimated_minutes between 15 and 720),
-  status text not null check (status in ('Pendiente','Completado','Cancelado','Reprogramado','Requiere revisión')),
+  status text not null check (status in ('Pendiente','Completado','Avance registrado','Cancelado','Reprogramado','Requiere revisión')),
   customer_id text references normalized_shadow.customers(id),
   service_type_id text not null references normalized_shadow.service_types(id),
   team_key text,

@@ -15,7 +15,7 @@ function startTechnicianServiceRecord(record, user, now = new Date().toISOString
     error.statusCode = 400
     throw error
   }
-  if (record.technicalStatus || ['Completado', 'Cancelado', 'Reprogramado'].includes(record.status)) {
+  if (record.technicalStatus || ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(record.status)) {
     const error = new Error('El servicio ya fue informado y no puede iniciarse.')
     error.statusCode = 409
     throw error

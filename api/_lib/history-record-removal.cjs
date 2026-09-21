@@ -23,6 +23,7 @@ const removalAliases = (record, matchedTasks = []) => [...new Set([
 function removeHistoryRecord(state, recordId) {
   const current = (state?.history || []).find(record => sameId(record.id, recordId))
   if (!current) return { state, record: null, changed: false }
+  if (current.serviceJourney) throw new Error('No se puede eliminar una jornada vinculada. Cancelala para conservar el historial del servicio.')
 
   const next = structuredClone(state)
   const weekly = next.agenda?.weekly || {}

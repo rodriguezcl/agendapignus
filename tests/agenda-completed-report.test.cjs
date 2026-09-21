@@ -7,7 +7,7 @@ const source = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
 test('weekly completed service opens the read-only detail before the editing path', () => {
   const start = source.indexOf('const openTaskEditor =')
   const handler = source.slice(start, source.indexOf('const updateTaskDraft', start))
-  assert.match(handler, /taskStatus\(selectedTask, day, operationalHistory\) === 'Completado'/)
+  assert.match(handler, /\['Completado', 'Avance registrado'\]\.includes\(taskStatus\(selectedTask, day, operationalHistory\)\)/)
   assert.ok(handler.indexOf('setCompletedService') < handler.indexOf('setTaskEditor('))
   assert.match(handler, /historyRecordForTask\(selectedTask, day, operationalHistory\)/)
   assert.match(source, /completedService && <HistoryDetail record=\{completedService\}/)
@@ -15,7 +15,7 @@ test('weekly completed service opens the read-only detail before the editing pat
 
 test('daily completed badge offers technical detail through a portal', () => {
   const badge = source.slice(source.indexOf('function TaskStatusBadge('), source.indexOf('const serviceActor ='))
-  assert.match(badge, /!weekly && status === 'Completado'/)
+  assert.match(badge, /!weekly && \['Completado', 'Avance registrado'\]\.includes\(status\)/)
   assert.match(badge, /Ver informe técnico/)
   assert.match(badge, /createPortal\(<HistoryDetail record=\{\{ \.\.\.task, date, \.\.\.record \}\}/)
 })

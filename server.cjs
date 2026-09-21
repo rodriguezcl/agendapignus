@@ -19,7 +19,7 @@ const { applyStateOperations } = require('./api/_lib/state-operations.cjs')
 const { migrateLegacyEstimatedMinutes, stateForOperationComparison } = require('./api/_lib/legacy-estimated-minutes.cjs')
 const { stateWriteError } = require('./api/_lib/state-write-error.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
-const { startTechnicianServiceRecord } = require('./api/_lib/technician-service-start.cjs')
+const { startTechnicianServiceRecord, assertTechnicianServiceStarted } = require('./api/_lib/technician-service-start.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
 const { customerImportChanges, normalizeImportedCustomers, preserveCustomerTrackingFlags, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('./api/_lib/customer-import.cjs')
 const { concurrentStateChanged, mergeConcurrentState } = require('./api/_lib/state-merge.cjs')
@@ -765,7 +765,7 @@ function readTechnicianState(user) {
   const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
   const history = rows('work_history').filter(record => record.awaitingConfirmation !== true)
   const assignedHistory = history.filter(record => record.technicianIds?.some(id => String(id) === technicianId))
-  const activeAssigned = assignedHistory.filter(record => String(record.date || '') >= today && !record.technicalStatus && !['Completado', 'Cancelado', 'Reprogramado'].includes(record.status))
+  const activeAssigned = assignedHistory.filter(record => String(record.date || '') >= today && !record.technicalStatus && !['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(record.status))
   const activeCustomerIds = new Set(activeAssigned.map(record => String(record.customerId || '')).filter(Boolean))
   const activeCustomerAccounts = new Set(activeAssigned.map(record => String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()).filter(Boolean))
   return {
@@ -844,13 +844,13 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
   inspectPlan({ teams: agenda.teams || [] })
   Object.entries(agenda.weekly || {}).forEach(([key, value]) => { if (!key.startsWith('_')) inspectPlan(value) })
   const incomingById = new Map(incomingHistory.map(record => [String(record.id), record]))
-  const protectedFields = ['status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'startedAt', 'startedById', 'startedByName', 'advanceRequest', 'originalScheduledTime']
+  const protectedFields = ['journeyClosedAt', 'status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'startedAt', 'startedById', 'startedByName', 'advanceRequest', 'originalScheduledTime']
   const result = []
   for (const previous of currentHistory) {
     const id = String(previous.id)
     const sourceTaskId = String(previous.sourceTaskId || '')
     const proposed = incomingById.get(id)
-    const closed = ['Completado', 'Cancelado', 'Reprogramado'].includes(previous.status) || Boolean(previous.technicalStatus)
+    const closed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(previous.status) || Boolean(previous.technicalStatus)
     if (!proposed) {
       if (!closed && (removed.has(id) || (sourceTaskId && removed.has(sourceTaskId)))) continue
       result.push(previous)
@@ -1006,6 +1006,8 @@ function replaceRows(table, records, key) {
 
 /** Guarda todas las entidades dentro de una transacción para evitar estados parciales. */
 function validateState(state, previousState = null) {
+  require('./api/_lib/journey-identity.cjs').synchronizeJourneyIdentity(state, previousState)
+  require('./api/_lib/service-journeys.cjs').validateServiceJourneys(state, previousState)
   const previousConfirmationRecords = new Map((previousState?.history || []).map(record => [String(record.id), record]))
   for (const record of state?.history || []) require('./api/_lib/service-confirmation.cjs').assertServiceConfirmationChange(previousConfirmationRecords.get(String(record.id)), record)
   if (!state || typeof state !== 'object') throw new Error('El estado recibido no es válido.')
@@ -1092,7 +1094,7 @@ function validateState(state, previousState = null) {
   state.history.forEach((record, index) => {
     if (!date(record.date) || !time(record.time) || !time(record.scheduledTime)) throw new Error(`Historial ${index + 1}: fecha u hora inválida.`)
     if (!text(record.client, 200) || !text(record.service, 160) || !text(record.address, 320) || !text(record.phone, 50) || !text(record.detail, 4000)) throw new Error(`Historial ${index + 1}: uno de los campos es demasiado extenso.`)
-    if (!['Pendiente', 'Completado', 'Cancelado', 'Reprogramado', 'Requiere revisión'].includes(record.status)) throw new Error(`Historial ${index + 1}: el estado no es válido.`)
+    if (!['Pendiente', 'Completado', 'Avance registrado', 'Cancelado', 'Reprogramado', 'Requiere revisión'].includes(record.status)) throw new Error(`Historial ${index + 1}: el estado no es válido.`)
     if (!Array.isArray(record.technicianIds || [])) throw new Error(`Historial ${index + 1}: la asignación de técnicos no es válida.`)
     if (record.serviceId && (!Number.isInteger(Number(record.estimatedMinutes)) || Number(record.estimatedMinutes) < 15 || Number(record.estimatedMinutes) > 720)) throw new Error(`Historial ${index + 1}: el tiempo estimado debe estar entre 15 minutos y 12 horas.`)
     if (!internalPlanningIsValid(record)) throw new Error(`Historial ${index + 1}: la nota o el checklist interno contiene datos no válidos.`)
@@ -1182,15 +1184,29 @@ function assertServiceCanBeCompleted(record, now = new Date().toISOString()) {
 
 function managedHistoryRecord(current, proposed, user, now = new Date().toISOString()) {
   require('./api/_lib/service-confirmation.cjs').assertServiceConfirmationChange(current, { ...current, ...proposed }, now)
-  const allowedStatuses = ['Pendiente', 'Completado', 'Cancelado', 'Reprogramado', 'Requiere revisión']
+  const allowedStatuses = ['Pendiente', 'Completado', 'Avance registrado', 'Cancelado', 'Reprogramado', 'Requiere revisión']
   if (!allowedStatuses.includes(proposed.status || 'Pendiente')) throw new Error('El estado solicitado no es válido.')
   let next = { ...current, ...proposed, id: current.id, status: proposed.status || 'Pendiente' }
+  if (next.status === 'Avance registrado' && current.status !== 'Avance registrado') {
+    if (user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
+    next = { ...next, journeyClosedAt: now }
+  } else if (next.status !== 'Avance registrado') delete next.journeyClosedAt
   if (next.status === 'Completado' && current.status !== 'Completado') {
     if (user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
     next = { ...next, completedAt: next.completedAt || now }
   } else if (next.status !== 'Completado') {
     const { completedAt: _discardedCompletion, ...withoutCompletion } = next
     next = withoutCompletion
+  }
+  const state = readState()
+  const linked = require('./api/_lib/journey-identity.cjs').synchronizeJourneyIdentity({ ...state, history: state.history.map(record => String(record.id) === String(current.id) ? next : record) }, state)
+  require('./api/_lib/service-journeys.cjs').validateServiceJourneys(linked, state)
+  for (const sibling of linked.history) {
+    const before = state.history.find(record => String(record.id) === String(sibling.id))
+    if (String(sibling.id) !== String(current.id) && JSON.stringify(before) !== JSON.stringify(sibling)) {
+      db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(sibling), String(sibling.id))
+      writeAudit(user, 'Actualizó identidad compartida de jornadas', 'Servicio / historial', String(sibling.id), before, sibling)
+    }
   }
   return next
 }
@@ -1251,7 +1267,7 @@ function saveState(state, user) {
     const previousService = previousServiceById.get(String(item.serviceId ?? '')) || previousServiceByName.get(normalizedServiceName(item.service))
     const previousDefault = normalizeServiceEstimatedMinutes(previousService?.estimatedMinutes, matched.estimatedMinutes)
     const serviceDefaultChanged = Boolean(previousService) && previousDefault !== matched.estimatedMinutes
-    const closed = ['Completado', 'Cancelado', 'Reprogramado'].includes(item?.status)
+    const closed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(item?.status)
     const customized = item.estimatedMinutesCustomized === true || (item.estimatedMinutesCustomized !== false && item.estimatedMinutes != null && Number(item.estimatedMinutes) !== Number(previousDefault))
     const estimatedMinutes = !previousService || serviceDefaultChanged
       ? (closed || customized ? normalizeServiceEstimatedMinutes(item.estimatedMinutes, matched.estimatedMinutes) : matched.estimatedMinutes)
@@ -2177,7 +2193,7 @@ const server = http.createServer((req, res) => {
     if (user.roleCode !== 'technician') return send(res, 403, { error: 'Esta acción es exclusiva del rol técnico.' })
     return readJson(req, 1_600_000).then(({ recordId, type, observation, vehicleMileage, vehiclePhoto }) => {
       const record = rows('work_history').find(item => item.id === recordId)
-      const allowed = ['Completado', 'Cancelado', 'Reprogramación solicitada']
+      const allowed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramación solicitada']
       if (!record) return send(res, 404, { error: 'El servicio no existe.' })
       const assigned = record.technicianIds?.some(id => String(id) === String(user.id))
       require('./api/_lib/service-confirmation.cjs').assertServiceConfirmed(record)
@@ -2192,6 +2208,7 @@ const server = http.createServer((req, res) => {
           if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record: technicianSafeRecord(record) })
           return send(res, 409, { error: 'Este servicio ya fue informado desde otra sesión.' })
         }
+      require('./api/_lib/service-journeys.cjs').assertJourneyReport(record, type, readState().history)
       const completingVehicleControl = Boolean(record.vehicleControl && type === 'Completado')
       let vehicleChange = null
       if (completingVehicleControl) {
@@ -2212,12 +2229,22 @@ const server = http.createServer((req, res) => {
         vehicles[vehicleIndex] = nextVehicle
         vehicleChange = { vehicles, before: previousVehicle, after: nextVehicle, mileage, mimeType: photoMatch[1].toLowerCase(), photoBuffer }
       } else if (!String(observation || '').trim()) return send(res, 400, { error: 'La observación es obligatoria para informar el servicio.' })
-      if (type === 'Completado' && !record.vehicleControl) assertServiceCanBeCompleted(record)
+      if (['Completado', 'Avance registrado'].includes(type) && !record.vehicleControl) {
+        assertTechnicianServiceStarted(record)
+        assertServiceCanBeCompleted(record)
+      }
       const now = new Date().toISOString()
-      const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: type === 'Completado' ? 'Completado' : 'Requiere revisión', technicianRequest: type === 'Completado' ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
+      const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: ['Completado', 'Avance registrado'].includes(type) ? type : 'Requiere revisión', technicianRequest: ['Completado', 'Avance registrado'].includes(type) ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
       db.exec('BEGIN')
       try {
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(updated), String(record.id))
+        if (record.serviceJourney) {
+          const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
+          if (agendaRow?.data) {
+            const agenda = synchronizeAgendaHistoryRecord(JSON.parse(agendaRow.data), record, updated)
+            db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(agenda), 'current')
+          }
+        }
         if (vehicleChange) {
           db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('vehicles', JSON.stringify(vehicleChange.vehicles))
           db.prepare('INSERT OR REPLACE INTO vehicle_control_photos (record_id, vehicle_id, mime_type, photo_data, created_at) VALUES (?, ?, ?, ?, ?)').run(String(record.id), String(record.vehicleId), vehicleChange.mimeType, vehicleChange.photoBuffer, now)
@@ -2233,7 +2260,7 @@ const server = http.createServer((req, res) => {
         throw error
       }
       return send(res, 200, { record: technicianSafeRecord(updated) })
-    }).catch(() => send(res, 400, { error: 'No se pudo informar el estado.' }))
+    }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo informar el estado.' }))
   }
   if (req.method === 'POST' && url.pathname === '/api/agenda/daily/clear') {
     const user = requireSession(req, res)
