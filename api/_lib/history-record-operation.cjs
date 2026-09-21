@@ -8,9 +8,13 @@ function historyRecordMatchesTask(task, record) {
 function synchronizeAgendaHistoryRecord(value, previous, next) {
   if (Array.isArray(value)) return value.map(item => synchronizeAgendaHistoryRecord(item, previous, next))
   if (!value || typeof value !== 'object') return value
+  const shared = previous.serviceJourney && value.serviceJourney?.id === previous.serviceJourney.id ? require('./journey-identity.cjs').identityPatch(previous, next) : {}
   const updated = historyRecordMatchesTask(value, previous) ? {
     ...value,
+    ...shared,
     status: next.status,
+    ...(next.serviceJourney ? { serviceJourney: next.serviceJourney } : {}),
+    ...(next.serviceJourney ? { journeyClosedAt: next.journeyClosedAt || '', technicalStatus: next.technicalStatus || '', technicalReportedAt: next.technicalReportedAt || '' } : {}),
     awaitingConfirmation: next.awaitingConfirmation === true,
     scheduledDate: next.scheduledDate || '',
     customerId: next.customerId ?? value.customerId,
@@ -29,7 +33,7 @@ function synchronizeAgendaHistoryRecord(value, previous, next) {
     internalNote: next.internalNote ?? value.internalNote,
     internalChecklist: next.internalChecklist ?? value.internalChecklist,
     ...(next.completedAt ? { completedAt: next.completedAt } : {})
-  } : value
+  } : { ...value, ...shared }
   return Object.fromEntries(Object.entries(updated).map(([key, item]) => [key, synchronizeAgendaHistoryRecord(item, previous, next)]))
 }
 

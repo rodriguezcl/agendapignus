@@ -2,7 +2,7 @@ const DEFAULT_CONTROL_TIME = '15:30'
 const ARGENTINA_OFFSET = '-03:00'
 const CONTROL_TIME_ZONE = 'America/Argentina/Buenos_Aires'
 
-const recordIsResolved = record => Boolean(record?.technicalStatus || ['Completado', 'Cancelado', 'Reprogramado'].includes(record?.status))
+const recordIsResolved = record => Boolean(record?.technicalStatus || ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(record?.status))
 
 function argentinaDate(now) {
   const current = now instanceof Date ? now : new Date(now)

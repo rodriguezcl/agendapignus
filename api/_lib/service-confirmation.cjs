@@ -1,11 +1,11 @@
 function assertServiceConfirmationChange(previous, next, now = new Date()) {
   const before = previous?.awaitingConfirmation === true, after = next?.awaitingConfirmation === true
   if (before === after) {
-    if (after && (next.startedAt || next.status === 'Completado')) throw new Error('Confirmá el servicio antes de iniciarlo o completarlo.')
+    if (after && (next.startedAt || ['Completado', 'Avance registrado'].includes(next.status))) throw new Error('Confirmá el servicio antes de iniciarlo o completarlo.')
     return
   }
   const source = previous || next
-  if (source.vehicleControl || source.startedAt || source.completedAt || source.technicalStatus || source.technicianRequest || ['Completado', 'Cancelado', 'Reprogramado', 'Requiere revisión'].includes(source.status)) throw new Error('Este servicio no admite cambiar su confirmación.')
+  if (source.vehicleControl || source.startedAt || source.completedAt || source.technicalStatus || source.technicianRequest || ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado', 'Requiere revisión'].includes(source.status)) throw new Error('Este servicio no admite cambiar su confirmación.')
   const today = new Date(now).toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   if (String(next.date || '') < today) throw new Error('El día del servicio ya pasó. Reprogramalo antes de confirmarlo.')
 }

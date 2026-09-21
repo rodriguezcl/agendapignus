@@ -22,7 +22,7 @@ test('past services open saved payment information without opening an editor', (
   const open = vm.runInNewContext(code + '\nopenTaskEditor', {
     dayHasFinished: () => true,
     dayPlan: () => ({ teams: [{ label: 'Equipo 1', members: ['Mariano'], tasks: [{ client: 'Cliente', amount: 'viejo' }, {}] }] }),
-    taskHasContent: task => Boolean(task.client), operationalHistory: [],
+    taskHasContent: task => Boolean(task.client), taskStatus: () => 'Pendiente', operationalHistory: [],
     historyRecordForTask: () => ({ amount: '150000', paymentMethod: 'Transferencia' }),
     setPastService: record => { viewed = record }
   })

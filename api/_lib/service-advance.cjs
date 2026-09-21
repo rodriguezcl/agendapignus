@@ -16,7 +16,7 @@ function argentinaDateTime(now = Date.now()) {
 }
 
 function recordIsResolved(record = {}) {
-  return Boolean(record.technicalStatus || ['Completado', 'Cancelado', 'Reprogramado'].includes(record.status))
+  return Boolean(record.technicalStatus || ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(record.status))
 }
 
 function assignedTo(record, user) {

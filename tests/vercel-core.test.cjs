@@ -601,7 +601,8 @@ test('la agenda diaria respeta espacios quitados y no copia servicios vacíos', 
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /const visibleWeeklyTeams = renumberVisibleWeeklyTeams\(applyRemovedWeeklyTeams\(applyRemovedWeeklySlots\(applyRemovedWeeklyTasks\(weeklyDay\?\.teams \|\| \[\], weeklyDay\?\.removedTaskIds \|\| \[\]\), weeklyDay\?\.removedSlots \|\| \[\]\), weeklyDay\?\.removedTeams \|\| \[\]\)\)/)
   assert.match(source, /const agendaTeamsWithRealServices = \(agendaTeams = teams\) => agendaTeams\.map\(team => \(\{[\s\S]*?tasks: \(team\.tasks \|\| \[\]\)\.filter\(task => taskHasContent\(task\) && !taskIsResolvedForPlanning\(task, date, history\)\)/)
-  assert.match(source, /const messageSections = teams\.flatMap\(\(team, index\) => team\.tasks\.some\(taskHasContent\)/)
+  assert.match(source, /const messageSections = teams\.flatMap\(\(team, index\) => \{/)
+  assert.match(source, /agendaPreviewTasks\(team.tasks/)
   assert.match(source, /agendaTeams = agendaTeamsWithRealServices\(agendaTeams\)/)
 })
 
@@ -787,12 +788,12 @@ test('las agendas diaria y semanal renderizan directamente el estado de cada ser
 
 test('los servicios cerrados no ofrecen guardado y una finalización anticipada puede liberar agenda hoy', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
-  assert.match(source, /const taskIsResolvedForPlanning = \(task, date, history\) => \{[\s\S]*?status === 'Completado' \|\| \(status === 'Cancelado' && String\(date \|\| ''\) < currentLocalDate\(\)\)/)
+  assert.match(source, /const taskIsResolvedForPlanning = \(task, date, history\) => \{[\s\S]*?\['Completado', 'Avance registrado'\]\.includes\(status\) \|\| \(status === 'Cancelado' && String\(date \|\| ''\) < currentLocalDate\(\)\)/)
   assert.match(source, /const showSaveAgenda = hasPendingAgendaServices \|\| !hasResolvedAgendaServices/)
   assert.match(source, /\{showSaveAgenda && <button type="button" className="secondary save-agenda-button"/)
   assert.doesNotMatch(source, /weekly-save-day/)
   assert.match(source, /conflictsForDay = day =>[\s\S]*?taskForScheduleOccupancy\(task, day, operationalHistory\)/)
-  assert.match(source, /status === 'Completado' && String\(date \|\| ''\) !== currentLocalDate\(\)/)
+  assert.match(source, /\['Completado', 'Avance registrado'\]\.includes\(status\) && String\(date \|\| ''\) !== currentLocalDate\(\)/)
 })
 
 test('una reprogramación al sábado conserva el equipo estable y adopta la guardia del día', () => {

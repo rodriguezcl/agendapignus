@@ -72,13 +72,13 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
       (sourceTaskId && (removed.has(sourceTaskId) || removed.has(`task:${sourceTaskId}`)))
     )
   }
-  const protectedFields = ['status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'startedAt', 'startedById', 'startedByName', 'advanceRequest', 'originalScheduledTime']
+  const protectedFields = ['journeyClosedAt', 'status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'startedAt', 'startedById', 'startedByName', 'advanceRequest', 'originalScheduledTime']
   const result = []
   for (const previous of currentHistory) {
     const id = String(previous.id)
     const sourceTaskId = String(previous.sourceTaskId || '')
     const proposed = incomingById.get(id)
-    const closed = ['Completado', 'Cancelado', 'Reprogramado'].includes(previous.status) || Boolean(previous.technicalStatus)
+    const closed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(previous.status) || Boolean(previous.technicalStatus)
     if (!proposed) {
       if (!closed && wasExplicitlyRemoved(previous)) continue
       result.push(previous)
@@ -205,7 +205,7 @@ function visibleStateForUser(state, user) {
     const technicianId = String(user.id)
     const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
     const assignedHistory = state.history.filter(record => record.technicianIds?.some(id => String(id) === technicianId))
-    const activeAssigned = assignedHistory.filter(record => String(record.date || '') >= today && !record.technicalStatus && !['Completado', 'Cancelado', 'Reprogramado'].includes(record.status))
+    const activeAssigned = assignedHistory.filter(record => String(record.date || '') >= today && !record.technicalStatus && !['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(record.status))
     const activeCustomerIds = new Set(activeAssigned
       .map(record => String(record.customerId || ''))
       .filter(Boolean))
@@ -388,7 +388,7 @@ function normalizeStateForSave(state, current, { allowEarlyCompletion = false } 
     const previousService = previousServiceById.get(String(item?.serviceId ?? '')) || previousServiceByName.get(normalizedServiceName(item?.service))
     const previousDefault = normalizeServiceEstimatedMinutes(previousService?.estimatedMinutes, service.estimatedMinutes)
     const serviceDefaultChanged = Boolean(previousService) && previousDefault !== service.estimatedMinutes
-    const closed = ['Completado', 'Cancelado', 'Reprogramado'].includes(item?.status)
+    const closed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(item?.status)
     const customized = item.estimatedMinutesCustomized === true || (
       item.estimatedMinutesCustomized !== false && item.estimatedMinutes != null && Number(item.estimatedMinutes) !== Number(previousDefault)
     )
@@ -507,6 +507,8 @@ function secureEmployees(employees, previousEmployees) {
 }
 
 function validateState(state, previousState = null) {
+  require('./journey-identity.cjs').synchronizeJourneyIdentity(state, previousState)
+  require('./service-journeys.cjs').validateServiceJourneys(state, previousState)
   const previousConfirmationRecords = new Map((previousState?.history || []).map(record => [String(record.id), record]))
   for (const record of state?.history || []) require('./service-confirmation.cjs').assertServiceConfirmationChange(previousConfirmationRecords.get(String(record.id)), record)
   if (!state || typeof state !== 'object') throw new Error('El estado recibido no es válido.')

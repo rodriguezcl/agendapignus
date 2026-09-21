@@ -31,7 +31,7 @@ const historyRecordForAgendaTask = (task, date, history = []) => {
 }
 
 const agendaTaskIsResolvedForPlanning = (task, date, history = [], today = argentinaToday()) => {
-  const resolvedStatus = record => record?.status === 'Completado' || record?.technicalStatus === 'Completado' || (String(record?.date || date || '') < String(today || '') && (record?.status === 'Cancelado' || record?.technicalStatus === 'Cancelado'))
+  const resolvedStatus = record => ['Completado', 'Avance registrado'].includes(record?.status) || ['Completado', 'Avance registrado'].includes(record?.technicalStatus) || (String(record?.date || date || '') < String(today || '') && (record?.status === 'Cancelado' || record?.technicalStatus === 'Cancelado'))
   if (resolvedStatus(task)) return true
   const resolved = (history || []).filter(resolvedStatus)
   const taskHistoryIds = [task?.historyId, task?.sourceHistoryId].filter(Boolean).map(String)
@@ -56,14 +56,14 @@ const agendaTaskIsResolvedForPlanning = (task, date, history = [], today = argen
 const agendaTaskForScheduleOccupancy = (task, date, history = [], today = argentinaToday()) => {
   const record = historyRecordForAgendaTask(task, date, history)
   const status = record?.status || record?.technicalStatus || task?.status || task?.technicalStatus || 'Pendiente'
-  if (status === 'Completado' && String(date || '') !== String(today || '')) return null
+  if (['Completado', 'Avance registrado'].includes(status) && String(date || '') !== String(today || '')) return null
   if (status === 'Cancelado' && String(date || '') < String(today || '')) return null
-  return { ...task, date, status, technicalStatus: record?.technicalStatus || task?.technicalStatus || '', completedAt: record?.completedAt || task?.completedAt || '', technicalReportedAt: record?.technicalReportedAt || task?.technicalReportedAt || '' }
+  return { ...task, date, status, technicalStatus: record?.technicalStatus || task?.technicalStatus || '', completedAt: record?.completedAt || task?.completedAt || '', technicalReportedAt: record?.journeyClosedAt || record?.technicalReportedAt || task?.technicalReportedAt || '' }
 }
 
 const completedReleaseMinute = task => {
-  if (task?.status !== 'Completado' && task?.technicalStatus !== 'Completado') return null
-  const value = task?.completedAt || task?.technicalReportedAt
+  if (!['Completado', 'Avance registrado'].includes(task?.status) && !['Completado', 'Avance registrado'].includes(task?.technicalStatus)) return null
+  const value = task?.completedAt || task?.journeyClosedAt || task?.technicalReportedAt
   const instant = new Date(value)
   if (!value || Number.isNaN(instant.getTime())) return null
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(instant).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))

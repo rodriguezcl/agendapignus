@@ -637,7 +637,7 @@ body.dark .weekly-add-task {
   outline: none;
 }
 
-.week-task-summary > :not(.week-task-title):not(.week-task-client):not(.agenda-task-status):not(.service-confirmation-label) {
+.week-task-summary > :not(.week-task-title):not(.week-task-client):not(.agenda-task-status):not(.service-confirmation-label):not(.journey-plan-button):not(.journey-label) {
   display: none;
 }
 
