@@ -5346,7 +5346,7 @@ function DashboardStatusView({ history, services, vehicles = [] }) {
     return () => layer.remove()
   }, [workModalOpen, month, records.length, serviceBreakdown])
 return <><div className="module-intro"><div><p className="eyebrow">RESUMEN GERENCIAL</p><h1>Indicadores operativos</h1><p>Las métricas contabilizan únicamente servicios completados.</p></div><label className="month-filter">Mes de análisis<input type="month" value={month} onChange={event => setMonth(event.target.value)} /></label></div>{[
-    ['today', 'Pendientes de hoy', 'Servicios de hoy que todavía requieren gestión.'],
+    ['today', 'Pendientes de gestión', 'Servicios de hoy que todavía requieren gestión.'],
     ['confirmation', 'Pendientes de confirmación', 'Esperan la aprobación del cliente. Reservan su horario, pero no aparecen en la agenda del técnico.'],
     ['rescheduling', 'Pendientes de reprogramación', 'El técnico ya informó su gestión. Falta definir una nueva fecha en Historial; no bloquean su siguiente servicio.'],
     ['overdue', 'Pendientes de días anteriores', 'Servicios anteriores que todavía requieren una definición.']
