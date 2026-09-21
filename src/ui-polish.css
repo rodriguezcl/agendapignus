@@ -2582,8 +2582,10 @@ html.modal-open body {
   min-width: 0;
   min-height: 40px;
   height: auto;
-  padding: 8px 9px;
-  gap: 7px;
+  padding: 8px 6px;
+  gap: 4px;
+  justify-content: flex-start;
+  text-align: left;
   font-size: 11px;
   font-weight: 700;
 }
@@ -2591,7 +2593,8 @@ html.modal-open body {
 .content > .team-card .daily-task-actions :is(.icon-btn, .daily-save-button, .service-confirmation-button) > span:not([aria-hidden='true']) {
   display: inline;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .content > .team-card .daily-task-actions > .service-confirmation-button > svg { flex-shrink: 0; }
