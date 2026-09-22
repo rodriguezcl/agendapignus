@@ -10,55 +10,74 @@ const team = (id, number, technician, tasks = []) => ({
   tasks
 })
 
-test('elimina un equipo y sus pendientes en una sola operación atómica e idempotente', async () => {
+test('administrador puede omitir el único control pendiente, pero no uno completado ni otros servicios', async () => {
   const { weeklyTeamRemovalOperations } = await import('../src/features/state/application/weekly-team-removal.mjs')
-  const pendingTask = { taskId: 'task-santos', historyId: 'history-santos', service: 'Servicio de alarma' }
-  const completedTask = { taskId: 'task-completed', historyId: 'history-completed', service: 'Instalación de alarma' }
-  const teams = [team('team-1', 1, 'Pascual'), team('team-2', 2, 'Santos', [pendingTask, completedTask]), team('team-3', 3, 'Leonardo')]
-  const snapshot = {
-    roles: [], employees: [], services: [], vehicles: [], customers: [], reviews: [], preferences: {},
-    history: [
-      { id: 'history-santos', sourceTaskId: 'task-santos', status: 'Pendiente' },
-      { id: 'history-completed', sourceTaskId: 'task-completed', status: 'Completado' },
-      { id: 'history-other', sourceTaskId: 'task-other', status: 'Pendiente' }
-    ],
-    agenda: { date: '2026-09-11', teams: structuredClone(teams), weekly: { '2026-09-11': { teams: structuredClone(teams), removedTeams: [] } } }
-  }
-
-  const operations = weeklyTeamRemovalOperations(snapshot, { day: '2026-09-11', teamId: 'team-2', teamIndex: 1 })
-  assert.ok(operations.length < 12)
-  assert.equal(operations.some(item => item.path[0] === 'customers'), false)
-  assert.equal(operations.some(item => item.path.length === 1), false)
+  const record = { id: 'control', sourceTaskId: 'control-task', teamId: 't', date: '2026-09-25', vehicleControl: true, status: 'Pendiente' }
+  const target = team('t', 1, 'Santos', [{ ...record, taskId: record.sourceTaskId, historyId: record.id }])
+  const snapshot = { history: [record], agenda: { date: record.date, teams: [target], weekly: { [record.date]: { teams: [target] } } } }
+  const command = { day: record.date, teamId: 't', allowVehicleControlRemoval: true }
+  assert.throws(() => weeklyTeamRemovalOperations(snapshot, { ...command, allowVehicleControlRemoval: false }), /No se puede eliminar/)
+  const operations = weeklyTeamRemovalOperations(snapshot, command)
   const next = applyStateOperations(snapshot, operations)
-  assert.deepEqual(next.agenda.weekly['2026-09-11'].teams.map(item => [item.teamId, item.label]), [['team-1', 'Equipo 1'], ['team-3', 'Equipo 2']])
-  assert.deepEqual(next.agenda.teams.map(item => item.teamId), ['team-1', 'team-3'])
-  assert.deepEqual(next.history.map(record => record.id), ['history-completed', 'history-other'])
-  assert.deepEqual(next.agenda.weekly['2026-09-11'].removedTeams, [{ id: 'team:team-2', teamId: 'team-2', teamNumber: 2 }])
-  assert.deepEqual(next.agenda.weekly['2026-09-11'].removedTaskIds, [
-    'task:task-santos', 'history:history-santos', 'task:task-completed', 'history:history-completed'
-  ])
-  assert.deepEqual(applyStateOperations(next, operations), next)
+  assert.deepEqual(next.history, [])
+  assert.deepEqual(next.agenda.teams, [])
+  const { authorizeIncomingState } = require('../api/_lib/core.cjs')
+  assert.throws(() => authorizeIncomingState(next, snapshot, { roleCode: 'user', permissions: { weekly: true } }), error => error.statusCode === 403)
+  assert.ok(next.agenda.weekly[record.date].removedTaskIds.includes('history:control'))
+  const completed = structuredClone(snapshot)
+  completed.history[0].status = 'Completado'
+  assert.throws(() => weeklyTeamRemovalOperations(completed, command), /No se puede eliminar/)
+  assert.throws(() => applyStateOperations(completed, operations), error => error.code === 'TEAM_HAS_SERVICES')
+  const mixed = structuredClone(snapshot)
+  mixed.agenda.weekly[record.date].teams[0].tasks.push({ taskId: 'other', service: 'Alarma' })
+  assert.throws(() => weeklyTeamRemovalOperations(mixed, command), /No se puede eliminar/)
 })
 
-test('el costo de preparar la baja no depende del padrón de abonados', async () => {
+test('quita un equipo mensual con técnicos aunque el día sólo haya materializado otro equipo', async () => {
   const { weeklyTeamRemovalOperations } = await import('../src/features/state/application/weekly-team-removal.mjs')
-  const target = team('team-2', 2, 'Santos', [{ taskId: 'task-santos', historyId: 'history-santos' }])
-  const snapshot = {
-    customers: Array.from({ length: 20_000 }, (_, index) => ({ customerId: `customer-${index}`, name: `Abonado ${index}` })),
-    history: [{ id: 'history-santos', sourceTaskId: 'task-santos', status: 'Pendiente' }],
-    agenda: { weekly: { '2026-09-11': { teams: [target] } } }
+  const target = team('monthly-1', 1, 'Santos')
+  const other = team('monthly-2', 2, 'Pascual')
+  const snapshot = { history: [], agenda: { date: '2026-09-25', teams: [other], weekly: { '2026-09-25': { teams: [other] } } } }
+  const command = { day: '2026-09-25', teamId: target.teamId, teamIndex: 0, fallbackPlan: { teams: [target, other] } }
+  const next = applyStateOperations(snapshot, weeklyTeamRemovalOperations(snapshot, command))
+  assert.deepEqual(next.agenda.teams, [other])
+  assert.deepEqual(next.agenda.weekly[command.day].teams, [other])
+  assert.equal(next.agenda.weekly[command.day].removedTeams[0].teamId, target.teamId)
+  assert.deepEqual(weeklyTeamRemovalOperations(next, command), [])
+})
+
+test('baja diaria elimina la asignación y materializa la exclusión mensual sin tocar otros días', async () => {
+  const { weeklyTeamRemovalOperations } = await import('../src/features/state/application/weekly-team-removal.mjs')
+  const target = team('monthly-1', 1, 'Santos')
+  const snapshot = { history: [], agenda: { date: '2026-09-25', teams: [target], weekly: { '2026-09-24': { teams: [target] } } } }
+  const next = applyStateOperations(snapshot, weeklyTeamRemovalOperations(snapshot, { day: '2026-09-25', teamId: target.teamId, teamIndex: 0, fallbackPlan: { teams: [target] } }))
+  assert.deepEqual(next.agenda.teams, [])
+  assert.deepEqual(next.agenda.weekly['2026-09-25'].teams, [])
+  assert.deepEqual(next.agenda.weekly['2026-09-24'], snapshot.agenda.weekly['2026-09-24'])
+})
+
+
+test('bloquea servicios pendientes, completados y controles sin eliminar historial', async () => {
+  const { weeklyTeamRemovalOperations } = await import('../src/features/state/application/weekly-team-removal.mjs')
+  for (const status of ['Pendiente', 'Completado', 'Cancelado']) {
+    const target = team('t', 1, 'Santos', [{ taskId: 'job', service: 'Alarma', status }])
+    const snapshot = { history: [], agenda: { weekly: { '2026-09-25': { teams: [target] } } } }
+    assert.throws(() => weeklyTeamRemovalOperations(snapshot, { day: '2026-09-25', teamId: 't' }), /No se puede eliminar/)
   }
-  const operations = weeklyTeamRemovalOperations(snapshot, { day: '2026-09-11', teamId: 'team-2', teamIndex: 0 })
-  assert.equal(operations.some(item => item.path[0] === 'customers'), false)
-  assert.equal(JSON.stringify(operations).includes('Abonado 19999'), false)
 })
 
-test('rechaza la baja si otra sesión modificó el equipo antes de confirmar', async () => {
+test('protege historial aunque la tarjeta esté ausente y bloquea servicios concurrentes en servidor', async () => {
   const { weeklyTeamRemovalOperations } = await import('../src/features/state/application/weekly-team-removal.mjs')
-  const target = team('team-2', 2, 'Santos', [{ taskId: 'task-santos', historyId: 'history-santos', detail: 'Original' }])
-  const snapshot = { history: [{ id: 'history-santos', sourceTaskId: 'task-santos', status: 'Pendiente' }], agenda: { weekly: { '2026-09-11': { teams: [target] } } } }
-  const operations = weeklyTeamRemovalOperations(snapshot, { day: '2026-09-11', teamId: 'team-2', teamIndex: 0 })
+  const target = team('t', 1, 'Santos', [{ taskId: 'slot', time: '14:00' }])
+  const snapshot = { history: [], agenda: { weekly: { '2026-09-25': { teams: [target] } } } }
+  const command = { day: '2026-09-25', teamId: 't' }
+  const operations = weeklyTeamRemovalOperations(snapshot, command)
+  const next = applyStateOperations(snapshot, operations)
+  assert.deepEqual(next.history, [])
+  assert.deepEqual(next.agenda.weekly[command.day].teams, [])
+  assert.deepEqual(applyStateOperations(next, operations), next)
   const concurrent = structuredClone(snapshot)
-  concurrent.agenda.weekly['2026-09-11'].teams[0].tasks[0].detail = 'Cambiado por otra sesión'
-  assert.throws(() => applyStateOperations(concurrent, operations), error => error.statusCode === 409 && error.code === 'RECORD_WRITE_CONFLICT')
+  concurrent.history.push({ id: 'job', teamId: 't', date: command.day, status: 'Completado' })
+  assert.throws(() => weeklyTeamRemovalOperations(concurrent, command), /No se puede eliminar/)
+  assert.throws(() => applyStateOperations(concurrent, operations), error => error.code === 'TEAM_HAS_SERVICES')
 })

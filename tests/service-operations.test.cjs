@@ -222,7 +222,7 @@ test('deleting a team cannot erase a service added by another session', async ()
   const base = fixture(), deletion = clone(base)
   deletion.agenda.weekly[day].teams = []
   const current = applyStateOperations(base, weeklyServiceOperations(base, command(base, 'new')))
-  assert.throws(() => applyStateOperations(current, stateOperations(base, deletion)), { code: 'RECORD_WRITE_CONFLICT' })
+  assert.throws(() => applyStateOperations(current, stateOperations(base, deletion)), { code: 'TEAM_HAS_SERVICES' })
   assert.equal(current.agenda.weekly[day].teams[0].tasks.length, 1)
 })
 test('edits cannot recreate a team deleted after the modal opened', async () => {
