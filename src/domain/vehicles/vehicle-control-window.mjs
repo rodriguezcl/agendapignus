@@ -1,4 +1,4 @@
-const DEFAULT_CONTROL_TIME = '15:30'
+const DEFAULT_CONTROL_TIME = '15:45'
 const ARGENTINA_OFFSET = '-03:00'
 const CONTROL_TIME_ZONE = 'America/Argentina/Buenos_Aires'
 let currentAssignedRecords = null
