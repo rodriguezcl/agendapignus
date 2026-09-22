@@ -4,7 +4,7 @@ export const VEHICLE_CONTROL_SERVICE = 'Control semanal de vehículo'
 export const VEHICLE_CONTROL_SERVICE_ID = 'vehicle-weekly-control'
 export const VEHICLE_CONTROL_SERVICE_CODE = 'vehicle-weekly-control'
 export const VEHICLE_CONTROL_ESTIMATED_MINUTES = 15
-export const VEHICLE_CONTROL_TIME = '15:30'
+export const VEHICLE_CONTROL_TIME = '15:45'
 
 export const vehicleControlService = () => ({
   id: VEHICLE_CONTROL_SERVICE_ID,

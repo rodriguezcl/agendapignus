@@ -70,12 +70,12 @@ test('escala responsables al agregar un técnico y un vehículo', async () => {
   assert.equal(fordResponsibles.size, expandedTechnicians.length)
 })
 
-test('genera controles determinísticos para los viernes futuros a las 15:30', async () => {
+test('genera controles determinísticos para los viernes futuros a las 15:45', async () => {
   const { buildVehicleControlRecords } = await import('../src/vehicle-controls.mjs')
   const assignments = [{ vehicleId: 'ka', technicianId: 'leonardo' }]
   const records = buildVehicleControlRecords({ month: '2026-09', assignments, vehicles, technicians, teams, fromDate: '2026-09-12' })
   assert.deepEqual(records.map(record => record.date), ['2026-09-18', '2026-09-25'])
-  assert.ok(records.every(record => record.time === '15:30' && record.vehicleControl && record.technicianIds[0] === 'leonardo'))
+  assert.ok(records.every(record => record.time === '15:45' && record.vehicleControl && record.technicianIds[0] === 'leonardo'))
   assert.ok(records.every(record => record.serviceId === 'vehicle-weekly-control' && record.estimatedMinutes === 15 && record.estimatedMinutesCustomized === false))
   assert.ok(records.every(record => !record.customerId && !record.address && !record.phone))
   assert.equal(records[0].id, 'vehicle-control-2026-09-18-ka')
@@ -161,7 +161,7 @@ test('un control vehicular se habilita recién en su fecha y hora programadas de
 test('habilita anticipadamente el control cuando ya no quedan servicios ordinarios pendientes ese día', async () => {
   const { setVehicleControlAssignedRecords, vehicleControlDayAgendaCompleted, vehicleControlIsOpen } = await import('../src/vehicle-control-window.mjs')
   const { serviceHasStarted } = await import('../src/service-start.mjs')
-  const control = { id: 'control', date: '2026-09-04', time: '15:30', vehicleControl: true }
+  const control = { id: 'control', date: '2026-09-04', time: '15:45', vehicleControl: true }
   const pending = { id: 'visita', date: '2026-09-04', time: '12:00', status: 'Pendiente' }
   const completed = { ...pending, status: 'Completado', technicalStatus: 'Completado' }
 
