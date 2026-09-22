@@ -2602,6 +2602,7 @@ html.modal-open body {
 }
 
 .content > .team-card .daily-task-actions > .service-confirmation-button > svg { flex-shrink: 0; }
+.content > .team-card .daily-task-actions > .daily-journey-button { white-space: nowrap; }
 
 .app-shell[data-theme='dark'] .content > .team-card .task-row {
   border-color: #334a3c;

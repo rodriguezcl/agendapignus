@@ -34,6 +34,11 @@ test('daily and weekly components render through their actual prop forwarding ch
   const record = { id:'journey-first',date:'2099-01-05',time:'09:00',service:'Instalación de alarma',status:'Pendiente',client:'Cliente',team:'Equipo 1',technicians:['Técnico'],estimatedMinutes:120 }
   const provider = (enabled, content, history = [record]) => React.createElement(ServiceJourneysContext.Provider, {value:{enabled,today:'2026-09-21',history}}, content)
   assert.match(renderToString(provider(true,React.createElement(ServiceJourneys,{record}))),/Planificar varias jornadas/)
+  assert.match(renderToString(provider(true,React.createElement(ServiceJourneys,{record,action:true}))), /icon-btn daily-journey-button/)
+  assert.match(renderToString(provider(true,React.createElement(ServiceJourneys,{record,action:true}))), />Jornadas<\/button>/)
+  const dailyActions = source.slice(source.indexOf('<div className="daily-task-actions">'))
+  assert.match(dailyActions, /<ServiceJourneys[^>]+ action \/><ServiceConfirmationButton/)
+  assert.doesNotMatch(source.slice(source.indexOf('<div className="daily-field-duration">'), source.indexOf('<div className="daily-task-actions">')), /<ServiceJourneys/)
   const compactJourney = renderToString(provider(true,React.createElement(ServiceJourneys,{record,compact:true})))
   assert.match(compactJourney,/aria-label="Planificar varias jornadas"/)
   assert.match(compactJourney,/journey-plan-compact/)
@@ -44,6 +49,7 @@ test('daily and weekly components render through their actual prop forwarding ch
   const first={...record,technicianIds:['tech'],serviceJourney:{id:record.id,index:1,total:2}}
   const last={...first,id:'journey-last',date:'2099-01-06',serviceJourney:{id:record.id,index:2,total:2},technicalObservation:'Informe de prueba'}
   assert.equal(renderToString(provider(true,React.createElement(ServiceJourneys,{record:first,compact:true}))), '')
+  assert.equal(renderToString(provider(true,React.createElement(ServiceJourneys,{record:first,action:true}))), '')
   const detail=renderToString(provider(false,React.createElement(JourneyHistory,{record:first}),[first,last]))
   assert.match(detail,/Jornada 1 de 2/)
   assert.match(detail,/Jornada 2 de 2/)
