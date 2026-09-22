@@ -683,6 +683,7 @@ body.dark .weekly-add-task {
 .service-confirmation-button.compact { width: 28px; height: 30px; padding: 0; border: 1px solid #b6cfbb; border-radius: 8px; background: #fff; color: #31583f; }
 .daily-task-actions > .service-confirmation-button { order: 1; width: 100%; min-height: 40px; white-space: normal; }
 .daily-task-actions > .daily-save-button { order: 0; }
+.daily-task-actions > .daily-journey-button { order: 0; }
 .daily-task-actions > .daily-copy-button { order: 2; }
 .daily-task-actions > .daily-move-button { order: 3; }
 .daily-task-actions > .daily-delete-button { order: 4; }
