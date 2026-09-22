@@ -11,7 +11,10 @@ export function planningHoursForDay(day) {
 export function serviceGaps(tasks, { min, max, day, now = new Date() } = {}) {
   const minutes = value => /^\d{2}:\d{2}$/.test(value || '') ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : null
   let lower = minutes(min) ?? 0
-  const upper = minutes(max) ?? 1440
+  // Friday 16:00–20:00 is reserved for advancing Saturday guard duty,
+  // not general availability. Keep planningHoursForDay unchanged for that workflow.
+  const friday = day && new Date(`${day}T12:00:00`).getDay() === 5
+  const upper = Math.min(minutes(max) ?? 1440, friday ? 16 * 60 : 1440)
   if (day) {
     const instant = new Date(now)
     if (Number.isNaN(instant.getTime())) return []
