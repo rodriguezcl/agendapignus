@@ -1,5 +1,6 @@
 import { requestJson } from '../http/json-request.mjs'
 import { stateOperations } from '../../features/state/application/state-operations.mjs'
+import { applyStateDelta } from '../../domain/shared/state-delta.mjs'
 
 const readOptions = { cache: 'no-store', credentials: 'same-origin' }
 export const STATE_WRITE_TIMEOUT_MS = 50_000
@@ -19,16 +20,33 @@ export async function writeState(options, fallbackMessage, { fetcher = globalThi
   }
 }
 
-export const stateRepository = {
-  commit: (operations, revision) => writeState({
+let confirmedSnapshot = null
+let cacheEpoch = 0
+const remember = (state, epoch = cacheEpoch) => {
+  if (epoch !== cacheEpoch) return state
+  if (state && (!confirmedSnapshot || Number(state.revision) >= Number(confirmedSnapshot.revision))) confirmedSnapshot = state
+  return state
+}
+
+async function commit(operations, revision) {
+  const epoch = cacheEpoch
+  const base = confirmedSnapshot?.revision === revision ? confirmedSnapshot : null
+  const payload = await writeState({
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ revision, operations })
-  }, 'No se pudo guardar el servicio.'),
-  load: () => requestJson('/api/state', readOptions, 'No se pudo cargar la información autorizada para esta sesión.'),
-  save: state => writeState({
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ revision: state.revision, operations: stateOperations(state.base, state) })
-  }, 'No se pudieron guardar los últimos cambios.'),
+    body: JSON.stringify({ revision, operations, ...(base ? { responseMode: 'delta-v1' } : {}) })
+  }, 'No se pudo guardar el servicio.')
+  if (payload.delta) payload.state = applyStateDelta(base, payload.delta)
+  remember(payload.state, epoch)
+  return payload
+}
+
+export const stateRepository = {
+  prime: state => { cacheEpoch++; confirmedSnapshot = state },
+  commit,
+  load: async () => {
+    const epoch = cacheEpoch
+    return remember(await requestJson('/api/state', readOptions, 'No se pudo cargar la información autorizada para esta sesión.'), epoch)
+  },
+  save: state => commit(stateOperations(state.base, state), state.revision),
   revision: () => requestJson('/api/state/revision', readOptions, 'No se pudo consultar la revisión.')
 }

@@ -20,9 +20,9 @@ async function coordinateStateWrite(transaction, current, next, options = {}) {
   const mode = writeMode(options)
   await options.writeLegacy(transaction, next, current)
   if (mode === 'legacy') return { mode, shadowWritten: false }
-  if (mode === 'controlled' && !(await normalizedShadowIsPrepared(transaction))) return { mode: 'legacy', shadowWritten: false }
+  if (mode === 'controlled' && !options.prepared && !(await normalizedShadowIsPrepared(transaction))) return { mode: 'legacy', shadowWritten: false }
   const writeShadow = options.writeShadow || synchronizeNormalizedStateInTransaction
-  const shadow = await writeShadow(transaction, current, next)
+  const shadow = await writeShadow(transaction, current, next, options.prepared)
   const [control] = await queryRows(transaction, 'select active_model, active_revision, active_fingerprint from normalized_shadow.storage_control where id = 1 for update')
   if (!control) {
     const error = new Error('Falta el selector persistente del almacenamiento normalizado.')

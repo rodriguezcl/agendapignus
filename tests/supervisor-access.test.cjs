@@ -10,7 +10,7 @@ test('el tema de Supervisor es local y no dispara escrituras ni bloquea la actua
   assert.match(app, /writeLocalValue\(`pignus-theme-account:\$\{themeAccountKey\}`, value\)/)
   assert.match(app, /readLocalValue\(`pignus-theme-account:\$\{themeAccountKey\}`, 'light'\)/)
   assert.doesNotMatch(app, /data.preferences\?\.theme\) setTheme/)
-  assert.match(app, /if \(isSupervisor\) return\s+if \(confirmedSaveRef.current/)
+  assert.match(app, /if \(isSupervisor \|\| saveDraftConflictRef.current\) return\s+if \(confirmedSaveRef.current/)
   assert.match(app, /const hasLocalChanges = !isSupervisor &&/)
   assert.match(app, /const canPersistLatestSnapshot = !isSupervisor &&/)
 })

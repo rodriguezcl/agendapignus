@@ -8,7 +8,7 @@ async function queryRows(sql, statement, parameters = []) {
   return result.rows || result
 }
 
-async function readNormalizedState(sql, { includeCredentials = false } = {}) {
+async function readNormalizedState(sql, { includeCredentials = false, includeControl = false, allowMissing = false } = {}) {
   // Reconstruct the complete application snapshot in one database round trip.
   // The previous implementation issued seven sequential queries; every state
   // write performed that work while holding the global revision row lock.
@@ -23,6 +23,7 @@ async function readNormalizedState(sql, { includeCredentials = false } = {}) {
     : `'[]'::jsonb`
   const [batch] = await queryRows(sql, `
     select
+      ${includeControl ? `(select jsonb_build_object('model', active_model, 'revision', active_revision) from normalized_shadow.storage_control where id = 1)` : 'null'} as storage_control,
       source_revision as revision,
       coalesce((
         select jsonb_agg(jsonb_build_object(
@@ -58,6 +59,7 @@ async function readNormalizedState(sql, { includeCredentials = false } = {}) {
     from normalized_shadow.import_batch
     where id = 1
   `)
+  if (!batch && allowMissing) return null
   if (!batch) { const error = new Error('El modelo normalizado todavía no tiene un lote importado.'); error.code = 'NORMALIZED_STATE_EMPTY'; throw error }
   const rows = value => {
     const parsed = payload(value)
@@ -80,13 +82,14 @@ async function readNormalizedState(sql, { includeCredentials = false } = {}) {
     else daily = payload(row.original_payload)
   }
   const preferences = payload(batch.preferences) || {}
-  return {
+  const state = {
     revision: Number(batch.revision || 0),
     roles: collection('roles'), employees,
     services: collection('service_types'), vehicles: collection('vehicles'),
     customers: collection('customers'), history,
     agenda: { ...daily, weekly }, reviews: collection('reviews'), preferences
   }
+  return includeControl ? { state, control: payload(batch.storage_control) } : state
 }
 
 const TABLE_KEYS = {
@@ -223,10 +226,15 @@ async function synchronizeCredentials(sql, employees) {
   return changedRows
 }
 
-async function synchronizeNormalizedStateInTransaction(sql, previousState, nextState) {
+function prepareNormalizedStateWrite(previousState, nextState) {
   // Lazy import avoids a module cycle during isolated rehearsal startup.
   const { buildShadowCandidate } = require('./normalization-rehearsal.cjs')
   const previous = buildShadowCandidate(previousState), next = buildShadowCandidate(nextState)
+  return { previous, next }
+}
+
+async function synchronizeNormalizedStateInTransaction(sql, previousState, nextState, prepared) {
+  const { previous, next } = prepared || prepareNormalizedStateWrite(previousState, nextState)
   const [batch] = await queryRows(sql, 'select source_fingerprint, source_revision from normalized_shadow.import_batch where id = 1 for update')
   if (!batch) { const error = new Error('El modelo normalizado todavía no tiene un lote importado.'); error.code = 'NORMALIZED_STATE_EMPTY'; throw error }
   if (batch.source_fingerprint === next.analysis.sourceFingerprint && Number(batch.source_revision) === Number(next.analysis.revision)) {
@@ -293,4 +301,4 @@ async function synchronizeNormalizedState(sql, previousState, nextState) {
   }
 }
 
-module.exports = { bulkDeleteRows, bulkUpsertRows, readNormalizedState, synchronizeNormalizedState, synchronizeNormalizedStateInTransaction }
+module.exports = { bulkDeleteRows, bulkUpsertRows, prepareNormalizedStateWrite, readNormalizedState, synchronizeNormalizedState, synchronizeNormalizedStateInTransaction }

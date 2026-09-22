@@ -2603,6 +2603,8 @@ html.modal-open body {
 
 .content > .team-card .daily-task-actions > .service-confirmation-button > svg { flex-shrink: 0; }
 .content > .team-card .daily-task-actions > .daily-journey-button { white-space: nowrap; }
+.confirmed-save-status { position: fixed; bottom: 18px; right: 18px; z-index: 12000; max-width: min(420px, calc(100vw - 36px)); padding: 10px 16px; border: 1px solid #8cb9d7; border-radius: 10px; background: #edf6ff; color: #164569; box-shadow: 0 3px 12px #0002; pointer-events: none; }
+.confirmed-save-status p { margin: 0; font-size: 13px; }
 
 .app-shell[data-theme='dark'] .content > .team-card .task-row {
   border-color: #334a3c;

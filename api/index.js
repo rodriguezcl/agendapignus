@@ -24,6 +24,7 @@ const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
 const { database, readTechnicianState, replaceCollections } = require('./_lib/database.cjs')
 const { readApplicationRevision: readRevision, readApplicationState: readState } = require('./_lib/storage-router.cjs')
 const { coordinateStateWrite } = require('./_lib/state-write-coordinator.cjs')
+const saveSnapshots = require('./_lib/save-snapshot-cache.cjs').createSaveSnapshotCache()
 const { appendOperationalAudit: appendAudit, deleteServicePhoto, setAuxiliaryPreference, upsertServicePhoto, upsertVehicleControlPhoto, upsertVehicleInsuranceDocument } = require('./_lib/operational-storage.cjs')
 const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
@@ -32,12 +33,13 @@ const { startTechnicianServiceRecord, assertTechnicianServiceStarted } = require
 const { stateForOperationComparison } = require('./_lib/legacy-estimated-minutes.cjs')
 const { stateWriteError } = require('./_lib/state-write-error.cjs')
 
-async function persistStateCollections(transaction, current, next, nextRevision) {
+async function persistStateCollections(transaction, current, next, nextRevision, prepared) {
   require('./_lib/journey-identity.cjs').synchronizeJourneyIdentity(next, current)
   require('./_lib/service-journeys.cjs').validateServiceJourneys(next, current)
   const versionedNext = { ...next, revision: Number(nextRevision) }
   return coordinateStateWrite(transaction, current, versionedNext, {
     mode: 'controlled',
+    prepared,
     writeLegacy: async (sql, state, previous) => {
       await replaceCollections(sql, state, previous)
       await sql`update pignus_preferences set value = ${String(state.revision)}, updated_at = now() where key = 'state_revision'`
@@ -416,22 +418,26 @@ async function handleLogout(req, res, sql) {
 }
 
 async function handleSaveState(req, res, sql, user) {
+  const timing = require('./_lib/save-timing.cjs').saveTiming()
   const incoming = requestBody(req)
   try {
-    const result = await sql.begin(async transaction => {
+    const { retryPreparedWrite, assertPreparedRevision } = require('./_lib/prepared-state-write.cjs')
+    const result = await retryPreparedWrite(() => sql.begin(async transaction => {
       // Agenda writes update the legacy and normalized models atomically. A
       // short wait incorrectly reported normal serialization as a busy DB.
       await transaction`set local lock_timeout = '15s'`
       await transaction`set local statement_timeout = '40s'`
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
-      // Read the snapshot before serializing writers. If nobody committed in
-      // between, the expensive state reconstruction never holds the global
-      // revision lock. A concurrent commit is detected by the revision check
-      // and only that contended request must refresh while holding the lock.
-      let current = await readState(transaction)
-      const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
-      const currentRevision = Number(revisionRows[0]?.value || 0)
-      if (Number(current.revision) !== currentRevision) current = await readState(transaction)
+      // Preparation is concurrent; only the atomic projection commit is serialized.
+      // Stale preparations retry outside the lock, never overwrite another save.
+      const current = await saveSnapshots.read(transaction)
+      timing.mark('read_state')
+      const currentRevision = Number(current.revision)
+      const verifyRevision = async () => {
+        const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+        timing.mark('lock_wait')
+        assertPreparedRevision(currentRevision, Number(revisionRows[0]?.value || 0))
+      }
       const individual = req.method === 'PATCH'
       const operationState = individual ? stateForOperationComparison(current) : current
       let next = authorizeIncomingState(individual ? applyStateOperations(visibleStateForUser(operationState, user), incoming.operations) : incoming, current, user)
@@ -447,9 +453,13 @@ async function handleSaveState(req, res, sql, user) {
       next.employees = secureEmployees(next.employees, current.employees)
       validateState(next, current)
       assertNoAccidentalHistoryWipe(current.history, next.history)
+      timing.mark('validation')
       // Un estado idéntico no es una nueva versión. Esto permite que dos
       // sesiones se hidraten simultáneamente sin generarse conflictos entre sí.
-      if (!statePersistenceChanged(current, next)) return { revision: currentRevision, state: current, merged }
+      if (!statePersistenceChanged(current, next)) {
+        await verifyRevision()
+        return { revision: currentRevision, state: current, previous: current, merged, normalized: require('./_lib/storage-router.cjs').preparedSnapshots.has(current) }
+      }
       const entries = [
         ...auditChanges(current.roles, next.roles, 'id', 'Rol', user),
         ...auditChanges(current.employees, next.employees, 'id', 'Empleado', user),
@@ -461,19 +471,41 @@ async function handleSaveState(req, res, sql, user) {
       ]
       if (JSON.stringify(current.agenda) !== JSON.stringify(next.agenda)) entries.push(auditEntry(user, 'Modificó', 'Agenda técnica', 'agenda-actual', current.agenda, next.agenda))
       const nextRevision = currentRevision + 1
-      await persistStateCollections(transaction, current, next, nextRevision)
+      timing.mark('prepare_audit')
+      let prepared
+      if (require('./_lib/storage-router.cjs').preparedSnapshots.has(current) || await require('./_lib/operational-storage.cjs').normalizedShadowIsPrepared(transaction)) {
+        require('./_lib/journey-identity.cjs').synchronizeJourneyIdentity(next, current)
+        require('./_lib/service-journeys.cjs').validateServiceJourneys(next, current)
+        prepared = require('./_lib/normalized-state-repository.cjs').prepareNormalizedStateWrite(current, { ...next, revision: nextRevision })
+      }
+      timing.mark('prepare_projection')
+      await verifyRevision()
+      await persistStateCollections(transaction, current, next, nextRevision, prepared)
+      timing.mark('persist')
       if (JSON.stringify(current.customers) !== JSON.stringify(next.customers)) await setAuxiliaryPreference(transaction, CUSTOMER_IMPORT_BACKUP_KEY, null)
-      await appendAudit(transaction, entries)
-      return { revision: nextRevision, state: { ...next, revision: nextRevision }, merged }
-    })
+      await appendAudit(transaction, entries, { shadowPrepared: Boolean(prepared) })
+      timing.mark('audit')
+      return { revision: nextRevision, state: { ...next, revision: nextRevision }, previous: current, merged, normalized: require('./_lib/storage-router.cjs').preparedSnapshots.has(current) }
+    }))
     if (result.merged) logStateConcurrencyEvent('state_write_merged', {
       actorRole: user.roleCode,
       expectedRevision: incoming.revision,
       currentRevision: result.revision
     })
-    return send(res, 200, { ok: true, revision: result.revision, merged: result.merged, state: visibleStateForUser(result.state, user) })
+    timing.mark('commit')
+    if (result.normalized) saveSnapshots.remember(result.state)
+    const response = { ok: true, revision: result.revision, merged: result.merged, state: visibleStateForUser(result.state, user) }
+    if (incoming.responseMode === 'delta-v1' && Number(incoming.revision) === Number(result.previous.revision)) {
+      const { stateDelta } = await import('../src/domain/shared/state-delta.mjs')
+      response.delta = stateDelta(visibleStateForUser(result.previous, user), response.state)
+      delete response.state
+    }
+    timing.mark('response_projection')
+    timing.finish(res, 'success')
+    return send(res, 200, response)
   } catch (error) {
     console.error('No se pudo guardar el estado:', error.message)
+    timing.finish(res, 'error')
     const publicError = stateWriteError(error)
     const status = publicError.status
     const payload = { error: publicError.message, ...(publicError.code ? { code: publicError.code } : {}) }

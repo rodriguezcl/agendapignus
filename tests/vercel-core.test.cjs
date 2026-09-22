@@ -732,8 +732,10 @@ test('el servidor concede margen suficiente al guardado general de Agenda', () =
 
   assert.match(stateHandler, /set local lock_timeout = '15s'/)
   assert.match(stateHandler, /set local statement_timeout = '40s'/)
-  assert.ok(stateHandler.indexOf('let current = await readState(transaction)') < stateHandler.indexOf("state_revision' for update"))
-  assert.match(stateHandler, /if \(Number\(current\.revision\) !== currentRevision\) current = await readState\(transaction\)/)
+  assert.match(stateHandler, /retryPreparedWrite\(\(\) => sql.begin/)
+  assert.match(stateHandler, /assertPreparedRevision\(currentRevision,/)
+  assert.ok(stateHandler.indexOf('const current = await saveSnapshots.read(transaction)') < stateHandler.indexOf("state_revision' for update"))
+  assert.ok(stateHandler.indexOf("timing.mark('prepare_projection')") < stateHandler.lastIndexOf('await verifyRevision()'))
 })
 
 test('el repositorio normalizado reconstruye el estado en una sola consulta', () => {
@@ -1307,11 +1309,12 @@ test('las agendas comparten las ubicaciones de instalación y distinguen reserva
 
 test('hidrata la fecha diaria junto con sus tarjetas para no atribuir servicios futuros a hoy', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
-  const hydration = source.match(/const applyRemoteState = data => \{([\s\S]*?)\n  \}/)?.[1] || ''
+  const hydration = source.slice(source.indexOf('const applyRemoteState ='), source.indexOf('const refreshRemoteState =', source.indexOf('const applyRemoteState =')))
 
   assert.match(hydration, /const persistedAgendaDate = \/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\//)
-  assert.match(hydration, /setTeams\(data\.agenda\?\.teams\?\.length \? data\.agenda\.teams/)
-  assert.match(hydration, /setDate\(persistedAgendaDate\)/)
+  assert.match(hydration, /const loaded_teams = data\.agenda\?\.teams\?\.length \? data\.agenda\.teams/)
+  assert.match(hydration, /const loaded_date = persistedAgendaDate/)
+  assert.match(hydration, /setTeams\(display.agenda.teams\); setDate\(display.agenda.date\)/)
   assert.doesNotMatch(hydration, /setDate\(currentLocalDate\(\)\)/)
 })
 
