@@ -45,6 +45,21 @@ test('specialized audit, preference and binary writes are mirrored byte-for-byte
   } finally { await pg.close() }
 })
 
+test('audit login events bind serialized batches as text with postgres.js parameter inference', async () => {
+  const pg = await database()
+  try {
+    const sql = { unsafe: async (statement, parameters = []) => {
+      // postgres.js serializes parameters inferred as json/jsonb, including strings.
+      const bound = parameters.map((value, index) => new RegExp(`\\$${index + 1}::jsonb\\b`).test(statement) ? JSON.stringify(value) : value)
+      return (await pg.query(statement, bound)).rows
+    } }
+    const event = { id: '11111111-1111-4111-8111-111111111112', at: '2026-09-22T18:00:00.000Z', user: { id: 'e', name: 'Admin' }, action: 'Inició sesión', entity: 'Sesión', entityId: 'e', before: null, after: { replacedSessions: 0 } }
+    await appendOperationalAudit(sql, [event])
+    assert.deepEqual((await pg.query('select data from pignus_audit_log')).rows[0].data, event)
+    assert.deepEqual((await pg.query('select original_payload from normalized_shadow.audit_events')).rows[0].original_payload, event)
+  } finally { await pg.close() }
+})
+
 test('a specialized shadow failure rolls back its legacy counterpart', async () => {
   const pg = await database()
   try {

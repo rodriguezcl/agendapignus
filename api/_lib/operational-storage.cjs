@@ -20,9 +20,11 @@ async function appendOperationalAudit(sql, entries, { shadowPrepared = false } =
     if (!first.has(id)) first.set(id, event)
     last.set(id, event)
   }
+  // Bind serialized JSON as text first: postgres.js otherwise infers jsonb
+  // and serializes the string again, so jsonb_array_elements receives a scalar.
   await queryRows(sql, `insert into pignus_audit_log (id, occurred_at, data)
     select (event->>'id')::uuid, (event->>'at')::timestamptz, event
-    from jsonb_array_elements($1::jsonb) as item(event)
+    from jsonb_array_elements($1::text::jsonb) as item(event)
     on conflict (id) do nothing`, [JSON.stringify([...first.values()])])
   await queryRows(sql, 'delete from pignus_audit_log where id in (select id from pignus_audit_log order by occurred_at desc offset 100)')
   if (!shadowPrepared && !(await normalizedShadowIsPrepared(sql))) return
@@ -32,7 +34,7 @@ async function appendOperationalAudit(sql, entries, { shadowPrepared = false } =
       event->'user'->>'id', nullif(event->'user'->>'name', ''), nullif(event->'user'->>'email', ''),
       nullif(event->'user'->>'role', ''), event->>'action', event->>'entity', event->>'entityId',
       nullif(event->'before', 'null'::jsonb), nullif(event->'after', 'null'::jsonb), event
-    from jsonb_array_elements($1::jsonb) as item(event)
+    from jsonb_array_elements($1::text::jsonb) as item(event)
     on conflict (id) do update set occurred_at=excluded.occurred_at, actor_employee_id=excluded.actor_employee_id,
       actor_name=excluded.actor_name, actor_email=excluded.actor_email, actor_role=excluded.actor_role,
       action=excluded.action, entity=excluded.entity, entity_id=excluded.entity_id,
