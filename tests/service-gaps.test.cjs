@@ -1,6 +1,23 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
+test('muestra disponibilidad hasta el cierre después de borrar el segundo turno', async () => {
+  const { serviceGaps, planningHoursForDay } = await import('../src/domain/agenda/service-gaps.mjs')
+  const tasks = [{serviceId:'s',time:'08:45',estimatedMinutes:150}]
+  const options = {...planningHoursForDay('2026-09-24'),day:'2026-09-24',now:'2026-09-22T12:00:00Z'}
+  assert.deepEqual(serviceGaps(tasks,options),[
+    {beforeIndex:1,start:'11:15',end:'13:30'},
+    {beforeIndex:1,start:'14:00',end:'17:00'}
+  ])
+  assert.equal(serviceGaps([...tasks,{time:'14:00'}],options).some(gap=>gap.start==='14:00'),false)
+  assert.deepEqual(serviceGaps([{serviceId:'s',time:'14:00',estimatedMinutes:60}],options),[{beforeIndex:1,start:'15:00',end:'17:00'}])
+  assert.deepEqual(serviceGaps([{serviceId:'s',time:'16:00',estimatedMinutes:60}],options),[])
+  assert.deepEqual(serviceGaps(tasks,{...options,now:'2026-09-24T20:00:00Z'}),[])
+  assert.deepEqual(serviceGaps([],options),[])
+  assert.equal(serviceGaps(tasks,{...options,...planningHoursForDay('2026-09-25'),day:'2026-09-25'}).at(-1).end,'20:00')
+  assert.equal(serviceGaps([{serviceId:'s',time:'08:00',estimatedMinutes:60}],{...options,...planningHoursForDay('2026-09-26'),day:'2026-09-26'}).at(-1).end,'12:00')
+})
+
 test('daily and weekly availability share working hours', async () => {
   const { planningHoursForDay } = await import('../src/domain/agenda/service-gaps.mjs')
   assert.equal(planningHoursForDay('2026-09-21').max, '17:00')
@@ -17,7 +34,7 @@ test('daily gap insertion exposes a draft at the available time and does not dup
   assert.deepEqual(gap, { start: '11:15', end: '13:00', beforeIndex: 1 })
   const next = [...tasks.slice(0, gap.beforeIndex), { taskId: 'draft', time: gap.start }, ...tasks.slice(gap.beforeIndex)]
   assert.equal(next[1].time, '11:15')
-  assert.deepEqual(serviceGaps(next, options), [])
+  assert.equal(serviceGaps(next, options).some(item => item.start === gap.start), false)
 })
 
 test('excluye el almuerzo y exige 90 minutos continuos por tramo', async () => {

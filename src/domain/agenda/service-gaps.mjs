@@ -7,7 +7,7 @@ export function planningHoursForDay(day) {
   return { min: '08:00', max, label: `08:00 a ${max}` }
 }
 
-// Only internal gaps: empty placeholders do not reserve working time.
+// Empty placeholders do not reserve working time. Include the final stretch when closing hours are known.
 export function serviceGaps(tasks, { min, max, day, now = new Date() } = {}) {
   const minutes = value => /^\d{2}:\d{2}$/.test(value || '') ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : null
   let lower = minutes(min) ?? 0
@@ -50,6 +50,14 @@ export function serviceGaps(tasks, { min, max, day, now = new Date() } = {}) {
       }
     }
     end = Math.max(end ?? 0, interval.end)
+  }
+  if (end !== null && minutes(max) !== null) {
+    const start = Math.max(end, lower)
+    for (const [from, to] of [[start, Math.min(upper, 13 * 60 + 30)], [Math.max(start, 14 * 60), upper]]) {
+      if (to - from < 90 || cards.some(card => card.start === from && !hasService(card.task))) continue
+      const nextCard = cards.find(card => card.start >= from)
+      gaps.push({ beforeIndex: nextCard?.index ?? tasks.length, start: minutesAsTime(from), end: minutesAsTime(to) })
+    }
   }
   return gaps
 }
