@@ -1,0 +1,48 @@
+/* Keep the history grid's intrinsic width inside the content, not under the fixed sidebar. */
+.app-shell > main:has(.history-bulk) {
+  min-width: 0;
+}
+.app-shell > main > .content:has(.history-bulk) {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+@media (min-width: 641px) {
+  .history-table.history-bulk {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto !important;
+  }
+  .history-bulk .table-head,
+  .history-bulk .history-row {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 1280px;
+    grid-template-columns: 42px 130px 82px minmax(200px, 1.4fr) minmax(140px, .9fr) minmax(130px, .8fr) 190px 132px !important;
+    gap: 14px;
+    padding-inline: 17px;
+  }
+  .history-bulk .table-head > span,
+  .history-bulk .history-row > div {
+    min-width: 0;
+  }
+  .history-bulk .table-head > span:nth-child(5),
+  .history-bulk .table-head > span:nth-child(6),
+  .history-bulk .history-row > div:nth-child(4),
+  .history-bulk .history-row > div:nth-child(5),
+  .history-bulk .history-technicians {
+    display: block !important;
+  }
+  .history-bulk .history-row > div:last-child {
+    width: 100%;
+    padding-right: 0;
+  }
+  .history-bulk .detail-button {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-inline-size: 0 !important;
+    justify-content: center;
+  }
+}
