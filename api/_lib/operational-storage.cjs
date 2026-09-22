@@ -10,22 +10,34 @@ async function normalizedShadowIsPrepared(sql) {
   return Boolean(batch)
 }
 
-async function appendOperationalAudit(sql, entries) {
-  for (const event of entries) await queryRows(sql, 'insert into pignus_audit_log (id, occurred_at, data) values ($1,$2,$3) on conflict (id) do nothing', [String(event.id), event.at, event])
-  if (entries.length) await queryRows(sql, 'delete from pignus_audit_log where id in (select id from pignus_audit_log order by occurred_at desc offset 100)')
-  if (!entries.length || !(await normalizedShadowIsPrepared(sql))) return
+async function appendOperationalAudit(sql, entries, { shadowPrepared = false } = {}) {
+  if (!entries.length) return
+  // One round trip per model, rather than one per event while holding the
+  // state revision lock. Preserve first-write legacy / last-write shadow semantics.
+  const first = new Map(), last = new Map()
   for (const event of entries) {
-    await queryRows(sql, `insert into normalized_shadow.audit_events
-      (id, occurred_at, actor_employee_id, actor_name, actor_email, actor_role, action, entity, entity_id, before_payload, after_payload, original_payload)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-      on conflict (id) do update set occurred_at=excluded.occurred_at, actor_employee_id=excluded.actor_employee_id,
+    const id = String(event.id)
+    if (!first.has(id)) first.set(id, event)
+    last.set(id, event)
+  }
+  await queryRows(sql, `insert into pignus_audit_log (id, occurred_at, data)
+    select (event->>'id')::uuid, (event->>'at')::timestamptz, event
+    from jsonb_array_elements($1::jsonb) as item(event)
+    on conflict (id) do nothing`, [JSON.stringify([...first.values()])])
+  await queryRows(sql, 'delete from pignus_audit_log where id in (select id from pignus_audit_log order by occurred_at desc offset 100)')
+  if (!shadowPrepared && !(await normalizedShadowIsPrepared(sql))) return
+  await queryRows(sql, `insert into normalized_shadow.audit_events
+    (id, occurred_at, actor_employee_id, actor_name, actor_email, actor_role, action, entity, entity_id, before_payload, after_payload, original_payload)
+    select (event->>'id')::uuid, (event->>'at')::timestamptz,
+      event->'user'->>'id', nullif(event->'user'->>'name', ''), nullif(event->'user'->>'email', ''),
+      nullif(event->'user'->>'role', ''), event->>'action', event->>'entity', event->>'entityId',
+      nullif(event->'before', 'null'::jsonb), nullif(event->'after', 'null'::jsonb), event
+    from jsonb_array_elements($1::jsonb) as item(event)
+    on conflict (id) do update set occurred_at=excluded.occurred_at, actor_employee_id=excluded.actor_employee_id,
       actor_name=excluded.actor_name, actor_email=excluded.actor_email, actor_role=excluded.actor_role,
       action=excluded.action, entity=excluded.entity, entity_id=excluded.entity_id,
       before_payload=excluded.before_payload, after_payload=excluded.after_payload, original_payload=excluded.original_payload`,
-    [String(event.id), event.at, event.user?.id == null ? null : String(event.user.id), event.user?.name || null,
-      event.user?.email || null, event.user?.role || null, event.action, event.entity,
-      event.entityId == null ? null : String(event.entityId), event.before ?? null, event.after ?? null, event])
-  }
+    [JSON.stringify([...last.values()])])
   await queryRows(sql, 'delete from normalized_shadow.audit_events where id in (select id from normalized_shadow.audit_events order by occurred_at desc offset 100)')
 }
 

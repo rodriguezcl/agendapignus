@@ -5,6 +5,7 @@ const path = require('node:path')
 const { buildShadowCandidate, insertShadowCandidate } = require('../api/_lib/normalization-rehearsal.cjs')
 const { readNormalizedState } = require('../api/_lib/normalized-state-repository.cjs')
 const { executeStateWrite, writeMode } = require('../api/_lib/state-write-coordinator.cjs')
+const { prepareNormalizedStateWrite } = require('../api/_lib/normalized-state-repository.cjs')
 
 function fixture() {
   return { revision: 1, roles: [{ id: 'r', name: 'Rol', permissions: {} }], employees: [{ id: 'e', roleId: 'r', name: 'Técnico' }],
@@ -46,6 +47,24 @@ test('legacy and normalized state commit in one isolated transaction', async () 
     assert.equal(result.shadowWritten, true)
     assert.deepEqual(await readLegacy(pg), next)
     assert.equal((await readNormalizedState(pg)).history[0].detail, 'Guardado atómico')
+  } finally { await pg.close() }
+})
+
+test('precomputed projection commits the same state and rejects a stale revision fingerprint', async () => {
+  const pg = await database()
+  try {
+    const previous = fixture(), next = structuredClone(previous)
+    await seed(pg, previous)
+    next.revision = 2
+    next.history[0].detail = 'Prepared before lock'
+    const prepared = prepareNormalizedStateWrite(previous, next)
+    await executeStateWrite(pg, previous, next, { writeLegacy, prepared })
+    assert.deepEqual(await readLegacy(pg), next)
+    assert.deepEqual(await readNormalizedState(pg), next)
+    const stale = { ...structuredClone(previous), revision: 2 }
+    stale.history[0].detail = 'Must not overwrite'
+    await assert.rejects(executeStateWrite(pg, previous, stale, { writeLegacy, prepared: prepareNormalizedStateWrite(previous, stale) }), { code: 'NORMALIZED_WRITE_CONFLICT' })
+    assert.deepEqual(await readLegacy(pg), next)
   } finally { await pg.close() }
 })
 

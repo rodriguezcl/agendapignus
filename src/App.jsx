@@ -1,4 +1,5 @@
 import { requiresDifferentRescheduleDay } from './domain/history/history-edit-policy.mjs'
+import { createSaveActivity, operationScopes, preserveLocalDraft } from './features/state/application/save-activity.mjs'
 import { createPortal } from 'react-dom'
 import { ServiceJourneysContext, ServiceJourneys, JourneyHistory, JourneyIdentityField, journeyLabel, journeyReportType } from './components/ServiceJourneys.jsx'
 import { planServiceJourneyOperations } from './features/state/application/service-journeys.mjs'
@@ -1301,7 +1302,20 @@ export default function App() {
   const stateSaveGenerationRef = useRef(0)
   const stateSaveTimerRef = useRef(null)
   const confirmedSaveRef = useRef(false)
+  const saveActivityRef = useRef(createSaveActivity())
+  const pendingConfirmedSavesRef = useRef(0)
+  const saveBatchRef = useRef(null)
+  const hydrationBaselineRef = useRef(null)
+  const [saveHydrationVersion, setSaveHydrationVersion] = useState(0)
+  const saveDraftConflictRef = useRef(false)
+  const saveSessionEpochRef = useRef(0)
   const [confirmedSaving, setConfirmedSaving] = useState(false)
+  useEffect(() => {
+    if (!confirmedSaving) return undefined
+    const guard = event => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', guard)
+    return () => window.removeEventListener('beforeunload', guard)
+  }, [confirmedSaving])
   const loggingOutRef = useRef(false)
   const initialRemoteStateRef = useRef(null)
   const hydratingStateRef = useRef(false)
@@ -1987,7 +2001,9 @@ export default function App() {
       return JSON.stringify(next) === JSON.stringify(previous) ? previous : next
     })
   }, [weekly, date, module])
-  const applyRemoteState = data => {
+  const applyRemoteState = (data, { preserveFrom = null } = {}) => {
+    if (lastServerSnapshotRef.current && Number(data.revision) < Number(stateRevisionRef.current)) return
+    stateRepository.prime(data)
     data = migrateLegacyEstimatedMinutes(data, { repairUnidentifiedAgenda: true }).state
     // Keep the server's projections before display effects reconcile daily and
     // weekly cards. Those effects are not persisted writes or CAS baselines.
@@ -1998,28 +2014,50 @@ export default function App() {
     stateRevisionRef.current = Number(data.revision || 0)
     setStateRevision(stateRevisionRef.current)
     const loadedRoles = Array.isArray(data.roles) ? data.roles.map(role => { const code = roleCode(role); const permissions = resolvedRolePermissions({ ...role, code, permissions: { dashboard: true, weekly: role.permissions?.weekly ?? ['administrator', 'user', 'coordinator'].includes(code), ...role.permissions } }); return { ...role, code, permissions } }) : []
-    setRoles(loadedRoles)
-    setEmployees(Array.isArray(data.employees) ? data.employees.map(employee => { const assignedRole = loadedRoles.find(role => String(role.id) === String(employee.roleId)) || loadedRoles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role)); return assignedRole ? { ...employee, roleId: assignedRole.id, role: assignedRole.name } : employee }) : [])
-    setServices(ensureVehicleControlService(Array.isArray(data.services) ? data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) })) : []))
-    setVehicles(Array.isArray(data.vehicles) ? data.vehicles : [])
-    setHistory(Array.isArray(data.history) ? data.history : [])
-    setCustomers(Array.isArray(data.customers) ? data.customers.map(customer => ({ ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer), name: normalizeCustomerName(customer.name) })) : [])
+
+    const loaded_employees = Array.isArray(data.employees) ? data.employees.map(employee => { const assignedRole = loadedRoles.find(role => String(role.id) === String(employee.roleId)) || loadedRoles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role)); return assignedRole ? { ...employee, roleId: assignedRole.id, role: assignedRole.name } : employee }) : []
+    const loaded_services = ensureVehicleControlService(Array.isArray(data.services) ? data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) })) : [])
+    const loaded_vehicles = Array.isArray(data.vehicles) ? data.vehicles : []
+    const loaded_history = Array.isArray(data.history) ? data.history : []
+    const loaded_customers = Array.isArray(data.customers) ? data.customers.map(customer => ({ ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer), name: normalizeCustomerName(customer.name) })) : []
     // La fecha y las tarjetas de Agenda del día forman una única instantánea.
     // Si al hidratar forzamos "hoy" pero conservamos equipos de otra fecha, el
     // servidor interpreta esas tarjetas como servicios del día actual.
     const persistedAgendaDate = /^\d{4}-\d{2}-\d{2}$/.test(String(data.agenda?.date || ''))
       ? data.agenda.date
       : currentLocalDate()
-    setTeams(data.agenda?.teams?.length ? data.agenda.teams : [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }])
-    setDate(persistedAgendaDate)
-    setWeekly(data.agenda?.weekly && typeof data.agenda.weekly === 'object' ? data.agenda.weekly : {})
+    const loaded_teams = data.agenda?.teams?.length ? data.agenda.teams : [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }]
+    const loaded_date = persistedAgendaDate
+    const loaded_weekly = data.agenda?.weekly && typeof data.agenda.weekly === 'object' ? data.agenda.weekly : {}
+    const remoteSnapshot = { roles: loadedRoles, employees: loaded_employees, services: loaded_services, vehicles: loaded_vehicles, history: loaded_history, customers: loaded_customers, agenda: { date: loaded_date, teams: loaded_teams, weekly: loaded_weekly } }
+    const local = currentSnapshotRef.current ? JSON.parse(currentSnapshotRef.current) : remoteSnapshot
+    const preserved = preserveFrom ? preserveLocalDraft(preserveFrom, local, remoteSnapshot) : { state: remoteSnapshot, conflict: false }
+    const display = preserved.state
+    const hasDraft = JSON.stringify(display) !== JSON.stringify(remoteSnapshot)
+    hydrationBaselineRef.current = hasDraft ? JSON.stringify(remoteSnapshot) : null
+    lastPersistedSnapshotRef.current = JSON.stringify(remoteSnapshot)
+    currentSnapshotRef.current = JSON.stringify(display)
+    if (preserved.conflict) {
+      saveDraftConflictRef.current = true
+      setNotice('Se guardó la operación, pero hay una edición posterior que requiere revisión. Se conservó tu borrador; revisalo antes de guardar nuevamente.')
+    }
+    setRoles(display.roles); setEmployees(display.employees); setServices(display.services)
+    setVehicles(display.vehicles); setHistory(display.history); setCustomers(display.customers)
+    setTeams(display.agenda.teams); setDate(display.agenda.date); setWeekly(display.agenda.weekly)
     setDatabaseReady(true)
   }
   const refreshRemoteState = async () => {
     applyRemoteState(await stateRepository.load())
   }
   const persistStateCommand = async (buildOperations, { combinePendingState = false, rebaseOnRecordConflict = false, isolatedMove = false } = {}) => {
-    if (confirmedSaveRef.current) throw new Error('Ya hay un guardado en curso.')
+    const saveEpoch = saveSessionEpochRef.current
+    let release = !combinePendingState || isolatedMove ? saveActivityRef.current.acquire() : null
+    if (!pendingConfirmedSavesRef.current) saveBatchRef.current = { baseline: JSON.parse(currentSnapshotRef.current), latest: null }
+    pendingConfirmedSavesRef.current += 1
+    const acceptResponse = payload => {
+      if (saveEpoch !== saveSessionEpochRef.current) return
+      if (payload.state && (!saveBatchRef.current.latest || Number(payload.state.revision) >= Number(saveBatchRef.current.latest.revision))) saveBatchRef.current.latest = payload.state
+    }
     const moveSnapshot = isolatedMove ? lastServerSnapshotRef.current : null
     confirmedSaveRef.current = true
     setConfirmedSaving(true)
@@ -2032,8 +2070,10 @@ export default function App() {
       // The modal draft has not been published to React state: a debounce
       // cannot submit it prematurely or announce success before confirmation.
       await stateSaveQueue.current
+      if (saveEpoch !== saveSessionEpochRef.current) throw new Error('La sesión cambió antes del guardado.')
       const serialized = currentSnapshotRef.current
       const local = JSON.parse(serialized)
+      if (pendingConfirmedSavesRef.current === 1 && !saveBatchRef.current.latest) saveBatchRef.current.baseline = local
       const base = JSON.parse(lastPersistedSnapshotRef.current || 'null')
       if (!base) throw new Error('Esperá a que termine de cargar la agenda.')
       if (isolatedMove) {
@@ -2041,13 +2081,14 @@ export default function App() {
         const serverSnapshot = moveSnapshot
         if (!serverSnapshot) throw new Error('Esperá a que termine de cargar la agenda.')
         const payload = await stateRepository.commit(await buildOperations(serverSnapshot), serverSnapshot.revision)
-        applyRemoteState(payload.state)
+        acceptResponse(payload)
         return payload
       }
       let snapshot = local
       if (combinePendingState) {
         const pendingOperations = serialized !== lastPersistedSnapshotRef.current ? stateOperations(base, local) : []
         const commandOperations = await buildOperations(local)
+        release = saveActivityRef.current.acquire(operationScopes([...pendingOperations, ...commandOperations]))
         let payload
         try {
           payload = await stateRepository.commit([...pendingOperations, ...commandOperations], stateRevisionRef.current)
@@ -2060,7 +2101,7 @@ export default function App() {
           const remote = await stateRepository.load()
           payload = await stateRepository.commit(await buildOperations(remote), Number(remote.revision))
         }
-        applyRemoteState(payload.state)
+        acceptResponse(payload)
         return payload
       }
       if (serialized !== lastPersistedSnapshotRef.current) {
@@ -2070,12 +2111,24 @@ export default function App() {
         snapshot = flushed.state
       }
       const payload = await buildOperations(snapshot)
-      applyRemoteState(payload.state)
+      acceptResponse(payload)
       return payload
     } finally {
-      confirmedSaveRef.current = false
-      setConfirmedSaving(false)
+      release?.()
+      if (saveEpoch === saveSessionEpochRef.current) {
+      pendingConfirmedSavesRef.current = Math.max(0, pendingConfirmedSavesRef.current - 1)
       pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1)
+      confirmedSaveRef.current = pendingConfirmedSavesRef.current > 0
+      setConfirmedSaving(confirmedSaveRef.current)
+      if (!confirmedSaveRef.current) {
+        const batch = saveBatchRef.current
+        saveBatchRef.current = null
+        if (batch?.latest) {
+          saveDraftConflictRef.current = false
+          applyRemoteState(batch.latest, { preserveFrom: batch.baseline })
+        }
+      }
+      }
     }
   }
   const persistWeeklyService = command => persistStateCommand(snapshot => (
@@ -2163,6 +2216,12 @@ export default function App() {
   globalThis.__pignusRefreshRemoteState = refreshRemoteState
   const endInvalidatedSession = message => {
     if (loggingOutRef.current) return
+    saveSessionEpochRef.current += 1
+    pendingConfirmedSavesRef.current = 0
+    confirmedSaveRef.current = false
+    setConfirmedSaving(false)
+    saveBatchRef.current = null
+    saveActivityRef.current = createSaveActivity()
     if (stateSaveTimerRef.current) window.clearTimeout(stateSaveTimerRef.current)
     stateSaveTimerRef.current = null
     pendingStateSaves.current = 0
@@ -2175,6 +2234,16 @@ export default function App() {
   useEffect(() => {
     if (!authUser) return
     hydratingStateRef.current = true
+    saveSessionEpochRef.current += 1
+    pendingConfirmedSavesRef.current = 0
+    confirmedSaveRef.current = false
+    setConfirmedSaving(false)
+    saveBatchRef.current = null
+    saveActivityRef.current = createSaveActivity()
+    lastServerSnapshotRef.current = null
+    stateRepository.prime(null)
+    hydrationBaselineRef.current = null
+    saveDraftConflictRef.current = false
     lastPersistedSnapshotRef.current = null
     remoteConflictRevisionRef.current = null
     setDatabaseReady(false)
@@ -2199,15 +2268,17 @@ export default function App() {
     if (!databaseReady || !hydratingStateRef.current) return undefined
     window.clearTimeout(hydrationTimerRef.current)
     const timer = window.setTimeout(() => {
-      lastPersistedSnapshotRef.current = currentSnapshotRef.current
+      lastPersistedSnapshotRef.current = hydrationBaselineRef.current || currentSnapshotRef.current
+      hydrationBaselineRef.current = null
       hydratingStateRef.current = false
       hydrationTimerRef.current = null
+      if (lastPersistedSnapshotRef.current !== currentSnapshotRef.current && !saveDraftConflictRef.current) setSaveHydrationVersion(value => value + 1)
     }, 150)
     hydrationTimerRef.current = timer
     return () => window.clearTimeout(timer)
   }, [databaseReady, serializedStateSnapshot])
   useEffect(() => {
-    if (isSupervisor) return
+    if (isSupervisor || saveDraftConflictRef.current) return
     if (confirmedSaveRef.current || loggingOutRef.current || hydratingStateRef.current || serializedStateSnapshot === lastPersistedSnapshotRef.current || !databaseReady || stateRevision === null || !authUser || authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return
     // Desde que existe un cambio local pendiente (incluido el debounce) se
     // bloquea la recarga periódica para que no restaure la versión anterior.
@@ -2258,7 +2329,7 @@ export default function App() {
       if (stateSaveTimerRef.current === timer) stateSaveTimerRef.current = null
       if (!saveStarted) pendingStateSaves.current = Math.max(0, pendingStateSaves.current - 1)
     }
-  }, [databaseReady, authUser, isSupervisor, serializedStateSnapshot])
+  }, [databaseReady, authUser, isSupervisor, serializedStateSnapshot, saveHydrationVersion])
   useEffect(() => {
     // Sincronización ligera de todos los módulos. Evita que dos sesiones abiertas
     // muestren indicadores, historial o agenda de revisiones diferentes.
@@ -2471,7 +2542,7 @@ export default function App() {
           for (const visit of visits) if ((calendar.holidays || []).some(holiday => holiday.date === visit.date) && weekly._holidayOverrides?.[visit.date]?.status !== 'working') throw new Error('La fecha ' + visit.date + ' es feriado y no está habilitada.')
         }
         await persistWeeklyService({ operation: 'service-journeys', base, visits })
-      }}}><div className="app-shell" data-theme={theme}>{confirmedSaving && <div className="confirmed-save-overlay" role="status" aria-live="polite"><p>Guardando cambios… Esperá la confirmación.</p></div>}<aside inert={confirmedSaving ? "" : undefined} className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { if (id !== module) requestNavigation(() => { setModule(id); setMenuOpen(false) }) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main inert={confirmedSaving ? "" : undefined}><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><div className="profile-menu"><button className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span></button>{profileOpen && <div className="profile-popover"><b>{authUser.name}</b><span>{authUser.email}</span><small>{authUser.role}</small></div>}</div><button className="logout-button" onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrar sesión"><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content">{notice && <div className="notice" data-tone={noticeTone(notice)} role={noticeTone(notice) === 'error' || noticeTone(notice) === 'offline' ? 'alert' : 'status'} aria-live={noticeTone(notice) === 'error' || noticeTone(notice) === 'offline' ? 'assertive' : 'polite'}><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} services={services} />}{module === 'weekly' && <WeeklyPlanner navigationGuardRef={weeklyNavigationGuard} {...{ persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, authUser, vehicles }} permissions={modulePermissions} openDaily={(nextDate, nextTeams) => { if (nextDate < currentLocalDate()) setHistoricalDate(nextDate); else { setHistoricalDate(null); setDate(nextDate); setTeams(nextTeams) } setModule('agenda') }} />}{module === 'agenda' && <Agenda navigationGuardRef={weeklyNavigationGuard} {...{ persistWeeklyService, persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady, authUser }} date={historicalDate || date} setDate={nextDate => { if (nextDate < currentLocalDate()) setHistoricalDate(nextDate); else { setHistoricalDate(null); setDate(nextDate) } }} />}{module === 'history' && <History initialFilter={historyEntryFilter} history={history} setHistory={setHistory} customers={customers} services={services} employees={activeTechs} authUser={authUser} canManage={isAdministrator || modulePermissions.historyManage} persistHistoryRecord={persistHistoryRecord} persistHistoryRecordRemoval={persistHistoryRecordRemoval} historyScheduling={historyScheduling} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask, history, teams, weekly, stateRevision, refreshRemoteState, applyCustomerImportState }} permissions={modulePermissions} isAdministrator={isAdministrator} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask, history, teams, weekly }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask, history, teams, weekly }} />}{module === 'vehicles' && <Vehicles {...{ vehicles, setVehicles, setNotice, ask, isAdministrator, stateRevision, refreshRemoteState }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask, employees }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div></ServiceJourneysContext.Provider>
+      }}}><div className="app-shell" data-theme={theme}>{confirmedSaving && <div className="confirmed-save-status" role="status" aria-live="polite"><p>Guardando cambios… Podés seguir consultando la agenda.</p></div>}<aside  className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { if (id !== module) requestNavigation(() => { setModule(id); setMenuOpen(false) }) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main ><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><div className="profile-menu"><button className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span></button>{profileOpen && <div className="profile-popover"><b>{authUser.name}</b><span>{authUser.email}</span><small>{authUser.role}</small></div>}</div><button className="logout-button" disabled={confirmedSaving} onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrar sesión"><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content">{notice && <div className="notice" data-tone={noticeTone(notice)} role={noticeTone(notice) === 'error' || noticeTone(notice) === 'offline' ? 'alert' : 'status'} aria-live={noticeTone(notice) === 'error' || noticeTone(notice) === 'offline' ? 'assertive' : 'polite'}><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} services={services} />}{module === 'weekly' && <WeeklyPlanner navigationGuardRef={weeklyNavigationGuard} {...{ persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, authUser, vehicles }} permissions={modulePermissions} openDaily={(nextDate, nextTeams) => { if (nextDate < currentLocalDate()) setHistoricalDate(nextDate); else { setHistoricalDate(null); setDate(nextDate); setTeams(nextTeams) } setModule('agenda') }} />}{module === 'agenda' && <Agenda navigationGuardRef={weeklyNavigationGuard} {...{ persistWeeklyService, persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady, authUser }} date={historicalDate || date} setDate={nextDate => { if (nextDate < currentLocalDate()) setHistoricalDate(nextDate); else { setHistoricalDate(null); setDate(nextDate) } }} />}{module === 'history' && <History initialFilter={historyEntryFilter} history={history} setHistory={setHistory} customers={customers} services={services} employees={activeTechs} authUser={authUser} canManage={isAdministrator || modulePermissions.historyManage} persistHistoryRecord={persistHistoryRecord} persistHistoryRecordRemoval={persistHistoryRecordRemoval} historyScheduling={historyScheduling} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask, history, teams, weekly, stateRevision, refreshRemoteState, applyCustomerImportState }} permissions={modulePermissions} isAdministrator={isAdministrator} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask, history, teams, weekly }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask, history, teams, weekly }} />}{module === 'vehicles' && <Vehicles {...{ vehicles, setVehicles, setNotice, ask, isAdministrator, stateRevision, refreshRemoteState }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask, employees }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div></ServiceJourneysContext.Provider>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { if (id !== module) requestNavigation(() => { setModule(id); setMenuOpen(false) }) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'dashboard' && <Dashboard history={history} services={services} />}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }} />}{module === 'history' && <History history={history} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { if (id !== module) requestNavigation(() => { setModule(id); setMenuOpen(false) }) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, history, setHistory, updateTask, setNotice }} />}{module === 'history' && <History history={history} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>
   return <div className="app-shell" data-theme={theme}><aside className={`sidebar ${menuOpen ? 'open' : ''}`}><div className="brand"><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => { if (id !== module) requestNavigation(() => { setModule(id); setMenuOpen(false) }) }} className={module === id ? 'active' : ''}><Icon name={icon} />{label}</button>)}</nav><div className="sidebar-bottom">v1.1 · Agenda técnica</div></aside>{menuOpen && <button className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main><header className="topbar"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><b>{title}</b></div><div className="profile"><button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><span className="profile-avatar">LR</span><span>Leonardo Rodríguez</span></div></header><section className="content">{notice && <div className="notice"><span><Icon name="check" size={16} />{notice}</span><button onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'agenda' && <Agenda {...{ date, setDate, teams, setTeams, activeTechs, customers, services, updateTask, setNotice }} />}{module === 'accounts' && <Accounts {...{ customers, setCustomers, setNotice, ask }} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask }} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask }} />}{module === 'settings' && <Settings {...{ roles, setRoles, setNotice, ask }} />}</section></main>{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div>

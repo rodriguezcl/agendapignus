@@ -5,6 +5,23 @@ const { normalizedShadowIsPrepared } = require('./operational-storage.cjs')
 const { readStorageControl } = require('./storage-control.cjs')
 
 let lastDiagnostic = ''
+const preparedSnapshots = new WeakSet()
+
+async function readPersistentSnapshot(sql) {
+  const statement = "select to_regclass('normalized_shadow.import_batch') as batch_table, to_regclass('normalized_shadow.storage_control') as control_table"
+  const result = typeof sql.query === 'function' ? await sql.query(statement) : await sql.unsafe(statement)
+  const [catalog] = result.rows || result
+  if (!catalog?.batch_table || !catalog.control_table) return null
+  // Selector, revision, credentials and payload share one PostgreSQL snapshot.
+  // Avoid four sequential round trips and transient mixed-revision reads.
+  const snapshot = await readNormalizedState(sql, { includeCredentials: true, includeControl: true, allowMissing: true })
+  if (!snapshot) return null
+  if (!snapshot.control) throw Object.assign(new Error('Falta el control de almacenamiento normalizado.'), { code: 'STORAGE_CONTROL_MISSING' })
+  if (snapshot.control.model !== 'normalized') return null
+  if (Number(snapshot.state.revision) !== Number(snapshot.control.revision)) throw Object.assign(new Error('La revisión normalizada no coincide con el selector persistente.'), { code: 'STORAGE_CONTROL_READ_CONFLICT' })
+  preparedSnapshots.add(snapshot.state)
+  return snapshot.state
+}
 
 function storageMode(environment = process.env) {
   const mode = String(environment.PIGNUS_STORAGE_MODE || 'persistent').trim().toLowerCase()
@@ -40,6 +57,9 @@ async function readApplicationState(sql, options = {}) {
   const mode = storageMode(options.environment)
   const readLegacy = options.readLegacy || readLegacyState
   const readNormalized = options.readNormalized || readNormalizedState
+  if (mode === 'persistent' && options.shadowPrepared == null && !options.readLegacy && !options.readNormalized && !options.readControl) {
+    return (await readPersistentSnapshot(sql)) || readLegacy(sql)
+  }
   const shadowPrepared = options.shadowPrepared == null ? (mode === 'persistent' && await normalizedShadowIsPrepared(sql)) : options.shadowPrepared
   if (mode === 'persistent' && shadowPrepared) {
     const control = await (options.readControl || readStorageControl)(sql)
@@ -76,4 +96,4 @@ async function readApplicationRevision(sql, options = {}) {
   return control.model === 'normalized' ? Number(control.revision || 0) : Number(await readLegacy(sql) || 0)
 }
 
-module.exports = { compareApplicationStates, readApplicationRevision, readApplicationState, storageMode }
+module.exports = { compareApplicationStates, readApplicationRevision, readApplicationState, storageMode, preparedSnapshots }
