@@ -2294,7 +2294,6 @@ export default function App() {
             const remoteState = await stateRepository.load()
             if (!stopped) {
               applyRemoteState(remoteState)
-              setNotice('La información se actualizó con los cambios de otra sesión.')
             }
           }
         } else if (remoteRevision === Number(stateRevisionRef.current)) remoteConflictRevisionRef.current = null
