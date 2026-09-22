@@ -14,7 +14,7 @@ test('muestra disponibilidad hasta el cierre después de borrar el segundo turno
   assert.deepEqual(serviceGaps([{serviceId:'s',time:'16:00',estimatedMinutes:60}],options),[])
   assert.deepEqual(serviceGaps(tasks,{...options,now:'2026-09-24T20:00:00Z'}),[])
   assert.deepEqual(serviceGaps([],options),[])
-  assert.equal(serviceGaps(tasks,{...options,...planningHoursForDay('2026-09-25'),day:'2026-09-25'}).at(-1).end,'20:00')
+  assert.equal(serviceGaps(tasks,{...options,...planningHoursForDay('2026-09-25'),day:'2026-09-25'}).at(-1).end,'16:00')
   assert.equal(serviceGaps([{serviceId:'s',time:'08:00',estimatedMinutes:60}],{...options,...planningHoursForDay('2026-09-26'),day:'2026-09-26'}).at(-1).end,'12:00')
 })
 
@@ -24,6 +24,18 @@ test('daily and weekly availability share working hours', async () => {
   assert.equal(planningHoursForDay('2026-09-25').max, '20:00')
   assert.equal(planningHoursForDay('2026-09-26').max, '12:00')
   assert.equal(planningHoursForDay('2026-09-27'), null)
+})
+
+test('viernes no ofrece como disponibilidad general el horario excepcional de guardia', async () => {
+  const { serviceGaps, planningHoursForDay } = await import('../src/domain/agenda/service-gaps.mjs')
+  const options = {...planningHoursForDay('2026-09-25'),day:'2026-09-25',now:'2026-09-22T12:00:00Z'}
+  const control = {vehicleControl:true,time:'15:30',estimatedMinutes:15}
+  assert.deepEqual(serviceGaps([control],options),[])
+  const morning = {serviceId:'s',time:'09:00',estimatedMinutes:60}
+  const guard = {serviceId:'guard',time:'18:00',estimatedMinutes:120}
+  assert.ok(serviceGaps([morning,guard],options).every(gap=>gap.end<='16:00'))
+  assert.deepEqual(serviceGaps([morning],{...options,now:'2026-09-25T19:00:00Z'}),[])
+  assert.equal(planningHoursForDay(options.day).max,'20:00')
 })
 
 test('daily gap insertion exposes a draft at the available time and does not duplicate that window', async () => {
