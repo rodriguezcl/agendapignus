@@ -135,6 +135,7 @@ function ServicePhotoManager({ record, onMetadataChange }) {
 import './ui-polish.css'
 import './login.css'
 import './constitution-ui.css'
+import './history-layout.css'
 
 class TechnicianPortalErrorBoundary extends React.Component {
   constructor(props) {
