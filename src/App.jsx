@@ -988,6 +988,19 @@ const taskOccupiedTimeLabel = task => {
   const interval = taskOccupiedInterval(task)
   return interval ? `${interval.startTime}–${interval.serviceEndTime}` : ''
 }
+const taskMoveScheduleState = (day, task) => {
+  const hours = planningHoursForDay(day)
+  const interval = taskOccupiedInterval(task)
+  if (!hours) return { hours, interval, valid: false, message: 'La fecha seleccionada no tiene una jornada laboral habilitada.' }
+  if (!interval) return { hours, interval, valid: false, message: 'Indicá una hora y un tiempo estimado válidos.' }
+  const outside = interval.serviceStart < serviceTimeInMinutes(hours.min) || interval.serviceEnd > serviceTimeInMinutes(hours.max)
+  return {
+    hours,
+    interval,
+    valid: !outside,
+    message: outside ? `La franja ${interval.startTime}–${interval.serviceEndTime} excede el horario habilitado (${hours.label}). Ajustá la hora o el tiempo estimado.` : ''
+  }
+}
 function ServiceEstimatedDurationField({ value, onChange, className = '', required = true }) {
   const duration = normalizeServiceEstimatedMinutes(value)
   const hours = Math.floor(duration / 60)
@@ -3493,7 +3506,8 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
     const task = sourceTeam?.tasks?.[taskIndex]
     if (!task) return
     setTaskMove({ sourceTeamId: sourceTeam.teamId, sourceTeamIndex: teamIndex, taskId: task.taskId, taskIndex,
-      destinationDay: date, destinationTeamIndex: teams.findIndex((_, index) => index !== teamIndex) })
+      destinationDay: date, destinationTeamIndex: teams.findIndex((_, index) => index !== teamIndex),
+      time: task.time || task.scheduledTime || '', estimatedMinutes: serviceEstimateForTask(task, serviceForTask(task)) })
   }
   const confirmTaskMove = async () => {
     if (!taskMove || taskMoveSavingRef.current) return
@@ -3509,11 +3523,10 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
     if (holidayIsBlocked(holidayForDate(holidayCalendar.records, day), holidayDecisionForDate(weekly, day))) { setNotice('La fecha de destino no está habilitada. Revisá la configuración del feriado.'); return }
     if (advancedGuardForSaturdayDate(day, weekly, moveDayPlan(day).teams)) { setNotice('La guardia de ese sábado fue adelantada. Elegí la fecha de la guardia.'); return }
     if (!destinationTeam.members?.length) { setNotice('El equipo de destino no tiene técnicos asignados.'); return }
-    const movedTask = stampServiceRecord(task, authUser)
-    const interval = taskOccupiedInterval(taskWithServiceEstimate(movedTask, serviceForTask(task)))
-    const weekday = new Date(day + 'T12:00:00').getDay()
-    const end = weekday === 5 ? 1200 : weekday === 6 ? 720 : 1020
-    if (interval && (interval.serviceStart < 480 || interval.serviceEnd > end)) { setNotice('El horario del servicio queda fuera del rango habilitado del día de destino.'); return }
+    const durationCustomized = task.estimatedMinutesCustomized === true || Number(taskMove.estimatedMinutes) !== Number(serviceEstimateForTask(task, serviceForTask(task)))
+    const movedTask = stampServiceRecord({ ...task, time: taskMove.time, estimatedMinutes: taskMove.estimatedMinutes, estimatedMinutesCustomized: durationCustomized }, authUser)
+    const schedule = taskMoveScheduleState(day, movedTask)
+    if (!schedule.valid) { setNotice(schedule.message); return }
     const destinationGap = minimumServiceGapConflicts([{ ...destinationTeam, tasks: [...(destinationTeam.tasks || []).filter(item => item.taskId !== task.taskId), movedTask].map(item => {
       const occupancy = taskForScheduleOccupancy(item, day, history)
       return occupancy ? taskWithServiceEstimate(occupancy, serviceForTask(item)) : null
@@ -3523,10 +3536,10 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
     const changedDate = day !== date
     const record = stampServiceRecord({
       ...baseRecord, ...movedTask, id: baseRecord?.id || task.historyId || `work-${task.taskId}`,
-      sourceTaskId: task.taskId, date: day, time: task.time, scheduledTime: task.time,
+      sourceTaskId: task.taskId, date: day, time: movedTask.time, scheduledTime: movedTask.time,
       teamId: destinationTeam.teamId, team: destinationTeam.label || `Equipo ${taskMove.destinationTeamIndex + 1}`,
       technicianIds: destinationTeam.memberIds || [], technicians: destinationTeam.members || [],
-      estimatedMinutes: serviceEstimateForTask(task, serviceForTask(task)),
+      estimatedMinutes: movedTask.estimatedMinutes, estimatedMinutesCustomized: durationCustomized,
       status: changedDate ? 'Pendiente' : baseRecord?.status || task.status || 'Pendiente', scheduledDate: '',
       ...(changedDate ? { rescheduledFrom: date, reprogrammedAt: new Date().toISOString() } : {})
     }, authUser)
@@ -3542,6 +3555,15 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
   }
   useEffect(() => {
     if (!taskMove) return undefined
+    const sourceTeam = teams.find(team => team.teamId === taskMove.sourceTeamId) || teams[taskMove.sourceTeamIndex]
+    const originalTask = sourceTeam?.tasks?.find(task => task.taskId === taskMove.taskId) || sourceTeam?.tasks?.[taskMove.taskIndex]
+    const moveDraft = originalTask ? { ...originalTask, time: taskMove.time, estimatedMinutes: taskMove.estimatedMinutes, estimatedMinutesCustomized: originalTask.estimatedMinutesCustomized === true || Number(taskMove.estimatedMinutes) !== Number(serviceEstimateForTask(originalTask, serviceForTask(originalTask))) } : null
+    const schedule = taskMoveScheduleState(taskMove.destinationDay, moveDraft)
+    const selectedTeam = moveDayPlan(taskMove.destinationDay).teams[taskMove.destinationTeamIndex]
+    const destinationGap = moveDraft && selectedTeam ? minimumServiceGapConflicts([{ ...selectedTeam, tasks: [...(selectedTeam.tasks || []).filter(item => item.taskId !== moveDraft.taskId), moveDraft].map(item => {
+      const occupancy = taskForScheduleOccupancy(item, taskMove.destinationDay, history)
+      return occupancy ? taskWithServiceEstimate(occupancy, serviceForTask(item)) : null
+    }).filter(Boolean) }])[0] : null
     const layer = document.createElement('div')
     layer.className = 'modal-layer task-move-layer'
     const modal = document.createElement('section')
@@ -3550,9 +3572,9 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
     modal.setAttribute('aria-modal', 'true')
     modal.setAttribute('aria-label', 'Cambiar equipo o fecha')
     const title = document.createElement('h2')
-    title.textContent = 'Cambiar equipo o fecha'
+    title.textContent = 'Cambiar equipo, horario o fecha'
     const detail = document.createElement('p')
-    detail.textContent = 'Elegí otro equipo del mismo día o una nueva fecha. Se conservarán el horario y los datos del servicio.'
+    detail.textContent = 'Elegí el destino y ajustá la hora o el tiempo estimado antes de confirmar. Todos los cambios se guardarán en una única operación.'
     const dateLabel = document.createElement('label')
     dateLabel.textContent = 'Nueva fecha'
     const dateInput = document.createElement('input')
@@ -3566,6 +3588,37 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
     label.append(select)
     const error = document.createElement('p')
     error.className = 'field-error'
+    const timeLabel = document.createElement('label')
+    timeLabel.textContent = 'Hora de inicio'
+    const timeInput = document.createElement('input')
+    timeInput.type = 'time'
+    timeInput.value = taskMove.time || ''
+    timeInput.min = schedule.hours?.min || ''
+    timeInput.max = schedule.hours?.max || ''
+    timeLabel.append(timeInput)
+    const duration = normalizeServiceEstimatedMinutes(taskMove.estimatedMinutes)
+    const durationField = document.createElement('div')
+    durationField.className = 'task-duration-field task-move-duration'
+    const durationTitle = document.createElement('span')
+    durationTitle.textContent = 'Tiempo estimado *'
+    const durationControls = document.createElement('div')
+    const hoursLabel = document.createElement('label')
+    const hoursInput = document.createElement('input')
+    hoursInput.type = 'number'; hoursInput.inputMode = 'numeric'; hoursInput.min = '0'; hoursInput.max = '12'; hoursInput.step = '1'; hoursInput.value = String(Math.floor(duration / 60))
+    const hoursSuffix = document.createElement('small'); hoursSuffix.textContent = 'h'; hoursLabel.append(hoursInput, hoursSuffix)
+    const minutesLabel = document.createElement('label')
+    const minutesSelect = document.createElement('select')
+    for (const value of [0, 15, 30, 45]) { const option = document.createElement('option'); option.value = String(value); option.textContent = String(value).padStart(2, '0'); minutesSelect.append(option) }
+    minutesSelect.value = String(duration % 60)
+    const minutesSuffix = document.createElement('small'); minutesSuffix.textContent = 'min'; minutesLabel.append(minutesSelect, minutesSuffix)
+    durationControls.append(hoursLabel, minutesLabel); durationField.append(durationTitle, durationControls)
+    const range = document.createElement('p')
+    range.className = 'task-occupied-range task-move-range'
+    range.textContent = schedule.interval ? `Franja estimada: ${schedule.interval.startTime}–${schedule.interval.serviceEndTime}` : ''
+    const scheduleError = document.createElement('p')
+    scheduleError.className = 'field-error task-move-schedule-error'
+    scheduleError.setAttribute('role', 'alert')
+    scheduleError.textContent = schedule.message || (destinationGap ? `No se puede reasignar porque ${scheduleConflictMessage(destinationGap)}.` : '')
     const populate = day => {
       select.replaceChildren()
       const options = /^\d{4}-\d{2}-\d{2}$/.test(day) ? moveDayPlan(day).teams : []
@@ -3597,6 +3650,14 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
       setTaskMove(previous => ({ ...previous, destinationDay: dateInput.value, destinationTeamIndex: select.value === '' ? -1 : Number(select.value) }))
     }
     select.onchange = () => setTaskMove(previous => ({ ...previous, destinationTeamIndex: Number(select.value) }))
+    timeInput.onchange = () => setTaskMove(previous => ({ ...previous, time: timeInput.value }))
+    const updateDuration = () => {
+      const estimatedMinutes = Math.min(MAX_SERVICE_ESTIMATED_MINUTES, Math.max(15, Number(hoursInput.value) * 60 + Number(minutesSelect.value)))
+      setTaskMove(previous => ({ ...previous, estimatedMinutes }))
+    }
+    hoursInput.onchange = updateDuration
+    minutesSelect.onchange = updateDuration
+    confirm.disabled = confirm.disabled || !schedule.valid || Boolean(destinationGap)
     confirm.onclick = async () => {
       confirm.disabled = true
       cancel.disabled = true
@@ -3604,13 +3665,13 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
       select.disabled = true
       confirm.textContent = 'Guardando…'
       try { await confirmTaskMove() } finally {
-        confirm.disabled = !select.options.length
+        confirm.disabled = !select.options.length || !schedule.valid || Boolean(destinationGap)
         cancel.disabled = dateInput.disabled = select.disabled = false
         confirm.textContent = 'Reasignar servicio'
       }
     }
     actions.append(cancel, confirm)
-    modal.append(title, detail, dateLabel, label, error, actions)
+    modal.append(title, detail, dateLabel, label, timeLabel, durationField, range, error, scheduleError, actions)
     layer.append(modal)
     document.body.append(layer)
     return () => layer.remove()
@@ -4048,7 +4109,9 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
       taskIndex,
       taskId: task.taskId,
       historyId: task.historyId,
-      destinationTeamIndex: firstDestination >= 0 ? firstDestination : teamIndex
+      destinationTeamIndex: firstDestination >= 0 ? firstDestination : teamIndex,
+      time: task.time || task.scheduledTime || '',
+      estimatedMinutes: serviceEstimateForTask(task, serviceForWeeklyTask(task))
     })
   }
   const selectWeeklyTaskMoveDate = destinationDay => {
@@ -4068,7 +4131,14 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
     let resolvedSourceIndex = sourcePlan.teams.findIndex(team => sourceTeamId && String(team.teamId || '') === String(sourceTeamId))
     if (resolvedSourceIndex < 0) resolvedSourceIndex = sourceTeamIndex
     const sourceTeam = sourcePlan.teams[resolvedSourceIndex]
-    const movedTask = stampServiceRecord((sourceTeam?.tasks || []).find(task => taskId && String(task.taskId || '') === String(taskId)) || sourceTeam?.tasks?.[taskIndex], authUser)
+    const originalTask = (sourceTeam?.tasks || []).find(task => taskId && String(task.taskId || '') === String(taskId)) || sourceTeam?.tasks?.[taskIndex]
+    const durationCustomized = originalTask && (originalTask.estimatedMinutesCustomized === true || Number(taskMove.estimatedMinutes) !== Number(serviceEstimateForTask(originalTask, serviceForWeeklyTask(originalTask))))
+    const movedTask = originalTask && stampServiceRecord({
+      ...originalTask,
+      time: taskMove.time,
+      estimatedMinutes: originalTask.vehicleControl ? 15 : taskMove.estimatedMinutes,
+      estimatedMinutesCustomized: originalTask.vehicleControl ? false : durationCustomized
+    }, authUser)
     const destinationPlan = dayPlan(destinationDay)
     const destinationTeam = destinationPlan.teams[destinationTeamIndex]
     if (!movedTask || !destinationTeam) {
@@ -4088,11 +4158,8 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
     if (destinationHoliday.blocked) { setNotice(destinationHoliday.decision?.status === 'closed' ? 'La fecha de destino fue definida como día no operativo.' : 'Primero definí si el feriado de destino será laboral o no operativo.'); return }
     const destinationAdvance = advancedGuardForDay(destinationDay)
     if (destinationAdvance) { setNotice(advancedSaturdayGuardMessage(destinationAdvance)); return }
-    const destinationInterval = taskOccupiedInterval(taskWithServiceEstimate(movedTask, serviceForWeeklyTask(movedTask)))
-    if (destinationInterval && (destinationInterval.serviceStart < serviceTimeInMinutes(destinationHours.min) || destinationInterval.serviceEnd > serviceTimeInMinutes(destinationHours.max))) {
-      setNotice(`El horario del servicio queda fuera del rango habilitado para la fecha de destino (${destinationHours.label}).`)
-      return
-    }
+    const schedule = taskMoveScheduleState(destinationDay, movedTask)
+    if (!schedule.valid) { setNotice(schedule.message); return }
     if (!destinationTeam.members?.length && !movedTask.vehicleControl) { setNotice('El equipo de destino no tiene técnicos asignados.'); return }
     const matchesTask = task => (taskId && String(task.taskId || '') === String(taskId)) || (historyId && String(task.historyId || '') === String(historyId))
     const destinationTasks = (destinationTeam.tasks || []).filter(task => !matchesTask(task) && !(
@@ -4612,11 +4679,18 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
       const destinationOptions = destinationPlan.teams.map((team, index) => ({ team, index })).filter(({ team, index }) => taskMove.destinationDay !== taskMove.day || (String(team.teamId || '') !== String(sourceTeam?.teamId || '') && index !== taskMove.sourceTeamIndex))
       const selectedDestination = destinationOptions.find(({ index }) => index === taskMove.destinationTeamIndex)
       const movingControl = sourceTeam?.tasks?.find(task => task.taskId === taskMove.taskId)
+      const moveDraft = movingControl ? { ...movingControl, time: taskMove.time, estimatedMinutes: movingControl.vehicleControl ? 15 : taskMove.estimatedMinutes, estimatedMinutesCustomized: movingControl.vehicleControl ? false : movingControl.estimatedMinutesCustomized === true || Number(taskMove.estimatedMinutes) !== Number(serviceEstimateForTask(movingControl, serviceForWeeklyTask(movingControl))) } : null
+      const moveSchedule = taskMoveScheduleState(taskMove.destinationDay, moveDraft)
       let swapPreview = null
       try { swapPreview = vehicleControlSwapCandidate(movingControl, selectedDestination?.team, taskMove.day, taskMove.destinationDay) } catch { /* The submit handler explains ambiguous controls. */ }
+      const sameMovingTask = task => (taskMove.taskId && String(task.taskId || '') === String(taskMove.taskId)) || (taskMove.historyId && String(task.historyId || '') === String(taskMove.historyId))
+      const moveConflict = moveDraft && selectedDestination ? minimumServiceGapConflicts([{ ...selectedDestination.team, tasks: [...(selectedDestination.team.tasks || []).filter(task => !sameMovingTask(task) && task !== swapPreview), moveDraft].map(task => {
+        const occupancyTask = taskForScheduleOccupancy(task, taskMove.destinationDay, operationalHistory)
+        return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(task)) : null
+      }).filter(Boolean) }])[0] : null
       const destinationIsSunday = validDestinationDay && !hoursForDay(taskMove.destinationDay)
       const sameDayWithoutAlternative = taskMove.destinationDay === taskMove.day && !destinationOptions.length
-      return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => { if (!taskMoveSaving) setTaskMove(null) }}><section className="modal task-move-modal weekly-move-modal" role="dialog" aria-modal="true" aria-labelledby="weekly-move-title" onMouseDown={event => event.stopPropagation()}><button className="modal-close" disabled={taskMoveSaving} onClick={() => { if (!taskMoveSaving) setTaskMove(null) }}><Icon name="close" /></button><p className="eyebrow">REASIGNAR SERVICIO</p><h2 id="weekly-move-title">Cambiar equipo o fecha</h2><p>Podés trasladar el servicio a otro equipo del mismo día o reprogramarlo para otra fecha. Se conservarán sus datos y se actualizarán Agenda semanal, Agenda del día e Historial en una única operación.</p><label>Origen<input value={`${prettyDate(taskMove.day)} · ${sourceTeam?.label || `Equipo ${taskMove.sourceTeamIndex + 1}`}`} readOnly /></label><label>Nueva fecha<input type="date" min={today} required value={taskMove.destinationDay} onChange={event => selectWeeklyTaskMoveDate(event.target.value)} /></label><label>Equipo de destino<select value={selectedDestination ? taskMove.destinationTeamIndex : ''} disabled={!validDestinationDay || destinationIsSunday || !destinationOptions.length} onChange={event => setTaskMove(previous => ({ ...previous, destinationTeamIndex: Number(event.target.value) }))}><option value="" disabled>Seleccionar equipo</option>{destinationOptions.map(({ team, index }) => <option key={team.teamId || index} value={index}>{team.label || `Equipo ${index + 1}`} · {team.members?.join(' / ') || 'Sin técnicos'}</option>)}</select></label>{destinationIsSunday && <p className="field-error">Los domingos no están habilitados para programar servicios.</p>}{sameDayWithoutAlternative && <p className="weekly-move-help">Este día no tiene otro equipo. Elegí una fecha diferente para reprogramar el servicio.</p>}{swapPreview && <p className="weekly-move-help" role="status">Se intercambiarán los controles: {movingControl.client} pasará a {selectedDestination.team.label} ({selectedDestination.team.members.join(" / ")}) y {swapPreview.client} pasará a {sourceTeam.label} ({sourceTeam.members.join(" / ")}). Solo para esta fecha.</p>}<div className="modal-actions"><button className="secondary" disabled={taskMoveSaving} onClick={() => setTaskMove(null)}><Icon name="close" size={16} />Cancelar</button><button className="primary" disabled={taskMoveSaving || !validDestinationDay || destinationIsSunday || !selectedDestination || holidayCalendar.loading} onClick={confirmWeeklyTaskMove}><span aria-hidden="true">⇄</span>{taskMoveSaving ? 'Guardando…' : swapPreview ? 'Intercambiar controles' : taskMove.destinationDay === taskMove.day ? 'Reasignar servicio' : 'Reprogramar servicio'}</button></div></section></div>
+      return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => { if (!taskMoveSaving) setTaskMove(null) }}><section className="modal task-move-modal weekly-move-modal" role="dialog" aria-modal="true" aria-labelledby="weekly-move-title" onMouseDown={event => event.stopPropagation()}><button className="modal-close" disabled={taskMoveSaving} onClick={() => { if (!taskMoveSaving) setTaskMove(null) }}><Icon name="close" /></button><p className="eyebrow">REASIGNAR SERVICIO</p><h2 id="weekly-move-title">Cambiar equipo, horario o fecha</h2><p>Podés ajustar el destino, la hora y el tiempo estimado antes de confirmar. Agenda semanal, Agenda del día e Historial se actualizarán en una única operación.</p><label>Origen<input value={`${prettyDate(taskMove.day)} · ${sourceTeam?.label || `Equipo ${taskMove.sourceTeamIndex + 1}`}`} readOnly /></label><label>Nueva fecha<input type="date" min={today} required value={taskMove.destinationDay} onChange={event => selectWeeklyTaskMoveDate(event.target.value)} /></label><label>Equipo de destino<select value={selectedDestination ? taskMove.destinationTeamIndex : ''} disabled={!validDestinationDay || destinationIsSunday || !destinationOptions.length} onChange={event => setTaskMove(previous => ({ ...previous, destinationTeamIndex: Number(event.target.value) }))}><option value="" disabled>Seleccionar equipo</option>{destinationOptions.map(({ team, index }) => <option key={team.teamId || index} value={index}>{team.label || `Equipo ${index + 1}`} · {team.members?.join(' / ') || 'Sin técnicos'}</option>)}</select></label><label>Hora de inicio<input type="time" required min={moveSchedule.hours?.min} max={moveSchedule.hours?.max} value={taskMove.time || ''} onChange={event => setTaskMove(previous => ({ ...previous, time: event.target.value }))} /></label>{movingControl?.vehicleControl ? <label>Tiempo estimado<input value="15 minutos" readOnly /></label> : <ServiceEstimatedDurationField className="task-move-duration" value={taskMove.estimatedMinutes} onChange={estimatedMinutes => setTaskMove(previous => ({ ...previous, estimatedMinutes }))} />}{moveSchedule.interval && <p className="task-occupied-range task-move-range">Franja estimada: {moveSchedule.interval.startTime}–{moveSchedule.interval.serviceEndTime}</p>}{destinationIsSunday && <p className="field-error">Los domingos no están habilitados para programar servicios.</p>}{!destinationIsSunday && moveSchedule.message && <p className="field-error task-move-schedule-error" role="alert">{moveSchedule.message}</p>}{moveConflict && <p className="field-error task-move-schedule-error" role="alert">No se puede reasignar porque {scheduleConflictMessage(moveConflict)}.</p>}{sameDayWithoutAlternative && <p className="weekly-move-help">Este día no tiene otro equipo. Elegí una fecha diferente para reprogramar el servicio.</p>}{swapPreview && <p className="weekly-move-help" role="status">Se intercambiarán los controles: {movingControl.client} pasará a {selectedDestination.team.label} ({selectedDestination.team.members.join(" / ")}) y {swapPreview.client} pasará a {sourceTeam.label} ({sourceTeam.members.join(" / ")}). Solo para esta fecha.</p>}<div className="modal-actions"><button className="secondary" disabled={taskMoveSaving} onClick={() => setTaskMove(null)}><Icon name="close" size={16} />Cancelar</button><button className="primary" disabled={taskMoveSaving || !validDestinationDay || destinationIsSunday || !selectedDestination || holidayCalendar.loading || !moveSchedule.valid || Boolean(moveConflict)} onClick={confirmWeeklyTaskMove}><span aria-hidden="true">⇄</span>{taskMoveSaving ? 'Guardando…' : swapPreview ? 'Intercambiar controles' : taskMove.destinationDay === taskMove.day ? 'Reasignar servicio' : 'Reprogramar servicio'}</button></div></section></div>
     })()}
     {monthlyVehicleSetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal monthly-vehicles-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-vehicles-title"><button className="modal-close" onClick={() => setMonthlyVehicleSetup(null)}><Icon name="close" /></button><p className="eyebrow">RESPONSABLES DE FLOTA</p><h2 id="monthly-vehicles-title">Vehículos de {new Date(`${monthlyVehicleSetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Asigná el responsable predeterminado de cada vehículo. Cada viernes se creará un control de 15 minutos a las 15:45 para cargar la foto interior y el kilometraje. Si surge una contingencia, podés elegir un reemplazo sólo para ese viernes sin modificar el resto del mes.</p><div className="monthly-vehicle-list">{vehicles.map(vehicle => { const assignment = monthlyVehicleSetup.assignments.find(item => String(item.vehicleId) === String(vehicle.id)); const futureFridays = monthFridays(monthlyVehicleSetup.month).filter(friday => friday >= today); return <div className="monthly-vehicle-assignment" key={vehicle.id}><label><span><b>{vehicleLabel(vehicle)}</b><small>Kilometraje actual: {Number(vehicle.mileage || 0).toLocaleString('es-AR')} km</small></span><select value={assignment?.technicianId || ''} onChange={event => updateMonthlyVehicleAssignment(vehicle.id, event.target.value)}><option value="">Seleccionar responsable</option>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></label>{futureFridays.length > 0 && assignment?.technicianId && <details className="vehicle-control-overrides"><summary>Reemplazos por contingencia</summary>{futureFridays.map(friday => <label key={friday}><span><b>{prettyDate(friday)}</b><small>{assignment.weeklyOverrides?.[friday] ? 'Reemplazo excepcional' : 'Responsable mensual'}</small></span><select value={assignment.weeklyOverrides?.[friday] || assignment.technicianId} onChange={event => updateVehicleControlOverride(vehicle.id, friday, event.target.value)}>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></label>)}</details>}</div> })}</div><ConfigurationHistoryPanel history={monthlyTeams[monthlyVehicleSetup.month]?.configurationHistory} type="vehicles" /><div className="modal-actions"><button className="secondary" onClick={() => setMonthlyVehicleSetup(null)}><Icon name="close" size={16} />Cancelar</button><button className="primary" onClick={saveMonthlyVehicleSetup}><Icon name="check" size={16} />Guardar responsables</button></div></section></div>}
     {monthlySetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setMonthlySetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de {new Date(`${monthlySetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Con cinco técnicos activos, el sistema propone dos duplas y una salida individual, rotando mensualmente todas las combinaciones. Podés modificar la sugerencia antes de guardarla. Las agendas ya cargadas no se alteran.</p><div className="monthly-team-list">{monthlySetup.teams.map((team, index) => <label key={team.teamId || index}><b>{team.label || `Equipo ${index + 1}`}</b><select multiple value={team.memberIds || []} onChange={event => updateMonthlyTeam(index, [...event.target.selectedOptions].map(option => option.value))}>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName || tech.name.split(' ')[0]}</option>)}</select><small>Mantené presionada la tecla Ctrl para seleccionar más de un técnico.</small></label>)}</div><button className="secondary monthly-add-team" onClick={addMonthlyTeam}><Icon name="plus" size={15} />Agregar equipo</button><ConfigurationHistoryPanel history={monthlyTeams[monthlySetup.month]?.configurationHistory} type="teams" /><div className="modal-actions"><button className="secondary" onClick={() => setMonthlySetup(null)}><Icon name="close" size={16} />Cancelar</button><button className="primary" onClick={saveMonthlySetup}><Icon name="check" size={16} />Guardar equipos del mes</button></div></section></div>}

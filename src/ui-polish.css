@@ -985,6 +985,23 @@ body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #34
   margin-top: 24px;
 }
 
+.task-move-modal .task-move-duration {
+  margin: 18px 0 10px;
+  font-size: 12px;
+}
+
+.task-move-modal .task-move-duration label {
+  margin: 0;
+}
+
+.task-move-range {
+  margin: 4px 0 10px;
+}
+
+.task-move-schedule-error {
+  margin: 8px 0;
+}
+
 .weekly-move-help {
   margin: 0;
   padding: 10px 12px;
