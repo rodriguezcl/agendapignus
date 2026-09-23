@@ -225,6 +225,27 @@ test('deleting a team cannot erase a service added by another session', async ()
   assert.throws(() => applyStateOperations(current, stateOperations(base, deletion)), { code: 'TEAM_HAS_SERVICES' })
   assert.equal(current.agenda.weekly[day].teams[0].tasks.length, 1)
 })
+test('changing the visible daily date is navigation and does not delete the previous team', async () => {
+  const { stateOperations } = await builder()
+  const nextDay = '2096-09-12'
+  const previousTeam = { teamId: 'daily-old', members: ['Técnico 1'], tasks: [{ taskId: 'old-task', service: 'Alarma', client: 'Cliente' }] }
+  const nextTeam = { teamId: 'daily-next', members: ['Técnico 2'], tasks: [] }
+  const base = fixture()
+  base.history.push({ id: 'old-record', sourceTaskId: 'old-task', teamId: previousTeam.teamId, date: day, status: 'Pendiente' })
+  base.agenda.teams = [previousTeam]
+  base.agenda.weekly[day] = { teams: [structuredClone(previousTeam)] }
+  base.agenda.weekly[nextDay] = { teams: [structuredClone(nextTeam)] }
+  const selected = structuredClone(base)
+  selected.agenda.date = nextDay
+  selected.agenda.teams = [structuredClone(nextTeam)]
+
+  const saved = applyStateOperations(base, stateOperations(base, selected))
+
+  assert.equal(saved.agenda.date, nextDay)
+  assert.deepEqual(saved.agenda.teams, [nextTeam])
+  assert.deepEqual(saved.agenda.weekly[day].teams, [previousTeam])
+  assert.equal(saved.history.some(record => record.id === 'old-record'), true)
+})
 test('edits cannot recreate a team deleted after the modal opened', async () => {
   const { weeklyServiceOperations } = await weeklyBuilder()
   const base = fixture(), current = clone(base)

@@ -1,8 +1,18 @@
 const controls = 'input, select, textarea'
+const dailyContentControls = '.daily-field-service select, .daily-field-customer input, .daily-field-address input, .daily-field-contact input, .daily-field-observations textarea, .internal-note-field textarea'
+
+export function dailyTaskRowHasContent(row) {
+  if (!row?.matches?.('.task-row')) return true
+  const fields = [...row.querySelectorAll(dailyContentControls)]
+  if (!fields.length) return true
+  return fields.some(control => String(control.value ?? '').trim())
+}
 
 export function isRequiredControl(control) {
   if (control.disabled || control.type === 'hidden') return false
   if (control.getAttribute('aria-required') === 'false') return false
+  const dailyRow = control.closest?.('.task-row')
+  if (dailyRow && !dailyTaskRowHasContent(dailyRow)) return false
   return control.required || control.getAttribute('aria-required') === 'true' || Boolean(control.closest('label')?.querySelector('.required-mark'))
 }
 
@@ -18,7 +28,19 @@ export function requiredControlMissing(control, scope) {
 export function installRequiredFeedback(root = document) {
   const attempted = new Set()
   const scopeFor = target => target.closest('form, .modal, [role="dialog"], .task-row, .content')
+  const syncDailyRows = scope => {
+    const dailyRows = [...(scope.matches?.('.task-row') ? [scope] : []), ...scope.querySelectorAll('.task-row')]
+    dailyRows.forEach(row => {
+      const available = !dailyTaskRowHasContent(row)
+      row.toggleAttribute('data-available-slot', available)
+      if (available) row.querySelectorAll('[data-required-missing]').forEach(control => {
+        control.removeAttribute('data-required-missing')
+        control.removeAttribute('aria-invalid')
+      })
+    })
+  }
   const update = (scope, fields = scope.querySelectorAll(controls)) => {
+    syncDailyRows(scope)
     fields.forEach(control => {
       const missing = requiredControlMissing(control, scope)
       if (missing) {
@@ -61,12 +83,14 @@ export function installRequiredFeedback(root = document) {
     }
   }
   const observer = new MutationObserver(() => {
+    syncDailyRows(root.documentElement || root)
     for (const scope of attempted) {
       if (!scope.isConnected) attempted.delete(scope)
       else update(scope)
     }
   })
   observer.observe(root.documentElement || root, { childList: true, subtree: true, attributes: true, attributeFilter: ['required', 'aria-required', 'disabled', 'value'] })
+  syncDailyRows(root.documentElement || root)
   root.addEventListener('click', click, true)
   root.addEventListener('submit', submit, true)
   root.addEventListener('invalid', invalid, true)
