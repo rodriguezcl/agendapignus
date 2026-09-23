@@ -5,7 +5,7 @@ const vm = require('node:vm')
 
 test('daily training name shares the customer grid position and buffered editing', () => {
   const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
-  const field = source.split('\n').find(line => line.includes('const dailyCustomerField ='))
+  const field = source.slice(source.indexOf('const dailyCustomerField ='), source.indexOf('const gapsForDailyTeam ='))
   assert.match(field, /\? <label className="daily-field-customer">/)
   assert.match(field, /<BufferedInput/)
   const css = fs.readFileSync(require.resolve('../src/ui-polish.css'), 'utf8')
