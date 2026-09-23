@@ -30,3 +30,15 @@ test('radio requirements apply to the whole group and uploads use files', async 
   assert.equal(requiredControlMissing(field({ type: 'file', files: [] }), scope([])), true)
   assert.equal(requiredControlMissing(field({ type: 'file', files: [{}] }), scope([])), false)
 })
+test('an available daily slot has no missing required fields until service data is entered', async () => {
+  const { dailyTaskRowHasContent, requiredControlMissing } = await load()
+  const values = [{ value: '' }, { value: '  ' }]
+  const row = { matches: selector => selector === '.task-row', querySelectorAll: () => values }
+  const control = field({ closest: selector => selector === '.task-row' ? row : null })
+
+  assert.equal(dailyTaskRowHasContent(row), false)
+  assert.equal(requiredControlMissing(control, scope([control])), false)
+  values[0].value = 'Servicio de alarma'
+  assert.equal(dailyTaskRowHasContent(row), true)
+  assert.equal(requiredControlMissing(control, scope([control])), true)
+})

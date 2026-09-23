@@ -28,6 +28,7 @@ test('save is above copy and hidden after history confirms the service', () => {
   const actions = daily.slice(daily.indexOf('<div className="daily-task-actions">'))
   assert.ok(actions.indexOf('daily-save-button') < actions.indexOf('daily-copy-button'))
   assert.match(actions, /dailyServiceHasChanges\(task\) && <button/)
+  assert.match(daily, /const dailyServiceHasChanges = task => \{\s+if \(!taskHasContent\(task\)\) return false/)
   assert.match(daily, /if \(singleSaveRef.current\) return false/)
 })
 test('module navigation waits for successful saves and excludes empty cards', () => {

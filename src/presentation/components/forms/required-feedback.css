@@ -8,3 +8,8 @@ textarea[data-required-missing="true"] {
 fieldset:has(input[type="radio"][data-required-missing="true"]) {
   border-color: #d94242 !important;
 }
+
+/* An unused daily slot is availability, not an incomplete service. */
+.task-row[data-available-slot="true"] .required-mark {
+  display: none;
+}
