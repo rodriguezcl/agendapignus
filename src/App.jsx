@@ -50,7 +50,7 @@ import { serviceCode, isTrainingService, trainingClientPatch } from './domain/se
 import { normalizeCustomerName, normalizeSearchText, normalizeServiceName } from './domain/shared/normalization.mjs'
 import { DEFAULT_FEATURE_PERMISSIONS, DEFAULT_MODULE_PERMISSIONS, FEATURE_PERMISSIONS, MODULE_PERMISSIONS, normalizeRoleName, resolvedRolePermissions, roleCode } from './domain/access/permissions.mjs'
 import { stateRepository } from './infrastructure/repositories/state-repository.mjs'
-import { agendaRescheduleRepairCandidates } from './domain/agenda/reschedule-repair.mjs'
+import { agendaRescheduleRepairCandidates, rescheduledAgendaTask } from './domain/agenda/reschedule-repair.mjs'
 import { auditRepository } from './infrastructure/repositories/audit-repository.mjs'
 import { customerImportRepository } from './infrastructure/repositories/customer-import-repository.mjs'
 import { vehicleRepository } from './infrastructure/repositories/vehicle-repository.mjs'
@@ -723,6 +723,10 @@ const dailyPlanWithMonthlyTeams = (day, weekly) => {
 const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?.rescheduledFrom || record?.date, activeTechs = []) => {
   if (!record?.id || !sourceDate || !nextDate) return weekly
   const matchesRecord = task => String(task.historyId || '') === String(record.id) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
+  const persistedTask = [weekly?.[nextDate], weekly?.[sourceDate]]
+    .flatMap(plan => plan?.teams || [])
+    .flatMap(team => team.tasks || [])
+    .find(matchesRecord)
   const removeRecord = day => day?.teams?.length ? { ...day, teams: day.teams.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !matchesRecord(task)) })) } : day
   const createDefaultTeams = date => (isSaturday(date) ? [null] : (weekly?._monthlyTeams?.[date.slice(0, 7)]?.teams || [null, null, null])).map((team, index) => ({
     // Los sábados no tienen un equipo mensual canónico. Si el día ya fue
@@ -766,7 +770,7 @@ const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?
     teamIndex = teams.length
     teams.push({ teamId: record.teamId || createTeamId(), label: record.team || `Equipo ${teamNumber}`, memberIds: record.technicianIds || [], members: record.technicians || [], tasks: [] })
   }
-  const task = { taskId: record.sourceTaskId || record.id, historyId: record.id, awaitingConfirmation: record.awaitingConfirmation === true, time: record.time || record.scheduledTime || '', serviceId: record.serviceId || '', service: record.service || '', estimatedMinutes: record.estimatedMinutes, estimatedMinutesCustomized: record.estimatedMinutesCustomized, customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', internalNote: record.internalNote || '', internalChecklist: normalizeInternalChecklist(record.internalChecklist), paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', form: record.form || '', formEmail: record.formEmail || '', installationZone: record.installationZone || '', vehicleControl: Boolean(record.vehicleControl), vehicleId: record.vehicleId || '', vehicleControlScheduledFriday: record.vehicleControlScheduledFriday || '', monthlyVehicleAssignment: record.monthlyVehicleAssignment || '', ...serviceTrace(record) }
+  const task = rescheduledAgendaTask(record, persistedTask)
   const currentTasks = teams[teamIndex].tasks || []
   const emptyAtSameTime = currentTasks.findIndex(item => item.time === task.time && !item.customerId && !String(item.client || '').trim() && !item.serviceId && !String(item.service || '').trim())
   const sameCustomer = item => {

@@ -14,3 +14,18 @@ export function agendaRescheduleRepairCandidates(records = [], today = '') {
     record.rescheduledFrom !== record.date
   ))
 }
+
+// Reprogramming persists the weekly projection as the previous task enriched
+// with the authoritative history record. Repairing that projection in the UI
+// must keep the same representation: replacing it with a smaller display-only
+// object makes compare-and-swap treat the user's next edit as a concurrent
+// modification even when nobody else changed the service.
+export function rescheduledAgendaTask(record, persistedTask = null) {
+  if (!record?.id) return persistedTask
+  return {
+    ...(persistedTask || {}),
+    ...record,
+    taskId: record.sourceTaskId || persistedTask?.taskId || record.id,
+    historyId: record.id
+  }
+}

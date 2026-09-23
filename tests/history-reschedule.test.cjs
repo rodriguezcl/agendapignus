@@ -69,3 +69,16 @@ test('same-day reassignment and history-only records do not duplicate the servic
   assert.equal(restored.agenda.weekly[day].teams[0].tasks[0].historyId, 'h1')
   assert.equal(restored.history.length, 1)
 })
+
+test('repairing a rescheduled card preserves the persisted projection for the next edit', async () => {
+  const { historyRescheduleOperations } = await import('../src/features/state/application/history-reschedule.mjs')
+  const { rescheduledAgendaTask } = await import('../src/domain/agenda/reschedule-repair.mjs')
+  const state = fixture()
+  const rescheduled = applyStateOperations(state, historyRescheduleOperations(state, command(state)))
+  const record = rescheduled.history[0]
+  const persistedTask = rescheduled.agenda.weekly[day].teams[0].tasks[0]
+
+  assert.deepEqual(rescheduledAgendaTask(record, persistedTask), persistedTask)
+  assert.equal(rescheduledAgendaTask(record).rescheduledFrom, sourceDay)
+  assert.equal(rescheduledAgendaTask(record).reprogrammedAt, persistedTask.reprogrammedAt)
+})
