@@ -55,6 +55,51 @@ test('missing visits, identity edits and wrong customer are rejected on server',
   assert.throws(()=>validateServiceJourneys(changed,next),/identidad/)
 })
 
+for (const status of ['Pendiente', 'Cancelado', 'Completado']) {
+  test(`retirar la última jornada ${status} libera ambas agendas y conserva el historial vinculado`, async () => {
+    const { weeklyTaskRemovalOperations } = await import('../src/features/state/application/weekly-task-removal.mjs')
+    const { authorizeIncomingState } = require('../api/_lib/core.cjs')
+    const { technicianAgendaServices } = await import('../src/domain/technicians/technician-history.mjs')
+    const { next: state } = await planned()
+    const [first, last] = state.history
+    first.status = 'Avance registrado'
+    first.technicalStatus = 'Avance registrado'
+    first.technicalObservation = 'Trabajo realizado en la primera jornada'
+    last.status = status
+    if (status !== 'Pendiente') {
+      last.technicalStatus = status
+      last.technicalObservation = 'Informe que debe conservarse'
+    }
+    state.roles = []; state.employees = []; state.reviews = []
+    state.agenda.date = last.date
+    state.agenda.teams = structuredClone(state.agenda.weekly[last.date].teams)
+    const command = { day: last.date, teamId: last.teamId, taskId: last.sourceTaskId, historyId: last.id, taskIndex: 0 }
+    const operations = weeklyTaskRemovalOperations(state, command)
+    const next = applyStateOperations(state, operations)
+    assert.equal(next.agenda.teams[0].tasks.length, 0)
+    assert.equal(next.agenda.weekly[last.date].teams[0].tasks.length, 0)
+    assert.equal(next.history.length, 2)
+    assert.deepEqual(next.history[0], first)
+    assert.deepEqual(next.history[1].serviceJourney, last.serviceJourney)
+    assert.equal(next.history[1].status, status === 'Pendiente' ? 'Cancelado' : status)
+    if (status !== 'Pendiente') assert.deepEqual(next.history[1], last)
+    assert.doesNotThrow(() => validateServiceJourneys(next, state))
+    assert.deepEqual(applyStateOperations(next, operations), next)
+    assert.deepEqual(weeklyTaskRemovalOperations(next, command), [])
+    assert.equal(technicianAgendaServices(next.history, last.date).length, 0)
+    // Agenda-only users can release a reservation without general history rights.
+    const authorized = authorizeIncomingState(next, state, { roleCode: 'user', permissions: { agenda: true, weekly: true } })
+    assert.deepEqual(authorized.history, next.history)
+    assert.doesNotThrow(() => validateServiceJourneys(authorized, state))
+    if (status === 'Pendiente') {
+      const concurrent = structuredClone(state)
+      concurrent.history[1].startedAt = '2099-01-06T17:00:00.000Z'
+      assert.throws(() => applyStateOperations(concurrent, operations), { code: 'RECORD_WRITE_CONFLICT' })
+      assert.throws(() => weeklyTaskRemovalOperations(concurrent, command), /ya fue iniciada/)
+    }
+  })
+}
+
 test('advance releases the technician and the planned slot without completing the service', async () => {
   const { next } = await planned()
   const first = { ...next.history[0], status:'Avance registrado', technicalStatus:'Avance registrado', technicalReportedAt:'2099-01-05T12:31:00.000Z' }

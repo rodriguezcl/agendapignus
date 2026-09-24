@@ -9,7 +9,7 @@ Implementación verificada automáticamente. Commit y despliegue autorizados por
 - La primera visita conserva fecha, hora y equipo; se puede ajustar su duración.
 - Guardado conjunto con validación de disponibilidad: un conflicto impide guardar todo el plan.
 - Las visitas intermedias permiten «Registrar avance»; la última permite completar el servicio. El avance libera al técnico y no incrementa los servicios completados.
-- Se conserva la identificación de las jornadas en agendas, historial e informes. No se permite eliminar individualmente una jornada vinculada; debe cancelarse.
+- Se conserva la identificación de las jornadas en agendas, historial e informes. Al eliminar de la agenda una jornada pendiente que ya no se necesita, se cancela su reserva y se conserva en el historial. Las jornadas ya canceladas o informadas también pueden retirarse de la agenda sin perder sus informes ni modificar las otras visitas. Una jornada iniciada debe informarse o cancelarse desde el historial antes de retirarla.
 - Las reuniones mensuales y controles vehiculares no admiten este plan.
 - La confirmación y la reprogramación son por visita; la reprogramación conserva el orden de las fechas.
 

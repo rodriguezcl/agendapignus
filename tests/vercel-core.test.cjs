@@ -615,7 +615,7 @@ test('eliminar un servicio semanal deja una baja persistente y limpia su copia d
   assert.match(source, /await persistWeeklyService\(\{ operation: 'task-remove'/)
   assert.match(removal, /const removedTaskIds = \[\.\.\.new Set\(\[\.\.\.\(plan\.removedTaskIds \|\| \[\]\), \.\.\.aliases\(task\)\]\)\]/)
   assert.match(removal, /if \(snapshot\?\.agenda\?\.date === day\)/)
-  assert.match(removal, /if \(matches && !closedRecord\(record\)\)/)
+  assert.match(removal, /if \(!matches \|\| closedRecord\(record\)\) continue/)
   assert.doesNotMatch(removal, /structuredClone\(snapshot\)|stateOperations\(snapshot, next\)/)
 })
 
