@@ -1,4 +1,5 @@
 const http = require('node:http')
+const { retirementClientLabel } = require('./api/_lib/retirement-label.cjs')
 const path = require('node:path')
 const fs = require('node:fs')
 const { validateChangedAgendaSchedules } = require('./api/_lib/scheduling-validation.cjs')
@@ -1685,7 +1686,7 @@ function exportHistory(res, month, category, technicianId = null, format = 'exce
   }).sort(compareReportRecords)
   if (isRetirementExport) {
     const headers = ['Fecha', 'Cliente', 'Servicio', 'Dirección', 'Contacto', 'Técnicos asignados']
-    const reportRows = records.map(record => [record.date, record.client, record.service, record.address, record.phone, record.technicians?.join(' / ')])
+    const reportRows = records.map(record => [record.date, retirementClientLabel(record), record.service, record.address, record.phone, record.technicians?.join(' / ')])
     if (format === 'pdf') {
       const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
       const generatedAt = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
