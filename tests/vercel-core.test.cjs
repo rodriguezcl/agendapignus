@@ -1004,7 +1004,7 @@ test('la nota y el checklist internos se conservan para administración y no apa
   assert.match(source, /internalChecklist: normalizeInternalChecklist\(task\.internalChecklist\)/)
   assert.doesNotMatch(source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function DashboardStatusView')), /internalNote|internalChecklist|Nota interna|Checklist de preparación/)
   assert.match(apiSource, /record: technicianSafeRecord\(updated\)/)
-  assert.match(localServer, /history:[\s\S]*?\.map\(technicianSafeRecord\)/)
+  assert.match(localServer, /history:[\s\S]*?\.map\(record => technicianSafeRecord\(/)
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(styles, /\.content > \.team-card \.task-row > \.internal-preparation,[\s\S]*?grid-column: 2 \/ 5 !important/)
   assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.task-row > \.internal-preparation,[\s\S]*?grid-column: 1 \/ -1 !important/)

@@ -426,7 +426,7 @@ function normalizeStateForSave(state, current, { allowEarlyCompletion = false } 
     ? [key, Object.fromEntries(Object.entries(value || {}).map(([month, config]) => [month, { ...config, teams: normalizeTeams(config?.teams) }]))]
     : [key, key.startsWith('_') ? value : { ...value, teams: normalizeTeams(value?.teams) }]))
   const agenda = { ...incomingAgenda, teams: normalizeTeams(incomingAgenda.teams), weekly }
-  return normalizeRetirementCustomers(synchronizeVehicleControlAssignments({ ...state, roles, employees, services, vehicles, customers, history, agenda, reviews: state.reviews || current.reviews || [] }, current)).state
+  return normalizeRetirementCustomers(synchronizeVehicleControlAssignments({ ...state, roles, employees, services, vehicles, customers, history, agenda, reviews: state.reviews || current.reviews || [] }, current), current).state
 }
 
 function deduplicateScheduledTasks(teams = []) {
@@ -469,13 +469,26 @@ function assertNoAccidentalHistoryWipe(currentHistory = [], nextHistory = [], ma
   throw error
 }
 
-function normalizeRetirementCustomers(state) {
+function normalizeRetirementCustomers(state, previous = null) {
   const retiringCustomerIds = new Set((state.history || []).filter(record => record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo')).map(record => String(record.customerId || '')).filter(Boolean))
+  const currentRecords = new Map((state.history || []).map(record => [String(record.id), record]))
+  const correctedCustomerIds = new Set((previous?.history || []).filter(record => {
+    const next = currentRecords.get(String(record.id))
+    return record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo') && next && next.status !== 'Completado' && String(next.customerId) === String(record.customerId)
+  }).map(record => String(record.customerId || '')).filter(Boolean))
   let nextNumber = Math.max(0, ...(state.customers || []).map(customer => Number(String(customer.account || '').match(/^CLI-(\d+)$/i)?.[1]) || 0)) + 1
   const conversions = new Map()
   const customers = (state.customers || []).map(customer => {
+    if (correctedCustomerIds.has(String(customer.customerId)) && !retiringCustomerIds.has(String(customer.customerId)) && customerKind(customer) === 'client' && /^PIG-/i.test(customer.convertedFromAccount || '')) {
+      const account = String(customer.convertedFromAccount).trim().toUpperCase()
+      if (state.customers.some(other => String(other.customerId) !== String(customer.customerId) && String(other.account || '').trim().toUpperCase() === account)) throw new Error(`No se pudo restituir ${account}: esa cuenta pertenece a otro registro. Revisá Abonados y clientes antes de corregir el retiro.`)
+      const { convertedFromAccount, convertedFromType, subscriptionEndedAt, ...rest } = customer
+      const restored = { ...rest, kind: 'subscriber', account, type: convertedFromType ?? 'Abonado' }
+      conversions.set(String(customer.customerId), { before: customer, after: restored })
+      return restored
+    }
     if (!retiringCustomerIds.has(String(customer.customerId)) || customerKind(customer) !== 'subscriber') return customer
-    const converted = { ...customer, kind: 'client', account: `CLI-${String(nextNumber++).padStart(4, '0')}`, type: 'Cliente de servicio', convertedFromAccount: customer.account, subscriptionEndedAt: new Date().toISOString() }
+    const converted = { ...customer, kind: 'client', account: `CLI-${String(nextNumber++).padStart(4, '0')}`, type: 'Cliente de servicio', convertedFromAccount: customer.account, convertedFromType: customer.type, subscriptionEndedAt: new Date().toISOString() }
     conversions.set(String(customer.customerId), { before: customer, after: converted })
     return converted
   })

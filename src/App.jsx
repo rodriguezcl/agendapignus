@@ -1636,7 +1636,7 @@ export default function App() {
       previous.forEach(customer => {
         if (customerKind(customer) !== 'subscriber' || !completedRetirementCustomerIds.has(String(customer.customerId))) return
         const account = nextCustomerCode(next, 'client')
-        next = next.map(item => item.customerId === customer.customerId ? { ...item, kind: 'client', account, type: 'Cliente de servicio', convertedFromAccount: item.account, subscriptionEndedAt: new Date().toISOString() } : item)
+        next = next.map(item => item.customerId === customer.customerId ? { ...item, kind: 'client', account, type: 'Cliente de servicio', convertedFromAccount: item.account, convertedFromType: item.type, subscriptionEndedAt: new Date().toISOString() } : item)
         changed = true
       })
       return changed ? next : previous

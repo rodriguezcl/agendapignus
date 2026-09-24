@@ -742,10 +742,10 @@ async function handleTechnicianStatus(req, res, sql, user) {
       if (record.serviceJourney && workingState.agenda) workingState.agenda = synchronizeAgendaHistoryRecord(workingState.agenda, record, next)
       let nextState = workingState
       if (next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo')) {
-        const normalized = normalizeRetirementCustomers(nextState)
+        const normalized = normalizeRetirementCustomers(nextState, currentState)
         if (normalized.conversions.length) {
           nextState = normalized.state
-          normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
+          normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, after.kind === 'subscriber' ? 'Restituyó abonado al corregir retiro' : 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
         }
       }
       await persistStateCollections(transaction, currentState, nextState, currentRevision + 1)
@@ -819,11 +819,11 @@ async function handleHistoryRecordUpdate(req, res, sql, user, recordId) {
       nextState.history = nextState.history.map(item => String(item.id) === String(recordId) ? next : item)
       if (nextState.agenda) nextState.agenda = synchronizeAgendaHistoryRecord(nextState.agenda, current, next)
       const entries = [auditEntry(user, 'Modificó', 'Servicio / historial', String(recordId), current, next)]
-      if (next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo')) {
-        const normalized = normalizeRetirementCustomers(nextState)
+      if (normalizedServiceName(next.service).includes('retiro de equipo') || normalizedServiceName(current.service).includes('retiro de equipo')) {
+        const normalized = normalizeRetirementCustomers(nextState, currentState)
         if (normalized.conversions.length) {
           nextState = normalized.state
-          normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
+          normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, after.kind === 'subscriber' ? 'Restituyó abonado al corregir retiro' : 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
         }
       }
       await persistStateCollections(transaction, currentState, nextState, currentRevision + 1)
@@ -873,9 +873,9 @@ async function handleHistoryRecordsBulkUpdate(req, res, sql, user) {
         if (nextState.agenda) nextState.agenda = synchronizeAgendaHistoryRecord(nextState.agenda, current, next)
         entries.push(auditEntry(user, 'Modificó', 'Servicio / historial', recordId, current, next))
       }
-      const normalized = normalizeRetirementCustomers(nextState)
+      const normalized = normalizeRetirementCustomers(nextState, currentState)
       nextState = normalized.state
-      normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
+      normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, after.kind === 'subscriber' ? 'Restituyó abonado al corregir retiro' : 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
       await persistStateCollections(transaction, currentState, nextState, currentRevision + 1)
       await appendAudit(transaction, entries)
       return { revision: currentRevision + 1, state: nextState }
