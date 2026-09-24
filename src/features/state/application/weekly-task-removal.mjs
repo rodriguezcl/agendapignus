@@ -104,7 +104,12 @@ export function weeklyTaskRemovalOperations(snapshot, command) {
   for (const record of snapshot.history || []) {
     const historyIdentity = task.historyId || historyId
     const matches = Boolean(historyIdentity && sameId(record.id, historyIdentity)) || Boolean(task.taskId && sameId(record.sourceTaskId, task.taskId))
-    if (matches && !closedRecord(record)) operations.push(operation(['history', { key: 'id', id: String(record.id) }], record, undefined))
+    if (!matches || closedRecord(record)) continue
+    if (record.serviceJourney && record.startedAt) throw new Error('La jornada ya fue iniciada. Registrá su resultado o cancelala desde el historial antes de quitarla de la agenda.')
+    // Linked visits retain their identity and reports even when the remaining
+    // reservation is no longer needed. Deleting one breaks the journey group.
+    const after = record.serviceJourney ? { ...record, status: 'Cancelado', scheduledDate: '', awaitingConfirmation: false } : undefined
+    operations.push(operation(['history', { key: 'id', id: String(record.id) }], record, after))
   }
 
   if (snapshot?.agenda?.date === day) {

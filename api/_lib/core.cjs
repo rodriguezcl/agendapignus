@@ -79,8 +79,13 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
     const sourceTaskId = String(previous.sourceTaskId || '')
     const proposed = incomingById.get(id)
     const closed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(previous.status) || Boolean(previous.technicalStatus)
+    if (previous.serviceJourney && !closed && !previous.startedAt && wasExplicitlyRemoved(previous) && !linked.has(id) && !(sourceTaskId && linked.has(sourceTaskId))) {
+      incomingById.delete(id)
+      result.push({ ...previous, status: 'Cancelado', scheduledDate: '', awaitingConfirmation: false })
+      continue
+    }
     if (!proposed) {
-      if (!closed && wasExplicitlyRemoved(previous)) continue
+      if (!previous.serviceJourney && !closed && wasExplicitlyRemoved(previous)) continue
       result.push(previous)
       continue
     }
