@@ -1,4 +1,5 @@
 const crypto = require('node:crypto')
+const { retirementClientLabel } = require('./_lib/retirement-label.cjs')
 const { completeExpiredMonthlyMeetings } = require('./_lib/monthly-meeting-completion.cjs')
 let lastMeetingCompletionScan = 0
 
@@ -629,7 +630,7 @@ async function handleExport(req, res, sql, user) {
   const generatedAt = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
   const label = { docta: 'Docta Urbanización', 'nobu-town': 'Nobu Town', residencial: 'Residenciales', all: 'Todas las instalaciones de alarma' }[category] || 'Instalaciones de alarma'
   const headers = isRetirement ? ['Fecha', 'Cliente', 'Servicio', 'Dirección', 'Contacto', 'Técnicos asignados'] : ['Fecha', 'Cliente', 'Dirección', 'Contacto', 'Técnicos asignados']
-  const rows = records.map(record => isRetirement ? [record.date, record.client, record.service, record.address, record.phone, record.technicians?.join(' / ')] : [record.date, record.client, record.address, record.phone, record.technicians?.join(' / ')])
+  const rows = records.map(record => isRetirement ? [record.date, retirementClientLabel(record), record.service, record.address, record.phone, record.technicians?.join(' / ')] : [record.date, record.client, record.address, record.phone, record.technicians?.join(' / ')])
   const title = isRetirement ? 'Bajas de servicio' : `Altas de servicio · ${label}`
   const description = isRetirement ? 'Retiros de equipos de alarma completados durante el período seleccionado.' : 'Instalaciones de alarma registradas durante el período seleccionado.'
   const fileBase = isRetirement ? `bajas-servicio-${month}` : `instalaciones-alarma-${category}-${month}`
