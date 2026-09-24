@@ -478,10 +478,22 @@ function normalizeRetirementCustomers(state, previous = null) {
   }).map(record => String(record.customerId || '')).filter(Boolean))
   let nextNumber = Math.max(0, ...(state.customers || []).map(customer => Number(String(customer.account || '').match(/^CLI-(\d+)$/i)?.[1]) || 0)) + 1
   const conversions = new Map()
+  const mergedCustomers = new Map()
+  const removedCustomerIds = new Set()
   const customers = (state.customers || []).map(customer => {
     if (correctedCustomerIds.has(String(customer.customerId)) && !retiringCustomerIds.has(String(customer.customerId)) && customerKind(customer) === 'client' && /^PIG-/i.test(customer.convertedFromAccount || '')) {
       const account = String(customer.convertedFromAccount).trim().toUpperCase()
-      if (state.customers.some(other => String(other.customerId) !== String(customer.customerId) && String(other.account || '').trim().toUpperCase() === account)) throw new Error(`No se pudo restituir ${account}: esa cuenta pertenece a otro registro. Revisá Abonados y clientes antes de corregir el retiro.`)
+      const existing = state.customers.find(other => String(other.customerId) !== String(customer.customerId) && String(other.account || '').trim().toUpperCase() === account)
+      if (existing) {
+        const { matchesRetiredSubscriber, mergeRetiredSubscriber } = require('./retirement-customer-match.cjs')
+        if (customerKind(existing) !== 'subscriber' || !matchesRetiredSubscriber(customer, existing)) throw new Error(`No se pudo restituir ${account}: esa cuenta pertenece a otro registro y no coincide suficientemente en nombre y teléfono o dirección. Revisá Abonados y clientes antes de corregir el retiro.`)
+        if (retiringCustomerIds.has(String(existing.customerId))) throw new Error(`No se pudo restituir ${account}: el abonado tiene otro retiro completado. Revisá ese retiro antes de unir las cuentas.`)
+        const restored = mergeRetiredSubscriber(customer, mergedCustomers.get(String(existing.customerId)) || existing)
+        mergedCustomers.set(String(existing.customerId), restored)
+        removedCustomerIds.add(String(customer.customerId))
+        conversions.set(String(customer.customerId), { before: customer, after: restored })
+        return customer
+      }
       const { convertedFromAccount, convertedFromType, subscriptionEndedAt, ...rest } = customer
       const restored = { ...rest, kind: 'subscriber', account, type: convertedFromType ?? 'Abonado' }
       conversions.set(String(customer.customerId), { before: customer, after: restored })
@@ -491,7 +503,7 @@ function normalizeRetirementCustomers(state, previous = null) {
     const converted = { ...customer, kind: 'client', account: `CLI-${String(nextNumber++).padStart(4, '0')}`, type: 'Cliente de servicio', convertedFromAccount: customer.account, convertedFromType: customer.type, subscriptionEndedAt: new Date().toISOString() }
     conversions.set(String(customer.customerId), { before: customer, after: converted })
     return converted
-  })
+  }).filter(customer => !removedCustomerIds.has(String(customer.customerId))).map(customer => mergedCustomers.get(String(customer.customerId)) || customer)
   if (!conversions.size) return { state: { ...state, customers }, conversions: [] }
   const redirect = item => {
     const conversion = conversions.get(String(item?.customerId || ''))

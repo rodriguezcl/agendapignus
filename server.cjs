@@ -644,7 +644,7 @@ function reconcileRetirementCustomers(previousHistory, user) {
   if (!result.conversions.length) return
   for (const { before, after } of result.conversions) {
     db.prepare('DELETE FROM customers WHERE account = ?').run(String(before.account))
-    db.prepare('INSERT INTO customers (account, data) VALUES (?, ?)').run(after.account, JSON.stringify(after))
+    db.prepare('INSERT INTO customers (account, data) VALUES (?, ?) ON CONFLICT(account) DO UPDATE SET data = excluded.data').run(after.account, JSON.stringify(after))
     writeAudit(user, after.kind === 'subscriber' ? 'Restituyó abonado al corregir retiro' : 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)
   }
   for (const record of result.state.history) db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(record), String(record.id))
