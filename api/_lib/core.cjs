@@ -206,6 +206,7 @@ function internalPlanningIsValid(record = {}) {
 
 function visibleStateForUser(state, user) {
   if (user.roleCode === 'technician') {
+    const journeyHistory = state.history
     state = { ...state, history: state.history.filter(record => record.awaitingConfirmation !== true) }
     const technicianId = String(user.id)
     const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
@@ -226,7 +227,7 @@ function visibleStateForUser(state, user) {
     return {
       revision: state.revision,
       roles: [], employees: [], services: [], vehicles: (state.vehicles || []).map(technicianVehicle), customers: [], agenda: null, preferences: {},
-      history: visibleHistory.map(technicianSafeRecord)
+      history: visibleHistory.map(record => technicianSafeRecord(record.serviceJourney ? { ...record, journeyActiveIndexes: require('./service-journeys.cjs').activeJourneyIndexes(record, journeyHistory) } : record))
     }
   }
   if (user.roleCode === 'supervisor' || normalizedRoleName(user.role) === 'supervisor') {

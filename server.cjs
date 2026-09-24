@@ -763,7 +763,8 @@ function internalPlanningIsValid(record = {}) {
 function readTechnicianState(user) {
   const technicianId = String(user.id)
   const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
-  const history = rows('work_history').filter(record => record.awaitingConfirmation !== true)
+  const journeyHistory = rows('work_history')
+  const history = journeyHistory.filter(record => record.awaitingConfirmation !== true)
   const assignedHistory = history.filter(record => record.technicianIds?.some(id => String(id) === technicianId))
   const activeAssigned = assignedHistory.filter(record => String(record.date || '') >= today && !record.technicalStatus && !['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(record.status))
   const activeCustomerIds = new Set(activeAssigned.map(record => String(record.customerId || '')).filter(Boolean))
@@ -778,7 +779,7 @@ function readTechnicianState(user) {
       const customerId = String(record.customerId || '')
       const account = String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()
       return (customerId && activeCustomerIds.has(customerId)) || (account && activeCustomerAccounts.has(account))
-    }).map(technicianSafeRecord)
+    }).map(record => technicianSafeRecord(record.serviceJourney ? { ...record, journeyActiveIndexes: require('./api/_lib/service-journeys.cjs').activeJourneyIndexes(record, journeyHistory) } : record))
   }
 }
 
