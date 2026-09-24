@@ -1,13 +1,18 @@
 const ADVANCE = 'Avance registrado'
-const isIntermediate = record => Boolean(record?.serviceJourney && record.serviceJourney.index < record.serviceJourney.total)
+function activeJourneyIndexes(record, history = []) {
+  if (!record?.serviceJourney) return []
+  const cancelled = new Set(history.filter(item => item.serviceJourney?.id === record.serviceJourney.id && (item.status === 'Cancelado' || item.technicalStatus === 'Cancelado')).map(item => item.serviceJourney.index))
+  return Array.from({ length: record.serviceJourney.total }, (_, index) => index + 1).filter(index => !cancelled.has(index))
+}
+const isIntermediate = (record, history = []) => activeJourneyIndexes(record, history).some(index => index > record.serviceJourney.index)
 const completedVisit = record => [ADVANCE, 'Completado'].includes(record?.status)
 
 function assertJourneyReport(record, type, history = []) {
-  if (type === ADVANCE && !isIntermediate(record)) throw new Error('Registrar avance corresponde únicamente a una jornada intermedia.')
-  if (type === 'Completado' && isIntermediate(record)) throw new Error('Esta es una jornada intermedia. Registrá el avance; el servicio se completa en la última jornada.')
+  if (type === ADVANCE && !isIntermediate(record, history)) throw new Error('Registrar avance corresponde únicamente a una jornada intermedia.')
+  if (type === 'Completado' && isIntermediate(record, history)) throw new Error('Esta es una jornada intermedia. Registrá el avance; el servicio se completa en la última jornada vigente.')
   if (record?.serviceJourney && [ADVANCE, 'Completado'].includes(type)) {
     const earlier = history.filter(item => item.serviceJourney?.id === record.serviceJourney.id && item.serviceJourney.index < record.serviceJourney.index)
-    if (earlier.some(item => !completedVisit(item) && item.status !== 'Cancelado')) throw new Error('Hay jornadas anteriores sin informar. Administración debe revisarlas antes de cerrar esta jornada.')
+    if (earlier.some(item => !completedVisit(item) && item.status !== 'Cancelado' && item.technicalStatus !== 'Cancelado')) throw new Error('Hay jornadas anteriores sin informar. Administración debe revisarlas antes de cerrar esta jornada.')
   }
 }
 
@@ -34,7 +39,8 @@ function validateServiceJourneys(state, previous = null) {
       if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== record.date || !weekday || !Number.isFinite(start) || start < 480 || start + Number(record.estimatedMinutes) > end) throw new Error('La jornada está fuera de los días u horarios habilitados.')
       if (state.agenda?.weekly?._holidayOverrides?.[record.date]?.status === 'closed') throw new Error('No se puede reservar una jornada en un feriado cerrado.')
     }
-    assertJourneyReport(record, record.status, history)
+    // A later cancellation must not invalidate an advance already reported.
+    if (!(record.status === ADVANCE && prior?.status === ADVANCE)) assertJourneyReport(record, record.status, history)
   }
   for (const [id, group] of groups) {
     group.sort((a, b) => a.serviceJourney.index - b.serviceJourney.index)
@@ -48,4 +54,4 @@ function validateServiceJourneys(state, previous = null) {
   for (const record of previous?.history || []) if (record.serviceJourney && !history.some(item => String(item.id) === String(record.id))) throw new Error('No se puede eliminar una jornada vinculada. Cancelala para conservar el historial del servicio.')
 }
 
-module.exports = { ADVANCE, isIntermediate, assertJourneyReport, validateServiceJourneys }
+module.exports = { ADVANCE, activeJourneyIndexes, isIntermediate, assertJourneyReport, validateServiceJourneys }

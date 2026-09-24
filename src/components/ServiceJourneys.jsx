@@ -5,10 +5,10 @@ import { durationLabel } from '../domain/agenda/duration-label.mjs'
 import { availableRescheduleTeams } from '../domain/agenda/reschedule-availability.mjs'
 import { isMonthlyMeeting } from '../domain/agenda/service-scheduling.mjs'
 import './service-journeys.css'
+import { journeyLabel } from '../domain/agenda/journey-progress.mjs'
+export { journeyLabel, journeyReportType } from '../domain/agenda/journey-progress.mjs'
 
 export const ServiceJourneysContext = createContext(null)
-export const journeyLabel = record => record?.serviceJourney ? `Jornada ${record.serviceJourney.index} de ${record.serviceJourney.total}` : ''
-export const journeyReportType = record => record?.serviceJourney && record.serviceJourney.index < record.serviceJourney.total ? 'Avance registrado' : 'Completado'
 
 export function JourneyIdentityField({ record, customer = false, children }) {
   const context = useContext(ServiceJourneysContext)
@@ -21,7 +21,7 @@ export function JourneyHistory({ record }) {
   const context = useContext(ServiceJourneysContext)
   if (!record?.serviceJourney) return null
   const visits = (context?.history || [record]).filter(item => item.serviceJourney?.id === record.serviceJourney.id).sort((a,b) => a.serviceJourney.index - b.serviceJourney.index)
-  return <section className="journey-history"><h3>Jornadas del servicio</h3>{visits.map(item => <article key={item.id}><b>{journeyLabel(item)} · {item.date.split('-').reverse().join('/')} · {item.time}</b><p>{item.team} · {item.technicians?.join(' / ')} · {durationLabel(item.estimatedMinutes)}</p><p>{item.status}</p>{item.technicalObservation && <p className="journey-report">{item.technicalReportedByName || 'Técnico'}: {item.technicalObservation}</p>}</article>)}</section>
+  return <section className="journey-history"><h3>Planificación original e informes</h3>{visits.map(item => <article key={item.id}><b>Jornada {item.serviceJourney.index} de {item.serviceJourney.total} · {item.date.split('-').reverse().join('/')} · {item.time}</b><p>{item.team} · {item.technicians?.join(' / ')} · {durationLabel(item.estimatedMinutes)}</p><p>{item.status}</p>{item.technicalObservation && <p className="journey-report">{item.technicalReportedByName || 'Técnico'}: {item.technicalObservation}</p>}</article>)}</section>
 }
 
 export function ServiceJourneys({ record, disabled = false, compact = false, action = false }) {
@@ -58,7 +58,10 @@ export function ServiceJourneys({ record, disabled = false, compact = false, act
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
   }
   if (!record) return null
-  if (record.serviceJourney) return compact || action ? null : <small className="journey-label">{journeyLabel(record)}</small>
+  if (record.serviceJourney) {
+    const label = journeyLabel(record, context?.history)
+    return compact || action || !label ? null : <small className="journey-label">{label}</small>
+  }
   if (!context?.enabled || record.vehicleControl || isMonthlyMeeting(record) || record.startedAt || record.technicalStatus || record.status !== 'Pendiente' || record.date < context.today) return null
   const change = (index, patch) => setVisits(previous => previous.map((item, position) => position === index ? { ...item, ...patch } : item))
   const add = () => setVisits(previous => [...previous, { date: '', time: '', teamId: '', estimatedMinutes: 60 }])
