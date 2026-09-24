@@ -616,7 +616,7 @@ function convertCompletedRetirementSubscriber(record) {
   if (!customer || customerKind(customer) !== 'subscriber') return null
   const nextNumber = Math.max(0, ...customers.map(item => Number(String(item.account || '').match(/^CLI-(\d+)$/i)?.[1]) || 0)) + 1
   const nextAccount = `CLI-${String(nextNumber).padStart(4, '0')}`
-  const converted = { ...customer, kind: 'client', account: nextAccount, type: 'Cliente de servicio', convertedFromAccount: customer.account, subscriptionEndedAt: new Date().toISOString() }
+  const converted = { ...customer, kind: 'client', account: nextAccount, type: 'Cliente de servicio', convertedFromAccount: customer.account, convertedFromType: customer.type, subscriptionEndedAt: new Date().toISOString() }
   const redirect = item => String(item.customerId || '') === String(customer.customerId) ? { ...item, customerId: customer.customerId, clientAccount: nextAccount, clientNameAtService: converted.name, client: `${nextAccount} ${converted.name}` } : item
   const redirectTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(redirect) }))
   const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
@@ -636,6 +636,20 @@ function convertCompletedRetirementSubscriber(record) {
 
 function stableTeamId(month, index) {
   return `team-${crypto.createHash('sha256').update(`${month}:${index}`).digest('hex').slice(0, 20)}`
+}
+
+// Called inside the history transaction, after all selected records were saved.
+function reconcileRetirementCustomers(previousHistory, user) {
+  const result = require('./api/_lib/core.cjs').normalizeRetirementCustomers(readState(), { history: previousHistory })
+  if (!result.conversions.length) return
+  for (const { before, after } of result.conversions) {
+    db.prepare('DELETE FROM customers WHERE account = ?').run(String(before.account))
+    db.prepare('INSERT INTO customers (account, data) VALUES (?, ?)').run(after.account, JSON.stringify(after))
+    writeAudit(user, after.kind === 'subscriber' ? 'Restituyó abonado al corregir retiro' : 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)
+  }
+  for (const record of result.state.history) db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(record), String(record.id))
+  for (const review of result.state.reviews || []) db.prepare('UPDATE reviews SET data = ? WHERE id = ?').run(JSON.stringify(review), String(review.id))
+  if (result.state.agenda) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(result.state.agenda), 'current')
 }
 
 function migrateTeamAndTechnicianReferences() {
@@ -1246,6 +1260,7 @@ function saveState(state, user) {
     error.statusCode = 409
     throw error
   }
+  state = require('./api/_lib/core.cjs').normalizeRetirementCustomers(state, previousState).state
   state = migrateLegacyEstimatedMinutes(state).state
   const normalizedRoles = (state.roles || []).map(role => ({ ...role, code: role.code || legacyRoleCode(role) }))
   const roleById = new Map(normalizedRoles.map(role => [String(role.id), role]))
@@ -1294,7 +1309,7 @@ function saveState(state, user) {
     const phone = rawPhone || (kind === 'subscriber' ? '-' : '')
     const normalized = { ...customer, customerId: customer.customerId || legacyCustomerId(customer), kind, cctvService: Boolean(customer.cctvService), name, street, address, phone }
     if (normalized.kind !== 'subscriber' || !completedRetirementCustomerIds.has(String(normalized.customerId))) return normalized
-    return { ...normalized, kind: 'client', account: `CLI-${String(nextClientNumber++).padStart(4, '0')}`, type: 'Cliente de servicio', convertedFromAccount: normalized.account, subscriptionEndedAt: new Date().toISOString() }
+    return { ...normalized, kind: 'client', account: `CLI-${String(nextClientNumber++).padStart(4, '0')}`, type: 'Cliente de servicio', convertedFromAccount: normalized.account, convertedFromType: normalized.type, subscriptionEndedAt: new Date().toISOString() }
   })
   const customerById = new Map(normalizedCustomers.map(customer => [String(customer.customerId), customer]))
   const customerByAccount = new Map()
@@ -1914,11 +1929,10 @@ const server = http.createServer((req, res) => {
           const next = managedHistoryRecord(current, update.record, user, now)
           db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(next), recordId)
           if (agenda) agenda = synchronizeAgendaHistoryRecord(agenda, current, next)
-          const convertedCustomer = next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo') ? convertCompletedRetirementSubscriber(next) : null
           writeAudit(user, 'Modificó', 'Servicio / historial', recordId, current, next)
-          if (convertedCustomer) writeAudit(user, 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(convertedCustomer.customerId), { account: convertedCustomer.convertedFromAccount, kind: 'subscriber' }, convertedCustomer)
         }
         if (agenda && JSON.stringify(agenda) !== agendaRow.data) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(agenda), 'current')
+        reconcileRetirementCustomers([...currentById.values()], user)
         const revision = currentStateRevision() + 1
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
         db.exec('COMMIT')
@@ -1988,9 +2002,8 @@ const server = http.createServer((req, res) => {
           const nextAgenda = synchronizeAgendaHistoryRecord(currentAgenda, current, next)
           if (JSON.stringify(nextAgenda) !== JSON.stringify(currentAgenda)) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(nextAgenda), 'current')
         }
-        const convertedCustomer = next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo') ? convertCompletedRetirementSubscriber(next) : null
         writeAudit(user, 'Modificó', 'Servicio / historial', recordId, current, next)
-        if (convertedCustomer) writeAudit(user, 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(convertedCustomer.customerId), { account: convertedCustomer.convertedFromAccount, kind: 'subscriber' }, convertedCustomer)
+        reconcileRetirementCustomers([current], user)
         const revision = currentStateRevision() + 1
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
         db.exec('COMMIT')
