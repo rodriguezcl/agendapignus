@@ -11,4 +11,16 @@
 .employee-form > .employee-form-actions > button { grid-column: auto !important; min-width: 0; width: 100%; white-space: normal; }
 .catalog-editor-modal .employee-form.employee-form-wide { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 .catalog-editor-modal .employee-form.employee-form-wide > label { grid-column: auto !important; }
+.catalog-editor-modal .employee-form.employee-form-wide { align-items: start; gap: 18px 16px; }
+.catalog-editor-modal .employee-form.employee-form-wide > label { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.catalog-editor-modal .employee-technical-option { grid-column: 1 / -1; padding: 16px; border: 1px solid #cbdccd; border-radius: 10px; background: rgba(255, 255, 255, .45); }
+.catalog-editor-modal .employee-technical-toggle { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; margin: 0; cursor: pointer; }
+.catalog-editor-modal .employee-technical-toggle input[type="checkbox"] { flex: 0 0 18px; width: 18px; height: 18px; min-height: 18px; padding: 0; margin: 0; }
+.catalog-editor-modal .employee-technical-toggle span { font-weight: 600; line-height: 1.4; }
+.catalog-editor-modal .employee-technical-option p { margin: 8px 0 0 28px; font-size: 12px; line-height: 1.5; }
+.catalog-editor-modal .employee-form-actions { padding-top: 16px; border-top: 1px solid #cbdccd; }
+@media (max-width: 640px) {
+  .catalog-editor-modal .employee-form.employee-form-wide { grid-template-columns: minmax(0, 1fr) !important; }
+  .catalog-editor-modal .employee-form > .employee-form-actions { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 640px) { .catalog-editor-modal :is(.employee-form, .service-form, .vehicle-form) { grid-template-columns: minmax(0, 1fr); } }
