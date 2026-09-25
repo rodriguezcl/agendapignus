@@ -19,9 +19,13 @@ function updateMembership(teams, { teamId, teamIndex, memberIds, members, guardO
 // services: another user can edit, add or remove a task at the same time.
 export function weeklyTeamMemberOperations(snapshot, command) {
   const { day, teamId, teamIndex, baseMemberIds, baseMembers, memberIds, members, guardOverride, fallbackPlan, materializeTeam = false } = command
-  const next = structuredClone(snapshot)
-  next.agenda ||= {}
-  next.agenda.weekly ||= {}
+  // Only compare the affected day and its daily projection, never the customer
+  // directory, history or other weeks. updateMembership returns new containers.
+  const agenda = snapshot.agenda || {}
+  const scoped = { agenda: { weekly: {} } }
+  if (agenda.weekly?.[day]) scoped.agenda.weekly[day] = agenda.weekly[day]
+  if (agenda.date === day) scoped.agenda.teams = agenda.teams || []
+  const next = { agenda: { ...scoped.agenda, weekly: { ...scoped.agenda.weekly } } }
 
   let plan = next.agenda.weekly[day]
   if (!plan) {
@@ -43,12 +47,12 @@ export function weeklyTeamMemberOperations(snapshot, command) {
   if (!weeklyResult.found) throw new Error('El equipo cambió o fue eliminado. Recargá la planificación antes de reintentar.')
   next.agenda.weekly[day] = { ...plan, teams: weeklyResult.teams }
 
-  if (next.agenda.date === day) {
+  if (agenda.date === day) {
     const dailyResult = updateMembership(next.agenda.teams || [], { teamId, teamIndex, memberIds, members, guardOverride })
     if (dailyResult.found) next.agenda.teams = dailyResult.teams
   }
 
-  const operations = stateOperations(snapshot, next)
+  const operations = stateOperations(scoped, next)
   for (const operation of operations) {
     const field = operation.path.at(-1)
     const selectedTeam = operation.path.find(item => item?.key === 'teamId')

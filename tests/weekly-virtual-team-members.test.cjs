@@ -7,6 +7,16 @@ const command = () => ({ day, teamId: team.teamId, teamIndex: 0, baseMemberIds: 
 const snapshot = plan => ({ history: [], agenda: { date: '2026-09-18', teams: [], weekly: { _monthlyTeams: { '2026-09': { teams: [structuredClone(team)] } }, [day]: plan, '2026-09-22': { teams: [structuredClone(team)] } } } })
 const builder = async () => (await import('../src/features/state/application/weekly-team-members-save.mjs')).weeklyTeamMemberOperations
 
+test('membership preparation never reads customer directory, history or unrelated weeks', async () => {
+  const build = await builder()
+  const base = snapshot({ teams: [structuredClone(team)] })
+  for (const key of ['customers', 'history', 'services']) Object.defineProperty(base, key, { enumerable: true, get() { throw new Error(`Unexpected full-state read: ${key}`) } })
+  Object.defineProperty(base.agenda.weekly, '2099-01-01', { enumerable: true, get() { throw new Error('Unrelated week read') } })
+  const operations = build(base, command())
+  assert.equal(operations.length, 2)
+  assert.ok(operations.every(op => ['members', 'memberIds'].includes(op.path.at(-1))))
+})
+
 test('removing Rodrigo materializes only Monday, preserving monthly and Tuesday assignments', async () => {
   const build = await builder()
   const base = snapshot({ teams: [], holidayDecision: { status: 'working' } })
