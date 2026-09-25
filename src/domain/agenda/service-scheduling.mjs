@@ -50,14 +50,14 @@ export const completedServiceRelease = task => {
   const taskDate = String(task?.date || '')
   const start = timeInMinutes(task?.time || task?.scheduledTime)
   if (!completion || !taskDate || completion.date !== taskDate || start === null || completion.minutes < start) return null
-  const elapsedMinutes = completion.minutes + (completion.seconds > 0 ? 1 : 0)
-  const release = Math.ceil(elapsedMinutes / LIVE_SCHEDULE_STEP_MINUTES) * LIVE_SCHEDULE_STEP_MINUTES
+  // Quarter-hour steps suggest new slots; they must not extend actual work.
+  const release = completion.minutes + completion.seconds / 60
   return {
     completedAt,
     completedMinutes: completion.minutes,
     completedTime: minutesAsTime(completion.minutes),
     release,
-    releaseTime: minutesAsTime(release)
+    releaseTime: minutesAsTime(completion.minutes)
   }
 }
 
@@ -97,7 +97,7 @@ export const taskOccupiedInterval = task => {
     releaseTime: completion?.releaseTime || '',
     startTime: minutesAsTime(start),
     serviceEndTime: minutesAsTime(serviceEnd),
-    endTime: minutesAsTime(end)
+    endTime: earlyCompletion ? completion.releaseTime : minutesAsTime(end)
   }
 }
 

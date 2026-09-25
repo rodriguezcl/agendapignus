@@ -75,8 +75,7 @@ const completedReleaseMinute = task => {
   const start = Number(startParts[1]) * 60 + Number(startParts[2])
   const completed = Number(parts.hour) * 60 + Number(parts.minute)
   if (completed < start) return null
-  const elapsed = completed + (Number(parts.second) > 0 ? 1 : 0)
-  return Math.ceil(elapsed / 15) * 15
+  return completed + Number(parts.second) / 60
 }
 
 const serviceMapFor = services => ({

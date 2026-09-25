@@ -75,6 +75,26 @@ test('sincroniza la aprobación en Agenda del día y Agenda semanal', () => {
   assert.deepEqual(synchronized.weekly._metadata, agenda.weekly._metadata)
 })
 
+test('terminar 11:52 permite adelantar a 11:57 sin mover la cita siguiente', async () => {
+  const { serviceScheduleConflicts } = await import('../src/domain/agenda/service-scheduling.mjs')
+  const { validateChangedAgendaSchedules } = require('../api/_lib/scheduling-validation.cjs')
+  const date = '2099-09-25'
+  const completed = { taskId: 'done', service: 'Alarma', date, time: '11:21', estimatedMinutes: 15, status: 'Completado', completedAt: `${date}T14:52:10Z` }
+  const pending = requestServiceAdvance({ ...record, date, estimatedMinutes: 15 }, technician, `${date}T14:53:00Z`)
+  const approved = resolveServiceAdvance(pending, administrator, 'approved', `${date}T14:57:00Z`)
+  const later = { taskId: 'later', service: 'Alarma', date, time: '14:00', estimatedMinutes: 15 }
+  const tasks = [completed, { ...approved, historyId: approved.id, taskId: approved.sourceTaskId }, later]
+  const agenda = { date, teams: [{ tasks }], weekly: { [date]: { teams: [{ tasks }] } } }
+  const synchronized = synchronizeAgendaAdvance(agenda, approved)
+  assert.equal(approved.time, '11:57')
+  assert.equal(approved.originalScheduledTime, '13:00')
+  assert.deepEqual(synchronized.teams[0].tasks[2], later)
+  assert.deepEqual(serviceScheduleConflicts(synchronized.teams), [])
+  assert.doesNotThrow(() => validateChangedAgendaSchedules({ agenda: synchronized, history: [], services: [] }))
+  const overlapping = { ...approved, time: '11:50' }
+  assert.equal(serviceScheduleConflicts([{ tasks: [completed, overlapping] }]).length, 1)
+})
+
 test('la interfaz ofrece el flujo administrativo y alinea Formulario en móviles', () => {
   const root = path.resolve(__dirname, '..')
   const app = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8')

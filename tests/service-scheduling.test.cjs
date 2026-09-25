@@ -57,14 +57,16 @@ test('oculta horarios predeterminados que caen dentro de una franja ocupada', as
   assert.deepEqual(tasks.map(task => task.time), ['09:00', '16:00'])
 })
 
-test('una finalización anticipada libera el equipo en el siguiente cuarto de hora', async () => {
+test('una finalización anticipada libera el equipo a la hora real sin redondear al cuarto de hora', async () => {
   const { serviceScheduleConflicts, taskOccupiedInterval } = await import('../src/service-scheduling.mjs')
   const completed = { serviceId: 'a', date: '2026-08-30', time: '08:30', estimatedMinutes: 150, status: 'Completado', completedAt: '2026-08-30T13:02:10.000Z' }
   const interval = taskOccupiedInterval(completed)
   assert.equal(interval.completedTime, '10:02')
-  assert.equal(interval.releaseTime, '10:15')
-  assert.equal(interval.endTime, '10:15')
-  assert.equal(completedReleaseMinute(completed), 10 * 60 + 15)
+  assert.equal(interval.releaseTime, '10:02')
+  assert.equal(interval.endTime, '10:02')
+  assert.equal(completedReleaseMinute(completed), 10 * 60 + 2 + 10 / 60)
+  assert.equal(serviceScheduleConflicts([{ tasks: [completed, { serviceId: 'b', time: '10:02', estimatedMinutes: 60 }] }]).length, 1)
+  assert.equal(serviceScheduleConflicts([{ tasks: [completed, { serviceId: 'b', time: '10:03', estimatedMinutes: 60 }] }]).length, 0)
   assert.equal(serviceScheduleConflicts([{ tasks: [completed, { serviceId: 'b', time: '10:00', estimatedMinutes: 60 }] }]).length, 1)
   assert.equal(serviceScheduleConflicts([{ tasks: [completed, { serviceId: 'b', time: '10:15', estimatedMinutes: 60 }] }]).length, 0)
 })
