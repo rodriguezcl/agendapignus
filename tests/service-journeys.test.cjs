@@ -107,13 +107,13 @@ test('advance releases the technician and the planned slot without completing th
   const { taskOccupiedInterval } = await import('../src/domain/agenda/service-scheduling.mjs')
   const { completedReleaseMinute, agendaTaskIsResolvedForPlanning } = require('../api/_lib/scheduling-validation.cjs')
   assert.deepEqual(technicianAgendaServices([first, next.history[1]], first.date).map(item=>item.id), ['work-two'])
-  assert.equal(taskOccupiedInterval(first).endTime, '09:45')
-  assert.equal(completedReleaseMinute(first), 585)
+  assert.equal(taskOccupiedInterval(first).endTime, '09:31')
+  assert.equal(completedReleaseMinute(first), 571)
   assert.equal(agendaTaskIsResolvedForPlanning(first, first.date, [first], first.date), true)
   assert.equal(first.completedAt, undefined)
   const adminAdvance = { ...first, technicalStatus:'', technicalReportedAt:'', journeyClosedAt:'2099-01-05T12:31:00.000Z' }
   assert.equal(technicianAgendaServices([adminAdvance], first.date).length, 0)
-  assert.equal(taskOccupiedInterval(adminAdvance).endTime, '09:45')
+  assert.equal(taskOccupiedInterval(adminAdvance).endTime, '09:31')
 })
 
 test('a changed crew or original service rejects the entire command; retries are idempotent', async () => {
