@@ -1,4 +1,5 @@
 const crypto = require('node:crypto')
+const { canPerformTechnicalServices } = require('./_lib/technical-capability.cjs')
 const { retirementClientLabel } = require('./_lib/retirement-label.cjs')
 const { completeExpiredMonthlyMeetings } = require('./_lib/monthly-meeting-completion.cjs')
 let lastMeetingCompletionScan = 0
@@ -241,7 +242,7 @@ async function handleVehicleInsurance(req, res, sql, user, vehicleId) {
   if (req.method === 'GET') {
     const state = await readState(sql)
     if (!(state.vehicles || []).some(vehicle => String(vehicle.id) === String(vehicleId))) return send(res, 404, { error: 'El vehículo no existe.' })
-    if (user.roleCode !== 'technician' && !userCan(user, 'vehicles')) return send(res, 403, { error: 'No tenés permiso para descargar este seguro.' })
+    if (!canPerformTechnicalServices(user) && !userCan(user, 'vehicles')) return send(res, 403, { error: 'No tenés permiso para descargar este seguro.' })
     const rows = await sql`select file_name, pdf_data from pignus_vehicle_insurance_documents where vehicle_id = ${String(vehicleId)}`
     if (!rows[0]) return send(res, 404, { error: 'El seguro no está cargado.' })
     securityHeaders(res)
@@ -647,7 +648,7 @@ async function handleExport(req, res, sql, user) {
 }
 
 async function handleTechnicianStart(req, res, sql, user) {
-  if (user.roleCode !== 'technician') return send(res, 403, { error: 'Esta acción es exclusiva del rol técnico.' })
+  if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
   const { recordId } = requestBody(req)
   try {
     const result = await sql.begin(async transaction => {
@@ -675,7 +676,7 @@ async function handleTechnicianStart(req, res, sql, user) {
 }
 
 async function handleTechnicianStatus(req, res, sql, user) {
-  if (user.roleCode !== 'technician') return send(res, 403, { error: 'Esta acción es exclusiva del rol técnico.' })
+  if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
   const { recordId, type, observation, vehicleMileage, vehiclePhoto } = requestBody(req)
   const allowed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramación solicitada']
   if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
@@ -704,6 +705,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
         const error = new Error('Este servicio ya fue informado desde otra sesión.'); error.statusCode = 409; throw error
       }
       const completingVehicleControl = Boolean(record.vehicleControl && type === 'Completado')
+      require('./_lib/technician-service-start.cjs').assertAdvanceNotPending(record)
       require('./_lib/service-confirmation.cjs').assertServiceConfirmed(record)
       let vehicleChange = null
       let photo = null
@@ -927,7 +929,7 @@ async function handleServiceAdvance(req, res, sql, user, decision = '') {
   const { recordId } = requestBody(req)
   const administratorDecision = Boolean(decision)
   if (administratorDecision && user.roleCode !== 'administrator') return send(res, 403, { error: 'Esta decisión es exclusiva del rol Administrador.' })
-  if (!administratorDecision && user.roleCode !== 'technician') return send(res, 403, { error: 'Esta solicitud es exclusiva del rol técnico.' })
+  if (!administratorDecision && !canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
   try {
     const result = await sql.begin(async transaction => {
       await transaction`set local lock_timeout = '5s'`
@@ -1057,6 +1059,11 @@ module.exports = async function handler(req, res) {
     }
     if (req.method === 'GET' && ['/state', '/state/revision'].includes(route)) await processExpiredMonthlyMeetings(sql)
     if (req.method === 'GET' && route === '/state/revision') return send(res, 200, { revision: await readRevision(sql) })
+    if (req.method === 'GET' && route === '/technician/state') {
+      if (!canPerformTechnicalServices(session.user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
+      const state = await readTechnicianState(sql, session.user.id, new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date()))
+      return send(res, 200, visibleStateForUser(state, { ...session.user, roleCode: 'technician' }))
+    }
     if (req.method === 'GET' && route === '/state') {
       const state = session.user.roleCode === 'technician'
         ? await readTechnicianState(sql, session.user.id, new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date()))

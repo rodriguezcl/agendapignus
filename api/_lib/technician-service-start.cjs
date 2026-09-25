@@ -1,4 +1,5 @@
 function startTechnicianServiceRecord(record, user, now = new Date().toISOString()) {
+  assertAdvanceNotPending(record)
   require('./service-confirmation.cjs').assertServiceConfirmed(record)
   if (!record) {
     const error = new Error('El servicio no existe.')
@@ -52,4 +53,12 @@ function assertTechnicianServiceStarted(record) {
   }
 }
 
-module.exports = { startTechnicianServiceRecord, assertTechnicianServiceStarted }
+function assertAdvanceNotPending(record) {
+  if (record?.advanceRequest?.status === 'pending') {
+    const error = new Error('El adelanto está pendiente de aprobación. Administración debe aprobarlo antes de informar o iniciar el servicio.')
+    error.statusCode = 409
+    throw error
+  }
+}
+
+module.exports = { startTechnicianServiceRecord, assertTechnicianServiceStarted, assertAdvanceNotPending }

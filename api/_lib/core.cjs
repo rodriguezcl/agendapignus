@@ -181,6 +181,7 @@ function userForEmployee(employee, roles) {
     roleId: role.id,
     roleCode: normalizedRoleName(role.name) === 'supervisor' ? 'supervisor' : role.code || legacyRoleCode(role),
     role: role.name,
+    technicalEnabled: employee.technicalEnabled === true,
     permissions: role.permissions || {}
   }
 }
@@ -248,7 +249,7 @@ function visibleStateForUser(state, user) {
   return {
     revision: state.revision,
     roles: state.roles,
-    employees: userCan(user, 'employees') ? state.employees.map(publicEmployee) : state.employees.map(({ id, firstName, lastName, name, roleId, role, status }) => ({ id, firstName, lastName, name, roleId, role, status })),
+    employees: userCan(user, 'employees') ? state.employees.map(publicEmployee) : state.employees.map(({ id, firstName, lastName, name, roleId, role, status, technicalEnabled }) => ({ id, firstName, lastName, name, roleId, role, status, technicalEnabled: technicalEnabled === true })),
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? ensureVehicleControlService(state.services) : [],
     vehicles: userCan(user, 'vehicles') || userCan(user, 'weeklyVehicles') ? state.vehicles || [] : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
@@ -275,7 +276,7 @@ function authorizeIncomingState(incoming, current, user) {
         error.statusCode = 403
         throw error
       }
-      return previous ? { ...employee, roleId: previous.roleId, role: previous.role } : employee
+      return previous ? { ...employee, roleId: previous.roleId, role: previous.role, technicalEnabled: previous.technicalEnabled === true } : { ...employee, technicalEnabled: false }
     })
     current.employees.filter(employee => administratorRoleIds.has(String(employee.roleId)) && !employees.some(item => String(item.id) === String(employee.id))).forEach(employee => employees.push(employee))
   }

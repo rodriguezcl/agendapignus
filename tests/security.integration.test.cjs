@@ -151,6 +151,37 @@ test.after(async () => {
   }
 })
 
+test('cuenta mixta conserva gestión, informa solamente lo asignado y no aprueba adelantos', async () => {
+  const cookie = await login('qa-weekly@pignus.test')
+  assert.equal((await api('/api/technician/state', cookie)).status, 403)
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const employee = JSON.parse(db.prepare('SELECT data FROM employees WHERE id = ?').get('qa-weekly').data)
+  upsertJson(db, 'employees', 'id', { ...employee, technicalEnabled: true })
+  const record = { id: 'qa-mixed-service', date: '2020-01-01', time: '09:00', status: 'Pendiente', technicianIds: ['qa-weekly'], client: 'Mi servicio', service: 'Service de alarma' }
+  upsertJson(db, 'work_history', 'id', record)
+  upsertJson(db, 'work_history', 'id', { ...record, id: 'qa-mixed-other', technicianIds: ['qa-tech'], client: 'Ajeno' })
+  const pending = { ...record, id: 'qa-mixed-pending', advanceRequest: { status: 'pending' } }
+  upsertJson(db, 'work_history', 'id', pending)
+  db.close()
+  assert.ok((await state(cookie)).agenda)
+  const personal = await (await api('/api/technician/state', cookie)).json()
+  assert.ok(personal.history.some(r => r.id === record.id))
+  assert.ok(!personal.history.some(r => r.id === 'qa-mixed-other'))
+  const post = (path, body) => api(path, cookie, { method: 'POST', body: JSON.stringify(body) })
+  assert.equal((await post('/api/technician/start', { recordId: 'qa-mixed-other' })).status, 403)
+  assert.equal((await post('/api/technician/start', { recordId: pending.id })).status, 409)
+  for (const type of ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramación solicitada']) {
+    assert.equal((await post('/api/technician/status', { recordId: pending.id, type, observation: 'Prueba' })).status, 409)
+  }
+  assert.equal((await post('/api/technician/start', { recordId: record.id })).status, 200)
+  assert.equal((await post('/api/technician/status', { recordId: record.id, type: 'Reprogramación solicitada', observation: 'Cliente ausente' })).status, 200)
+  assert.equal((await post('/api/admin/advance-request/approve', { recordId: pending.id })).status, 403)
+  const cleanup = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  upsertJson(cleanup, 'employees', 'id', employee)
+  for (const id of [record.id, pending.id, 'qa-mixed-other']) cleanup.prepare('DELETE FROM work_history WHERE id = ?').run(id)
+  cleanup.close()
+})
+
 test('protege rutas y agrega cabeceras de seguridad', async () => {
   const response = await api('/api/state')
   assert.equal(response.status, 401)
@@ -507,6 +538,7 @@ test('un gestor de empleados no puede elevar privilegios', async () => {
   const cookie = await login('qa-employees@pignus.test')
   let current = await state(cookie)
   const administrator = current.employees.find(employee => String(employee.roleId) === '1')
+  current.employees.find(employee => employee.id === 'qa-employees').technicalEnabled = true
   administrator.roleId = 3
   administrator.role = 'Técnico'
   current.roles.find(role => String(role.id) === '1').permissions = {}
@@ -515,6 +547,7 @@ test('un gestor de empleados no puede elevar privilegios', async () => {
   current = await state(cookie)
   assert.equal(String(current.employees.find(employee => employee.id === administrator.id).roleId), '1')
   assert.equal(current.roles.find(role => String(role.id) === '1').permissions.audit, true)
+  assert.equal(current.employees.find(employee => employee.id === 'qa-employees').technicalEnabled, false)
   current.employees.push({ id: 'rogue-admin', firstName: 'Rogue', lastName: 'Admin', name: 'Rogue Admin', roleId: 1, role: 'Administrador', email: 'rogue@pignus.test', phone: '', status: 'Activo', password: 'Prueba1234' })
   response = await api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(current) })
   assert.equal(response.status, 403)

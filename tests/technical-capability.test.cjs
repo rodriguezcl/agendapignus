@@ -1,0 +1,21 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const { userForEmployee, userCan, visibleStateForUser } = require('../api/_lib/core.cjs')
+const { canPerformTechnicalServices } = require('../api/_lib/technical-capability.cjs')
+test('technical capability supplements rather than replaces management permissions', () => {
+  const user = userForEmployee({ id: 'g', roleId: 2, technicalEnabled: true }, [{ id: 2, name: 'Usuario', code: 'user', permissions: { weekly: true } }])
+  assert.equal(user.roleCode, 'user')
+  assert.equal(userCan(user, 'weekly'), true)
+  assert.equal(userCan(user, 'settings'), false)
+  assert.equal(canPerformTechnicalServices(user), true)
+  assert.equal(canPerformTechnicalServices({ roleCode: 'user' }), false)
+  assert.equal(canPerformTechnicalServices({ roleCode: 'user', technicalEnabled: 'true' }), false)
+  assert.equal(canPerformTechnicalServices({ roleCode: 'technician' }), true)
+  assert.equal(canPerformTechnicalServices({ roleCode: 'supervisor', technicalEnabled: true }), false)
+})
+test('technical view excludes unrelated services and internal notes', () => {
+  const state = { history: [{ id: 'mine', technicianIds: ['g'], internalNote: 'private' }, { id: 'other', technicianIds: ['other'] }], vehicles: [] }
+  const visible = visibleStateForUser(state, { id: 'g', roleCode: 'technician' })
+  assert.deepEqual(visible.history.map(r => r.id), ['mine'])
+  assert.equal(visible.history[0].internalNote, undefined)
+})

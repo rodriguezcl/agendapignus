@@ -2,6 +2,7 @@ import { SCHEDULE_TIME_ZONE, timeInMinutes } from './service-scheduling.mjs'
 import { vehicleControlIsOpen } from '../vehicles/vehicle-control-window.mjs'
 
 export function serviceHasStarted(record, now = new Date()) {
+  if (record?.advanceRequest?.status === 'pending') return false
   if (record?.vehicleControl) return vehicleControlIsOpen(record, now)
   const current = now instanceof Date ? now : new Date(now)
   if (Number.isNaN(current.getTime())) return false

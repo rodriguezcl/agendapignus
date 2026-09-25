@@ -22,6 +22,7 @@ const { stateWriteError } = require('./api/_lib/state-write-error.cjs')
 const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 const { startTechnicianServiceRecord, assertTechnicianServiceStarted } = require('./api/_lib/technician-service-start.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
+const { canPerformTechnicalServices } = require('./api/_lib/technical-capability.cjs')
 const { customerImportChanges, normalizeImportedCustomers, preserveCustomerTrackingFlags, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('./api/_lib/customer-import.cjs')
 const { concurrentStateChanged, mergeConcurrentState } = require('./api/_lib/state-merge.cjs')
 const { logStateConcurrencyEvent } = require('./api/_lib/concurrency-observability.cjs')
@@ -820,7 +821,7 @@ function readStateForUser(user) {
   const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
   return {
     ...visibleState,
-    employees: userCan(user, 'employees') ? state.employees : state.employees.map(({ id, firstName, lastName, name, roleId, role, status }) => ({ id, firstName, lastName, name, roleId, role, status })),
+    employees: userCan(user, 'employees') ? state.employees : state.employees.map(({ id, firstName, lastName, name, roleId, role, status, technicalEnabled }) => ({ id, firstName, lastName, name, roleId, role, status, technicalEnabled: technicalEnabled === true })),
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? ensureVehicleControlService(state.services) : [],
     vehicles: userCan(user, 'vehicles') || userCan(user, 'weeklyVehicles') ? state.vehicles : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
@@ -945,7 +946,7 @@ function authorizedIncomingState(state, user) {
         error.statusCode = 403
         throw error
       }
-      return previous ? { ...employee, roleId: previous.roleId, role: previous.role } : employee
+      return previous ? { ...employee, roleId: previous.roleId, role: previous.role, technicalEnabled: previous.technicalEnabled === true } : { ...employee, technicalEnabled: false }
     })
     current.employees.filter(employee => administratorRoleIds.has(String(employee.roleId)) && !employees.some(item => String(item.id) === String(employee.id))).forEach(employee => employees.push(employee))
   }
@@ -1557,7 +1558,7 @@ function sessionUser(req) {
     sessions.delete(token)
     return null
   }
-  const user = { id: employee.id, name: employee.name, email: employee.email, roleId: role.id, roleCode: normalizedRoleName(role.name) === 'supervisor' ? 'supervisor' : role.code || legacyRoleCode(role), role: role.name, permissions: role.permissions || {} }
+  const user = { id: employee.id, name: employee.name, email: employee.email, roleId: role.id, roleCode: normalizedRoleName(role.name) === 'supervisor' ? 'supervisor' : role.code || legacyRoleCode(role), role: role.name, technicalEnabled: employee.technicalEnabled === true, permissions: role.permissions || {} }
   session.user = user
   return user
 }
@@ -1882,6 +1883,12 @@ const server = http.createServer((req, res) => {
     if (user.roleCode === 'supervisor' || !userCan(user, 'history')) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
     return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial', null, url.searchParams.get('format') || 'excel')
   }
+  if (req.method === 'GET' && req.url === '/api/technician/state') {
+    const user = requireSession(req, res)
+    if (!user) return
+    if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
+    return send(res, 200, readTechnicianState(user))
+  }
   if (req.method === 'GET' && req.url === '/api/state') {
     const user = requireSession(req, res)
     if (!user) return
@@ -2092,7 +2099,7 @@ const server = http.createServer((req, res) => {
     const vehicleId = decodeURIComponent(url.pathname.slice('/api/vehicle-insurance/'.length))
     if (req.method === 'GET') {
       if (!(readState().vehicles || []).some(vehicle => String(vehicle.id) === String(vehicleId))) return send(res, 404, { error: 'El vehículo no existe.' })
-      if (user.roleCode !== 'technician' && !userCan(user, 'vehicles')) return send(res, 403, { error: 'No tenés permiso para descargar este seguro.' })
+      if (!canPerformTechnicalServices(user) && !userCan(user, 'vehicles')) return send(res, 403, { error: 'No tenés permiso para descargar este seguro.' })
       const document = db.prepare('SELECT file_name, pdf_data FROM vehicle_insurance_documents WHERE vehicle_id = ?').get(vehicleId)
       if (!document) return send(res, 404, { error: 'El seguro no está cargado.' })
       res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${String(document.file_name || 'seguro.pdf').replace(/["\r\n]/g, '')}"`, 'Content-Length': document.pdf_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
@@ -2147,7 +2154,7 @@ const server = http.createServer((req, res) => {
     if (!user) return
     const decision = url.pathname.endsWith('/approve') ? 'approved' : url.pathname.endsWith('/deny') ? 'denied' : ''
     if (decision && user.roleCode !== 'administrator') return send(res, 403, { error: 'Esta decisión es exclusiva del rol Administrador.' })
-    if (!decision && user.roleCode !== 'technician') return send(res, 403, { error: 'Esta solicitud es exclusiva del rol técnico.' })
+    if (!decision && !canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
     return readJson(req).then(({ recordId }) => {
       db.exec('BEGIN IMMEDIATE')
       try {
@@ -2179,7 +2186,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/technician/start') {
     const user = requireSession(req, res)
     if (!user) return
-    if (user.roleCode !== 'technician') return send(res, 403, { error: 'Esta acción es exclusiva del rol técnico.' })
+    if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
     return readJson(req).then(({ recordId }) => {
       db.exec('BEGIN IMMEDIATE')
       try {
@@ -2205,7 +2212,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/technician/status') {
     const user = requireSession(req, res)
     if (!user) return
-    if (user.roleCode !== 'technician') return send(res, 403, { error: 'Esta acción es exclusiva del rol técnico.' })
+    if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
     return readJson(req, 1_600_000).then(({ recordId, type, observation, vehicleMileage, vehiclePhoto }) => {
       const record = rows('work_history').find(item => item.id === recordId)
       const allowed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramación solicitada']
@@ -2213,6 +2220,7 @@ const server = http.createServer((req, res) => {
       const assigned = record.technicianIds?.some(id => String(id) === String(user.id))
       require('./api/_lib/service-confirmation.cjs').assertServiceConfirmed(record)
       if (!assigned) return send(res, 403, { error: 'El servicio no está asignado al técnico autenticado.' })
+      require('./api/_lib/technician-service-start.cjs').assertAdvanceNotPending(record)
         if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
         if (record.vehicleControl && type !== 'Completado') return send(res, 400, { error: 'El control vehicular debe completarse con foto y kilometraje; no admite cancelación ni reprogramación.' })
         const technicianDayRecords = record.vehicleControl
