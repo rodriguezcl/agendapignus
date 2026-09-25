@@ -54,6 +54,30 @@ test('destination overlap is rejected by the same server validation as agenda sa
   assert.throws(() => validateChangedAgendaSchedules(next, state), /conflicto de horarios/)
 })
 
+test('reprogramar no queda bloqueado por un conflicto previo de otro equipo independiente', async () => {
+  const { historyRescheduleOperations } = await import('../src/features/state/application/history-reschedule.mjs')
+  const state = fixture()
+  const unrelated = { teamId: 'leonardo', members: ['Leonardo'], memberIds: ['leo'], tasks: [
+    { taskId: 'leo-1', service: 'Alarma', time: '11:00', estimatedMinutes: 15 },
+    { taskId: 'leo-2', service: 'Alarma', time: '11:21', estimatedMinutes: 15 }
+  ] }
+  state.agenda.weekly[day].teams.push(unrelated)
+  state.agenda.teams.push(structuredClone(unrelated))
+  const next = applyStateOperations(state, historyRescheduleOperations(state, command(state)))
+  assert.doesNotThrow(() => validateChangedAgendaSchedules(next, state))
+  assert.deepEqual(next.agenda.weekly[day].teams[1], unrelated)
+  // Un técnico compartido sí vincula los equipos y debe seguir protegido.
+  const shared = structuredClone(state)
+  shared.agenda.weekly[day].teams[1].memberIds = ['tech2']
+  shared.agenda.weekly[day].teams[1].tasks[0].time = '14:00'
+  const sharedNext = applyStateOperations(shared, historyRescheduleOperations(shared, command(shared)))
+  assert.throws(() => validateChangedAgendaSchedules(sharedNext, shared), /servicios incompatibles/)
+  // Editar el propio equipo en conflicto no queda exento de validación.
+  const changed = structuredClone(next)
+  changed.agenda.weekly[day].teams[1].tasks[1].time = '11:30'
+  assert.throws(() => validateChangedAgendaSchedules(changed, state), /conflicto de horarios/)
+})
+
 test('same-day reassignment and history-only records do not duplicate the service', async () => {
   const { historyRescheduleOperations } = await import('../src/features/state/application/history-reschedule.mjs')
   const state = fixture()
