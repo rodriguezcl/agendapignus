@@ -1164,6 +1164,15 @@ body.dark .weekly-add-team:hover {
   gap: 12px;
 }
 
+.module-intro.weekly-intro { flex-direction: column; align-items: stretch; }
+.weekly-intro .weekly-actions { flex-wrap: wrap; width: 100%; }
+.weekly-service-search { display: flex; align-items: end; gap: 6px; flex: 1 1 420px; flex-wrap: wrap; }
+.weekly-service-search label { display: flex; flex: 1 1 190px; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; }
+.weekly-service-search input { width: 100%; min-height: 48px; border: 1px solid #b7cdbf; border-radius: 7px; padding: 10px; color: inherit; background: transparent; }
+.weekly-service-search [role="status"] { align-self: center; font-size: 12px; }
+.weekly-service-search .secondary { padding: 0 10px; }
+.week-task.weekly-search-current { outline: 3px solid #cc9310; outline-offset: -3px; box-shadow: inset 0 0 0 5px #cc931033; }
+
 /* Controles de cabecera de la agenda semanal: mismo lenguaje visual que el resto de la plataforma. */
 .weekly-actions .secondary {
   min-height: 48px;
