@@ -116,6 +116,7 @@ const MAX_BATCH_PARAMETERS = 30_000
 const MAX_DELETE_BATCH_ROWS = 1_000
 const POSITIONAL_UNIQUE_BUCKETS = {
   planned_teams: ['scope', 'work_date'],
+  planned_slots: ['scope', 'work_date', 'team_key'],
   monthly_teams: ['period']
 }
 

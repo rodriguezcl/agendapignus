@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
 const React = require('react')
-const { renderToString } = require('react-dom/server')
+const { renderToString, renderToStaticMarkup } = require('react-dom/server')
 const { buildSync } = require('esbuild')
 
 test('daily and weekly components render through their actual prop forwarding chain', () => {
@@ -50,7 +50,7 @@ test('daily and weekly components render through their actual prop forwarding ch
   const last={...first,id:'journey-last',date:'2099-01-06',serviceJourney:{id:record.id,index:2,total:2},technicalObservation:'Informe de prueba'}
   assert.equal(renderToString(provider(true,React.createElement(ServiceJourneys,{record:first,compact:true}))), '')
   assert.equal(renderToString(provider(true,React.createElement(ServiceJourneys,{record:first,action:true}))), '')
-  const detail=renderToString(provider(false,React.createElement(JourneyHistory,{record:first}),[first,last]))
+  const detail=renderToStaticMarkup(provider(false,React.createElement(JourneyHistory,{record:first}),[first,last]))
   assert.match(detail,/Jornada 1 de 2/)
   assert.match(detail,/Jornada 2 de 2/)
   assert.match(detail,/Informe de prueba/)
