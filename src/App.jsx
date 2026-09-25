@@ -69,6 +69,7 @@ import { weeklyTeamMemberOperations } from './features/state/application/weekly-
 import { weeklyTeamRemovalOperations } from './features/state/application/weekly-team-removal.mjs'
 import { weeklyTaskRemovalOperations } from './features/state/application/weekly-task-removal.mjs'
 import { stateOperations } from './features/state/application/state-operations.mjs'
+import { alignOperationBaselines } from './features/state/application/operation-baselines.mjs'
 import { migrateLegacyEstimatedMinutes } from './domain/state/legacy-estimated-minutes.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
@@ -2071,7 +2072,7 @@ export default function App() {
   const refreshRemoteState = async () => {
     applyRemoteState(await stateRepository.load())
   }
-  const persistStateCommand = async (buildOperations, { combinePendingState = false, rebaseOnRecordConflict = false, isolatedMove = false } = {}) => {
+  const persistStateCommand = async (buildOperations, { combinePendingState = false, rebaseOnRecordConflict = false, isolatedMove = false, alignDisplayBaselines = false } = {}) => {
     const saveEpoch = saveSessionEpochRef.current
     let release = !combinePendingState || isolatedMove ? saveActivityRef.current.acquire() : null
     if (!pendingConfirmedSavesRef.current) saveBatchRef.current = { baseline: JSON.parse(currentSnapshotRef.current), latest: null }
@@ -2110,10 +2111,13 @@ export default function App() {
       if (combinePendingState) {
         const pendingOperations = serialized !== lastPersistedSnapshotRef.current ? stateOperations(base, local) : []
         const commandOperations = await buildOperations(local)
-        release = saveActivityRef.current.acquire(operationScopes([...pendingOperations, ...commandOperations]))
+        const operations = alignDisplayBaselines && Number(lastServerSnapshotRef.current?.revision) === Number(stateRevisionRef.current)
+          ? alignOperationBaselines([...pendingOperations, ...commandOperations], base, lastServerSnapshotRef.current)
+          : [...pendingOperations, ...commandOperations]
+        release = saveActivityRef.current.acquire(operationScopes(operations))
         let payload
         try {
-          payload = await stateRepository.commit([...pendingOperations, ...commandOperations], stateRevisionRef.current)
+          payload = await stateRepository.commit(operations, stateRevisionRef.current)
         } catch (error) {
           const recordConflict = error?.status === 409 && error?.payload?.code === 'RECORD_WRITE_CONFLICT'
           if (!rebaseOnRecordConflict || !recordConflict || pendingOperations.length) throw error
@@ -2167,7 +2171,7 @@ export default function App() {
         : command.operation === 'task-remove'
           ? weeklyTaskRemovalOperations(snapshot, command)
       : weeklyServiceOperations(snapshot, command)
-  ), { combinePendingState: true, isolatedMove: Boolean(command.sourceDay && command.task?.vehicleControl) })
+  ), { combinePendingState: true, alignDisplayBaselines: true, isolatedMove: Boolean(command.sourceDay && command.task?.vehicleControl) })
   const persistWeeklyConfiguration = buildNext => persistStateCommand(snapshot => stateOperations(snapshot, buildNext(snapshot)), { combinePendingState: true, rebaseOnRecordConflict: true })
   const persistAgendaRecords = (before, records) => persistStateCommand(() => stateRepository.commit(stateOperations({ history: before }, { history: records }), stateRevisionRef.current))
   const reschedulingTeams = (day, sourceWeekly = weekly) => {
