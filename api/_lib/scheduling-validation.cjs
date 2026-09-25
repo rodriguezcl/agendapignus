@@ -56,6 +56,8 @@ const agendaTaskIsResolvedForPlanning = (task, date, history = [], today = argen
 const agendaTaskForScheduleOccupancy = (task, date, history = [], today = argentinaToday()) => {
   const record = historyRecordForAgendaTask(task, date, history)
   const status = record?.status || record?.technicalStatus || task?.status || task?.technicalStatus || 'Pendiente'
+  // Administrative review preserves the report, not the technician's slot.
+  if (!(record?.vehicleControl || task?.vehicleControl) && (record || task).technicalStatus === 'Cancelado') return null
   if (['Completado', 'Avance registrado'].includes(status) && String(date || '') !== String(today || '')) return null
   if (status === 'Cancelado' && String(date || '') < String(today || '')) return null
   return { ...task, date, status, technicalStatus: record?.technicalStatus || task?.technicalStatus || '', completedAt: record?.completedAt || task?.completedAt || '', technicalReportedAt: record?.journeyClosedAt || record?.technicalReportedAt || task?.technicalReportedAt || '' }
