@@ -2874,3 +2874,24 @@ body:has(.modal-backdrop, .modal-layer) .app-shell[data-theme="dark"] .content >
   outline: 2px solid #c99100;
   outline-offset: 2px;
 }
+
+/* Keep the additional technical function separate from the role badge. */
+.employees-table .employee-row > div:nth-child(2) {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.employees-table .employee-row > div:nth-child(2) > small {
+  display: block;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: normal;
+}
+@media (min-width: 1100px) {
+  .employees-table .table-head,
+  .employees-table .employee-row {
+    grid-template-columns: minmax(210px, 1.25fr) minmax(240px, 1.1fr) minmax(210px, 1.25fr) minmax(150px, .8fr) minmax(85px, .45fr) minmax(95px, .5fr) !important;
+  }
+}
