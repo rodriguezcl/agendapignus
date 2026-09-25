@@ -177,8 +177,17 @@ function validateChangedAgendaSchedules(state, previousState = null) {
         return true
       })) return
     }
-    if (previous && scheduleSignature(previous.teams, serviceMap, previous.date, previousState?.history) === scheduleSignature(plan.teams, serviceMap, plan.date, state?.history)) return
+    const previousServiceMap = serviceMapFor(previousState?.services)
+    const changedTeams = new Set((plan.teams || []).flatMap((team, index) => {
+      const oldTeam = team.teamId
+        ? previous?.teams?.find(item => String(item.teamId) === String(team.teamId))
+        : previous?.teams?.[index]
+      const unchanged = oldTeam && scheduleSignature([oldTeam], previousServiceMap, plan.date, previousState?.history) === scheduleSignature([team], serviceMap, plan.date, state?.history)
+      return unchanged ? [] : [index]
+    }))
+    if (!changedTeams.size) return
     ;(plan.teams || []).forEach((team, teamIndex) => {
+      if (!changedTeams.has(teamIndex)) return
       const activeTasks = (team.tasks || []).map((task, taskIndex) => ({ task, taskIndex })).filter(({ task }) => (task.serviceId || task.service) && !agendaTaskIsResolvedForPlanning(task, plan.date, state?.history))
       const occupancyTasks = (team.tasks || []).map((task, taskIndex) => ({ task: agendaTaskForScheduleOccupancy(task, plan.date, state?.history), taskIndex })).filter(({ task }) => task && (task.serviceId || task.service))
       activeTasks.forEach(({ task, taskIndex }) => {
@@ -232,7 +241,10 @@ function validateChangedAgendaSchedules(state, previousState = null) {
     assignmentsByTechnician.forEach(({ name, entries }) => {
       const ordered = entries.sort((left, right) => left.start - right.start)
       ordered.forEach((current, index) => {
-        const conflict = ordered.slice(0, index).find(previousAssignment => current.start < previousAssignment.end && !allowedMeetingControlOverlap(current.task, previousAssignment.task, serviceMap))
+        const conflict = ordered.slice(0, index).find(previousAssignment =>
+          previousAssignment.teamIndex !== current.teamIndex &&
+          (changedTeams.has(current.teamIndex) || changedTeams.has(previousAssignment.teamIndex)) &&
+          current.start < previousAssignment.end && !allowedMeetingControlOverlap(current.task, previousAssignment.task, serviceMap))
         if (!conflict || conflict.teamIndex === current.teamIndex) return
         throw new Error(`${name || 'El técnico'} tiene servicios incompatibles el ${longDate(plan.date)}: ${taskDescription(conflict.task, conflict.taskIndex)} en ${conflict.team.label || `Equipo ${conflict.teamIndex + 1}`} y ${taskDescription(current.task, current.taskIndex)} en ${current.team.label || `Equipo ${current.teamIndex + 1}`}. Reasigná el técnico o ajustá los horarios.`)
       })
