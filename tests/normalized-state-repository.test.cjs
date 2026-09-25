@@ -109,6 +109,31 @@ test('reordena equipos planificados y mensuales sin colisionar posiciones transi
   } finally { await pg.close() }
 })
 
+test('elimina un equipo intermedio con espacios disponibles sin colisionar los espacios del equipo siguiente', async () => {
+  const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
+  try {
+    await pg.exec(fs.readFileSync(path.join(__dirname, '../supabase/proposals/normalized-shadow-v1.sql'), 'utf8'))
+    const previous = fixture(), day = '2026-09-25'
+    previous.agenda.weekly[day] = { teams: Array.from({ length: 5 }, (_, index) => ({
+      teamId: `team-${index + 1}`,
+      label: `Equipo ${index + 1}`,
+      memberIds: [],
+      tasks: [{ taskId: `available-${index + 1}`, time: '' }]
+    })) }
+    await insertShadowCandidate(pg, buildShadowCandidate(previous))
+    const next = structuredClone(previous)
+    next.revision = 2
+    next.agenda.weekly[day].teams.splice(3, 1)
+    next.agenda.weekly[day].teams[3].label = 'Equipo 4'
+
+    await synchronizeNormalizedState(pg, previous, next)
+
+    assert.deepEqual((await pg.query("select team_key from normalized_shadow.planned_teams where scope = 'weekly' and work_date = $1 order by position", [day])).rows.map(row => row.team_key), ['team-1', 'team-2', 'team-3', 'team-5'])
+    assert.deepEqual((await pg.query("select team_key from normalized_shadow.planned_slots where scope = 'weekly' and work_date = $1 order by position, team_key", [day])).rows.map(row => row.team_key), ['team-1', 'team-2', 'team-3', 'team-5'])
+    assert.deepEqual(await readNormalizedState(pg), safeState(next))
+  } finally { await pg.close() }
+})
+
 test('transfiere la identidad de tarea cuando cambia el id histórico sin colisión transitoria', async () => {
   const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
   try {
