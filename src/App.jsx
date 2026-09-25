@@ -466,6 +466,7 @@ const taskIsResolvedForPlanning = (task, date, history) => {
 const taskForScheduleOccupancy = (task, date, history) => {
   if (!taskHasContent(task)) return null
   const record = historyRecordForTask(task, date, history)
+  if (!(record?.vehicleControl || task?.vehicleControl) && (record || task).technicalStatus === 'Cancelado') return null
   const status = record?.status || record?.technicalStatus || task?.status || task?.technicalStatus || 'Pendiente'
   if (['Completado', 'Avance registrado'].includes(status) && String(date || '') !== currentLocalDate()) return null
   if (status === 'Cancelado' && String(date || '') < currentLocalDate()) return null

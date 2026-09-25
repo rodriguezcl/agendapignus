@@ -70,6 +70,7 @@ export const taskReservationMinutes = task => Math.max(
 )
 
 export const taskOccupiedInterval = task => {
+  if (!task?.vehicleControl && task?.technicalStatus === 'Cancelado') return null
   const start = timeInMinutes(task?.time || task?.scheduledTime)
   if (start === null) return null
   const estimatedMinutes = normalizeServiceEstimatedMinutes(task?.estimatedMinutes)
