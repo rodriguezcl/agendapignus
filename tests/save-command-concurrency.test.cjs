@@ -8,13 +8,14 @@ const tick = () => new Promise(resolve => setImmediate(resolve))
 async function harness() {
   const { createSaveActivity, operationScopes } = await import('../src/features/state/application/save-activity.mjs')
   const { stateOperations } = await import('../src/features/state/application/state-operations.mjs')
+  const { alignOperationBaselines } = await import('../src/features/state/application/operation-baselines.mjs')
   const source = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
   const code = source.slice(source.indexOf('  const persistStateCommand ='), source.indexOf('  const persistWeeklyService ='))
   const ref = current => ({ current })
   const snapshot = { history: [{ id: 'a' }, { id: 'b' }], agenda: {} }
   const requests = [], applied = []
   const context = {
-    createSaveActivity, operationScopes, stateOperations,
+    createSaveActivity, operationScopes, stateOperations, alignOperationBaselines,
     saveSessionEpochRef: ref(1), saveActivityRef: ref(createSaveActivity()), pendingConfirmedSavesRef: ref(0), saveBatchRef: ref(null),
     currentSnapshotRef: ref(JSON.stringify(snapshot)), lastPersistedSnapshotRef: ref(JSON.stringify(snapshot)), lastServerSnapshotRef: ref({ ...snapshot, revision: 1 }),
     confirmedSaveRef: ref(false), stateSaveTimerRef: ref(null), pendingStateSaves: ref(0), stateSaveGenerationRef: ref(0), stateSaveQueue: ref(Promise.resolve()),
@@ -65,4 +66,19 @@ test('actual App does not apply a save response after its session has ended', as
   requests[0].resolve({ state: { ...snapshot, revision: 2 } })
   await pending
   assert.equal(applied.length, 0)
+})
+
+test('actual App aligns display baselines only with the matching server revision', async () => {
+  for (const revision of [1, 2]) {
+    const { run, requests, context } = await harness()
+    const displayed = { history: [{ id: 'a', detail: 'Display enrichment' }], agenda: {} }
+    context.currentSnapshotRef.current = JSON.stringify(displayed)
+    context.lastPersistedSnapshotRef.current = JSON.stringify(displayed)
+    context.lastServerSnapshotRef.current = { history: [{ id: 'a' }], agenda: {}, revision }
+    const pending = run(() => [{ path: ['history', { key: 'id', id: 'a' }], before: displayed.history[0], after: { id: 'a', detail: 'Edited' }, existed: true, exists: true }], { combinePendingState: true, alignDisplayBaselines: true })
+    await tick()
+    assert.deepEqual(requests[0].ops[0].before, revision === 1 ? { id: 'a' } : displayed.history[0])
+    requests[0].resolve({ state: { ...displayed, revision: 3 } })
+    await pending
+  }
 })
