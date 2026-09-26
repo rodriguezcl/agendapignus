@@ -4,6 +4,7 @@ data/*
 tmp/visual-qa/*.db
 tmp/visual-qa/*.db-wal
 tmp/visual-qa/*.db-shm
+tmp/mobile-layout/
 dist/
 node_modules/
 *.lnk
