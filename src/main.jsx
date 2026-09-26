@@ -7,6 +7,7 @@ import AppErrorBoundary from './components/AppErrorBoundary.jsx'
 import { installRequiredFeedback } from './presentation/components/forms/required-feedback.mjs'
 import './presentation/components/forms/required-feedback.css'
 import './components/ui/modal-chrome.css'
+import './mobile-layout.css'
 
 const disposeRequiredFeedback = installRequiredFeedback()
 if (import.meta.hot) import.meta.hot.dispose(disposeRequiredFeedback)
