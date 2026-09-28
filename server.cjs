@@ -1023,6 +1023,7 @@ function replaceRows(table, records, key) {
 
 /** Guarda todas las entidades dentro de una transacción para evitar estados parciales. */
 function validateState(state, previousState = null) {
+  require('./api/_lib/completed-service-policy.cjs').assertCompletedServices(state, previousState)
   require('./api/_lib/journey-identity.cjs').synchronizeJourneyIdentity(state, previousState)
   require('./api/_lib/service-journeys.cjs').validateServiceJourneys(state, previousState)
   const previousConfirmationRecords = new Map((previousState?.history || []).map(record => [String(record.id), record]))
@@ -1200,6 +1201,7 @@ function assertServiceCanBeCompleted(record, now = new Date().toISOString()) {
 }
 
 function managedHistoryRecord(current, proposed, user, now = new Date().toISOString()) {
+  require('./api/_lib/completed-service-policy.cjs').assertCompletedServiceChange(current, proposed)
   require('./api/_lib/service-confirmation.cjs').assertServiceConfirmationChange(current, { ...current, ...proposed }, now)
   const allowedStatuses = ['Pendiente', 'Completado', 'Avance registrado', 'Cancelado', 'Reprogramado', 'Requiere revisión']
   if (!allowedStatuses.includes(proposed.status || 'Pendiente')) throw new Error('El estado solicitado no es válido.')

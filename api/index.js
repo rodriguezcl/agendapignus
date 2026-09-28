@@ -36,6 +36,7 @@ const { stateForOperationComparison } = require('./_lib/legacy-estimated-minutes
 const { stateWriteError } = require('./_lib/state-write-error.cjs')
 
 async function persistStateCollections(transaction, current, next, nextRevision, prepared) {
+  require('./_lib/completed-service-policy.cjs').assertCompletedServices(next, current)
   require('./_lib/journey-identity.cjs').synchronizeJourneyIdentity(next, current)
   require('./_lib/service-journeys.cjs').validateServiceJourneys(next, current)
   const versionedNext = { ...next, revision: Number(nextRevision) }
@@ -781,6 +782,7 @@ async function clearDailyAgenda(sql, user) {
 }
 
 function managedHistoryRecord(current, proposed, user, now) {
+  require('./_lib/completed-service-policy.cjs').assertCompletedServiceChange(current, proposed)
   require('./_lib/service-confirmation.cjs').assertServiceConfirmationChange(current, { ...current, ...proposed }, now)
   const allowedStatuses = ['Pendiente', 'Completado', 'Avance registrado', 'Cancelado', 'Reprogramado', 'Requiere revisión']
   if (!allowedStatuses.includes(proposed.status || 'Pendiente')) throw new Error('El estado solicitado no es válido.')

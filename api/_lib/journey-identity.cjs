@@ -57,4 +57,4 @@ function synchronizeJourneyIdentity(state, previous) {
   return state
 }
 
-module.exports = { identityPatch, synchronizeJourneyIdentity, hasWork }
+module.exports = { identityPatch, synchronizeJourneyIdentity, hasWork, restoredRetirementReference }

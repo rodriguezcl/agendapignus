@@ -13,6 +13,12 @@ function conflict(path) {
 
 function applyStateOperations(current, operations) {
   if (!Array.isArray(operations) || operations.length > 20000) throw new Error('Operaciones de guardado inválidas.')
+  for (const op of operations) {
+    if (op.path?.[0] === 'history' && op.path.length === 2 && op.exists) {
+      const record = current.history?.find(item => String(item.id) === String(op.path[1]?.id))
+      require('./completed-service-policy.cjs').assertCompletedServiceChange(record, op.after)
+    }
+  }
   const dailyDateChange = operations.find(op => {
     const path = op?.path || []
     return path.length === 2 && path[0] === 'agenda' && path[1] === 'date' && op.exists && String(op.after || '') !== String(current.agenda?.date || '')
