@@ -1264,6 +1264,7 @@ function saveState(state, user) {
     error.statusCode = 409
     throw error
   }
+  state = require('./api/_lib/team-service-assignments.cjs').synchronizeTeamServiceAssignments(state, previousState)
   state = require('./api/_lib/core.cjs').normalizeRetirementCustomers(state, previousState).state
   state = migrateLegacyEstimatedMinutes(state).state
   const normalizedRoles = (state.roles || []).map(role => ({ ...role, code: role.code || legacyRoleCode(role) }))

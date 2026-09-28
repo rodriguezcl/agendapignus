@@ -26,3 +26,9 @@ test('shared read-only detail separates agenda notes from the technician report'
   assert.ok(detail.includes('Servicio informado sin observaciones adicionales.'))
   assert.doesNotMatch(detail, /Guardar cambios|persistHistoryRecord/)
 })
+
+test('both agendas expose reported requests regardless of completed status', () => {
+  const badge = source.slice(source.indexOf('function TaskStatusBadge('), source.indexOf('const serviceActor ='))
+  assert.match(badge, /\|\| Boolean\(record\?\.technicalStatus \|\| record\?\.technicalObservation \|\| record\?\.technicalReportedAt\)/)
+  assert.match(badge, /event\.stopPropagation\(\); setReportOpen\(true\)/)
+})

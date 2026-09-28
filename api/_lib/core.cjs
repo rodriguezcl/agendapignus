@@ -376,6 +376,7 @@ function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now
 }
 
 function normalizeStateForSave(state, current, { allowEarlyCompletion = false } = {}) {
+  state = require('./team-service-assignments.cjs').synchronizeTeamServiceAssignments(state, current)
   current ||= { roles: [], employees: [], services: [], vehicles: [], customers: [], history: [], reviews: [], agenda: {} }
   state = migrateLegacyEstimatedMinutes(state).state
   const roles = (state.roles || []).map(role => ({ ...role, code: role.code || legacyRoleCode(role) }))
