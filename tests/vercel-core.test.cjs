@@ -1316,7 +1316,7 @@ test('hidrata la fecha diaria junto con sus tarjetas para no atribuir servicios 
   const hydration = source.slice(source.indexOf('const applyRemoteState ='), source.indexOf('const refreshRemoteState =', source.indexOf('const applyRemoteState =')))
 
   assert.match(hydration, /const persistedAgendaDate = \/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\//)
-  assert.match(hydration, /const loaded_teams = data\.agenda\?\.teams\?\.length \? data\.agenda\.teams/)
+  assert.match(hydration, /const loaded_teams = sortPlanTasksByTime\(\{ teams: data\.agenda\?\.teams\?\.length \? data\.agenda\.teams/)
   assert.match(hydration, /const loaded_date = persistedAgendaDate/)
   assert.match(hydration, /setTeams\(display.agenda.teams\); setDate\(display.agenda.date\)/)
   assert.doesNotMatch(hydration, /setDate\(currentLocalDate\(\)\)/)

@@ -727,6 +727,9 @@ const dailyPlanWithMonthlyTeams = (day, weekly) => {
 }
 const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?.rescheduledFrom || record?.date, activeTechs = []) => {
   if (!record?.id || !sourceDate || !nextDate) return weekly
+  const removedTeams = weekly?.[nextDate]?.removedTeams || []
+  const recordTeamNumber = Number(String(record.team || '').match(/\d+/)?.[0]) || 1
+  if (removedTeams.some(marker => removedWeeklyTeamMatches(marker, { teamId: record.teamId, label: record.team }, recordTeamNumber - 1))) return weekly
   const removed = weekly?.[nextDate]?.removedTaskIds || []
   if (removed.includes(`history:${record.id}`) || (record.sourceTaskId && (removed.includes(`task:${record.sourceTaskId}`) || removed.includes(String(record.sourceTaskId))))) return weekly
   const matchesRecord = task => String(task.historyId || '') === String(record.id) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
@@ -753,7 +756,9 @@ const moveRecordInWeeklyAgenda = (weekly, record, nextDate, sourceDate = record?
     const targetTimes = defaultServiceTimesForDate(nextDate, weekly)
     const storedTeams = alignDefaultServiceTimes(day?.teams || [], nextDate, targetTimes, fallbackDefaultServiceTimesForDate(nextDate))
     const defaults = createDefaultTeams(nextDate)
-    return { ...(day || {}), teams: mergeStoredTeamsWithDefaults(defaults, storedTeams) }
+    // Monthly defaults also contain crews explicitly removed for this date.
+    // A hydration repair must not recreate them (with fresh blank task IDs).
+    return { ...(day || {}), teams: applyRemovedWeeklyTeams(mergeStoredTeamsWithDefaults(defaults, storedTeams), day?.removedTeams || []) }
   }
   const next = { ...(weekly || {}) }
   next[sourceDate] = removeRecord(next[sourceDate])
