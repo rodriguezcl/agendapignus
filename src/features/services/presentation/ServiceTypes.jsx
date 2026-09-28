@@ -82,7 +82,7 @@ export default function ServiceTypes({ services, setServices, setNotice, ask, st
   return <>
     <div className="module-intro">
       <div><p className="eyebrow">CATÁLOGO OPERATIVO</p><h1>Tipo de servicio</h1><p>Administrá los servicios disponibles para planificar en la agenda técnica.</p></div>
-      <button className="primary" onClick={startCreate}><Icon name="plus" />Nuevo servicio</button>
+      <button title="Creá un tipo de servicio para utilizarlo en la planificación." className="primary" onClick={startCreate}><Icon name="plus" />Nuevo servicio</button>
     </div>
     {open && <EditorModal active={Boolean(editing)} title="Editar tipo de servicio" onClose={() => setOpen(false)}><form className="service-form" onSubmit={save}>
       <label><RequiredLabel>Nombre del servicio</RequiredLabel><input required value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /></label>
@@ -92,16 +92,16 @@ export default function ServiceTypes({ services, setServices, setNotice, ask, st
         <label><select aria-label="Minutos estimados" value={durationMinutes} onChange={event => updateDuration(durationHours, event.target.value)}><option value="0">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option></select><small>min</small></label>
       </div></div>
       <div className="service-form-actions">
-      <button className="primary"><Icon name="check" />{editing ? 'Guardar cambios' : 'Guardar servicio'}</button>
-      <button type="button" className="secondary" onClick={() => setOpen(false)}>Cancelar</button>
+      <button title="Guardá el nombre y la configuración de este tipo de servicio." className="primary"><Icon name="check" />{editing ? 'Guardar cambios' : 'Guardar servicio'}</button>
+      <button title="Cerrá el formulario sin guardar los cambios del tipo de servicio." type="button" className="secondary" onClick={() => setOpen(false)}>Cancelar</button>
       </div>
     </form></EditorModal>}
     <div className="data-card services-table">
       <div className="table-head"><span>Servicio</span><span>Descripción</span><span>Tiempo estimado</span><span>Estado</span><span>Acciones</span></div>
       {sortServicesAlphabetically(services).map(service => <div className="service-row" key={service.id}>
         <b>{service.name}</b><span>{service.description || 'Sin descripción'}</span><strong className="service-duration-value">{formatServiceEstimatedTime(service.estimatedMinutes)}</strong>
-        <div><button disabled={service.system} aria-label={`${service.status === 'Activo' ? 'Desactivar' : 'Activar'} ${service.name}`} aria-pressed={service.status === 'Activo'} title={service.system ? 'Servicio interno administrado por el sistema' : ''} className={`status ${service.status === 'Activo' ? 'on' : ''}`} onClick={() => ask('Cambiar estado', `¿Querés marcar ${service.name} como ${service.status === 'Activo' ? 'inactivo' : 'activo'}?`, () => toggleStatus(service))}>{service.status}</button></div>
-        <div className="row-actions">{service.system ? <em className="system-service-chip">Servicio del sistema</em> : <><button title="Editar servicio" aria-label={`Editar ${service.name}`} onClick={() => startEdit(service)}><Icon name="edit" size={16} /></button><button className="delete" title="Eliminar servicio" aria-label={`Eliminar ${service.name}`} onClick={() => ask('Eliminar servicio', `¿Querés eliminar ${service.name}?`, () => removeService(service), true)}><Icon name="trash" size={16} /></button></>}</div>
+        <div><button disabled={service.system} aria-label={`${service.status === 'Activo' ? 'Desactivar' : 'Activar'} ${service.name}`} aria-pressed={service.status === 'Activo'} title={service.system ? 'Este servicio interno está administrado por el sistema y no se puede desactivar aquí.' : service.status === 'Activo' ? 'Desactivá este tipo de servicio para dejar de ofrecerlo en nuevas planificaciones.' : 'Activá este tipo de servicio para poder seleccionarlo al planificar.'} className={`status ${service.status === 'Activo' ? 'on' : ''}`} onClick={() => ask('Cambiar estado', `¿Querés marcar ${service.name} como ${service.status === 'Activo' ? 'inactivo' : 'activo'}?`, () => toggleStatus(service))}>{service.status}</button></div>
+        <div className="row-actions">{service.system ? <em className="system-service-chip">Servicio del sistema</em> : <><button title="Modificá el nombre y la configuración de este tipo de servicio." aria-label={`Editar ${service.name}`} onClick={() => startEdit(service)}><Icon name="edit" size={16} /></button><button className="delete" title="Solicitá eliminar este tipo de servicio del catálogo." aria-label={`Eliminar ${service.name}`} onClick={() => ask('Eliminar servicio', `¿Querés eliminar ${service.name}?`, () => removeService(service), true)}><Icon name="trash" size={16} /></button></>}</div>
       </div>)}
     </div>
   </>

@@ -27,6 +27,6 @@ export default class AppErrorBoundary extends React.Component {
 
   render() {
     if (!this.state.failed) return this.props.children
-    return <main className="login-page"><div className="login-card app-recovery"><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">RECUPERAR AGENDA</p><h1>No pudimos mostrar esta pantalla</h1><p>Actualizá la página para volver a cargar la información. Si el problema continúa, cerrá la sesión e ingresá nuevamente.</p><button className="primary" type="button" onClick={() => window.location.reload()}>Actualizar página</button><button className="secondary" type="button" disabled={this.state.closing} onClick={this.closeSession}>{this.state.closing ? 'Cerrando sesión…' : 'Cerrar sesión'}</button></div></main>
+    return <main className="login-page"><div className="login-card app-recovery"><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">RECUPERAR AGENDA</p><h1>No pudimos mostrar esta pantalla</h1><p>Actualizá la página para volver a cargar la información. Si el problema continúa, cerrá la sesión e ingresá nuevamente.</p><button title="Recargá la página para intentar recuperar la aplicación; los datos no guardados pueden perderse." className="primary" type="button" onClick={() => window.location.reload()}>Actualizar página</button><button title="Cerrá la sesión actual para volver a ingresar con tus credenciales." className="secondary" type="button" disabled={this.state.closing} onClick={this.closeSession}>{this.state.closing ? 'Cerrando sesión…' : 'Cerrar sesión'}</button></div></main>
   }
 }
