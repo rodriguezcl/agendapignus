@@ -67,7 +67,8 @@ export function technicianAgendaServices(records, today) {
     // futuro al día siguiente. La misma regla se aplica a controles vehiculares
     // y servicios comunes para que ninguna tarea posterior quede anticipada.
     return /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= tomorrow
-  })
+  }).sort((left, right) => String(left.date).localeCompare(String(right.date)) ||
+    String(left.time || left.scheduledTime || '99:99').localeCompare(String(right.time || right.scheduledTime || '99:99')))
 }
 
 export function overdueVehicleControls(records, today) {
