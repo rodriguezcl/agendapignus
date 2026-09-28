@@ -637,7 +637,7 @@ body.dark .weekly-add-task {
   outline: none;
 }
 
-.week-task-summary > :not(.week-task-title):not(.week-task-client):not(.agenda-task-status):not(.agenda-report-disclosure):not(.service-confirmation-label):not(.journey-plan-button):not(.journey-label) {
+.week-task-summary > :not(.week-task-title):not(.week-task-client):not(.week-task-locality):not(.agenda-task-status):not(.agenda-report-disclosure):not(.service-confirmation-label):not(.journey-plan-button):not(.journey-label) {
   display: none;
 }
 
@@ -1905,3 +1905,14 @@ body.dark .week-task-summary.available-slot:focus-visible {
 @media (max-width: 600px) {
   .weekly-service-modal-actions > button { flex: 1 1 100%; }
 }
+.week-task-summary > .week-task-locality {
+  display: block;
+  margin: 2px 0 5px;
+  font-family: inherit;
+  font-size: .82rem;
+  font-weight: 400;
+  line-height: 1.35;
+  color: #526b5c;
+  overflow-wrap: anywhere;
+}
+body.dark .week-task-summary > .week-task-locality { color: #b8ccbf; }
