@@ -28,6 +28,28 @@ async function harness() {
 }
 const command = id => () => [{ path: ['history', { key: 'id', id }], before: { id }, after: { id, detail: 'saved' }, existed: true, exists: true }]
 
+test('guardar un servicio independiente excluye borradores ajenos y respeta su eliminación remota', async () => {
+  const { applyStateOperations } = require('../api/_lib/state-operations.cjs')
+  const { preserveLocalDraft } = await import('../src/features/state/application/save-activity.mjs')
+  const { run, requests, applied, context, snapshot } = await harness()
+  const local = structuredClone(snapshot)
+  local.history[0].detail = 'Edición local de otro servicio'
+  context.currentSnapshotRef.current = JSON.stringify(local)
+  const pending = run(command('b'), { combinePendingState: true, independentService: true })
+  await tick()
+  assert.equal(requests[0].ops.length, 1)
+  assert.equal(requests[0].ops[0].path[1].id, 'b')
+  const remote = { history: [{ id: 'b' }], agenda: {} }
+  const stored = applyStateOperations(remote, requests[0].ops)
+  assert.deepEqual(stored.history, [{ id: 'b', detail: 'saved' }])
+  requests[0].resolve({ state: { ...stored, revision: 2 } })
+  await pending
+  const preserved = preserveLocalDraft(applied[0].options.preserveFrom, local, stored)
+  assert.equal(preserved.conflict, true)
+  assert.equal(preserved.state.history.find(item => item.id === 'a').detail, 'Edición local de otro servicio')
+  assert.equal(stored.history.some(item => item.id === 'a'), false)
+})
+
 test('actual App command sends independent saves concurrently and hydrates newest response once', async () => {
   const { run, requests, applied, context, snapshot } = await harness()
   const a = run(command('a'), { combinePendingState: true })

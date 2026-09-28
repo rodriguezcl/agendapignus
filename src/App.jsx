@@ -2075,7 +2075,7 @@ export default function App() {
   const refreshRemoteState = async () => {
     applyRemoteState(await stateRepository.load())
   }
-  const persistStateCommand = async (buildOperations, { combinePendingState = false, rebaseOnRecordConflict = false, isolatedMove = false, alignDisplayBaselines = false } = {}) => {
+  const persistStateCommand = async (buildOperations, { combinePendingState = false, rebaseOnRecordConflict = false, isolatedMove = false, alignDisplayBaselines = false, independentService = false } = {}) => {
     const saveEpoch = saveSessionEpochRef.current
     let release = !combinePendingState || isolatedMove ? saveActivityRef.current.acquire() : null
     if (!pendingConfirmedSavesRef.current) saveBatchRef.current = { baseline: JSON.parse(currentSnapshotRef.current), latest: null }
@@ -2102,6 +2102,7 @@ export default function App() {
       if (pendingConfirmedSavesRef.current === 1 && !saveBatchRef.current.latest) saveBatchRef.current.baseline = local
       const base = JSON.parse(lastPersistedSnapshotRef.current || 'null')
       if (!base) throw new Error('Esperá a que termine de cargar la agenda.')
+      if (independentService && !saveBatchRef.current.latest) saveBatchRef.current.baseline = base
       if (isolatedMove) {
         if (serialized !== lastPersistedSnapshotRef.current) throw new Error('Guardá los cambios pendientes de la agenda antes de reasignar el servicio.')
         const serverSnapshot = moveSnapshot
@@ -2112,7 +2113,7 @@ export default function App() {
       }
       let snapshot = local
       if (combinePendingState) {
-        const pendingOperations = serialized !== lastPersistedSnapshotRef.current ? stateOperations(base, local) : []
+        const pendingOperations = !independentService && serialized !== lastPersistedSnapshotRef.current ? stateOperations(base, local) : []
         const commandOperations = await buildOperations(local)
         const operations = alignDisplayBaselines && Number(lastServerSnapshotRef.current?.revision) === Number(stateRevisionRef.current)
           ? alignOperationBaselines([...pendingOperations, ...commandOperations], base, lastServerSnapshotRef.current)
@@ -2174,7 +2175,7 @@ export default function App() {
         : command.operation === 'task-remove'
           ? weeklyTaskRemovalOperations(snapshot, command)
       : weeklyServiceOperations(snapshot, command)
-  ), { combinePendingState: true, alignDisplayBaselines: true, isolatedMove: Boolean(command.sourceDay && command.task?.vehicleControl) })
+  ), { combinePendingState: true, alignDisplayBaselines: true, independentService: !command.operation && !command.sourceDay, isolatedMove: Boolean(command.sourceDay && command.task?.vehicleControl) })
   const persistWeeklyConfiguration = buildNext => persistStateCommand(snapshot => stateOperations(snapshot, buildNext(snapshot)), { combinePendingState: true, rebaseOnRecordConflict: true })
   const persistAgendaRecords = (before, records) => persistStateCommand(() => stateRepository.commit(stateOperations({ history: before }, { history: records }), stateRevisionRef.current))
   const reschedulingTeams = (day, sourceWeekly = weekly) => {
@@ -2328,7 +2329,11 @@ export default function App() {
         let base = null
         try { base = lastPersistedSnapshotRef.current ? JSON.parse(lastPersistedSnapshotRef.current) : null } catch { base = null }
         const changedBase = base ? compactStateBase(base, snapshot) : null
-        const payload = await stateRepository.save({ revision: stateRevisionRef.current, ...(changedBase && Object.keys(changedBase).length ? { base: changedBase } : {}), ...snapshot })
+        const operations = stateOperations(changedBase || base, snapshot)
+        const aligned = Number(lastServerSnapshotRef.current?.revision) === Number(stateRevisionRef.current)
+          ? alignOperationBaselines(operations, base, lastServerSnapshotRef.current)
+          : operations
+        const payload = await stateRepository.commit(aligned, stateRevisionRef.current)
         stateRevisionRef.current = Number(payload.revision)
         lastPersistedSnapshotRef.current = serializedStateSnapshot
         remoteConflictRevisionRef.current = null
