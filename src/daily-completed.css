@@ -1,4 +1,17 @@
 /* Completed cards use a summary layout, without empty editing-grid rows. */
+.agenda-task-status > .agenda-technical-note {
+  flex: 1 0 100%;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  margin-top: 8px;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.agenda-technical-note > b { display: block; font-size: 11px; line-height: 1.5; }
+.agenda-technical-note > p { margin: 6px 0 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; font-weight: 400; }
 .content > .team-card .tasks > .task-row.task-row-completed {
   display: flex !important;
   flex-wrap: wrap;

@@ -493,6 +493,11 @@ const agendaServiceProgress = (record, fallbackStatus) => {
     startedLabel: inProgress ? `Inició a las ${started.toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false })}` : ''
   }
 }
+function AgendaTechnicalNote({ record }) {
+  if (!record?.technicalObservation && !record?.technicalReportedAt) return null
+  return <div className="technician-report-detail agenda-technical-note"><b>{technicalReporter(record)} indicó · {record.technicalStatus || 'Estado informado'}</b><p>{record.technicalObservation || 'Servicio informado sin observaciones adicionales.'}</p>{record.technicalReportedAt && <small>Informado el {prettyReportDateTime(record.technicalReportedAt)}</small>}</div>
+}
+
 function TaskStatusBadge({ task, date, history, weekly = false }) {
   const [reportOpen, setReportOpen] = useState(false)
   const record = historyRecordForTask(task, date, history)
@@ -501,7 +506,7 @@ function TaskStatusBadge({ task, date, history, weekly = false }) {
   const service = String(task?.service || 'Sin tipo de servicio').trim()
   const occupancyTask = taskForScheduleOccupancy(task, date, history)
   const releaseLabel = occupancyTask ? completionLabel(occupancyTask) : ''
-return <><div className={`agenda-task-status ${weekly ? 'weekly-agenda-task-status' : 'daily-agenda-task-status'}`}><em className={`work-status ${statusClassName(status)}`}>{status}</em>{startedLabel && <small className="service-started-label" title="Hora de inicio registrada al presionar Iniciar servicio">{startedLabel}</small>}{status === 'Sin guardar' && <small className="unsaved-service-help">Guardá la agenda para habilitarlo al técnico.</small>}{weekly && task?.subscriberReservation && <em className="role-chip subscriber-reservation-chip">Reserva · PIG pendiente</em>}{weekly && <em className={`role-chip agenda-service-chip ${serviceColorClass(service)}`} title={service}>{service}</em>}{releaseLabel && <small title="Hora de finalización; la demora se calcula respecto del tiempo estimado.">{releaseLabel}</small>}{!weekly && ['Completado', 'Avance registrado'].includes(status) && <button type="button" className="link-button completed-service-report" onClick={() => setReportOpen(true)}>Ver informe técnico</button>}</div>{reportOpen && createPortal(<HistoryDetail record={{ ...task, date, ...record }} close={() => setReportOpen(false)} />, document.body)}</>
+return <><div className={`agenda-task-status ${weekly ? 'weekly-agenda-task-status' : 'daily-agenda-task-status'}`}><em className={`work-status ${statusClassName(status)}`}>{status}</em>{startedLabel && <small className="service-started-label" title="Hora de inicio registrada al presionar Iniciar servicio">{startedLabel}</small>}{status === 'Sin guardar' && <small className="unsaved-service-help">Guardá la agenda para habilitarlo al técnico.</small>}{weekly && task?.subscriberReservation && <em className="role-chip subscriber-reservation-chip">Reserva · PIG pendiente</em>}{weekly && <em className={`role-chip agenda-service-chip ${serviceColorClass(service)}`} title={service}>{service}</em>}{releaseLabel && <small title="Hora de finalización; la demora se calcula respecto del tiempo estimado.">{releaseLabel}</small>}{(!weekly && ['Completado', 'Avance registrado'].includes(status) || Boolean(record?.technicalStatus || record?.technicalObservation || record?.technicalReportedAt)) && <button type="button" className="link-button completed-service-report" onClick={event => { event.stopPropagation(); setReportOpen(true) }}>Ver informe técnico</button>}<AgendaTechnicalNote record={record} /></div>{reportOpen && createPortal(<HistoryDetail record={{ ...task, date, ...record }} close={() => setReportOpen(false)} />, document.body)}</>
 }
 const serviceActor = user => {
   const current = user || globalThis.__pignusCurrentUser
