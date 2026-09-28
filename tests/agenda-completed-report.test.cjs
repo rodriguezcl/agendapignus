@@ -41,3 +41,13 @@ test('technical notes remain in modals and inside the expandable card section', 
   assert.match(source, /<AgendaTechnicalNote record=\{historyRecordForTask\(task, day, operationalHistory\) \|\| taskEditor.baseRecord\}/)
   assert.match(source, /detail-notes customer-history-technical technician-report-detail agenda-technical-note/)
 })
+
+test('disclosure includes administration context and weekly cards do not hide it', () => {
+  const badge = source.slice(source.indexOf('function TaskStatusBadge('), source.indexOf('const serviceActor ='))
+  assert.match(badge, /Observación de agenda \/ Administración/)
+  assert.ok(badge.indexOf('agenda-admin-note') < badge.indexOf('<AgendaTechnicalNote'))
+  const css = fs.readFileSync(path.join(__dirname, '../src/weekly-enhancements.css'), 'utf8')
+  assert.match(css, /:not\(\.agenda-report-disclosure\)/)
+  const modal = source.slice(source.indexOf('{taskEditor && (() => {'), source.indexOf('<div className="weekly-scroll-top"'))
+  assert.ok(modal.indexOf('value={task.detail}') < modal.indexOf('<AgendaTechnicalNote'))
+})
