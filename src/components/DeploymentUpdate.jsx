@@ -102,6 +102,6 @@ export function useDeploymentUpdate({ active, busy, guard, logout }) {
   useEffect(() => { bannerRoot.current?.render(available ? <aside role="alert" style={{ position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: 'white', color: '#173c2c', border: '1px solid #bbcebf', borderRadius: 12, padding: 16, width: 'min(600px, 94vw)', boxShadow: '0 4px 24px #0003' }}>
     <b>Nueva versión disponible</b>
     <p>{error || 'Guardá o cancelá los cambios pendientes antes de actualizar. Luego deberás ingresar nuevamente.'}</p>
-    <button type="button" className="primary" disabled={busy} onClick={() => { document.activeElement?.blur?.(); setTimeout(() => proceedRef.current(), 100) }}>Actualizar</button>
+    <button title="Cargá la nueva versión de la plataforma; primero guardá o cancelá los formularios abiertos. Se cerrará tu sesión." type="button" className="primary" disabled={busy} onClick={() => { document.activeElement?.blur?.(); setTimeout(() => proceedRef.current(), 100) }}>Actualizar</button>
   </aside> : null) }, [available, error, busy])
 }

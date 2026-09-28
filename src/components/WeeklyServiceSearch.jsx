@@ -48,8 +48,8 @@ export default function WeeklyServiceSearch({ anchor, weekly, history, getPlan, 
   return <div className="weekly-service-search" ref={root} role="search" aria-label="Buscar servicios entre semanas">
     <label>Buscar en todas las semanas<input type="search" value={query} placeholder="Nombre o número de cuenta" onChange={event => { setQuery(event.target.value); setIndex(0) }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); move(event.shiftKey ? -1 : 1) } if (event.key === 'Escape') setQuery('') }} /></label>
     <span role="status" aria-live="polite">{query.trim() ? matches.length ? `${selectedIndex + 1}/${matches.length} · ${selected.day.split('-').reverse().join('/')}` : 'Sin resultados' : ''}</span>
-    <button type="button" className="secondary" aria-label="Servicio anterior" disabled={!matches.length} onClick={() => move(-1)}>↑</button>
-    <button type="button" className="secondary" aria-label="Servicio siguiente" disabled={!matches.length} onClick={() => move(1)}>↓</button>
-    <button type="button" className="secondary" disabled={!selected || !ready} onClick={() => openService(selected.day, selected.teamIndex, selected.taskIndex)}>Ver servicio</button>
+    <button title="Mostrá la coincidencia anterior de la búsqueda de servicios." type="button" className="secondary" aria-label="Servicio anterior" disabled={!matches.length} onClick={() => move(-1)}>↑</button>
+    <button title="Mostrá la siguiente coincidencia de la búsqueda de servicios." type="button" className="secondary" aria-label="Servicio siguiente" disabled={!matches.length} onClick={() => move(1)}>↓</button>
+    <button title="Abrí el servicio encontrado para consultar sus datos y acciones disponibles." type="button" className="secondary" disabled={!selected || !ready} onClick={() => openService(selected.day, selected.teamIndex, selected.taskIndex)}>Ver servicio</button>
   </div>
 }
