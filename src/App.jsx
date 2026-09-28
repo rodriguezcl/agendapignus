@@ -71,6 +71,7 @@ import { weeklyTeamRemovalOperations } from './features/state/application/weekly
 import { weeklyTaskRemovalOperations } from './features/state/application/weekly-task-removal.mjs'
 import { stateOperations } from './features/state/application/state-operations.mjs'
 import { alignOperationBaselines } from './features/state/application/operation-baselines.mjs'
+import { dailyServiceOperations } from './features/state/application/daily-service-save.mjs'
 import { migrateLegacyEstimatedMinutes } from './domain/state/legacy-estimated-minutes.mjs'
 import './weekly.css'
 import './weekly-enhancements.css'
@@ -2179,7 +2180,9 @@ export default function App() {
         ? weeklyTeamRemovalOperations(snapshot, { ...command, allowVehicleControlRemoval: authUser?.roleCode === 'administrator' })
         : command.operation === 'task-remove'
           ? weeklyTaskRemovalOperations(snapshot, command)
-      : weeklyServiceOperations(snapshot, command)
+      : command.dailyDraft
+        ? dailyServiceOperations(lastServerSnapshotRef.current, stateRevisionRef.current, command)
+        : weeklyServiceOperations(snapshot, command)
   ), { combinePendingState: true, alignDisplayBaselines: true, independentService: !command.operation && !command.sourceDay, isolatedMove: Boolean(command.sourceDay && command.task?.vehicleControl) })
   const persistWeeklyConfiguration = buildNext => persistStateCommand(snapshot => stateOperations(snapshot, buildNext(snapshot)), { combinePendingState: true, rebaseOnRecordConflict: true })
   const persistAgendaRecords = (before, records) => persistStateCommand(() => stateRepository.commit(stateOperations({ history: before }, { history: records }), stateRevisionRef.current))
@@ -3324,7 +3327,7 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
         const record = replacements[0]
         if (!team?.members?.length || !task || !record) throw new Error('Asigná al menos un técnico antes de guardar el servicio.')
         record.team = `Equipo ${teams.indexOf(team) + 1}`
-        payload = await persistWeeklyService({ day: date, team, task: { ...task, historyId: record.id, status: record.status },
+        payload = await persistWeeklyService({ dailyDraft: true, day: date, team, task: { ...task, historyId: record.id, status: record.status },
           record, baseRecord: historyRecordForTask(task, date, history) || null,
           baseTask: weekly[date]?.teams?.flatMap(item => item.tasks || []).find(item => item.taskId === onlyTaskId) || null })
       } else payload = await persistAgendaRecords(previous.filter(record => replacedIds.has(record.id)), replacements)
