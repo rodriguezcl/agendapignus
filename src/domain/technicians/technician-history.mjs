@@ -58,6 +58,16 @@ const nextCalendarDate = value => {
   return date.toISOString().slice(0, 10)
 }
 
+export function technicianAgendaGroups(services, today) {
+  const tomorrow = nextCalendarDate(today)
+  const overdue = services.filter(record => record.date < today)
+  return [
+    ...(overdue.length ? [{ id: 'overdue', title: 'Pendientes de días anteriores', date: '', services: overdue }] : []),
+    { id: 'today', title: 'Agenda de hoy', date: today, services: services.filter(record => record.date === today) },
+    { id: 'tomorrow', title: 'Agenda de mañana', date: tomorrow, services: services.filter(record => record.date === tomorrow) }
+  ]
+}
+
 export function technicianAgendaServices(records, today) {
   const tomorrow = nextCalendarDate(today)
   return (records || []).filter(record => {
