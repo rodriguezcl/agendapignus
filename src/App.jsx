@@ -2335,6 +2335,9 @@ export default function App() {
           : operations
         const payload = await stateRepository.commit(aligned, stateRevisionRef.current)
         stateRevisionRef.current = Number(payload.revision)
+        // Keep the authoritative baseline current even when typing continued
+        // during the request and the response cannot replace the visible draft.
+        if (payload.state) lastServerSnapshotRef.current = structuredClone(payload.state)
         lastPersistedSnapshotRef.current = serializedStateSnapshot
         remoteConflictRevisionRef.current = null
         if (payload.state && currentSnapshotRef.current === serializedStateSnapshot) {

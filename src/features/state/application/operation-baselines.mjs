@@ -30,9 +30,8 @@ export function alignOperationBaselines(operations, display, server) {
     const affected = touched.some(previous => overlaps(previous, path))
     touched.push(path)
     const entity = path.at(-1)
-    const service = (path[0] === 'history' && entity?.key === 'id') ||
-      (path[0] === 'agenda' && entity?.key === 'taskId')
-    if (!service || affected || !operation.existed) return operation
+    const projection = (path[0] === 'history' && entity?.key === 'id') || path[0] === 'agenda'
+    if (!projection || affected || !operation.existed) return operation
     const shown = lookup(display, path)
     const stored = lookup(server, path)
     if (!shown.found || !stored.found || !equal(operation.before, shown.value)) return operation
