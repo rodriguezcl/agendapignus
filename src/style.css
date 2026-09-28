@@ -98,6 +98,32 @@
   background: transparent;
 }
 
+.customer-previous-account {
+  display: block;
+  color: #9a6b00 !important;
+  font-weight: 700;
+  margin-top: 3px;
+}
+
+.customer-provenance-detail {
+  background: #fff8e5;
+}
+
+.customer-provenance-detail small {
+  display: block;
+  color: #756323;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+.app-shell[data-theme="dark"] .customer-provenance-detail {
+  background: #332f1d;
+}
+
+.app-shell[data-theme="dark"] .customer-provenance-detail small {
+  color: #e2ce83;
+}
+
 .app-shell .content > .audit-page > .audit-topbar {
   display: none;
 }
