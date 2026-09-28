@@ -1882,3 +1882,26 @@ body.dark .week-task-summary.available-slot:focus-visible {
 .historical-day-service .past-field-wide { grid-column: 1 / -1; }
 .historical-day-service .past-detail-section { margin-top: 24px; }
 .historical-day-service .past-field-money { font-weight: 700; }
+.weekly-service-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border, #d8e3da);
+}
+.weekly-service-modal-actions > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 14px;
+  white-space: normal;
+  word-break: normal;
+}
+.weekly-service-modal-actions .weekly-service-delete { color: #b63737; }
+@media (max-width: 600px) {
+  .weekly-service-modal-actions > button { flex: 1 1 100%; }
+}
