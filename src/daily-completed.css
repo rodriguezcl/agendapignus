@@ -1,0 +1,47 @@
+/* Completed cards use a summary layout, without empty editing-grid rows. */
+.content > .team-card .tasks > .task-row.task-row-completed {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
+  min-height: 0 !important;
+  padding: 16px 18px;
+}
+.content > .team-card .task-row.task-row-completed > .task-title {
+  flex: 0 0 110px;
+  align-self: center;
+  margin: 0;
+}
+.content > .team-card .task-row.task-row-completed > .daily-completed-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1 1 360px;
+  gap: 12px 24px;
+  min-width: 0;
+}
+.daily-completed-identity { min-width: 0; overflow-wrap: anywhere; }
+.daily-completed-identity > strong { font-size: 14px; line-height: 1.4; }
+.daily-completed-identity > p { margin: 5px 0 0; font-size: 13px; }
+.daily-completed-identity time { font-weight: 700; font-variant-numeric: tabular-nums; }
+.daily-completed-status { flex: 0 1 340px; }
+.daily-completed-status .daily-agenda-task-status { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.daily-completed-status .completed-service-report { min-height: 36px; padding: 6px 0; }
+.daily-completed-readonly { display: flex; align-items: center; gap: 4px; font-size: 11px; opacity: .8; }
+.content > .team-card .task-row.task-row-completed > .daily-task-actions { display: none !important; }
+.content > .team-card .task-row.task-row-completed > .service-trace {
+  flex: 1 0 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 6px 0 0;
+  border: 0;
+  background: transparent;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .content > .team-card .tasks > .task-row.task-row-completed { padding: 14px; gap: 10px; }
+  .content > .team-card .task-row.task-row-completed > .task-title { flex-basis: 100%; }
+  .content > .team-card .task-row.task-row-completed > .daily-completed-summary { flex-direction: column; align-items: stretch; flex-basis: 100%; gap: 8px; }
+  .daily-completed-status { flex-basis: auto; }
+}
