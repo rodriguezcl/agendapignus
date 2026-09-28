@@ -1,5 +1,6 @@
 /* Completed cards use a summary layout, without empty editing-grid rows. */
-.agenda-task-status > .agenda-technical-note {
+.modal .agenda-technical-note,
+.agenda-report-disclosure .agenda-technical-note {
   flex: 1 0 100%;
   width: 100%;
   min-width: 0;
@@ -22,13 +23,14 @@
 }
 .content > .team-card .task-row.task-row-completed > .task-title {
   flex: 0 0 110px;
-  align-self: center;
+  align-self: flex-start;
   margin: 0;
 }
 .content > .team-card .task-row.task-row-completed > .daily-completed-summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  flex-wrap: wrap;
   flex: 1 1 360px;
   gap: 12px 24px;
   min-width: 0;
@@ -37,10 +39,38 @@
 .daily-completed-identity > strong { font-size: 14px; line-height: 1.4; }
 .daily-completed-identity > p { margin: 5px 0 0; font-size: 13px; }
 .daily-completed-identity time { font-weight: 700; font-variant-numeric: tabular-nums; }
-.daily-completed-status { flex: 0 1 340px; }
+.daily-completed-status { display: contents; }
 .daily-completed-status .daily-agenda-task-status { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .daily-completed-status .completed-service-report { min-height: 36px; padding: 6px 0; }
 .daily-completed-readonly { display: flex; align-items: center; gap: 4px; font-size: 11px; opacity: .8; }
+.daily-completed-summary > .daily-completed-identity { flex: 1 1 280px; }
+.agenda-report-disclosure { width: 100%; min-width: 0; flex: 1 0 100%; box-sizing: border-box; }
+.agenda-report-disclosure > summary {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  min-height: 44px;
+  box-sizing: border-box;
+  cursor: pointer;
+  color: inherit;
+  border: 1px solid #b8cbbd;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  list-style: none;
+}
+.agenda-report-disclosure > summary::-webkit-details-marker { display: none; }
+.agenda-report-disclosure > summary:focus-visible { outline: 2px solid #8855b4; outline-offset: 3px; }
+.agenda-report-disclosure .report-hide { display: none; }
+.agenda-report-disclosure[open] .report-show { display: none; }
+.agenda-report-disclosure[open] .report-hide { display: inline; }
+.content > .team-card .tasks > .task-row > .agenda-report-disclosure {
+  grid-column: 2 / 5 !important;
+  grid-row: auto !important;
+  align-self: start;
+}
 .content > .team-card .task-row.task-row-completed > .daily-task-actions { display: none !important; }
 .content > .team-card .task-row.task-row-completed > .service-trace {
   flex: 1 0 100%;
@@ -53,6 +83,7 @@
   overflow-wrap: anywhere;
 }
 @media (max-width: 700px) {
+  .content > .team-card .tasks > .task-row > .agenda-report-disclosure { grid-column: 1 / -1 !important; }
   .content > .team-card .tasks > .task-row.task-row-completed { padding: 14px; gap: 10px; }
   .content > .team-card .task-row.task-row-completed > .task-title { flex-basis: 100%; }
   .content > .team-card .task-row.task-row-completed > .daily-completed-summary { flex-direction: column; align-items: stretch; flex-basis: 100%; gap: 8px; }

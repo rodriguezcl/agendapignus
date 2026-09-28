@@ -13,11 +13,13 @@ test('weekly completed service opens the read-only detail before the editing pat
   assert.match(source, /completedService && <HistoryDetail record=\{completedService\}/)
 })
 
-test('daily completed badge offers technical detail through a portal', () => {
+test('daily completed badge offers a collapsed technical disclosure', () => {
   const badge = source.slice(source.indexOf('function TaskStatusBadge('), source.indexOf('const serviceActor ='))
   assert.match(badge, /!weekly && \['Completado', 'Avance registrado'\]\.includes\(status\)/)
   assert.match(badge, /Ver informe técnico/)
-  assert.match(badge, /createPortal\(<HistoryDetail record=\{\{ \.\.\.task, date, \.\.\.record \}\}/)
+  assert.match(badge, /<details className="agenda-report-disclosure"/)
+  assert.doesNotMatch(badge, /<details[^>]*\sopen[\s=>]/)
+  assert.match(badge, /Ocultar informe técnico/)
 })
 
 test('shared read-only detail separates agenda notes from the technician report', () => {
@@ -30,5 +32,12 @@ test('shared read-only detail separates agenda notes from the technician report'
 test('both agendas expose reported requests regardless of completed status', () => {
   const badge = source.slice(source.indexOf('function TaskStatusBadge('), source.indexOf('const serviceActor ='))
   assert.match(badge, /\|\| Boolean\(record\?\.technicalStatus \|\| record\?\.technicalObservation \|\| record\?\.technicalReportedAt\)/)
-  assert.match(badge, /event\.stopPropagation\(\); setReportOpen\(true\)/)
+  assert.match(badge, /onClick=\{event => event.stopPropagation\(\)\}/)
+})
+
+test('technical notes remain in modals and inside the expandable card section', () => {
+  const badge = source.slice(source.indexOf('function TaskStatusBadge('), source.indexOf('const serviceActor ='))
+  assert.match(badge, /<AgendaTechnicalNote record=\{record \|\| task\} \/><\/details>/)
+  assert.match(source, /<AgendaTechnicalNote record=\{historyRecordForTask\(task, day, operationalHistory\) \|\| taskEditor.baseRecord\}/)
+  assert.match(source, /detail-notes customer-history-technical technician-report-detail agenda-technical-note/)
 })
