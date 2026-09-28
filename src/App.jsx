@@ -2429,6 +2429,7 @@ export default function App() {
     if (timeInput && !timeInput.dataset.sortOnBlur) {
       timeInput.dataset.sortOnBlur = 'true'
       timeInput.addEventListener('blur', () => {
+        delete timeInput.dataset.sortOnBlur
         setTeams(previous => previous.map((currentTeam, teamIndex) => teamIndex === team
           ? { ...currentTeam, tasks: sortTasksByTime(currentTeam.tasks) }
           : currentTeam))
