@@ -432,3 +432,16 @@ body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice[data-tone=
 }
 .pending-reminder-confirmation > svg,
 .service-confirmation-button.awaiting > svg { color: inherit; }
+
+/* SoftGuard data verification: rose, distinct from pending amber and rescheduling violet. */
+.app-shell .pending-reminder-softguard {
+  background: #fff1f2;
+  border-color: #e6a0af;
+  color: #8b2444;
+}
+.app-shell[data-theme="dark"] .pending-reminder-softguard {
+  background: #452331;
+  border-color: #ad647c;
+  color: #ffd5e0;
+}
+.pending-reminder-softguard > svg { color: inherit; }

@@ -7,7 +7,7 @@ export default function SoftGuardVerification({ customers = [] }) {
   const cases = useMemo(() => softguardVerificationCases(customers), [customers])
   if (!cases.length) return null
   return <>
-    <button type="button" className="pending-reminder" title="Revisá los PIG que reaparecieron con el mismo nombre después de convertirse en CLI por una baja." onClick={() => setOpen(true)}>
+    <button type="button" className="pending-reminder pending-reminder-softguard" title="Revisá los PIG que reaparecieron con el mismo nombre después de convertirse en CLI por una baja." onClick={() => setOpen(true)}>
       <Icon name="alert" /><div><b>Pendiente de verificación en SoftGuard: {cases.length} cuenta(s)</b><span>Hay cuentas PIG que coinciden con clientes CLI provenientes de una baja de servicio.</span></div>
     </button>
     {open && <div className="modal-layer"><section className="modal detail-modal" role="dialog" aria-modal="true" aria-labelledby="softguard-verification-title">
