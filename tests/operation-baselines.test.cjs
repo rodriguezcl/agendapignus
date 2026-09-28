@@ -2,6 +2,24 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { applyStateOperations } = require('../api/_lib/state-operations.cjs')
 
+test('abrir otra fecha usa la versión guardada de equipos reconstruidos sin falso conflicto', async () => {
+  const { stateOperations } = await import('../src/features/state/application/state-operations.mjs')
+  const { alignOperationBaselines } = await import('../src/features/state/application/operation-baselines.mjs')
+  const server = { agenda: { date: '2026-09-30', teams: [{ teamId: 'one', label: 'Equipo 3', tasks: [] }], weekly: {} } }
+  const display = structuredClone(server)
+  display.agenda.teams[0].label = 'Equipo 1'
+  const next = structuredClone(display)
+  next.agenda.date = '2026-10-01'
+  next.agenda.teams = [{ teamId: 'october', label: 'Equipo 1', tasks: [{ taskId: 'blank', time: '09:00' }] }]
+  const operations = stateOperations(display, next)
+  assert.throws(() => applyStateOperations(server, operations), { code: 'RECORD_WRITE_CONFLICT' })
+  const aligned = alignOperationBaselines(operations, display, server)
+  assert.deepEqual(applyStateOperations(server, aligned).agenda, next.agenda)
+  const concurrent = structuredClone(server)
+  concurrent.agenda.teams[0].label = 'Cambio de otra sesión'
+  assert.throws(() => applyStateOperations(concurrent, aligned), { code: 'RECORD_WRITE_CONFLICT' })
+})
+
 async function fixture(minutes = 420) {
   const { rescheduledAgendaTask } = await import('../src/domain/agenda/reschedule-repair.mjs')
   const { weeklyServiceOperations } = await import('../src/features/state/application/weekly-service-save.mjs')
