@@ -2050,13 +2050,15 @@ export default function App() {
     const persistedAgendaDate = /^\d{4}-\d{2}-\d{2}$/.test(String(data.agenda?.date || ''))
       ? data.agenda.date
       : currentLocalDate()
-    const loaded_teams = data.agenda?.teams?.length ? data.agenda.teams : [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }]
+    const loaded_teams = sortPlanTasksByTime({ teams: data.agenda?.teams?.length ? data.agenda.teams : [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }] }).teams
     const loaded_date = persistedAgendaDate
     const loaded_weekly = data.agenda?.weekly && typeof data.agenda.weekly === 'object' ? data.agenda.weekly : {}
     const remoteSnapshot = { roles: loadedRoles, employees: loaded_employees, services: loaded_services, vehicles: loaded_vehicles, history: loaded_history, customers: loaded_customers, agenda: { date: loaded_date, teams: loaded_teams, weekly: loaded_weekly } }
     const local = currentSnapshotRef.current ? JSON.parse(currentSnapshotRef.current) : remoteSnapshot
     const preserved = preserveFrom ? preserveLocalDraft(preserveFrom, local, remoteSnapshot) : { state: remoteSnapshot, conflict: false }
-    const display = preserved.state
+    // Both refreshes and save acknowledgements may return storage order. Sort
+    // after merging drafts too, using their latest times rather than positions.
+    const display = { ...preserved.state, agenda: { ...preserved.state.agenda, teams: sortPlanTasksByTime(preserved.state.agenda).teams } }
     const hasDraft = JSON.stringify(display) !== JSON.stringify(remoteSnapshot)
     hydrationBaselineRef.current = hasDraft ? JSON.stringify(remoteSnapshot) : null
     lastPersistedSnapshotRef.current = JSON.stringify(remoteSnapshot)
