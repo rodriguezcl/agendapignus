@@ -539,6 +539,7 @@ function secureEmployees(employees, previousEmployees) {
 }
 
 function validateState(state, previousState = null) {
+  require('./completed-service-policy.cjs').assertCompletedServices(state, previousState)
   require('./journey-identity.cjs').synchronizeJourneyIdentity(state, previousState)
   require('./service-journeys.cjs').validateServiceJourneys(state, previousState)
   const previousConfirmationRecords = new Map((previousState?.history || []).map(record => [String(record.id), record]))
