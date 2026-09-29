@@ -1,0 +1,12 @@
+.modal.history-reschedule-modal { width: min(950px, calc(100vw - 32px)); max-width: 950px; max-height: 90dvh; overflow-y: auto; }
+.reschedule-overview { display: flex; justify-content: space-between; gap: 24px; padding: 20px 0; border-bottom: 1px solid var(--ui-border, #d7e3d8); }
+.reschedule-overview label { display: grid; gap: 8px; }
+.reschedule-team-list { display: grid; gap: 12px; margin: 20px 0; }
+.reschedule-team { border: 1px solid var(--ui-border, #d7e3d8); border-radius: 12px; padding: 16px; }
+.reschedule-team header { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; margin-bottom: 12px; }
+.reschedule-slots { display: flex; flex-wrap: wrap; gap: 8px; }
+.reschedule-slots button { min-width: 72px; min-height: 44px; }
+.reschedule-selection { padding: 16px; border: 1px solid var(--ui-border, #d7e3d8); border-radius: 10px; }
+.reschedule-selection p { margin-bottom: 0; }
+.reschedule-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+@media (max-width: 600px) { .reschedule-overview { flex-direction: column; } .reschedule-footer button { flex: 1; } }
