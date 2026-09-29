@@ -24,7 +24,7 @@ test('daily and weekly components render through their actual prop forwarding ch
   const confirmation = awaitingConfirmation => renderToString(React.createElement(compiled.exports.ServiceConfirmationButton, {
     task: { client: 'Cliente', awaitingConfirmation }, day: '2099-01-05', onDraftChange: noop
   }))
-  assert.match(confirmation(false), /<span>A confirmar<\/span>/)
+  assert.match(confirmation(false), /<span>Servicio a confirmar<\/span>/)
   assert.doesNotMatch(confirmation(false), /Marcar A CONFIRMAR/)
   assert.match(confirmation(true), /Confirmar servicio/)
   assert.equal(renderToString(React.createElement(compiled.exports.ServiceConfirmationButton, {
