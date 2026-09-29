@@ -6403,7 +6403,7 @@ function ServiceConfirmationButton({ task, day, history = [], persist, onDraftCh
   const current = { ...task, ...base }
   const awaiting = task.awaitingConfirmation === true
   if (!task.client || (!base && !onDraftChange) || !canChangeServiceConfirmation(current) || day < currentLocalDate()) return null
-  const label = awaiting ? 'Confirmar servicio' : 'A confirmar'
+  const label = awaiting ? 'Confirmar servicio' : 'Servicio a confirmar'
   const action = async () => {
     if (onDraftChange) onDraftChange({ awaitingConfirmation: !awaiting })
     else if (base && persist) await persist({ operation: 'service-confirmation', base, awaitingConfirmation: !awaiting })

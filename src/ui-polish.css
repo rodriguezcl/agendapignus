@@ -2807,6 +2807,12 @@ html.modal-open body {
   .weekly-task-modal .internal-preparation { padding: 18px; }
 }
 
+.weekly-task-modal .weekly-task-form > label > textarea {
+  min-height: 180px;
+  field-sizing: content;
+  resize: vertical;
+}
+
 /* Las jornadas históricas conservan su información visible, pero todos sus
    controles de planificación quedan inequívocamente en modo de solo lectura. */
 .weekly-day-fields {
