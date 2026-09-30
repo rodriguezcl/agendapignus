@@ -8,6 +8,10 @@ const DEFAULT_TECHNICIAN_ORDER = [
 
 const normalizeName = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
+export const monthlyEligibleTechnicians = technicians => (technicians || []).filter(technician =>
+  technician.status === 'Activo' && (technician.roleCode === 'technician' || (!technician.roleCode && normalizeName(technician.role) === 'tecnico'))
+)
+
 export const orderedMonthlyTechnicians = technicians => {
   const remaining = [...(technicians || [])]
   const preferred = DEFAULT_TECHNICIAN_ORDER.map(tokens => {
