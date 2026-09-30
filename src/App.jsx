@@ -65,6 +65,8 @@ import { readSettledLoginCredentials } from './features/auth/application/login-a
 import { serviceAdvanceRepository } from './infrastructure/repositories/service-advance-repository.mjs'
 import { serviceRecordChangedFields, serviceRecordFingerprint } from './domain/history/service-concurrency.mjs'
 import { recoverStateRevisionConflict } from './features/state/application/state-save-conflict.mjs'
+import { canRefreshRemote, REMOTE_EDIT_NOTICE } from './features/state/application/remote-refresh-policy.mjs'
+import { useUnsavedFormFields } from './features/state/application/useUnsavedFormFields.js'
 import { compactStateBase } from './features/state/application/compact-state-base.mjs'
 import { historyRecordRepository } from './infrastructure/repositories/history-record-repository.mjs'
 import { servicePhotoRepository } from './infrastructure/repositories/service-photo-repository.mjs'
@@ -1312,6 +1314,7 @@ export default function App() {
   const [historyEntryFilter, setHistoryEntryFilter] = useState(null)
   useEffect(() => { if (requestedModule !== 'history') setHistoryEntryFilter(null) }, [requestedModule])
   const weeklyNavigationGuard = useRef(null)
+  const hasUnsavedFormFields = useUnsavedFormFields()
   const requestNavigation = action => weeklyNavigationGuard.current ? weeklyNavigationGuard.current(action) : action()
   const [menuOpen, setMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readLocalValue('pignus-sidebar-collapsed') === 'true')
@@ -2395,7 +2398,12 @@ export default function App() {
       // que React alcance a actualizar stateRevision. No debe tratarse como un
       // cambio externo durante esa pequeña ventana.
       if (confirmedSaveRef.current || loggingOutRef.current || refreshing || pendingStateSaves.current > 0 || document.visibilityState === 'hidden') return
-      if (document.activeElement?.closest('.weekly-board input, .weekly-board select, .weekly-board textarea, .team-card input, .team-card select, .team-card textarea')) return
+      const canRefresh = () => canRefreshRemote({
+        saving: confirmedSaveRef.current || pendingStateSaves.current > 0,
+        draft: hasUnsavedFormFields() || Boolean(weeklyNavigationGuard.current?.hasDraft?.()),
+        current: isSupervisor ? lastPersistedSnapshotRef.current : currentSnapshotRef.current,
+        baseline: lastPersistedSnapshotRef.current
+      })
       refreshing = true
       try {
         let data
@@ -2410,14 +2418,18 @@ export default function App() {
         }
         const remoteRevision = Number(data.revision)
         if (!stopped && remoteRevision !== Number(stateRevisionRef.current)) {
-          const hasLocalChanges = !isSupervisor && (pendingStateSaves.current > 0 || currentSnapshotRef.current !== lastPersistedSnapshotRef.current)
+          const hasLocalChanges = !canRefresh()
           if (hasLocalChanges) {
-            if (remoteConflictRevisionRef.current !== remoteRevision) setNotice('Hay cambios guardados desde otra sesión. Recargá la página para continuar sin sobrescribirlos.')
+            if (remoteConflictRevisionRef.current !== remoteRevision) setNotice(REMOTE_EDIT_NOTICE)
             remoteConflictRevisionRef.current = remoteRevision
           } else {
             const remoteState = await stateRepository.load()
-            if (!stopped) {
+            if (!stopped && !loggingOutRef.current && canRefresh()) {
               applyRemoteState(remoteState)
+              setNotice(previous => previous.startsWith('Hay cambios guardados desde otra sesión') ? '' : previous)
+            } else if (!stopped && !loggingOutRef.current) {
+              setNotice(REMOTE_EDIT_NOTICE)
+              remoteConflictRevisionRef.current = Number(remoteState.revision)
             }
           }
         } else if (remoteRevision === Number(stateRevisionRef.current)) remoteConflictRevisionRef.current = null
@@ -3381,6 +3393,7 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
       if (pendingDailyServices.length) setDailyLeave({ action })
       else action()
     }
+    navigationGuardRef.current.hasDraft = () => singleSaveRef.current || pendingDailyServices.length > 0
     return () => { navigationGuardRef.current = null }
   })
   useEffect(() => {
@@ -4127,6 +4140,10 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
   }
   useEffect(() => {
     if (navigationGuardRef) navigationGuardRef.current = requestWeeklyLeave
+    if (navigationGuardRef?.current) navigationGuardRef.current.hasDraft = () => Boolean(taskEditor && (
+      JSON.stringify(taskEditor.draft) !== JSON.stringify(taskWithServiceEstimate(taskEditor.baseTask || taskEditor.teamSnapshot.tasks[taskEditor.taskIndex], serviceForWeeklyTask(taskEditor.draft))) ||
+      (!taskEditor.baseRecord && taskHasContent(taskEditor.draft)) || taskEditor.photoData || taskEditor.photoRemoved
+    ))
     return () => { if (navigationGuardRef) navigationGuardRef.current = null }
   })
   useEffect(() => {
