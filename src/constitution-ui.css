@@ -445,3 +445,51 @@ body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice[data-tone=
   color: #ffd5e0;
 }
 .pending-reminder-softguard > svg { color: inherit; }
+
+/* Stable category colors across dashboard reminders, in both themes. */
+.vehicle-insurance-reminders article {
+  background: #fff0e5;
+  border-color: #dc9461;
+  color: #8a380b;
+}
+.subscriber-reservation-reminders article {
+  background: #e6f6f4;
+  border-color: #78bdb5;
+  color: #155e59;
+}
+.app-shell .pending-reminder-today {
+  background: #fff6db;
+  border-color: #e4bd57;
+  color: #795300;
+}
+.app-shell .pending-reminder-overdue {
+  background: #ffeded;
+  border-color: #de8989;
+  color: #992626;
+}
+.app-shell[data-theme="dark"] .vehicle-insurance-reminders article,
+body.dark .vehicle-insurance-reminders article {
+  background: #402719;
+  border-color: #bd7e50;
+  color: #ffd5b8;
+}
+.app-shell[data-theme="dark"] .subscriber-reservation-reminders article,
+body.dark .subscriber-reservation-reminders article {
+  background: #143c38;
+  border-color: #529e94;
+  color: #b8eee5;
+}
+.app-shell[data-theme="dark"] .pending-reminder-today {
+  background: #3c3218;
+  border-color: #ad8b36;
+  color: #ffe4a1;
+}
+.app-shell[data-theme="dark"] .pending-reminder-overdue {
+  background: #452020;
+  border-color: #b96565;
+  color: #ffcaca;
+}
+.vehicle-insurance-reminders article > svg,
+.subscriber-reservation-reminders article > svg,
+.pending-reminder-today > svg,
+.pending-reminder-overdue > svg { color: inherit; flex-shrink: 0; }

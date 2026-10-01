@@ -50,22 +50,26 @@
 .daily-completed-summary > .daily-completed-identity { flex: 1 1 280px; }
 .agenda-report-disclosure { width: 100%; min-width: 0; flex: 1 0 100%; box-sizing: border-box; }
 .agenda-report-disclosure > summary {
-  display: flex;
+  display: inline-flex;
   justify-content: center;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  min-height: 44px;
+  padding: 5px 9px;
+  min-height: 30px;
+  max-width: 100%;
   box-sizing: border-box;
   cursor: pointer;
   color: inherit;
   border: 1px solid #b8cbbd;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 700;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
   list-style: none;
 }
 .agenda-report-disclosure > summary::-webkit-details-marker { display: none; }
+.agenda-report-disclosure > summary:hover { background: rgba(105, 145, 115, .1); }
+@media (pointer: coarse) {
+  .agenda-report-disclosure > summary { min-height: 44px; }
+}
 .agenda-report-disclosure > summary:focus-visible { outline: 2px solid #8855b4; outline-offset: 3px; }
 .agenda-report-disclosure .report-hide { display: none; }
 .agenda-report-disclosure[open] .report-show { display: none; }
