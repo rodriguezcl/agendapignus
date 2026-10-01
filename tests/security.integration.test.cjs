@@ -101,6 +101,7 @@ test.before(async () => {
     { id: 'qa-supervisor-role', code: 'role-qa-supervisor', name: 'Supervisor', description: 'Prueba de seguimiento CCTV', permissions: { dashboard: true, accounts: true, history: true, historyManage: true } }
   ]
   roles.forEach(role => upsertJson(db, 'roles', 'id', role))
+  upsertJson(db, 'roles', 'id', { id: 'qa-operator-role', code: 'operator', name: 'Operador', permissions: { weekly: true, agenda: true, history: true, employees: true, weeklyTeams: true } })
   const employees = [
     { id: 'qa-admin', firstName: 'QA', lastName: 'Admin', name: 'QA Admin', roleId: 1, role: 'Administrador', email: 'qa-admin@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') },
     { id: 'qa-admin-secondary', firstName: 'QA', lastName: 'Admin Secundario', name: 'QA Admin Secundario', roleId: 1, role: 'Administrador', email: 'qa-admin-secondary@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') },
@@ -111,6 +112,7 @@ test.before(async () => {
     { id: 'qa-supervisor', firstName: 'QA', lastName: 'Supervisor', name: 'QA Supervisor', roleId: 'qa-supervisor-role', role: 'Supervisor', email: 'qa-supervisor@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') }
   ]
   employees.forEach(employee => upsertJson(db, 'employees', 'id', employee))
+  upsertJson(db, 'employees', 'id', { id: 'qa-operator', name: 'QA Operador', roleId: 'qa-operator-role', role: 'Operador', status: 'Activo', email: 'qa-operator@pignus.test', technicalEnabled: true, passwordHash: passwordHash('Prueba1234') })
   const history = db.prepare('SELECT id, data FROM work_history').all().map(row => ({ id: row.id, record: JSON.parse(row.data) }))
   const alarmService = db.prepare('SELECT data FROM services').all().map(row => JSON.parse(row.data)).find(service => service.code === 'alarm-installation')
   const groups = new Map()
@@ -547,6 +549,29 @@ test('cerrar sesión ignora el descarte antiguo y preserva la agenda y las otras
   assert.deepEqual(after.agenda, before.agenda)
   assert.deepEqual(after.history, before.history)
   assert.equal(after.revision, before.revision)
+})
+
+test('Operador consulta la agenda pero no puede escribir, exportar ni usar otros módulos', async () => {
+  const cookie = await login('qa-operator@pignus.test')
+  const before = await state(cookie)
+  assert.ok(before.agenda.weekly)
+  assert.deepEqual(before.agenda.teams, [])
+  assert.deepEqual(before.vehicles, [])
+  assert.ok(before.employees.every(employee => !employee.passwordHash && !employee.email))
+  for (const [method, route] of [
+    ['PUT', '/api/state'], ['PATCH', '/api/state'], ['POST', '/api/agenda/daily/clear'],
+    ['PATCH', '/api/history/bulk'], ['DELETE', '/api/history/qa-history-included'],
+    ['POST', '/api/service-photo/qa-history-included'], ['POST', '/api/technician/status'],
+    ['GET', '/api/technician/state'], ['GET', '/api/history/export'], ['GET', '/api/audit'],
+    ['POST', '/api/services'], ['POST', '/api/vehicles'], ['GET', '/api/customers/import']
+  ]) {
+    const response = await api(route, cookie, { method, ...(method === 'GET' ? {} : { body: JSON.stringify(before) }) })
+    assert.equal(response.status, 403, `${method} ${route}`)
+  }
+  const after = await state(cookie)
+  assert.deepEqual(after, before)
+  assert.equal((await api('/api/auth/activity', cookie, { method: 'POST' })).status, 200)
+  assert.equal((await api('/api/auth/logout', cookie, { method: 'POST', body: '{}' })).status, 200)
 })
 
 test('un gestor de empleados no puede elevar privilegios', async () => {

@@ -31,7 +31,7 @@ export const DEFAULT_FEATURE_PERMISSIONS = Object.fromEntries(FEATURE_PERMISSION
 
 export const normalizeRoleName = normalizeServiceName
 
-export const roleCode = role => normalizeRoleName(role?.name) === 'supervisor' ? 'supervisor' : role?.code || ({
+export const roleCode = role => normalizeRoleName(role?.name) === 'operador' ? 'operator' : normalizeRoleName(role?.name) === 'supervisor' ? 'supervisor' : role?.code || ({
   administrador: 'administrator',
   tecnico: 'technician',
   coordinador: 'coordinator',
@@ -43,6 +43,11 @@ export const resolvedRolePermissions = role => {
   const code = roleCode(role)
   const explicit = role?.permissions || {}
   const resolved = { ...DEFAULT_MODULE_PERMISSIONS, ...DEFAULT_FEATURE_PERMISSIONS, ...explicit }
+  if (code === 'operator') {
+    Object.keys(resolved).forEach(key => { resolved[key] = false })
+    resolved.weekly = true
+    return resolved
+  }
   if (code === 'supervisor') {
     Object.keys(resolved).forEach(key => { resolved[key] = false })
     resolved.history = true
