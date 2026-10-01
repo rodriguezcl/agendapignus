@@ -447,6 +447,12 @@ body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice[data-tone=
 .pending-reminder-softguard > svg { color: inherit; }
 
 /* Stable category colors across dashboard reminders, in both themes. */
+.vehicle-insurance-reminders article:has(.insurance-reminder-action) { padding: 0; }
+.insurance-reminder-action { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; border: 0; border-radius: inherit; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.insurance-reminder-action > span { display: grid; gap: 3px; flex: 1; }
+.insurance-reminder-action > svg { flex-shrink: 0; }
+.insurance-reminder-action:hover { background: rgba(138, 56, 11, .06); }
+.insurance-reminder-action:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .vehicle-insurance-reminders article {
   background: #fff0e5;
   border-color: #dc9461;
