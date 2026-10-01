@@ -1,4 +1,5 @@
 const crypto = require('node:crypto')
+const { employeeOnly, applyEmployeeOperation } = require('./_lib/employee-operation.cjs')
 const { isOperator, operatorRouteAllowed } = require('./_lib/operator-access.cjs')
 const { canPerformTechnicalServices } = require('./_lib/technical-capability.cjs')
 const { retirementClientLabel } = require('./_lib/retirement-label.cjs')
@@ -443,8 +444,9 @@ async function handleSaveState(req, res, sql, user) {
         assertPreparedRevision(currentRevision, Number(revisionRows[0]?.value || 0))
       }
       const individual = req.method === 'PATCH'
+      const employeeCommand = individual && employeeOnly(incoming.operations)
       const operationState = individual ? stateForOperationComparison(current) : current
-      let next = authorizeIncomingState(individual ? applyStateOperations(visibleStateForUser(operationState, user), incoming.operations) : incoming, current, user)
+      let next = employeeCommand ? applyEmployeeOperation(current, incoming.operations, user) : authorizeIncomingState(individual ? applyStateOperations(visibleStateForUser(operationState, user), incoming.operations) : incoming, current, user)
       const base = incoming.base && typeof incoming.base === 'object' ? incoming.base : null
       const merged = Boolean(base && concurrentStateChanged(base, current))
       if (!individual && base) next = mergeConcurrentState(base, current, next)
@@ -453,9 +455,11 @@ async function handleSaveState(req, res, sql, user) {
         error.statusCode = 409
         throw error
       }
-      next = normalizeStateForSave(next, current, { allowEarlyCompletion: user.roleCode === 'administrator' })
-      next.employees = secureEmployees(next.employees, current.employees)
-      validateState(next, current)
+      if (!employeeCommand) {
+        next = normalizeStateForSave(next, current, { allowEarlyCompletion: user.roleCode === 'administrator' })
+        next.employees = secureEmployees(next.employees, current.employees)
+        validateState(next, current)
+      }
       assertNoAccidentalHistoryWipe(current.history, next.history)
       timing.mark('validation')
       // Un estado idéntico no es una nueva versión. Esto permite que dos

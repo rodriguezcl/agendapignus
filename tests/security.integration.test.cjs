@@ -101,7 +101,7 @@ test.before(async () => {
     { id: 'qa-supervisor-role', code: 'role-qa-supervisor', name: 'Supervisor', description: 'Prueba de seguimiento CCTV', permissions: { dashboard: true, accounts: true, history: true, historyManage: true } }
   ]
   roles.forEach(role => upsertJson(db, 'roles', 'id', role))
-  upsertJson(db, 'roles', 'id', { id: 'qa-operator-role', code: 'operator', name: 'Operador', permissions: { weekly: true, agenda: true, history: true, employees: true, weeklyTeams: true } })
+  upsertJson(db, 'roles', 'id', { id: 'd9d7a587-a581-44f2-88d2-bc2deb579a1e', code: 'operator', name: 'Operador', permissions: { weekly: true, agenda: true, history: true, employees: true, weeklyTeams: true } })
   const employees = [
     { id: 'qa-admin', firstName: 'QA', lastName: 'Admin', name: 'QA Admin', roleId: 1, role: 'Administrador', email: 'qa-admin@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') },
     { id: 'qa-admin-secondary', firstName: 'QA', lastName: 'Admin Secundario', name: 'QA Admin Secundario', roleId: 1, role: 'Administrador', email: 'qa-admin-secondary@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') },
@@ -112,7 +112,7 @@ test.before(async () => {
     { id: 'qa-supervisor', firstName: 'QA', lastName: 'Supervisor', name: 'QA Supervisor', roleId: 'qa-supervisor-role', role: 'Supervisor', email: 'qa-supervisor@pignus.test', phone: '', status: 'Activo', passwordHash: passwordHash('Prueba1234') }
   ]
   employees.forEach(employee => upsertJson(db, 'employees', 'id', employee))
-  upsertJson(db, 'employees', 'id', { id: 'qa-operator', name: 'QA Operador', roleId: 'qa-operator-role', role: 'Operador', status: 'Activo', email: 'qa-operator@pignus.test', technicalEnabled: true, passwordHash: passwordHash('Prueba1234') })
+  upsertJson(db, 'employees', 'id', { id: 'qa-operator', name: 'QA Operador', roleId: 'd9d7a587-a581-44f2-88d2-bc2deb579a1e', role: 'Operador', status: 'Activo', email: 'qa-operator@pignus.test', technicalEnabled: true, passwordHash: passwordHash('Prueba1234') })
   const history = db.prepare('SELECT id, data FROM work_history').all().map(row => ({ id: row.id, record: JSON.parse(row.data) }))
   const alarmService = db.prepare('SELECT data FROM services').all().map(row => JSON.parse(row.data)).find(service => service.code === 'alarm-installation')
   const groups = new Map()
@@ -572,6 +572,22 @@ test('Operador consulta la agenda pero no puede escribir, exportar ni usar otros
   assert.deepEqual(after, before)
   assert.equal((await api('/api/auth/activity', cookie, { method: 'POST' })).status, 200)
   assert.equal((await api('/api/auth/logout', cookie, { method: 'POST', body: '{}' })).status, 200)
+})
+
+test('alta confirmada de empleado Operador admite rol UUID y conserva agenda e historial', async () => {
+  const { employeeOperations } = await import('../src/features/state/application/employee-operations.mjs')
+  const cookie = await login('qa-admin@pignus.test')
+  const before = await state(cookie)
+  const role = before.roles.find(item => item.code === 'operator')
+  const employee = { id: 'qa-new-operator', firstName: 'Nuevo', lastName: 'Operador', name: 'Nuevo Operador', roleId: role.id, role: 'Operador', email: 'qa-new-operator@pignus.test', password: 'Prueba1234', status: 'Activo', technicalEnabled: false }
+  const response = await api('/api/state', cookie, { method: 'PATCH', body: JSON.stringify({ revision: before.revision, operations: employeeOperations(null, employee) }) })
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()))
+  const after = await state(cookie)
+  assert.equal(after.employees.find(item => item.id === employee.id).roleId, role.id)
+  assert.deepEqual(after.agenda, before.agenda)
+  assert.deepEqual(after.history, before.history)
+  const operatorCookie = await login(employee.email)
+  assert.equal((await api('/api/state', operatorCookie, { method: 'PATCH', body: JSON.stringify({ operations: [] }) })).status, 403)
 })
 
 test('un gestor de empleados no puede elevar privilegios', async () => {
