@@ -1255,6 +1255,20 @@ function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now
 }
 
 function saveState(state, user) {
+  const { employeeOnly, applyEmployeeOperation } = require('./api/_lib/employee-operation.cjs')
+  if (employeeOnly(state.operations)) {
+    db.exec('BEGIN')
+    try {
+      const current = readState()
+      const next = applyEmployeeOperation(current, state.operations, user)
+      auditChanges('employees', next.employees, 'id', 'Empleado', user)
+      replaceRows('employees', next.employees, 'id')
+      const revision = currentStateRevision() + 1
+      db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
+      db.exec('COMMIT')
+      return { revision, merged: false }
+    } catch (error) { db.exec('ROLLBACK'); throw error }
+  }
   if (Object.hasOwn(state, 'operations')) state = { ...applyStateOperations(stateForOperationComparison(readStateForUser(user)), state.operations), revision: currentStateRevision() }
   const expectedRevision = Number(state.revision)
   const actualRevision = currentStateRevision()
