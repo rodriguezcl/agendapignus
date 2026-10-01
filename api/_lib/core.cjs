@@ -1,4 +1,5 @@
 const crypto = require('node:crypto')
+const { isOperator, operatorState } = require('./operator-access.cjs')
 const { validateChangedAgendaSchedules } = require('./scheduling-validation.cjs')
 const { migrateLegacyEstimatedMinutes } = require('./legacy-estimated-minutes.cjs')
 const { ensureVehicleControlService } = require('./vehicle-control-service.cjs')
@@ -16,6 +17,7 @@ function legacyRoleCode(role = {}) {
   if (name === 'coordinador') return 'coordinator'
   if (name === 'usuario') return 'user'
   if (name === 'supervisor') return 'supervisor'
+  if (name === 'operador') return 'operator'
   return `role-${role.id}`
 }
 
@@ -40,6 +42,7 @@ const FEATURE_PERMISSION_PARENTS = {
 }
 
 function userCan(user, permission) {
+  if (isOperator(user)) return permission === 'weekly'
   if (user?.roleCode === 'administrator') return true
   if (user?.roleCode === 'supervisor' || normalizedRoleName(user?.role) === 'supervisor') return permission === 'history' || permission === 'accounts'
   const parent = FEATURE_PERMISSION_PARENTS[permission]
@@ -179,7 +182,7 @@ function userForEmployee(employee, roles) {
     name: employee.name,
     email: employee.email,
     roleId: role.id,
-    roleCode: normalizedRoleName(role.name) === 'supervisor' ? 'supervisor' : role.code || legacyRoleCode(role),
+    roleCode: normalizedRoleName(role.name) === 'operador' ? 'operator' : normalizedRoleName(role.name) === 'supervisor' ? 'supervisor' : role.code || legacyRoleCode(role),
     role: role.name,
     technicalEnabled: employee.technicalEnabled === true,
     permissions: role.permissions || {}
@@ -206,6 +209,7 @@ function internalPlanningIsValid(record = {}) {
 }
 
 function visibleStateForUser(state, user) {
+  if (isOperator(user)) return operatorState(state)
   if (user.roleCode === 'technician') {
     const journeyHistory = state.history
     state = { ...state, history: state.history.filter(record => record.awaitingConfirmation !== true) }
@@ -260,6 +264,7 @@ function visibleStateForUser(state, user) {
 }
 
 function authorizeIncomingState(incoming, current, user) {
+  if (isOperator(user)) throw Object.assign(new Error('Operador tiene acceso de solo lectura.'), { statusCode: 403 })
   const administrator = user.roleCode === 'administrator'
   const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
   assertVehicleControlOmissionAuthorized(incoming, current, user)

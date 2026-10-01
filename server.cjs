@@ -1,4 +1,5 @@
 const http = require('node:http')
+const { isOperator, operatorRouteAllowed, operatorState } = require('./api/_lib/operator-access.cjs')
 const { retirementClientLabel } = require('./api/_lib/retirement-label.cjs')
 const path = require('node:path')
 const fs = require('node:fs')
@@ -203,6 +204,7 @@ function legacyRoleCode(role) {
   if (name === 'coordinador') return 'coordinator'
   if (name === 'usuario') return 'user'
   if (name === 'supervisor') return 'supervisor'
+  if (name === 'operador') return 'operator'
   return `role-${role.id}`
 }
 
@@ -800,6 +802,7 @@ function readTechnicianState(user) {
 }
 
 function readStateForUser(user) {
+  if (isOperator(user)) return operatorState(readState())
   if (user.roleCode === 'technician') return readTechnicianState(user)
   const state = readState()
   const { reviews: retiredReviews, ...visibleState } = state
@@ -840,6 +843,7 @@ function roleForEmployee(employee) {
 }
 
 function userCan(user, permission) {
+  if (isOperator(user)) return permission === 'weekly'
   if (user?.roleCode === 'administrator') return true
   if (user?.roleCode === 'supervisor' || normalizedRoleName(user?.role) === 'supervisor') return permission === 'history' || permission === 'accounts'
   const parent = FEATURE_PERMISSION_PARENTS[permission]
@@ -1561,7 +1565,7 @@ function sessionUser(req) {
     sessions.delete(token)
     return null
   }
-  const user = { id: employee.id, name: employee.name, email: employee.email, roleId: role.id, roleCode: normalizedRoleName(role.name) === 'supervisor' ? 'supervisor' : role.code || legacyRoleCode(role), role: role.name, technicalEnabled: employee.technicalEnabled === true, permissions: role.permissions || {} }
+  const user = { id: employee.id, name: employee.name, email: employee.email, roleId: role.id, roleCode: normalizedRoleName(role.name) === 'operador' ? 'operator' : normalizedRoleName(role.name) === 'supervisor' ? 'supervisor' : role.code || legacyRoleCode(role), role: role.name, technicalEnabled: employee.technicalEnabled === true, permissions: role.permissions || {} }
   session.user = user
   return user
 }
@@ -1577,6 +1581,10 @@ function requireSession(req, res) {
   const user = sessionUser(req)
   if (!user) {
     send(res, 401, { code: 'SESSION_ENDED', error: 'Esta sesión ya no está activa. La cuenta pudo haberse abierto en otro dispositivo o la sesión pudo haber vencido.' })
+    return null
+  }
+  if (isOperator(user) && !operatorRouteAllowed(req.method, new URL(req.url, 'http://localhost').pathname.replace(/^\/api/, ''))) {
+    send(res, 403, { error: 'Operador sólo puede consultar la Agenda semanal.' })
     return null
   }
   return user
@@ -1803,7 +1811,7 @@ const server = http.createServer((req, res) => {
       }
       clearLoginFailures(req)
       const assignedRole = rows('roles').find(role => String(role.id) === String(employee.roleId)) || rows('roles').find(role => normalizedRoleName(role.name) === normalizedRoleName(employee.role))
-      const user = { id: employee.id, name: employee.name, email: employee.email, roleId: assignedRole?.id, roleCode: normalizedRoleName(assignedRole?.name || employee.role) === 'supervisor' ? 'supervisor' : assignedRole?.code || legacyRoleCode(assignedRole || { id: employee.roleId, name: employee.role }), role: assignedRole?.name || employee.role }
+      const user = { id: employee.id, name: employee.name, email: employee.email, roleId: assignedRole?.id, roleCode: normalizedRoleName(assignedRole?.name || employee.role) === 'operador' ? 'operator' : normalizedRoleName(assignedRole?.name || employee.role) === 'supervisor' ? 'supervisor' : assignedRole?.code || legacyRoleCode(assignedRole || { id: employee.roleId, name: employee.role }), role: assignedRole?.name || employee.role }
       const token = crypto.randomBytes(32).toString('hex')
       let replacedSessions = 0
       for (const [activeToken, session] of sessions) {
@@ -2061,7 +2069,7 @@ const server = http.createServer((req, res) => {
     const photo = db.prepare('SELECT mime_type, photo_data FROM vehicle_control_photos WHERE record_id = ?').get(recordId)
     const record = rows('work_history').find(item => String(item.id) === String(recordId))
     if (!photo || !record) return send(res, 404, { error: 'La foto no existe.' })
-    const allowed = user.roleCode === 'administrator' || (user.roleCode !== 'supervisor' && userCan(user, 'history')) || record.technicianIds?.some(id => String(id) === String(user.id))
+    const allowed = isOperator(user) || user.roleCode === 'administrator' || (user.roleCode !== 'supervisor' && userCan(user, 'history')) || record.technicianIds?.some(id => String(id) === String(user.id))
     if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
     res.writeHead(200, { 'Content-Type': photo.mime_type, 'Content-Length': photo.photo_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
     return res.end(photo.photo_data)

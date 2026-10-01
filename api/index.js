@@ -1,4 +1,5 @@
 const crypto = require('node:crypto')
+const { isOperator, operatorRouteAllowed } = require('./_lib/operator-access.cjs')
 const { canPerformTechnicalServices } = require('./_lib/technical-capability.cjs')
 const { retirementClientLabel } = require('./_lib/retirement-label.cjs')
 const { completeExpiredMonthlyMeetings } = require('./_lib/monthly-meeting-completion.cjs')
@@ -103,7 +104,7 @@ async function handleVehicleControlPhoto(req, res, sql, user, recordId) {
   `
   const row = rows[0]
   if (!row) return send(res, 404, { error: 'La foto no existe.' })
-  const allowed = user.roleCode === 'administrator' || (user.roleCode !== 'supervisor' && userCan(user, 'history')) || row.record?.technicianIds?.some(id => String(id) === String(user.id))
+  const allowed = isOperator(user) || user.roleCode === 'administrator' || (user.roleCode !== 'supervisor' && userCan(user, 'history')) || row.record?.technicianIds?.some(id => String(id) === String(user.id))
   if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
   securityHeaders(res)
   res.setHeader('Content-Type', row.mime_type)
@@ -1043,6 +1044,7 @@ module.exports = async function handler(req, res) {
     }
     const session = await requireSession(req, res, sql)
     if (!session) return
+    if (isOperator(session.user) && !operatorRouteAllowed(req.method, route)) return send(res, 403, { error: 'Operador sólo puede consultar la Agenda semanal.' })
     if (req.method === 'GET' && route === '/auth/session-status') {
       return send(res, 200, { active: true, expiresAt: session.expiresAt.toISOString() })
     }
