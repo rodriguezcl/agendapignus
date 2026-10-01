@@ -187,12 +187,24 @@ test('el acceso reutiliza el estado del login y recupera por F5 con una verifica
   assert.match(source, /onLogin\(data\.user, data\.state\)/)
   assert.match(source, /initialRemoteStateRef\.current = data\?\.state \|\| null/)
   assert.match(source, /if \(initialState\) \{[\s\S]*?applyRemoteState\(initialState\)[\s\S]*?return/)
-  assert.match(source, /JSON\.stringify\(\{ discardDailyAgenda: Boolean\(discardDailyAgenda && databaseReady\) \}\)/)
+  assert.doesNotMatch(source, /discardDailyAgenda/)
   assert.doesNotMatch(source.slice(source.indexOf('const logout = async'), source.indexOf('const requestLogout')), /\/api\/agenda\/daily\/clear/)
   assert.match(api, /state: visibleStateForUser\(await readState\(sql\), user\)/)
   assert.match(server, /state: readStateForUser\(user\)/)
   assert.match(api, /route === '\/auth\/session'[\s\S]*?send\(res, 200, \{ user: session\.user \}\)/)
   assert.match(server, /url\.pathname === '\/api\/auth\/session'[\s\S]*?send\(res, 200, \{ user \}\)/)
+})
+
+test('cerrar sesión no borra datos compartidos en ninguno de los servidores y avisa sólo por edición local', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const api = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
+  const server = fs.readFileSync(path.resolve(__dirname, '../server.cjs'), 'utf8')
+  const cloudLogout = api.slice(api.indexOf('async function handleLogout('), api.indexOf('async function handleSaveState('))
+  const localLogout = server.slice(server.indexOf("if (req.method === 'POST' && url.pathname === '/api/auth/logout')"), server.indexOf("if (req.method === 'GET' && url.pathname === '/api/auth/session-status')"))
+  assert.doesNotMatch(cloudLogout, /clearDailyAgenda\(/)
+  assert.doesNotMatch(localLogout, /clearDailyAgenda\(/)
+  assert.match(source, /const requestLogout = \(\) => setConfirmation\(hasUnsavedFormFields\(\)/)
+  assert.doesNotMatch(source, /agendaHasUnsavedServices|discardDailyAgenda/)
 })
 
 test('cerrar sesión fuerza el guardado del último cambio aunque siga dentro del debounce', () => {

@@ -1842,14 +1842,14 @@ const server = http.createServer((req, res) => {
     }).catch(error => send(res, 400, { error: error.message || 'No se pudo registrar la solicitud.' }))
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
-    return readJson(req).then(({ discardDailyAgenda }) => {
+    return readJson(req).then(() => {
       const token = parseCookies(req.headers.cookie).pignus_session
       const session = token && sessions.get(token)
-      const revision = session && discardDailyAgenda && userCan(session.user, 'agenda') ? clearDailyAgenda(session.user) : null
+      // No borrar la agenda compartida, incluso ante clientes antiguos.
       if (session) writeAudit(session.user, 'Cerró sesión', 'Sesión', String(session.user.id), { sessionExpiresAt: new Date(session.expiresAt).toISOString() }, null)
       if (token) sessions.delete(token)
       res.setHeader('Set-Cookie', 'pignus_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
-      return send(res, 200, { ok: true, ...(revision == null ? {} : { revision }) })
+      return send(res, 200, { ok: true })
     }).catch(error => send(res, 400, { error: error.message || 'No se pudo cerrar la sesión.' }))
   }
   if (req.method === 'GET' && url.pathname === '/api/auth/session-status') {
