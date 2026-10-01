@@ -414,10 +414,10 @@ async function handleLogout(req, res, sql) {
   `
   const session = rows[0]
   const user = session?.employee ? userForEmployee(session.employee, session.roles || []) : null
-  const discardDailyAgenda = Boolean(requestBody(req).discardDailyAgenda)
-  const revision = user && discardDailyAgenda && userCan(user, 'agenda') ? await clearDailyAgenda(sql, user) : null
+  // Ignorar también el antiguo discardDailyAgenda enviado por clientes anteriores.
+  // Cerrar una sesión nunca debe borrar información operativa compartida.
   if (user) await appendAudit(sql, [auditEntry(user, 'Cerró sesión', 'Sesión', String(user.id), { sessionExpiresAt: new Date(session.expires_at).toISOString() }, null)])
-  return send(res, 200, { ok: true, ...(revision == null ? {} : { revision }) })
+  return send(res, 200, { ok: true })
 }
 
 async function handleSaveState(req, res, sql, user) {

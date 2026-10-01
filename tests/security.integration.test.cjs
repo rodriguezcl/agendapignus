@@ -534,6 +534,21 @@ test('el ingreso entrega el estado y la recuperación por F5 valida primero la s
   assert.equal(logoutResponse.status, 200)
 })
 
+test('cerrar sesión ignora el descarte antiguo y preserva la agenda y las otras sesiones', async () => {
+  const cookie = await login('qa-admin@pignus.test')
+  const otherCookie = await login('qa-tech@pignus.test')
+  const before = await state(cookie)
+  const response = await api('/api/auth/logout', cookie, { method: 'POST', body: JSON.stringify({ discardDailyAgenda: true }) })
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), { ok: true })
+  assert.equal((await api('/api/auth/session-status', cookie)).status, 401)
+  assert.equal((await api('/api/auth/session-status', otherCookie)).status, 200)
+  const after = await state(await login('qa-admin@pignus.test'))
+  assert.deepEqual(after.agenda, before.agenda)
+  assert.deepEqual(after.history, before.history)
+  assert.equal(after.revision, before.revision)
+})
+
 test('un gestor de empleados no puede elevar privilegios', async () => {
   const cookie = await login('qa-employees@pignus.test')
   let current = await state(cookie)

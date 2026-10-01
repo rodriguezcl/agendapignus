@@ -41,7 +41,6 @@ import { monthlyTeamRotation, monthlyEligibleTechnicians } from './domain/agenda
 import { holidayDecisionForDate, holidayDecisionLabel, holidayForDate, holidayIsBlocked } from './domain/agenda/holidays.mjs'
 import { readNationalHolidayCache, writeNationalHolidayCache } from './infrastructure/browser/holiday-cache.mjs'
 import { buildVehicleControlRecords, ensureVehicleControlService, monthFridays, rescheduleVehicleControlRecords, suggestedVehicleAssignments, vehicleControlTask, vehicleLabel } from './domain/vehicles/vehicle-controls.mjs'
-import { agendaHasUnsavedServices } from './domain/agenda/unsaved-agenda.mjs'
 import { serviceHasChanges, restoreSavedService } from './domain/agenda/service-changes.mjs'
 import { setVehicleControlAssignedRecords, vehicleControlIsOpen, vehicleControlWindowLabel } from './domain/vehicles/vehicle-control-window.mjs'
 import { appendConfigurationHistory, guardConfigurationSnapshot, teamConfigurationSnapshot, vehicleConfigurationSnapshot } from './domain/configuration/configuration-history.mjs'
@@ -2512,11 +2511,7 @@ export default function App() {
   }, [title, authUser])
   if (isAdministrator) nav.push(['audit', 'audit', 'Auditoría'])
   if (!isSupervisor) nav.push(['help', 'help', 'Centro de ayuda'])
-  const emptyAgenda = () => ({ date: new Date().toISOString().slice(0, 10), teams: [{ teamId: createTeamId(), memberIds: [], members: [], tasks: [blankTask()] }] })
-  // Sólo un servicio nuevo o editado requiere advertir sobre descarte. Un
-  // equipo asignado o un turno vacío no representan información pendiente.
-  const hasUnsavedAgenda = agendaHasUnsavedServices({ teams, history, date })
-  const logout = async ({ discardDailyAgenda = false, requireServerLogout = false } = {}) => {
+  const logout = async ({ requireServerLogout = false } = {}) => {
     if (loggingOutRef.current) return
     loggingOutRef.current = true
     const hadPendingStateSave = pendingStateSaves.current > 0 || Boolean(stateSaveTimerRef.current)
@@ -2547,15 +2542,9 @@ export default function App() {
       throw new Error(`No se pudo guardar la agenda antes de cerrar sesión. La sesión sigue abierta para que puedas reintentar. ${error.message || ''}`.trim())
     }
 
-    // La limpieza sólo se solicita cuando el usuario confirmó que desea
-    // descartar una agenda sin guardar. El cierre normal no modifica la agenda.
-    if (discardDailyAgenda && authUser?.role?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() !== 'tecnico') {
-      const clean = emptyAgenda()
-      setTeams(clean.teams); setDate(clean.date)
-    }
     setLoggingOut(true)
     try {
-      const response = await fetchWithTimeout('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ discardDailyAgenda: Boolean(discardDailyAgenda && databaseReady) }) })
+      const response = await fetchWithTimeout('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
       if (!response.ok) throw new Error('No se pudo invalidar la sesión en el servidor.')
     } catch (error) {
       console.error('Error al cerrar la sesión en el servidor.', error)
@@ -2574,8 +2563,9 @@ export default function App() {
     }
   }
   useDeploymentUpdate({ active: Boolean(authUser), busy: confirmedSaving || loggingOut, guard: weeklyNavigationGuard, logout })
-  const requestLogout = () => setConfirmation(hasUnsavedAgenda
-    ? { title: 'Agenda sin guardar', detail: 'Hay servicios cargados que aún no fueron guardados en el historial. Si cerrás sesión, la agenda se limpiará y esos datos se perderán.', action: () => logout({ discardDailyAgenda: true }), destructive: true, confirmLabel: 'Cerrar sesión y descartar agenda' }
+  // No consultar la agenda compartida: sólo campos editados en esta pestaña.
+  const requestLogout = () => setConfirmation(hasUnsavedFormFields()
+    ? { title: 'Cambios sin guardar en esta pestaña', detail: 'Tenés cambios en un formulario de esta pestaña que todavía no guardaste. Si cerrás sesión, se perderán esos cambios locales. La agenda compartida y los datos de otras sesiones no se eliminarán.', action: logout, destructive: true, confirmLabel: 'Descartar edición local y salir' }
     : { title: 'Cerrar sesión', detail: '¿Querés cerrar sesión?', action: logout, confirmLabel: 'Sí, cerrar sesión' })
   useSessionLifecycle({
     enabled: Boolean(authUser),
@@ -2597,7 +2587,7 @@ export default function App() {
     button.addEventListener('click', intercept, true)
     return () => button.removeEventListener('click', intercept, true)
   })
-  if (loggingOut) return <main className="login-page"><SystemState type="syncing" inverse title="Cerrando sesión segura…" detail="Esperá mientras confirmamos los cambios pendientes." /></main>
+  if (loggingOut) return <main className="login-page"><SystemState type="syncing" inverse title="Cerrando sesión segura…" detail="Esperá mientras cerramos tu sesión." /></main>
   if (authLoading) return <main className="login-page"><SystemState type="loading" inverse title="Verificando sesión segura…" detail="Estamos recuperando tu acceso y los datos autorizados." /></main>
   if (!authUser) return <Login initialError={sessionEndedMessage} onLogin={(user, initialState) => { setSessionEndedMessage(''); setNotice(''); initialRemoteStateRef.current = initialState || null; setAuthUser(user) }} />
   if (!databaseReady) return <main className="login-page"><div className="login-card"><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">DATOS PROTEGIDOS</p><SystemState type={databaseError ? 'error' : 'loading'} title={databaseError ? 'No se pudo cargar la agenda' : 'Cargando información autorizada…'} detail={databaseError || 'Estamos preparando la información permitida para tu perfil.'} action={databaseError ? () => { setDatabaseError(''); setAuthUser(current => current ? { ...current } : current) } : undefined} /><button title="Cerrá tu sesión; necesitarás tus credenciales para volver a ingresar." className="secondary" type="button" onClick={logout}><Icon name="logout" size={16} />Cerrar sesión</button></div></main>
