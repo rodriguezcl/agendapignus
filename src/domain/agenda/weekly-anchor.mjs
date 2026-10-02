@@ -29,6 +29,15 @@ export function weeklyVisibleDays(anchor) {
   return days
 }
 
+export function shiftWeeklyAnchor(anchor, direction) {
+  const first = weeklyVisibleDays(anchor)[0]
+  if (!first) return anchor
+  const step = direction < 0 ? -1 : 1
+  let next = addCalendarDays(first, step)
+  if (new Date(`${next}T12:00:00Z`).getUTCDay() === 0) next = addCalendarDays(next, step)
+  return next
+}
+
 export function defaultWeeklyAnchor(now = new Date()) {
   const parts = argentinaDateTime(now)
   const today = `${parts.year}-${parts.month}-${parts.day}`

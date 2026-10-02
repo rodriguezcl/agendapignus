@@ -1,6 +1,16 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
+test('las flechas avanzan y retroceden una jornada sin domingos', async () => {
+  const { shiftWeeklyAnchor } = await import('../src/domain/agenda/weekly-anchor.mjs')
+  assert.equal(shiftWeeklyAnchor('2026-10-02', -1), '2026-10-01')
+  assert.equal(shiftWeeklyAnchor('2026-10-02', 1), '2026-10-03')
+  assert.equal(shiftWeeklyAnchor('2026-10-03', 1), '2026-10-05')
+  assert.equal(shiftWeeklyAnchor('2026-10-05', -1), '2026-10-03')
+  assert.equal(shiftWeeklyAnchor('2027-01-01', -1), '2026-12-31')
+  assert.equal(shiftWeeklyAnchor('2026-12-31', 1), '2027-01-01')
+})
+
 test('viernes muestra cinco jornadas y continúa la semana siguiente sin domingo', async () => {
   const { weeklyVisibleDays } = await import('../src/domain/agenda/weekly-anchor.mjs')
   assert.deepEqual(weeklyVisibleDays('2026-10-02'), ['2026-10-02', '2026-10-03', '2026-10-05', '2026-10-06', '2026-10-07'])
