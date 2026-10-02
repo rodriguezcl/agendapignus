@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
 
-export default function WeeklyServiceSearch({ anchor, weekly, history, getPlan, navigate, boardRef, topScrollRef, openService }) {
+export default function WeeklyServiceSearch({ anchor, weekly, history, getPlan, navigate, boardRef, openService }) {
   const root = useRef(null)
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
@@ -33,8 +33,6 @@ export default function WeeklyServiceSearch({ anchor, weekly, history, getPlan, 
       card.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' })
       const rect = card.getBoundingClientRect(), viewport = board.getBoundingClientRect()
       board.scrollLeft += rect.left - viewport.left - (board.clientWidth - rect.width) / 2
-      const top = topScrollRef.current
-      if (top) top.scrollLeft = board.scrollLeft / Math.max(1, board.scrollWidth - board.clientWidth) * Math.max(0, top.scrollWidth - top.clientWidth)
       setReady(true)
       observer.disconnect()
     }

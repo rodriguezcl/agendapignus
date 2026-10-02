@@ -170,6 +170,19 @@
   padding: 2px 2px 18px;
 }
 
+.weekly-date-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+
+.weekly-date-navigation button {
+  min-height: 44px;
+  gap: 8px;
+}
+
 .weekly-scroll-top {
   width: 100%;
   height: 17px;
