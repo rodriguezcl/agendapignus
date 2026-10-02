@@ -1,5 +1,5 @@
 const same = (a, b) => String(a || '') === String(b || '')
-const closed = record => ['Completado', 'Cancelado', 'Reprogramado'].includes(record.status) || Boolean(record.technicalStatus)
+const closed = record => ['Completado', 'Cancelado', 'Reprogramado', 'Avance registrado'].includes(record.status) || Boolean(record.technicalStatus || record.startedAt || record.completedAt)
 
 // Synchronize only existing pending controls; never create deleted controls here.
 function synchronizeVehicleControlAssignments(state, previous = {}) {
@@ -20,6 +20,9 @@ function synchronizeVehicleControlAssignments(state, previous = {}) {
     const proposed = task.technicianIds?.[0]
     const oldRecord = previous.history?.find(item => same(item.id, record.id))
     const explicitReplacement = oldRecord && !same(oldRecord.technicianIds?.[0], record.technicianIds?.[0])
+    const oldTask = previous.agenda?.weekly?.[day]?.teams?.flatMap(item => item.tasks || []).find(linked)
+    const taskReplacement = oldTask && !same(oldTask.technicianIds?.[0], proposed)
+    if (!explicitReplacement && !taskReplacement && !dailyChanged) continue
     const selected = explicitReplacement ? record.technicianIds?.[0] :
       ids.find(id => same(id, proposed)) || ids.find(id => same(id, record.technicianIds?.[0])) || (ids.length === 1 ? ids[0] : null)
     if (!selected) continue // Empty/intermediate teams or ambiguous replacements need explicit selection.
@@ -45,7 +48,12 @@ function synchronizeVehicleControlAssignments(state, previous = {}) {
       const friday = record.vehicleControlScheduledFriday || day
       const month = record.monthlyVehicleAssignment || friday.slice(0, 7)
       const assignment = weekly._monthlyTeams?.[month]?.vehicleAssignments?.find(item => same(item.vehicleId, record.vehicleId))
-      if (assignment) assignment.weeklyOverrides = { ...assignment.weeklyOverrides, [friday]: selected }
+      if (assignment && !same(assignment.technicianId, selected)) assignment.weeklyOverrides = { ...assignment.weeklyOverrides, [friday]: selected }
+      else if (assignment?.weeklyOverrides?.[friday]) {
+        const overrides = { ...assignment.weeklyOverrides }
+        delete overrides[friday]
+        assignment.weeklyOverrides = overrides
+      }
     }
   }
   return next
