@@ -2,6 +2,24 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { migrateLegacyEstimatedMinutes } = require('../api/_lib/legacy-estimated-minutes.cjs')
 
+test('an undated legacy agenda cannot reset a dated customized service during hydration', async () => {
+  const { stateForOperationComparison } = require('../api/_lib/legacy-estimated-minutes.cjs')
+  const { serviceGaps } = await import('../src/domain/agenda/service-gaps.mjs')
+  for (const estimatedMinutes of [300, 315]) {
+    const task = { taskId: 't', historyId: 'h', client: 'ANTIGUA ESTANCIA', serviceId: 5, time: '08:30', estimatedMinutes, estimatedMinutesCustomized: true }
+    const state = { history: [{ ...task, id: 'h', sourceTaskId: 't', date: '2026-10-05' }], agenda: { date: '2026-10-02', teams: [], weekly: {
+      '': { teams: [{ tasks: [{ ...task, estimatedMinutes: 15 }] }] },
+      '2026-10-05': { teams: [{ tasks: [task, { time: '14:00' }] }] }
+    } } }
+    const loaded = migrateLegacyEstimatedMinutes(state, { repairUnidentifiedAgenda: true }).state
+    assert.equal(loaded.history[0].estimatedMinutes, estimatedMinutes)
+    assert.equal(stateForOperationComparison(state).history[0].estimatedMinutes, estimatedMinutes)
+    const merged = { ...loaded.agenda.weekly['2026-10-05'].teams[0].tasks[0], ...loaded.history[0] }
+    assert.deepEqual(serviceGaps([merged, { time: '14:00' }], { min: '08:00', max: '17:00', day: '2026-10-05', now: new Date('2026-10-02T15:00:00Z') }), [])
+    assert.equal(state.history[0].estimatedMinutes, estimatedMinutes)
+  }
+})
+
 test('migra a 15 minutos únicamente servicios persistidos sin duración', () => {
   const missingHistory = { id: 'history-missing', serviceId: 'service-1', service: 'Service de alarma' }
   const invalidHistory = { id: 'history-invalid', serviceId: 'service-1', service: 'Service de alarma', estimatedMinutes: 0 }

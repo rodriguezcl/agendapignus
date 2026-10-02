@@ -61,6 +61,9 @@ function migrateLegacyEstimatedMinutes(state = {}, { repairUnidentifiedAgenda = 
   let historyChanged = 0
   const history = (state.history || []).map(record => {
     if (protectedDateSet.has(String(record?.date || ''))) return record
+    // A dated service with a valid duration is authoritative. An orphaned
+    // agenda (including a matching legacy copy) must not reset it on hydration.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(record?.date || '')) && hasValidEstimatedMinutes(record)) return record
     const migrated = migrateLegacyServiceRecord(record, hasUnidentifiedAgenda && isLinkedToUnidentifiedAgenda(record))
     if (migrated.changed) historyChanged += 1
     return migrated.record
