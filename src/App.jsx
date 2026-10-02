@@ -46,7 +46,7 @@ import { setVehicleControlAssignedRecords, vehicleControlIsOpen, vehicleControlW
 import { appendConfigurationHistory, guardConfigurationSnapshot, teamConfigurationSnapshot, vehicleConfigurationSnapshot } from './domain/configuration/configuration-history.mjs'
 import { compactVehiclePhoto } from './infrastructure/media/image-upload.mjs'
 import { serviceHasStarted } from './domain/agenda/service-start.mjs'
-import { defaultWeeklyAnchor } from './domain/agenda/weekly-anchor.mjs'
+import { defaultWeeklyAnchor, weeklyVisibleDays } from './domain/agenda/weekly-anchor.mjs'
 import { DEFAULT_SERVICE_ESTIMATED_MINUTES, MAX_SERVICE_ESTIMATED_MINUTES, normalizeServiceEstimatedMinutes, removeOverlappingDefaultSlots, serviceScheduleConflicts, taskOccupiedInterval } from './domain/agenda/service-scheduling.mjs'
 import WeeklyServiceSearch from './components/WeeklyServiceSearch.jsx'
 import { buildCustomerReferenceIndex, customerFromImportRow, mergeImportedCustomers, reconcileCustomerReference } from './domain/customers/customer-import.mjs'
@@ -3897,16 +3897,7 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
     }
     return { teams: sources.map((team, index) => createTeam(index, team, day)) }
   }
-  const monday = useMemo(() => {
-    const value = new Date(`${anchor}T12:00:00`)
-    value.setDate(value.getDate() - ((value.getDay() + 6) % 7))
-    return value
-  }, [anchor])
-  const days = useMemo(() => Array.from({ length: 7 }, (_, index) => {
-    const value = new Date(monday)
-    value.setDate(monday.getDate() + index)
-    return value.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
-  }), [monday])
+  const days = useMemo(() => weeklyVisibleDays(anchor), [anchor])
   const holidayCalendar = useNationalHolidays([
     ...days.map(day => day.slice(0, 4)),
     taskMove?.destinationDay?.slice(0, 4) || ''
@@ -3953,16 +3944,9 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
   useEffect(() => {
     const board = weeklyBoardRef.current
     if (!board) return
-    const currentDay = board.querySelector(`[data-day="${today}"]`)
-    if (!currentDay) {
-      board.scrollLeft = 0
-      return
-    }
-    const boardRect = board.getBoundingClientRect()
-    const dayRect = currentDay.getBoundingClientRect()
-    board.scrollLeft += dayRect.left - boardRect.left
+    board.scrollLeft = 0
     syncWeeklyScroll(board, weeklyTopScrollRef.current)
-  }, [days, today])
+  }, [days])
   useEffect(() => {
     const board = weeklyBoardRef.current
     if (!board) return
@@ -4830,7 +4814,7 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
         return <div className="annual-guard-row" key={`${guard.technicianId || guard.name}-${index}`}><span>{index + 1}</span><select aria-label={`Técnico ${index + 1} de la rotación`} value={guard.technicianId || ''} onChange={event => updateAnnualGuardTechnician(index, event.target.value)}>{legacyGuard && <option value={guard.technicianId || ''}>{guard.name} (no activo)</option>}{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select><button type="button" className="secondary" title="Mové a este técnico una posición hacia arriba en el orden de rotación de guardias." aria-label={`Subir a ${guard.name}`} disabled={index === 0} onClick={() => moveAnnualGuardTechnician(index, -1)}>↑</button><button type="button" className="secondary" title="Mové a este técnico una posición hacia abajo en el orden de rotación de guardias." aria-label={`Bajar a ${guard.name}`} disabled={index === annualGuardSetup.rotation.length - 1} onClick={() => moveAnnualGuardTechnician(index, 1)}>↓</button><button type="button" className="icon-btn delete" title="Quitá a este técnico de la rotación de guardias; no elimina su perfil." aria-label={`Quitar a ${guard.name}`} onClick={() => removeAnnualGuardTechnician(index)}><Icon name="trash" size={15} /></button></div>
       })}</div><button title="Incorporá un técnico al orden de rotación de guardias." type="button" className="secondary annual-guard-add" disabled={!activeTechs.length || !validYear} onClick={addAnnualGuardTechnician}><Icon name="plus" size={15} />Agregar técnico</button>{!validYear && <p className="field-error">Ingresá un año válido.</p>}{duplicated && <p className="field-error">Cada técnico puede aparecer una sola vez en la rotación.</p>}{validYear && !annualGuardSetup.rotation.length && <p className="field-error">Agregá al menos un técnico para generar el cronograma.</p>}<p className="annual-guard-help">Los cambios manuales realizados en un sábado específico se conservan como excepción.</p><ConfigurationHistoryPanel history={weekly._annualGuards?.[annualGuardSetup.year]?.configurationHistory} type="guards" /><div className="modal-actions"><button title="Cancelá esta operación sin aplicar los cambios del formulario." className="secondary" onClick={() => setAnnualGuardSetup(null)}><Icon name="close" size={16} />Cancelar</button><button title="Guardá el orden y la configuración de las guardias del año seleccionado." className="primary" disabled={!validYear || !annualGuardSetup.rotation.length || duplicated} onClick={saveAnnualGuardSetup}><Icon name="check" size={16} />Guardar guardias del año</button></div></section></div>
     })()}
-    <div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>{readOnly ? 'Consulta de solo lectura. Podés explorar las semanas y abrir el detalle de los servicios.' : 'Guardá cada servicio desde su formulario. Los cambios confirmados se comparten con todos los usuarios.'}</p></div><div className="weekly-actions"><WeeklyServiceSearch anchor={anchor} weekly={weekly} history={history} getPlan={dayPlan} navigate={day => { weeklyAnchorFollowsCurrentRef.current = false; setAnchor(day) }} boardRef={weeklyBoardRef} topScrollRef={weeklyTopScrollRef} openService={openTaskEditor} />{canConfigureWeekly('weeklyTeams') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : 'Configurá la distribución mensual de equipos y técnicos.'} onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button>}{canConfigureWeekly('weeklyHours') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : 'Configurá los horarios predeterminados de los servicios del mes.'} onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button>}{canConfigureWeekly('weeklyVehicles') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : 'Asigná responsables de vehículos y reemplazos para los controles semanales del mes.'} onClick={openMonthlyVehicleSetup}><Icon name="vehicle" size={16} />Vehículos del mes</button>}{canConfigureWeekly('weeklyGuards') && <button title="Configurá la rotación de técnicos para las guardias del año." className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button>}<label className="week-selector">Semana de trabajo<input type="date" value={anchor} onChange={event => { weeklyAnchorFollowsCurrentRef.current = false; setAnchor(event.target.value) }} /></label></div></div>
+<div className="module-intro weekly-intro"><div><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p>{readOnly ? 'Consulta de solo lectura. Podés explorar las semanas y abrir el detalle de los servicios.' : 'Guardá cada servicio desde su formulario. Los cambios confirmados se comparten con todos los usuarios.'}</p></div><div className="weekly-actions"><WeeklyServiceSearch anchor={anchor} weekly={weekly} history={history} getPlan={dayPlan} navigate={day => { weeklyAnchorFollowsCurrentRef.current = false; setAnchor(day) }} boardRef={weeklyBoardRef} topScrollRef={weeklyTopScrollRef} openService={openTaskEditor} />{canConfigureWeekly('weeklyTeams') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : 'Configurá la distribución mensual de equipos y técnicos.'} onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button>}{canConfigureWeekly('weeklyHours') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : 'Configurá los horarios predeterminados de los servicios del mes.'} onClick={openMonthlyTimesSetup}><Icon name="calendar" size={16} />Horarios del mes</button>}{canConfigureWeekly('weeklyVehicles') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : 'Asigná responsables de vehículos y reemplazos para los controles semanales del mes.'} onClick={openMonthlyVehicleSetup}><Icon name="vehicle" size={16} />Vehículos del mes</button>}{canConfigureWeekly('weeklyGuards') && <button title="Configurá la rotación de técnicos para las guardias del año." className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button>}<label className="week-selector">Mostrar desde<input type="date" value={anchor} onChange={event => { if (!event.target.value) return; weeklyAnchorFollowsCurrentRef.current = false; setAnchor(event.target.value) }} /></label></div></div>
     {completedService && <HistoryDetail record={completedService} close={() => setCompletedService(null)} actions={!readOnly && weeklyServiceSource && weeklyModalActions(weeklyServiceSource, true)} />}
     {pastService && <div className="modal-layer"><section className="modal detail-modal history-detail past-service-detail" role="dialog" aria-modal="true" aria-label="Servicio · solo lectura"><button title="Cerrá esta ventana y volvé a la pantalla anterior." type="button" className="close-modal" aria-label="Cerrar" onClick={() => setPastService(null)}><Icon name="close" /></button><p className="eyebrow">{prettyDate(pastService.date)} · SOLO LECTURA</p><h2>{pastService.client || pastService.service}</h2>{!readOnly && weeklyServiceSource && weeklyModalActions(weeklyServiceSource, true)}{[
       ['Resumen del servicio', [
