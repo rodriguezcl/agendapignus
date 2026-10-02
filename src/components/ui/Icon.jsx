@@ -5,6 +5,7 @@ import React from 'react'
  * Mantener el mapa de trazos centralizado evita duplicar SVGs en cada módulo.
  */
 const paths = {
+  refresh: 'M20 7v5h-5M4 17v-5h5M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 17.9 17',
   clock: 'M12 8v4l3 2m6-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
   navigation: 'm21 3-6 18-4-8-8-4 18-6Z',
   phone: 'M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 3.1 5.2 2 2 0 0 1 5.1 3h3l2 5-2 2a16 16 0 0 0 6 6l2-2 5 2Z',

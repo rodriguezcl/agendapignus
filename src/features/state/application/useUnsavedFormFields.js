@@ -6,16 +6,16 @@ const valueOf = field => field.type === 'checkbox' || field.type === 'radio' ? f
 
 // Focus alone is not an edit. Keep the original value so reverting an input
 // also releases the refresh guard; detached/cancelled forms no longer block it.
-export function useUnsavedFormFields() {
+export function useUnsavedFormFields(fieldSelector = selector) {
   const fields = useRef(new Map())
   useEffect(() => {
     const focus = event => {
       const field = event.target
-      if (field.matches?.(selector) && !field.readOnly && !fields.current.has(field)) fields.current.set(field, { value: valueOf(field), edited: false })
+      if (field.matches?.(fieldSelector) && !field.readOnly && !fields.current.has(field)) fields.current.set(field, { value: valueOf(field), edited: false })
     }
     const edit = event => {
       const field = event.target
-      if (!field.matches?.(selector) || field.readOnly) return
+      if (!field.matches?.(fieldSelector) || field.readOnly) return
       const before = fields.current.get(field) || { value: field.defaultValue, edited: false }
       fields.current.set(field, { ...before, edited: true })
     }
@@ -28,7 +28,7 @@ export function useUnsavedFormFields() {
       document.removeEventListener('change', edit, true)
       fields.current.clear()
     }
-  }, [])
+  }, [fieldSelector])
   return () => {
     let dirty = false
     for (const [field, before] of fields.current) {

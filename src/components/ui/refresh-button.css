@@ -1,0 +1,12 @@
+.topbar .refresh-button, .technician-header .refresh-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  flex: 0 0 auto; min-width: 44px; min-height: 44px; padding: 8px 12px;
+  border: 1px solid #789684; border-radius: 8px; background: transparent;
+  color: #fff; font: inherit; font-size: 13px; cursor: pointer;
+}
+.refresh-button:hover { background: #ffffff18; }
+.refresh-button:focus-visible { outline: 3px solid #edbd45; outline-offset: 3px; }
+@media (max-width: 640px) {
+  .topbar .refresh-button, .technician-header .refresh-button { padding: 8px; }
+  .topbar .refresh-button span, .technician-header .refresh-button span { display: none; }
+}
