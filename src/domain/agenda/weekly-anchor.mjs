@@ -16,6 +16,19 @@ const addCalendarDays = (dateKey, days) => {
   return value.toISOString().slice(0, 10)
 }
 
+// A rolling window, independent of calendar-week and month boundaries.
+export function weeklyVisibleDays(anchor) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(anchor || '')) return []
+  const date = new Date(`${anchor}T12:00:00Z`)
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== anchor) return []
+  const days = []
+  while (days.length < 5) {
+    if (date.getUTCDay() !== 0) days.push(date.toISOString().slice(0, 10))
+    date.setUTCDate(date.getUTCDate() + 1)
+  }
+  return days
+}
+
 export function defaultWeeklyAnchor(now = new Date()) {
   const parts = argentinaDateTime(now)
   const today = `${parts.year}-${parts.month}-${parts.day}`
