@@ -643,6 +643,8 @@ body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #34
 }
 
 .agenda-task-status > .work-status,
+.week-task-heading > .work-status,
+.weekly-agenda-task-status > .subscriber-reservation-chip,
 .agenda-task-status > .agenda-service-chip {
   margin: 0;
   padding: 3px 7px;
@@ -682,6 +684,20 @@ body.dark .vehicle-control-early-notice { border-color: #6e6032; background: #34
 
 .weekly-agenda-task-status {
   flex-wrap: wrap;
+}
+
+.week-task-title > .week-task-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.week-task-heading > .work-status {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .agenda-service-chip.service-alarm { background: #e1edff; color: #315d98; }
