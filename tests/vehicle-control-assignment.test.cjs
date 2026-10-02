@@ -9,8 +9,10 @@ const fixture = () => {
       '2026-09-18': { teams: [team] }, _monthlyTeams: { '2026-09': { vehicleAssignments: [{ vehicleId: 'ka', technicianId: 'leo' }] } }
     } } }
 }
-test('replacement updates history and both agendas, only for this Friday', () => {
-  const state = fixture(), next = sync(state, state)
+test('explicit replacement updates history and both agendas, only for this Friday', () => {
+  const state = fixture(), edited = structuredClone(state)
+  edited.history[0].technicianIds = ['mariano']; edited.history[0].technicians = ['Mariano']
+  const next = sync(edited, state)
   assert.deepEqual(next.history[0].technicianIds, ['mariano'])
   assert.deepEqual(next.agenda.teams[0].tasks[0].technicianIds, ['mariano'])
   assert.deepEqual(next.agenda.weekly['2026-09-18'].teams[0].tasks[0].technicianIds, ['mariano'])

@@ -76,6 +76,7 @@ import { weeklyTaskRemovalOperations } from './features/state/application/weekly
 import { stateOperations } from './features/state/application/state-operations.mjs'
 import { alignOperationBaselines } from './features/state/application/operation-baselines.mjs'
 import { employeeOperations } from './features/state/application/employee-operations.mjs'
+import { synchronizeMonthlyVehicles } from './domain/vehicles/monthly-vehicle-sync.mjs'
 import RefreshButton from './components/ui/RefreshButton.jsx'
 import { requestManualRefresh } from './features/state/application/manual-refresh.mjs'
 import { dailyServiceOperations } from './features/state/application/daily-service-save.mjs'
@@ -4496,36 +4497,35 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
   }
   const updateMonthlyTeam = (index, memberIds) => { const selected = activeTechs.filter(tech => memberIds.some(id => String(id) === String(tech.id))); setMonthlySetup(previous => ({ ...previous, teams: previous.teams.map((team, teamIndex) => teamIndex === index ? { ...team, memberIds: selected.map(tech => tech.id), members: selected.map(tech => tech.name) } : team) })) }
   const addMonthlyTeam = () => setMonthlySetup(previous => ({ ...previous, teams: [...previous.teams, { teamId: createTeamId(), label: `Equipo ${previous.teams.length + 1}`, memberIds: [], members: [] }] }))
-  const saveMonthlySetup = () => {
+  const saveMonthlySetup = async () => {
     const eligibleIds = new Set(monthlyEligibleTechnicians(activeTechs).map(tech => String(tech.id)))
     const assignedIds = monthlySetup.teams.flatMap(team => (team.memberIds || []).map(String))
     if (assignedIds.some(id => !eligibleIds.has(id))) { setNotice('Los equipos mensuales solo pueden incluir empleados activos con rol Técnico.'); return }
     if (new Set(assignedIds).size !== assignedIds.length) { setNotice('Cada técnico debe integrar un único equipo mensual.'); return }
-    setWeekly(previous => {
-      const current = previous._monthlyTeams?.[monthlySetup.month] || {}
-      const teamSignature = teams => JSON.stringify((teams || []).map(team => (team.memberIds || []).map(String).sort()))
-      const changed = teamSignature(current.teams) !== teamSignature(monthlySetup.teams)
-      const changedAt = new Date().toISOString()
-      let configurationHistory = appendConfigurationHistory(current.configurationHistory, {
-        type: 'teams',
-        period: monthlySetup.month,
-        before: teamConfigurationSnapshot(current.teams),
-        after: teamConfigurationSnapshot(monthlySetup.teams),
-        user: authUser,
-        at: changedAt
+    if (vehicles.length && !canConfigureWeekly('weeklyVehicles')) { setNotice('Para sincronizar equipos y vehículos necesitás también el permiso Vehículos del mes.'); return }
+    const month = monthlySetup.month
+    const teams = structuredClone(monthlySetup.teams)
+    try {
+      await persistWeeklyConfiguration(snapshot => {
+        const current = snapshot.agenda?.weekly?._monthlyTeams?.[month] || {}
+        const signature = value => JSON.stringify((value || []).map(team => (team.memberIds || []).map(String).sort()))
+        const changed = signature(current.teams) !== signature(teams)
+        let next = changed && vehicles.length
+          ? synchronizeMonthlyVehicles(snapshot, { month, teams, vehicles, technicians: activeTechs, fromDate: today, holidays: holidayCalendar.records })
+          : structuredClone(snapshot)
+        const config = next.agenda.weekly._monthlyTeams?.[month] || {}
+        let configurationHistory = appendConfigurationHistory(current.configurationHistory, {
+          type: 'teams', period: month, before: teamConfigurationSnapshot(current.teams), after: teamConfigurationSnapshot(teams), user: authUser
+        })
+        if (changed && vehicles.length) configurationHistory = appendConfigurationHistory(configurationHistory, {
+          type: 'vehicles', period: month, before: vehicleConfigurationSnapshot(current.vehicleAssignments, vehicles, activeTechs), after: vehicleConfigurationSnapshot(config.vehicleAssignments, vehicles, activeTechs), user: authUser
+        })
+        next.agenda.weekly._monthlyTeams = { ...next.agenda.weekly._monthlyTeams, [month]: { ...config, teams, configurationHistory } }
+        return next
       })
-      if (changed && current.vehicleAssignments?.length) configurationHistory = appendConfigurationHistory(configurationHistory, {
-        type: 'vehicles',
-        period: monthlySetup.month,
-        before: vehicleConfigurationSnapshot(current.vehicleAssignments, vehicles, activeTechs),
-        after: [],
-        user: authUser,
-        at: changedAt
-      })
-      return { ...previous, _monthlyTeams: { ...(previous._monthlyTeams || {}), [monthlySetup.month]: { ...current, teams: monthlySetup.teams, vehicleAssignments: changed ? [] : current.vehicleAssignments, configurationHistory } } }
-    })
-    setMonthlySetup(null)
-    setNotice(`Los equipos predeterminados de ${new Date(`${monthKey}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} fueron guardados.`)
+      setMonthlySetup(null)
+      setNotice('Equipos guardados. Los responsables vehiculares se sincronizaron con la rotación mensual; se conservaron controles realizados y reemplazos por fecha.')
+    } catch (error) { setNotice(`No se guardaron los equipos. ${error.message || 'Revisá la configuración e intentá nuevamente.'}`) }
   }
   const saveMonthlyTimesSetup = () => {
     if (!validDefaultServiceTimes(monthlyTimesSetup?.times) || !monthlyTimesSetup?.effectiveFrom || monthlyTimesSetup?.lockedReason) return
