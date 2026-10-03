@@ -62,6 +62,7 @@ import { vehicleRepository } from './infrastructure/repositories/vehicle-reposit
 import { SESSION_IDLE_TIMEOUT_MS, SESSION_STATUS_INTERVAL_MS, TECHNICIAN_SESSION_IDLE_TIMEOUT_MS, TECHNICIAN_SESSION_STATUS_INTERVAL_MS, useSessionLifecycle } from './features/auth/application/useSessionLifecycle.js'
 import { readSettledLoginCredentials } from './features/auth/application/login-autofill.mjs'
 import { serviceAdvanceRepository } from './infrastructure/repositories/service-advance-repository.mjs'
+import { isAdvanceRequestActive } from './domain/agenda/advance-request-active.mjs'
 import { serviceRecordChangedFields, serviceRecordFingerprint } from './domain/history/service-concurrency.mjs'
 import { recoverStateRevisionConflict } from './features/state/application/state-save-conflict.mjs'
 import { canRefreshRemote, REMOTE_EDIT_NOTICE } from './features/state/application/remote-refresh-policy.mjs'
@@ -4914,8 +4915,21 @@ function PasswordResetReminder() {
 
 function ServiceAdvanceRequestsReminder({ history = [] }) {
   const [decision, setDecision] = useState(null)
-  const pending = history.filter(record => record.advanceRequest?.status === 'pending')
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    const refresh = () => setNow(Date.now())
+    const timer = window.setInterval(refresh, 1000)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh) }
+  }, [])
+  const pending = history.filter(record => isAdvanceRequestActive(record, now))
+  useEffect(() => {
+    if (decision && !history.some(record => record.id === decision.record.id && isAdvanceRequestActive(record, now))) setDecision(null)
+  }, [history, now, decision])
   const resolve = async () => {
+    const current = history.find(record => record.id === decision?.record.id)
+    if (!isAdvanceRequestActive(current)) { setDecision(null); setNow(Date.now()); return }
     await serviceAdvanceRepository.resolve(decision.record.id, decision.value)
     await globalThis.__pignusRefreshRemoteState?.()
   }
