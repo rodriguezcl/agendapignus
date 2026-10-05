@@ -1,6 +1,16 @@
-.service-types-field { min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--border, #d3dfd4); border-radius: 8px; }
+.service-types-field { position: relative; min-width: 0; margin: 0; padding: 10px; border: 1px solid #d3dfd4; border-radius: 8px; align-self: start; background: #f8fbf8; color: #315b44; }
 .service-types-field legend { font-size: 12px; font-weight: 700; }
-.service-types-field > div { display: grid; gap: 8px; max-height: 180px; overflow-y: auto; }
-.service-types-field > div > label { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 12px; }
-.service-types-field input[type="checkbox"] { width: 16px; min-height: 16px; height: 16px; flex: 0 0 16px; margin: 0; }
-.service-types-field > small { display: block; margin-top: 8px; font-size: 11px; }
+.service-types-field .service-types-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 42px; padding: 9px 12px; border: 1px solid #b8cebc; border-radius: 7px; background: #fff; color: inherit; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.service-types-trigger > span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
+.service-types-trigger > span:last-child { flex-shrink: 0; }
+.service-types-trigger:focus-visible { outline: 2px solid #237449; outline-offset: 2px; }
+.service-types-trigger:disabled { cursor: default; opacity: .65; }
+.service-types-field .service-types-options { position: absolute; z-index: 20; top: 100%; left: 0; right: 0; display: grid; gap: 4px; max-height: 280px; overflow-y: auto; padding: 8px; margin-top: 4px; border: 1px solid #b8cebc; border-radius: 8px; background: #fff; box-shadow: 0 8px 24px #102d2526; }
+.service-types-field .service-types-options > label { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px; margin: 0; font-size: 12px; cursor: pointer; }
+.service-types-options > label:hover { background: #edf5ee; border-radius: 4px; }
+.service-types-field .service-types-options input[type="checkbox"] { width: 16px; min-height: 16px; height: 16px; flex: 0 0 16px; margin: 0; padding: 0; accent-color: #237449; }
+.service-types-options > small { display: block; padding: 4px 6px; font-size: 11px; }
+:is(body.dark, [data-theme='dark']) .service-types-field,
+:is(body.dark, [data-theme='dark']) .service-types-field .service-types-trigger,
+:is(body.dark, [data-theme='dark']) .service-types-field .service-types-options { background: #172e23; color: #e3f1e6; border-color: #456451; }
+:is(body.dark, [data-theme='dark']) .service-types-options > label:hover { background: #284936; }
