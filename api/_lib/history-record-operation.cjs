@@ -22,6 +22,7 @@ function synchronizeAgendaHistoryRecord(value, previous, next) {
     clientNameAtService: next.clientNameAtService ?? value.clientNameAtService,
     client: next.client ?? value.client,
     serviceId: next.serviceId ?? value.serviceId,
+    ...(next.serviceTypes ? { serviceTypes: next.serviceTypes } : {}),
     service: next.service ?? value.service,
     estimatedMinutes: next.estimatedMinutes ?? value.estimatedMinutes,
     estimatedMinutesCustomized: next.estimatedMinutesCustomized ?? value.estimatedMinutesCustomized,

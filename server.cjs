@@ -1283,6 +1283,7 @@ function saveState(state, user) {
     throw error
   }
   state = require('./api/_lib/team-service-assignments.cjs').synchronizeTeamServiceAssignments(state, previousState)
+  require('./api/_lib/multi-service.cjs').validateServiceTypes(state)
   state = require('./api/_lib/service-schedule-sync.cjs').synchronizeServiceSchedules(state, previousState)
   state = require('./api/_lib/core.cjs').normalizeRetirementCustomers(state, previousState).state
   state = migrateLegacyEstimatedMinutes(state).state
