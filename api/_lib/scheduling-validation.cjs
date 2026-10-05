@@ -1,3 +1,4 @@
+const { serviceSlotReleased } = require('./service-slot-released.cjs')
 const normalizedName = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 const isMonthlyMeeting = (task, serviceMap) => normalizedName(task.service || serviceMap.byId.get(String(task.serviceId))?.name).replace(/\s+/g, ' ') === 'reunion mensual'
 const minimumReservation = (task, serviceMap) => task.vehicleControl || isMonthlyMeeting(task, serviceMap) ? 15 : 60
@@ -31,7 +32,7 @@ const historyRecordForAgendaTask = (task, date, history = []) => {
 }
 
 const agendaTaskIsResolvedForPlanning = (task, date, history = [], today = argentinaToday()) => {
-  const resolvedStatus = record => ['Completado', 'Avance registrado'].includes(record?.status) || ['Completado', 'Avance registrado'].includes(record?.technicalStatus) || (String(record?.date || date || '') < String(today || '') && (record?.status === 'Cancelado' || record?.technicalStatus === 'Cancelado'))
+  const resolvedStatus = record => ['Completado', 'Avance registrado'].includes(record?.status) || ['Completado', 'Avance registrado'].includes(record?.technicalStatus) || serviceSlotReleased(record, date)
   if (resolvedStatus(task)) return true
   const resolved = (history || []).filter(resolvedStatus)
   const taskHistoryIds = [task?.historyId, task?.sourceHistoryId].filter(Boolean).map(String)
@@ -57,10 +58,10 @@ const agendaTaskForScheduleOccupancy = (task, date, history = [], today = argent
   const record = historyRecordForAgendaTask(task, date, history)
   const status = record?.status || record?.technicalStatus || task?.status || task?.technicalStatus || 'Pendiente'
   // Administrative review preserves the report, not the technician's slot.
-  if (!(record?.vehicleControl || task?.vehicleControl) && (record || task).technicalStatus === 'Cancelado') return null
+  if (serviceSlotReleased(record || task, date)) return null
   if (['Completado', 'Avance registrado'].includes(status) && String(date || '') !== String(today || '')) return null
   if (status === 'Cancelado' && String(date || '') < String(today || '')) return null
-  return { ...task, date, status, technicalStatus: record?.technicalStatus || task?.technicalStatus || '', completedAt: record?.completedAt || task?.completedAt || '', technicalReportedAt: record?.journeyClosedAt || record?.technicalReportedAt || task?.technicalReportedAt || '' }
+  return { ...task, date, status, technicalStatus: record ? record.technicalStatus || '' : task?.technicalStatus || '', completedAt: record?.completedAt || task?.completedAt || '', technicalReportedAt: record?.journeyClosedAt || record?.technicalReportedAt || task?.technicalReportedAt || '' }
 }
 
 const completedReleaseMinute = task => {

@@ -47,7 +47,7 @@ import { appendConfigurationHistory, guardConfigurationSnapshot, teamConfigurati
 import { compactVehiclePhoto } from './infrastructure/media/image-upload.mjs'
 import { serviceHasStarted } from './domain/agenda/service-start.mjs'
 import { defaultWeeklyAnchor, weeklyVisibleDays, shiftWeeklyAnchor } from './domain/agenda/weekly-anchor.mjs'
-import { DEFAULT_SERVICE_ESTIMATED_MINUTES, MAX_SERVICE_ESTIMATED_MINUTES, normalizeServiceEstimatedMinutes, removeOverlappingDefaultSlots, serviceScheduleConflicts, taskOccupiedInterval } from './domain/agenda/service-scheduling.mjs'
+import { DEFAULT_SERVICE_ESTIMATED_MINUTES, MAX_SERVICE_ESTIMATED_MINUTES, normalizeServiceEstimatedMinutes, removeOverlappingDefaultSlots, serviceScheduleConflicts, taskOccupiedInterval, serviceSlotReleased } from './domain/agenda/service-scheduling.mjs'
 import WeeklyServiceSearch from './components/WeeklyServiceSearch.jsx'
 import { buildCustomerReferenceIndex, customerFromImportRow, mergeImportedCustomers, reconcileCustomerReference } from './domain/customers/customer-import.mjs'
 import { sortServicesAlphabetically } from './domain/services/service-order.mjs'
@@ -480,12 +480,12 @@ const taskStatus = (task, date, history) => {
 }
 const taskIsResolvedForPlanning = (task, date, history) => {
   const status = taskStatus(task, date, history)
-  return ['Completado', 'Avance registrado'].includes(status) || (status === 'Cancelado' && String(date || '') < currentLocalDate())
+  return ['Completado', 'Avance registrado'].includes(status) || serviceSlotReleased(historyRecordForTask(task, date, history) || task, date)
 }
 const taskForScheduleOccupancy = (task, date, history) => {
   if (!taskHasContent(task)) return null
   const record = historyRecordForTask(task, date, history)
-  if (!(record?.vehicleControl || task?.vehicleControl) && (record || task).technicalStatus === 'Cancelado') return null
+  if (serviceSlotReleased(record || task, date)) return null
   const status = record?.status || record?.technicalStatus || task?.status || task?.technicalStatus || 'Pendiente'
   if (['Completado', 'Avance registrado'].includes(status) && String(date || '') !== currentLocalDate()) return null
   if (status === 'Cancelado' && String(date || '') < currentLocalDate()) return null
@@ -493,7 +493,7 @@ const taskForScheduleOccupancy = (task, date, history) => {
     ...task,
     date,
     status,
-    technicalStatus: record?.technicalStatus || task?.technicalStatus || '',
+    technicalStatus: record ? record.technicalStatus || '' : task?.technicalStatus || '',
     completedAt: record?.completedAt || task?.completedAt || '',
     technicalReportedAt: record?.journeyClosedAt || record?.technicalReportedAt || task?.technicalReportedAt || ''
   }

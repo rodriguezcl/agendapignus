@@ -5,7 +5,7 @@ export const completeRescheduleSlot = (day, time) => /^\d{4}-\d{2}-\d{2}$/.test(
 // Pure filtering: never modifies the draft, teams or their tasks.
 export function availableRescheduleTeams(teams, record, day, time) {
   if (!completeRescheduleSlot(day, time)) return []
-  const interval = taskOccupiedInterval({ ...record, date: day, time, scheduledTime: time, status: 'Pendiente', technicalStatus: '', completedAt: '', technicalReportedAt: '' })
+  const interval = taskOccupiedInterval({ ...record, date: day, time, scheduledTime: time, status: 'Pendiente', technicalStatus: '', technicianRequest: '', completedAt: '', technicalReportedAt: '' })
   const sameService = task => (record.id && String(task.historyId || task.id || '') === String(record.id)) || (record.sourceTaskId && String(task.taskId || task.sourceTaskId || '') === String(record.sourceTaskId))
   return teams.filter(team => !teams.some(other => {
     const shared = String(team.teamId) === String(other.teamId) || (other.memberIds || []).some(id => (team.memberIds || []).some(member => String(member) === String(id)))

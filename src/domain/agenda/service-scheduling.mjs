@@ -1,3 +1,5 @@
+import slotPolicy from '../../../api/_lib/service-slot-released.cjs'
+export const { serviceSlotReleased } = slotPolicy
 export const DEFAULT_SERVICE_ESTIMATED_MINUTES = 60
 export const MINIMUM_SERVICE_RESERVATION_MINUTES = 60
 export const MAX_SERVICE_ESTIMATED_MINUTES = 12 * 60
@@ -70,7 +72,7 @@ export const taskReservationMinutes = task => Math.max(
 )
 
 export const taskOccupiedInterval = task => {
-  if (!task?.vehicleControl && task?.technicalStatus === 'Cancelado') return null
+  if (serviceSlotReleased(task)) return null
   const start = timeInMinutes(task?.time || task?.scheduledTime)
   if (start === null) return null
   const estimatedMinutes = normalizeServiceEstimatedMinutes(task?.estimatedMinutes)
