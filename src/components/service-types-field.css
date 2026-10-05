@@ -1,5 +1,6 @@
-.service-types-field { position: relative; min-width: 0; margin: 0; padding: 10px; border: 1px solid #d3dfd4; border-radius: 8px; align-self: start; background: #f8fbf8; color: #315b44; }
-.service-types-field legend { font-size: 12px; font-weight: 700; }
+.service-types-field { position: relative; display: grid; gap: 5px; min-width: 0; margin: 0; padding: 9px 10px; border: 1px solid #d9e5da; border-radius: 9px; align-self: stretch; background: #f9fbf8; color: #4d6353; font-size: .78rem; }
+.service-types-label { font-weight: 700; }
+.service-types-label b { color: #c7443f; }
 .service-types-field .service-types-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 42px; padding: 9px 12px; border: 1px solid #b8cebc; border-radius: 7px; background: #fff; color: inherit; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
 .service-types-trigger > span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
 .service-types-trigger > span:last-child { flex-shrink: 0; }

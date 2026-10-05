@@ -8,7 +8,9 @@ export default function ServiceTypesField({ task, services, onChange, disabled =
   const trigger = useRef(null)
   const id = useId()
   const selected = selectedServiceIds(task)
-  const options = services.filter(service => (service.status === 'Activo' && !service.system) || selected.includes(String(service.id)))
+  const options = services
+    .filter(service => (service.status === 'Activo' && !service.system) || selected.includes(String(service.id)))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base', numeric: true }))
   const summary = options.filter(service => selected.includes(String(service.id))).map(service => service.name).join(' + ') || 'Seleccionar tipos de servicio'
   useEffect(() => {
     if (!open) return
@@ -17,7 +19,7 @@ export default function ServiceTypesField({ task, services, onChange, disabled =
     return () => document.removeEventListener('pointerdown', closeOutside)
   }, [open])
   useEffect(() => { if (disabled) setOpen(false) }, [disabled])
-  return <fieldset ref={root} className="service-types-field" disabled={disabled} onBlur={event => {
+  return <fieldset ref={root} className="service-types-field" aria-labelledby={`${id}-label`} disabled={disabled} onBlur={event => {
     if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
   }} onKeyDown={event => {
     if (open && event.key === 'Escape') {
@@ -27,7 +29,7 @@ export default function ServiceTypesField({ task, services, onChange, disabled =
       trigger.current?.focus()
     }
   }}>
-    <legend id={`${id}-label`}>Tipos de servicio *</legend>
+    <span className="service-types-label" id={`${id}-label`}>Tipos de servicio <b>*</b></span>
     <button ref={trigger} type="button" className="service-types-trigger" aria-expanded={open} aria-controls={`${id}-options`} aria-labelledby={`${id}-label ${id}-summary`} title={summary} onClick={() => setOpen(value => !value)}>
       <span id={`${id}-summary`}>{summary}</span><span aria-hidden="true">{open ? '▴' : '▾'}</span>
     </button>
