@@ -63,6 +63,7 @@ import { SESSION_IDLE_TIMEOUT_MS, SESSION_STATUS_INTERVAL_MS, TECHNICIAN_SESSION
 import { readSettledLoginCredentials } from './features/auth/application/login-autofill.mjs'
 import { serviceAdvanceRepository } from './infrastructure/repositories/service-advance-repository.mjs'
 import { isAdvanceRequestActive } from './domain/agenda/advance-request-active.mjs'
+import { reservationFormReady } from './domain/agenda/reservation-form-ready.mjs'
 import { serviceRecordChangedFields, serviceRecordFingerprint } from './domain/history/service-concurrency.mjs'
 import { recoverStateRevisionConflict } from './features/state/application/state-save-conflict.mjs'
 import { canRefreshRemote, REMOTE_EDIT_NOTICE } from './features/state/application/remote-refresh-policy.mjs'
@@ -4963,7 +4964,7 @@ function SubscriberReservationReminders({ history = [] }) {
   const through = tomorrow.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const reservations = history.filter(record => record.subscriberReservation && String(record.date || '') <= through && !['Completado', 'Cancelado'].includes(record.status))
   if (!reservations.length) return null
-  return <section className="subscriber-reservation-reminders" role="alert">{reservations.map(record => <article key={record.id}><Icon name="calendar" size={19} /><div><b>Reserva pendiente de vincular con un PIG</b><span>{record.client} · {prettyDate(record.date)} a las {record.time || record.scheduledTime || 'hora a confirmar'}. Seleccioná el abonado importado antes del servicio.</span></div></article>)}</section>
+  return <section className="subscriber-reservation-reminders" role="alert">{reservations.map(record => <article key={record.id}><Icon name="calendar" size={19} /><div><b>Reserva pendiente de vincular con un PIG</b><span>{record.client} · {prettyDate(record.date)} a las {record.time || record.scheduledTime || 'hora a confirmar'}. Seleccioná el abonado importado antes del servicio.</span>{reservationFormReady(record) && <span><strong>Formulario completo disponible para crear el abonado en SoftGuard.</strong> Email del formulario: {record.formEmail.trim()}.</span>}</div></article>)}</section>
 }
 
 function DashboardView({ history, services, vehicles = [], customers = [], isAdministrator = false, onEditVehicle }) {
