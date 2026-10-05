@@ -1,4 +1,4 @@
-import { taskOccupiedInterval, minutesAsTime } from './service-scheduling.mjs'
+import { taskOccupiedInterval, minutesAsTime, serviceSlotReleased } from './service-scheduling.mjs'
 
 export function planningHoursForDay(day) {
   const weekDay = new Date(`${day}T12:00:00`).getDay()
@@ -36,7 +36,10 @@ export function serviceGaps(tasks, { min, max, day, now = new Date() } = {}) {
     .filter(({ task, interval }) => interval && hasService(task))
     .sort((a, b) => a.interval.start - b.interval.start)
   const gaps = []
-  let end = null
+  // A cancelled first/only visit still provides an anchor for the released slot.
+  const releasedStarts = cards.filter(({ task }) => hasService(task) && serviceSlotReleased(task, day)).map(card => card.start)
+  const firstReleased = releasedStarts.length ? Math.min(...releasedStarts) : null
+  let end = firstReleased !== null && (!occupied.length || firstReleased <= occupied[0].interval.start) ? firstReleased : null
   for (const { index, interval } of occupied) {
     const start = Math.max(end ?? lower, lower), stop = Math.min(interval.start, upper)
     // Lunch is not bookable: require 90 continuous minutes on either side,

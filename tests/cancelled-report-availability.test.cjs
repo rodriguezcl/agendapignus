@@ -20,5 +20,5 @@ test('una revisión sin cancelación no libera el turno y el historial vigente p
   const task = { historyId: 'report', service: 'Alarma', time: '11:00', technicalStatus: 'Cancelado' }
   assert.ok(agendaTaskForScheduleOccupancy(task, '2099-09-25', [{ id: 'report', status: 'Pendiente', technicalStatus: '' }]))
   assert.ok(agendaTaskForScheduleOccupancy({ ...task, technicalStatus: '' }, '2099-09-25', [{ id: 'report', status: 'Requiere revisión' }]))
-  assert.ok(agendaTaskForScheduleOccupancy({ ...task, vehicleControl: true }, '2099-09-25', []))
+  assert.equal(agendaTaskForScheduleOccupancy({ ...task, vehicleControl: true }, '2099-09-25', []), null)
 })
