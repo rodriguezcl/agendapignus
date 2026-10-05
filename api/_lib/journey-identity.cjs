@@ -1,5 +1,5 @@
 const customerFields = ['customerId', 'client', 'clientAccount', 'clientNameAtService', 'address', 'phone', 'newCustomer', 'subscriberReservation', 'reservationOriginal', 'reservationLinkedAt', 'reservationLinkedBy']
-const serviceFields = ['serviceId', 'service']
+const serviceFields = ['serviceId', 'service', 'serviceTypes']
 const changed = (a, b, key) => JSON.stringify(a?.[key]) !== JSON.stringify(b?.[key])
 const hasWork = record => Boolean(record.startedAt || record.technicalStatus || record.technicalReportedAt || record.journeyClosedAt || ['Avance registrado', 'Completado'].includes(record.status))
 

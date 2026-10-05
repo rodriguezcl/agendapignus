@@ -381,6 +381,7 @@ function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now
 }
 
 function normalizeStateForSave(state, current, { allowEarlyCompletion = false } = {}) {
+  require('./multi-service.cjs').validateServiceTypes(state)
   state = require('./service-schedule-sync.cjs').synchronizeServiceSchedules(state, current)
   state = require('./team-service-assignments.cjs').synchronizeTeamServiceAssignments(state, current)
   current ||= { roles: [], employees: [], services: [], vehicles: [], customers: [], history: [], reviews: [], agenda: {} }
@@ -546,6 +547,7 @@ function secureEmployees(employees, previousEmployees) {
 }
 
 function validateState(state, previousState = null) {
+  require('./multi-service.cjs').validateServiceTypes(state)
   require('./completed-service-policy.cjs').assertCompletedServices(state, previousState)
   require('./journey-identity.cjs').synchronizeJourneyIdentity(state, previousState)
   require('./service-journeys.cjs').validateServiceJourneys(state, previousState)

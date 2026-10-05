@@ -1,5 +1,5 @@
 const isCompleted = record => record?.status === 'Completado' || record?.technicalStatus === 'Completado'
-const fields = ['customerId', 'client', 'clientAccount', 'clientNameAtService', 'address', 'phone', 'serviceId', 'service', 'date', 'time', 'scheduledTime', 'teamId', 'technicianIds', 'detail', 'internalNote', 'internalChecklist', 'estimatedMinutes', 'installationZone', 'paymentMethod', 'amount', 'monthlyFee', 'form', 'formEmail']
+const fields = ['customerId', 'client', 'clientAccount', 'clientNameAtService', 'address', 'phone', 'serviceTypes', 'serviceId', 'service', 'date', 'time', 'scheduledTime', 'teamId', 'technicianIds', 'detail', 'internalNote', 'internalChecklist', 'estimatedMinutes', 'installationZone', 'paymentMethod', 'amount', 'monthlyFee', 'form', 'formEmail']
 const same = (a, b) => JSON.stringify(a ?? '') === JSON.stringify(b ?? '')
 function assertCompletedServiceChange(before, after, { referenceRepair = false } = {}) {
   if (!isCompleted(before) || !after) return
