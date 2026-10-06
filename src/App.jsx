@@ -1,5 +1,6 @@
 import { requiresDifferentRescheduleDay } from './domain/history/history-edit-policy.mjs'
 import { retirementClientLabel } from './domain/customers/retirement-label.mjs'
+import { isEquipmentRetirementName, isEquipmentRetirementRecord } from './domain/services/equipment-retirement.mjs'
 import { previousSubscriberAccount } from './domain/customers/customer-provenance.mjs'
 import { createServiceLocalityLookup, reservationLocality } from './domain/agenda/service-locality.mjs'
 import { createSaveActivity, operationScopes, preserveLocalDraft } from './features/state/application/save-activity.mjs'
@@ -1142,7 +1143,7 @@ const prettyDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateSt
 // Cada familia de trabajo tiene un color consistente en el historial para facilitar su lectura.
 const serviceColorClass = service => {
   const normalized = String(service || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-  if (normalized.includes('retiro')) return 'service-retirement'
+  if (isEquipmentRetirementName(normalized)) return 'service-retirement'
   if (normalized.includes('titularidad')) return 'service-ownership'
   if (normalized.includes('camara')) return 'service-cameras'
   if (normalized.includes('cerco')) return 'service-fence'
@@ -5524,7 +5525,7 @@ function DashboardStatusView({ history, services, vehicles = [], customers = [] 
   const zoneOf = record => record.installationZone || (`${record.address || ''} ${record.client || ''}`.toLowerCase().includes('docta') ? 'docta' : `${record.address || ''} ${record.client || ''}`.toLowerCase().includes('nobu') ? 'nobu-town' : 'residencial')
   const installations = records.filter(record => serviceTypesFor(record).some(type => services.find(service => String(service.id) === String(type.id))?.category === 'installation' || normalizeServiceName(type.name).includes('instalacion')))
   const alarms = installations.filter(record => isAlarmRecord(record) && zoneOf(record) !== 'no-monitoreada')
-  const isRetirementRecord = record => serviceTypesFor(record).some(type => normalizeServiceName(type.name).includes('retiro'))
+  const isRetirementRecord = isEquipmentRetirementRecord
   const retirements = records.filter(isRetirementRecord)
   const netGrowth = alarms.length - retirements.length
   const zones = [['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residenciales']]
