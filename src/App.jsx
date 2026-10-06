@@ -66,6 +66,7 @@ import { isAdvanceRequestActive } from './domain/agenda/advance-request-active.m
 import ServiceTypesField from './components/ServiceTypesField.jsx'
 import { serviceTypesFor, serviceTypesLabel } from './domain/services/multi-service.mjs'
 import { reservationFormReady } from './domain/agenda/reservation-form-ready.mjs'
+import { compareReservationReminders } from './domain/agenda/reservation-reminder-order.mjs'
 import { serviceRecordChangedFields, serviceRecordFingerprint } from './domain/history/service-concurrency.mjs'
 import { recoverStateRevisionConflict } from './features/state/application/state-save-conflict.mjs'
 import { canRefreshRemote, REMOTE_EDIT_NOTICE } from './features/state/application/remote-refresh-policy.mjs'
@@ -4970,7 +4971,7 @@ function SubscriberReservationReminders({ history = [], customers = [] }) {
   const tomorrow = new Date(`${today}T12:00:00`)
   tomorrow.setDate(tomorrow.getDate() + 1)
   const through = tomorrow.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
-  const reservations = history.filter(record => record.subscriberReservation && String(record.date || '') <= through && !['Completado', 'Cancelado'].includes(record.status))
+  const reservations = history.filter(record => record.subscriberReservation && String(record.date || '') <= through && !['Completado', 'Cancelado'].includes(record.status)).sort(compareReservationReminders)
   if (!reservations.length) return null
   return <section className="subscriber-reservation-reminders" role="alert">{reservations.map(record => <article key={record.id}><Icon name="calendar" size={19} /><div><b>Reserva pendiente de vincular con un PIG</b><span>{record.client} · {reservationLocality(record, customers)} · {prettyDate(record.date)} a las {record.time || record.scheduledTime || 'hora a confirmar'}. Seleccioná el abonado importado antes del servicio.</span>{reservationFormReady(record) && <span><strong>Formulario completo disponible para crear el abonado en SoftGuard.</strong> Email del formulario: {record.formEmail.trim()}.</span>}</div></article>)}</section>
 }
