@@ -1,7 +1,7 @@
 import { requiresDifferentRescheduleDay } from './domain/history/history-edit-policy.mjs'
 import { retirementClientLabel } from './domain/customers/retirement-label.mjs'
 import { previousSubscriberAccount } from './domain/customers/customer-provenance.mjs'
-import { createServiceLocalityLookup } from './domain/agenda/service-locality.mjs'
+import { createServiceLocalityLookup, reservationLocality } from './domain/agenda/service-locality.mjs'
 import { createSaveActivity, operationScopes, preserveLocalDraft } from './features/state/application/save-activity.mjs'
 import { createPortal } from 'react-dom'
 import { ServiceJourneysContext, ServiceJourneys, JourneyHistory, JourneyIdentityField, journeyLabel, journeyReportType } from './components/ServiceJourneys.jsx'
@@ -4965,18 +4965,18 @@ function VehicleInsuranceReminders({ vehicles = [], onEditVehicle }) {
   return <section className="vehicle-insurance-reminders" role="alert">{expired.map(vehicle => <article key={vehicle.id}>{onEditVehicle ? <button type="button" className="insurance-reminder-action" title={`Editar ${vehicle.brand} ${vehicle.model} · ${vehicle.plate} y actualizar su seguro`} onClick={() => onEditVehicle(vehicle.id)}><Icon name="alert" size={19} /><span><b>Seguro vehicular desactualizado</b><span>{vehicle.brand} {vehicle.model} · {vehicle.plate} venció el {prettyDate(vehicle.insuranceExpiresOn)}. Hacé clic para editar el vehículo y actualizar el seguro.</span></span><Icon name="edit" size={17} /></button> : <><Icon name="alert" size={19} /><div><b>Seguro vehicular desactualizado</b><span>{vehicle.brand} {vehicle.model} · {vehicle.plate} venció el {prettyDate(vehicle.insuranceExpiresOn)}. Solicitá el nuevo PDF al área administrativa.</span></div></>}</article>)}</section>
 }
 
-function SubscriberReservationReminders({ history = [] }) {
+function SubscriberReservationReminders({ history = [], customers = [] }) {
   const today = currentLocalDate()
   const tomorrow = new Date(`${today}T12:00:00`)
   tomorrow.setDate(tomorrow.getDate() + 1)
   const through = tomorrow.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const reservations = history.filter(record => record.subscriberReservation && String(record.date || '') <= through && !['Completado', 'Cancelado'].includes(record.status))
   if (!reservations.length) return null
-  return <section className="subscriber-reservation-reminders" role="alert">{reservations.map(record => <article key={record.id}><Icon name="calendar" size={19} /><div><b>Reserva pendiente de vincular con un PIG</b><span>{record.client} · {prettyDate(record.date)} a las {record.time || record.scheduledTime || 'hora a confirmar'}. Seleccioná el abonado importado antes del servicio.</span>{reservationFormReady(record) && <span><strong>Formulario completo disponible para crear el abonado en SoftGuard.</strong> Email del formulario: {record.formEmail.trim()}.</span>}</div></article>)}</section>
+  return <section className="subscriber-reservation-reminders" role="alert">{reservations.map(record => <article key={record.id}><Icon name="calendar" size={19} /><div><b>Reserva pendiente de vincular con un PIG</b><span>{record.client} · {reservationLocality(record, customers)} · {prettyDate(record.date)} a las {record.time || record.scheduledTime || 'hora a confirmar'}. Seleccioná el abonado importado antes del servicio.</span>{reservationFormReady(record) && <span><strong>Formulario completo disponible para crear el abonado en SoftGuard.</strong> Email del formulario: {record.formEmail.trim()}.</span>}</div></article>)}</section>
 }
 
 function DashboardView({ history, services, vehicles = [], customers = [], isAdministrator = false, onEditVehicle }) {
-  return <>{isAdministrator && <ServiceAdvanceRequestsReminder history={history} />}<PasswordResetReminder /><VehicleInsuranceReminders vehicles={vehicles} onEditVehicle={onEditVehicle} /><SubscriberReservationReminders history={history} /><DashboardStatusView customers={customers} history={history} services={services} vehicles={vehicles} /></>
+  return <>{isAdministrator && <ServiceAdvanceRequestsReminder history={history} />}<PasswordResetReminder /><VehicleInsuranceReminders vehicles={vehicles} onEditVehicle={onEditVehicle} /><SubscriberReservationReminders history={history} customers={customers} /><DashboardStatusView customers={customers} history={history} services={services} vehicles={vehicles} /></>
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
   const year = month.slice(0, 4)
   const records = history.filter(record => record.date?.startsWith(month)).sort((a, b) => b.date.localeCompare(a.date))

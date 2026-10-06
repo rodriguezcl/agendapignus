@@ -1,6 +1,15 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
+test('reservation reminders use recorded locality or a specific installation neighborhood', async () => {
+  const { reservationLocality } = await import('../src/domain/agenda/service-locality.mjs')
+  assert.equal(reservationLocality({ installationZone: 'docta' }), 'DOCTA URBANIZACIÓN')
+  assert.equal(reservationLocality({ installationZone: 'nobu-town' }), 'NOBU TOWN')
+  assert.equal(reservationLocality({ locality: ' Cerro de las Rosas ' }), 'CERRO DE LAS ROSAS')
+  assert.equal(reservationLocality({ installationZone: 'residencial', address: 'Calle 123' }), 'Barrio sin especificar')
+  assert.equal(reservationLocality({ customerId: 'a', installationZone: 'docta' }, [{ customerId: 'a', locality: 'Centro' }]), 'CENTRO')
+})
+
 test('weekly locality uses linked customer locality, not the service address', async () => {
   const { createServiceLocalityLookup } = await import('../src/domain/agenda/service-locality.mjs')
   const lookup = createServiceLocalityLookup([

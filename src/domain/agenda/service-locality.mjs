@@ -1,4 +1,12 @@
 // Resolve only linked customer data; never infer a neighborhood from an address.
+export function reservationLocality(record, customers = []) {
+  const linked = createServiceLocalityLookup(customers)(record)
+  if (linked) return linked
+  const explicit = String(record?.locality || '').trim()
+  if (explicit) return explicit.toLocaleUpperCase('es-AR')
+  return ({ docta: 'DOCTA URBANIZACIÓN', 'nobu-town': 'NOBU TOWN' })[record?.installationZone] || 'Barrio sin especificar'
+}
+
 export function createServiceLocalityLookup(customers = []) {
   const byId = new Map()
   const byAccount = new Map()
