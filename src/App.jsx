@@ -2416,11 +2416,12 @@ export default function App() {
       // que React alcance a actualizar stateRevision. No debe tratarse como un
       // cambio externo durante esa pequeña ventana.
       if (confirmedSaveRef.current || loggingOutRef.current || refreshing || pendingStateSaves.current > 0 || document.visibilityState === 'hidden') return
-      const canRefresh = () => canRefreshRemote({
+      const canRefresh = remote => canRefreshRemote({
         saving: confirmedSaveRef.current || pendingStateSaves.current > 0,
         draft: hasUnsavedFormFields() || Boolean(weeklyNavigationGuard.current?.hasDraft?.()),
         current: isReadOnly ? lastPersistedSnapshotRef.current : currentSnapshotRef.current,
-        baseline: lastPersistedSnapshotRef.current
+        baseline: lastPersistedSnapshotRef.current,
+        remote
       })
       refreshing = true
       try {
@@ -2436,13 +2437,14 @@ export default function App() {
         }
         const remoteRevision = Number(data.revision)
         if (!stopped && remoteRevision !== Number(stateRevisionRef.current)) {
-          const hasLocalChanges = !canRefresh()
+          const remoteState = await stateRepository.load()
+          if (stopped || loggingOutRef.current) return
+          const hasLocalChanges = !canRefresh(remoteState)
           if (hasLocalChanges) {
             if (remoteConflictRevisionRef.current !== remoteRevision) setNotice(REMOTE_EDIT_NOTICE)
             remoteConflictRevisionRef.current = remoteRevision
           } else {
-            const remoteState = await stateRepository.load()
-            if (!stopped && !loggingOutRef.current && canRefresh()) {
+            if (!stopped && !loggingOutRef.current && canRefresh(remoteState)) {
               applyRemoteState(remoteState)
               setNotice(previous => previous.startsWith('Hay cambios guardados desde otra sesión') ? '' : previous)
             } else if (!stopped && !loggingOutRef.current) {
@@ -2450,7 +2452,10 @@ export default function App() {
               remoteConflictRevisionRef.current = Number(remoteState.revision)
             }
           }
-        } else if (remoteRevision === Number(stateRevisionRef.current)) remoteConflictRevisionRef.current = null
+        } else if (remoteRevision === Number(stateRevisionRef.current)) {
+          remoteConflictRevisionRef.current = null
+          if (!stopped) setNotice(previous => previous.startsWith('Hay cambios guardados desde otra sesión') ? '' : previous)
+        }
       } catch {
         if (!stopped) setNotice('No se pudo comprobar si existen cambios de otra sesión.')
       } finally {
@@ -3403,7 +3408,6 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
       if (row) document.dispatchEvent(new CustomEvent('pignus:validate-required', { detail: { scope: row } }))
       const saved = await registerHistory(teams, taskId)
       if (!saved && row) row.scrollIntoView({ block: 'center', behavior: 'smooth' })
-      if (saved) setNotice('Servicio guardado correctamente en la agenda y el Historial.')
       return saved
     } finally { singleSaveRef.current = false; setSingleSaving(false) }
   }
@@ -4085,7 +4089,6 @@ function WeeklyPlanner({ navigationGuardRef, persistWeeklyService, persistWeekly
       if (taskEditor.photoData) await servicePhotoRepository.upload(record.id, taskEditor.photoData)
       else if (taskEditor.photoRemoved) await servicePhotoRepository.remove(record.id)
       setTaskEditor(null)
-      setNotice('Servicio guardado correctamente en la agenda y el Historial.')
       return true
     } catch (error) {
       rejectSave(`No se guardó el servicio. ${error.message || 'Comprobá la conexión e intentá nuevamente.'}`)

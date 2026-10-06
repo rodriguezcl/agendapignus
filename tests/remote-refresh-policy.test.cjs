@@ -1,5 +1,17 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+
+test('a difference already saved remotely does not keep an idle session blocked', async () => {
+  const { canRefreshRemote } = await import('../src/features/state/application/remote-refresh-policy.mjs')
+  const baseline = JSON.stringify({ customers: [{ customerId: '1', name: 'A' }] })
+  const current = JSON.stringify({ customers: [{ customerId: '1', name: 'B' }] })
+  const remote = { customers: [{ name: 'B', customerId: '1' }, { customerId: '2', name: 'Other session' }] }
+  assert.equal(canRefreshRemote({ current, baseline, remote }), true)
+  assert.equal(canRefreshRemote({ current, baseline, remote, draft: true }), false)
+  assert.equal(canRefreshRemote({ current, baseline, remote, saving: true }), false)
+  assert.equal(canRefreshRemote({ current, baseline, remote: { customers: [{ customerId: '1', name: 'C' }] } }), false)
+  assert.equal(canRefreshRemote({ current, baseline, remote: { customers: [] } }), false)
+})
 test('consultation and serialization order do not block remote refresh', async () => {
   const { canRefreshRemote } = await import('../src/features/state/application/remote-refresh-policy.mjs')
   assert.equal(canRefreshRemote({ current: JSON.stringify({ customers: [{ name: 'A', customerId: '1' }] }), baseline: JSON.stringify({ customers: [{ customerId: '1', name: 'A' }] }) }), true)
