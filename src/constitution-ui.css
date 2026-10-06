@@ -475,6 +475,9 @@ body:has(.modal-backdrop, .modal-layer) .app-shell .content > .notice[data-tone=
   border-color: #78bdb5;
   color: #155e59;
 }
+.subscriber-reservation-reminders article[role="button"] { cursor: pointer; }
+.subscriber-reservation-reminders article[role="button"]:hover { border-color: currentColor; }
+.subscriber-reservation-reminders article[role="button"]:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .app-shell .pending-reminder-today {
   background: #fff6db;
   border-color: #e4bd57;
