@@ -16,12 +16,16 @@ export default function ServiceTypesField({ task, services, onChange, disabled =
     if (!open) return
     const closeOutside = event => { if (!root.current?.contains(event.target)) setOpen(false) }
     document.addEventListener('pointerdown', closeOutside)
-    return () => document.removeEventListener('pointerdown', closeOutside)
+    // A label click briefly blurs the trigger before focusing its checkbox.
+    // Close only when focus actually enters another element outside this field.
+    document.addEventListener('focusin', closeOutside)
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside)
+      document.removeEventListener('focusin', closeOutside)
+    }
   }, [open])
   useEffect(() => { if (disabled) setOpen(false) }, [disabled])
-  return <fieldset ref={root} className="service-types-field" aria-labelledby={`${id}-label`} disabled={disabled} onBlur={event => {
-    if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
-  }} onKeyDown={event => {
+  return <fieldset ref={root} className="service-types-field" aria-labelledby={`${id}-label`} disabled={disabled} onKeyDown={event => {
     if (open && event.key === 'Escape') {
       event.preventDefault()
       event.stopPropagation()
@@ -35,8 +39,8 @@ export default function ServiceTypesField({ task, services, onChange, disabled =
     </button>
     {open && <div id={`${id}-options`} className="service-types-options" role="group" aria-labelledby={`${id}-label`}>
       <small>Marcá una o varias opciones.</small>
-      {options.map(service => <label key={service.id}>
-      <input type="checkbox" checked={selected.includes(String(service.id))} onChange={event => onChange(multiServicePatch(task, event.target.checked ? [...selected, String(service.id)] : selected.filter(id => id !== String(service.id)), services))} />
+      {options.map(service => <label key={service.id} htmlFor={`${id}-service-${service.id}`}>
+      <input id={`${id}-service-${service.id}`} type="checkbox" checked={selected.includes(String(service.id))} onChange={event => onChange(multiServicePatch(task, event.target.checked ? [...selected, String(service.id)] : selected.filter(id => id !== String(service.id)), services))} />
       <span>{service.name}</span>
     </label>)}
       <small>Una sola duración, inicio e informe para todos los tipos seleccionados.</small>
