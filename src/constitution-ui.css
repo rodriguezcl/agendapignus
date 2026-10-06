@@ -290,9 +290,21 @@ body { font-family: var(--pignus-font-family); }
   line-height: 1.3;
 }
 .technician-service .technician-quick-actions svg { flex-shrink: 0; }
-.weekly-time-gap { display: grid; gap: 10px; margin: 10px; padding: 14px; border: 1px solid #91c9a4; border-radius: 10px; background: #e4f5e9; color: #205b36; font-size: 13px; line-height: 1.5; }
+.weekly-time-gap { display: grid; gap: 10px; margin: 10px; padding: 14px; border: 1px dashed #b7c8bf; border-left: 3px solid #358257; border-radius: 10px; background: #fafcfb; color: #334b40; font-size: 13px; line-height: 1.5; }
 .weekly-time-gap button { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 40px; }
-.app-shell[data-theme='dark'] .weekly-time-gap { background: #183c29; color: #c6ebd1; border-color: #477b59; }
+.app-shell[data-theme='dark'] .weekly-time-gap { background: #242b30; color: #e0e9e4; border-color: #65766b; border-left-color: #69bd8a; }
+
+/* Neutral structural surfaces; team identity and availability retain their own accents. */
+.weekly-board .week-day { background: #f7f8fa; border-color: #dce1e6; }
+.weekly-board .week-day > header { background: #f0f2f5; border-color: #dce1e6; }
+.weekly-board .week-team { border-color: #dce1e6; }
+.weekly-board :is(.weekly-add-task, .weekly-add-team) { background: #fff; border-color: #d4dbe1; color: #52616e; }
+.weekly-board :is(.weekly-add-task, .weekly-add-team):hover { background: #eef1f5; color: #263b4b; }
+.app-shell[data-theme='dark'] .weekly-board .week-day { background: #1b2229; border-color: #414c57; }
+.app-shell[data-theme='dark'] .weekly-board .week-day > header { background: #262f38; border-color: #414c57; }
+.app-shell[data-theme='dark'] .weekly-board .week-team { border-color: #414c57; }
+.app-shell[data-theme='dark'] .weekly-board :is(.weekly-add-task, .weekly-add-team) { background: #262f38; border-color: #52616e; color: #dae2e9; }
+.app-shell[data-theme='dark'] .weekly-board :is(.weekly-add-task, .weekly-add-team):hover { background: #35414d; color: #fff; }
 .technician-quick-actions a {
   display: inline-flex;
   min-height: 44px;
