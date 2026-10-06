@@ -1695,14 +1695,14 @@ body.dark .week-task-summary.available-slot:focus-visible {
 
 .week-team:nth-child(6n + 3) .week-team-header,
 .team-card:nth-of-type(6n + 3) .team-header {
-  background: #d8f3e6;
-  color: #146344;
+  background: #ede7f8;
+  color: #593d80;
 }
 
 .week-team:nth-child(6n + 4) .week-team-header,
 .team-card:nth-of-type(6n + 4) .team-header {
-  background: #eadffd;
-  color: #63418c;
+  background: #f9e5ee;
+  color: #853e5d;
 }
 
 .week-team:nth-child(6n + 5) .week-team-header,
@@ -1719,8 +1719,8 @@ body.dark .week-task-summary.available-slot:focus-visible {
 
 .team-card:nth-of-type(6n + 1) .team-number { background: #315f9c; }
 .team-card:nth-of-type(6n + 2) .team-number { background: #a87900; }
-.team-card:nth-of-type(6n + 3) .team-number { background: #237855; }
-.team-card:nth-of-type(6n + 4) .team-number { background: #7652a0; }
+.team-card:nth-of-type(6n + 3) .team-number { background: #7652a0; }
+.team-card:nth-of-type(6n + 4) .team-number { background: #994c70; }
 .team-card:nth-of-type(6n + 5) .team-number { background: #a95840; }
 .team-card:nth-of-type(6n) .team-number { background: #2d7780; }
 
@@ -1729,9 +1729,9 @@ body.dark .week-task-summary.available-slot:focus-visible {
 .app-shell[data-theme='dark'] .week-team:nth-child(6n + 2) .week-team-header,
 .app-shell[data-theme='dark'] .team-card:nth-of-type(6n + 2) .team-header { background: #493d1d; color: #ffe7a0; }
 .app-shell[data-theme='dark'] .week-team:nth-child(6n + 3) .week-team-header,
-.app-shell[data-theme='dark'] .team-card:nth-of-type(6n + 3) .team-header { background: #1d4938; color: #c8f3df; }
+.app-shell[data-theme='dark'] .team-card:nth-of-type(6n + 3) .team-header { background: #3d3153; color: #eadcff; }
 .app-shell[data-theme='dark'] .week-team:nth-child(6n + 4) .week-team-header,
-.app-shell[data-theme='dark'] .team-card:nth-of-type(6n + 4) .team-header { background: #3d3153; color: #eadcff; }
+.app-shell[data-theme='dark'] .team-card:nth-of-type(6n + 4) .team-header { background: #4b2e3e; color: #ffdaea; }
 .app-shell[data-theme='dark'] .week-team:nth-child(6n + 5) .week-team-header,
 .app-shell[data-theme='dark'] .team-card:nth-of-type(6n + 5) .team-header { background: #513229; color: #ffdcd0; }
 .app-shell[data-theme='dark'] .week-team:nth-child(6n) .week-team-header,
