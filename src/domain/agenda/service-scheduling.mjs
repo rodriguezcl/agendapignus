@@ -1,4 +1,5 @@
 import slotPolicy from '../../../api/_lib/service-slot-released.cjs'
+import vehicleOverlapPolicy from '../../../api/_lib/independent-vehicle-controls.cjs'
 export const { serviceSlotReleased } = slotPolicy
 export const DEFAULT_SERVICE_ESTIMATED_MINUTES = 60
 export const MINIMUM_SERVICE_RESERVATION_MINUTES = 60
@@ -64,7 +65,7 @@ export const completedServiceRelease = task => {
 }
 
 export const isMonthlyMeeting = task => String(task?.service || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ') === 'reunion mensual'
-export const allowedMeetingControlOverlap = (first, second) => Boolean((isMonthlyMeeting(first) && second?.vehicleControl) || (first?.vehicleControl && isMonthlyMeeting(second)))
+export const allowedMeetingControlOverlap = (first, second) => Boolean(vehicleOverlapPolicy.independentVehicleControls(first, second) || (isMonthlyMeeting(first) && second?.vehicleControl) || (first?.vehicleControl && isMonthlyMeeting(second)))
 
 export const taskReservationMinutes = task => Math.max(
   task?.vehicleControl || isMonthlyMeeting(task) ? 15 : MINIMUM_SERVICE_RESERVATION_MINUTES,
