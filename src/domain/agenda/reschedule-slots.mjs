@@ -12,7 +12,8 @@ export function rescheduleSlots(day, record, teams, availableTeams, now = new Da
   const upper = new Date(`${day}T12:00:00`).getDay() === 5 ? 16 * 60 : timeInMinutes(hours.max)
   for (let start = lower; start < upper; start += 15) {
     const time = minutesAsTime(start)
-    const interval = taskOccupiedInterval({ ...record, date: day, time, scheduledTime: time, status: 'Pendiente', technicalStatus: '', completedAt: '', technicalReportedAt: '', journeyClosedAt: '' })
+    // Calculate the future pending visit, not the released original request.
+    const interval = taskOccupiedInterval({ ...record, date: day, time, scheduledTime: time, status: 'Pendiente', technicalStatus: '', technicianRequest: '', completedAt: '', technicalReportedAt: '', journeyClosedAt: '' })
     if (!interval || interval.end > upper || (start < 14 * 60 && interval.end > 13 * 60 + 30)) continue
     const available = new Set(availableTeams(day, time, record).map(team => String(team.teamId)))
     for (const row of rows) if (available.has(String(row.teamId))) row.slots.push({ time, end: minutesAsTime(interval.serviceEnd) })
