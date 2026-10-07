@@ -1,6 +1,51 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { synchronizeVehicleControlAssignments: sync } = require('../api/_lib/vehicle-control-assignment.cjs')
+
+test('repairs an existing future misplaced control without changing responsibility or monthly rotation', () => {
+  const state = fixture(), day = '2099-01-09'
+  const plan = state.agenda.weekly[state.agenda.date]
+  state.agenda.weekly = { ...state.agenda.weekly, [day]: plan }
+  delete state.agenda.weekly[state.agenda.date]
+  state.agenda.date = day; state.history[0].date = day
+  plan.teams.push({ teamId: 'leo-team', label: 'Equipo 2', memberIds: ['leo'], members: ['Leonardo'], tasks: [] })
+  state.agenda.teams = structuredClone(plan.teams)
+  const result = sync(state, state)
+  assert.equal(result.history[0].teamId, 'leo-team')
+  assert.equal(result.agenda.weekly[day].teams[1].tasks.length, 1)
+  assert.deepEqual(result.agenda.weekly._monthlyTeams, state.agenda.weekly._monthlyTeams)
+  assert.deepEqual(sync(result, result), result)
+})
+
+for (const daily of [false, true]) test(`moves pending control with its responsible technician after ${daily ? 'daily' : 'weekly'} staffing changes`, () => {
+  const previous = fixture()
+  const day = previous.agenda.date
+  const first = previous.agenda.weekly[day].teams[0]
+  first.memberIds = ['leo']; first.members = ['Leonardo']
+  const second = { teamId: 't2', label: 'Equipo 2', memberIds: ['mariano'], members: ['Mariano'], tasks: [{ taskId: 'ordinary', client: 'Cliente', time: '09:00' }] }
+  previous.agenda.weekly[day].teams.push(second)
+  previous.agenda.teams = structuredClone(previous.agenda.weekly[day].teams)
+  const edited = structuredClone(previous)
+  const teams = daily ? edited.agenda.teams : edited.agenda.weekly[day].teams
+  teams[0].memberIds = ['mariano']; teams[0].members = ['Mariano']
+  teams[1].memberIds = ['leo']; teams[1].members = ['Leonardo']
+  const result = sync(edited, previous)
+  assert.equal(result.history[0].teamId, 't2')
+  assert.deepEqual(result.history[0].technicianIds, ['leo'])
+  for (const plan of [result.agenda, result.agenda.weekly[day]]) {
+    assert.equal(plan.teams[0].tasks.length, 0)
+    assert.equal(plan.teams[1].tasks.filter(task => task.vehicleControl).length, 1)
+    assert.ok(plan.teams[1].tasks.some(task => task.taskId === 'ordinary'))
+  }
+  assert.deepEqual(result.agenda.weekly._monthlyTeams, previous.agenda.weekly._monthlyTeams)
+  assert.deepEqual(sync(result, result), result)
+  assert.equal(previous.agenda.teams[0].tasks.length, 1)
+  const started = structuredClone(edited)
+  started.history[0].startedAt = '2026-09-18T15:00:00Z'
+  const protectedResult = sync(started, previous)
+  assert.deepEqual(protectedResult.history, started.history)
+  assert.equal(protectedResult.agenda.weekly[day].teams[0].tasks.length, 1)
+})
 const fixture = () => {
   const task = { taskId: 'control', historyId: 'control', vehicleControl: true, technicianIds: ['leo'], technicians: ['Leonardo'] }
   const team = { teamId: 't3', label: 'Equipo 3', memberIds: ['mariano'], members: ['Mariano'], tasks: [task] }
