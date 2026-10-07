@@ -2,6 +2,21 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { synchronizeTeamServiceAssignments: sync } = require('../api/_lib/team-service-assignments.cjs')
 
+test('missing previous agenda or dates do not trigger daily synchronization', () => {
+  const state = { agenda: { teams: [{ teamId: 'one', memberIds: ['new'] }] }, history: [{ teamId: 'one', technicianIds: ['old'], status: 'Pendiente' }] }
+  for (const previous of [undefined, null, {}, { reviews: [] }, { agenda: {} }, { agenda: { teams: [{ teamId: 'one', memberIds: ['old'] }] } }]) {
+    assert.equal(sync(state, previous), state)
+    assert.equal(sync({ history: [] }, previous).history.length, 0)
+  }
+  assert.deepEqual(state.history[0].technicianIds, ['old'])
+})
+
+test('different daily dates do not reassign historical services', () => {
+  const previous = { agenda: { date: '2026-10-06', teams: [{ teamId: 'one', memberIds: ['old'] }] } }
+  const state = { agenda: { date: '2026-10-07', teams: [{ teamId: 'one', memberIds: ['new'] }] }, history: [{ date: '2026-10-06', teamId: 'one', technicianIds: ['old'], status: 'Pendiente' }] }
+  assert.equal(sync(state, previous), state)
+})
+
 for (const daily of [false, true]) test(`crew split updates pending history through ${daily ? 'daily' : 'weekly'} agenda`, () => {
   const day = '2026-09-28'
   const team = { teamId: 'one', memberIds: ['p', 'l'], members: ['Pascual', 'Leonardo'] }
