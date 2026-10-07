@@ -1,0 +1,8 @@
+.customer-map { margin-top: 20px; min-width: 0; }
+.customer-map h3 { margin: 0 0 8px; font-size: 16px; }
+.customer-map p, .customer-map small { overflow-wrap: anywhere; }
+.customer-map p { font-size: 13px; margin: 0 0 12px; }
+.customer-map iframe { display: block; width: 100%; height: 280px; border: 1px solid #b8cbc0; border-radius: 10px; background: #eef2ef; }
+.customer-map a { display: inline-flex; margin-top: 12px; text-decoration: none; }
+.customer-map small { display: block; margin-top: 8px; font-size: 12px; }
+@media (max-width: 600px) { .customer-map iframe { height: 230px; } }
