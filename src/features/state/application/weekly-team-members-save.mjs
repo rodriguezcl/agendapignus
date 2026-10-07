@@ -10,7 +10,7 @@ function updateMembership(teams, { teamId, teamIndex, memberIds, members, guardO
   return {
     found: true,
     teams: teams.map((team, index) => index === resolvedIndex
-      ? { ...team, ...(guardOverride === undefined ? {} : { guardOverride }), memberIds: [...memberIds], members: [...members] }
+      ? { ...team, monthlyStaffingOverride: true, ...(guardOverride === undefined ? {} : { guardOverride }), memberIds: [...memberIds], members: [...members] }
       : team)
   }
 }

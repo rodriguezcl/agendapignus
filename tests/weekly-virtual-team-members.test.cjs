@@ -13,8 +13,8 @@ test('membership preparation never reads customer directory, history or unrelate
   for (const key of ['customers', 'history', 'services']) Object.defineProperty(base, key, { enumerable: true, get() { throw new Error(`Unexpected full-state read: ${key}`) } })
   Object.defineProperty(base.agenda.weekly, '2099-01-01', { enumerable: true, get() { throw new Error('Unrelated week read') } })
   const operations = build(base, command())
-  assert.equal(operations.length, 2)
-  assert.ok(operations.every(op => ['members', 'memberIds'].includes(op.path.at(-1))))
+  assert.equal(operations.length, 3)
+  assert.ok(operations.every(op => ['members', 'memberIds', 'monthlyStaffingOverride'].includes(op.path.at(-1))))
 })
 
 test('removing Rodrigo materializes only Monday, preserving monthly and Tuesday assignments', async () => {
