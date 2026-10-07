@@ -16,7 +16,8 @@ function synchronizeTeamServiceAssignments(state, previous) {
   for (const [day, plan] of Object.entries(state.agenda?.weekly || {})) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(day)) collect(day, plan.teams, previous?.agenda?.weekly?.[day]?.teams)
   }
-  if (state.agenda?.date === previous?.agenda?.date) collect(state.agenda.date, state.agenda.teams, previous.agenda.teams)
+  // Missing dates do not identify the same day (undefined === undefined).
+  if (state.agenda?.date && state.agenda.date === previous?.agenda?.date) collect(state.agenda.date, state.agenda.teams, previous.agenda.teams)
   if (!changed.size) return state
   return { ...state, history: (state.history || []).map(record => {
     if (record.vehicleControl || record.startedAt || record.technicalStatus || record.technicalReportedAt || record.technicianRequest || !['Pendiente', undefined, ''].includes(record.status)) return record
