@@ -4,5 +4,5 @@ export function serviceMapCustomer(record, customers = []) {
   const customer = record.customerId
     ? customers.find(item => String(item.customerId) === String(record.customerId))
     : customers.find(item => String(item.account || '').trim().toUpperCase() === account)
-  return customer && /^PIG-\d+$/i.test(customer.account || '') ? customer : null
+  return customer && /^(?:PIG|CLI)-\d+$/i.test(customer.account || '') ? customer : null
 }
