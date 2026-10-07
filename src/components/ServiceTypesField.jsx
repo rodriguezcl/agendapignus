@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
 import { selectedServiceIds, multiServicePatch } from '../domain/services/multi-service.mjs'
 import './service-types-field.css'
+import { shouldDismissSelector } from './selector-dismiss.mjs'
 
 export default function ServiceTypesField({ task, services, onChange, disabled = false }) {
   const [open, setOpen] = useState(false)
@@ -14,10 +15,10 @@ export default function ServiceTypesField({ task, services, onChange, disabled =
   const summary = options.filter(service => selected.includes(String(service.id))).map(service => service.name).join(' + ') || 'Seleccionar tipos de servicio'
   useEffect(() => {
     if (!open) return
-    const closeOutside = event => { if (!root.current?.contains(event.target)) setOpen(false) }
+    const closeOutside = event => { if (shouldDismissSelector(root.current, event.target, event.type)) setOpen(false) }
     document.addEventListener('pointerdown', closeOutside)
     // A label click briefly blurs the trigger before focusing its checkbox.
-    // Close only when focus actually enters another element outside this field.
+    // Ignore transient focus on an ancestor dialog; keep outside controls closing it.
     document.addEventListener('focusin', closeOutside)
     return () => {
       document.removeEventListener('pointerdown', closeOutside)
