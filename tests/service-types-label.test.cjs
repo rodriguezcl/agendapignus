@@ -19,3 +19,22 @@ test('el desplegable no desmonta las etiquetas durante el blur previo al clic na
   }
   assert.ok(source.includes("event.key === 'Escape'"))
 })
+
+test('el foco transitorio del modal no cierra el selector, pero clic y foco externos sí', async () => {
+  const { shouldDismissSelector } = await import('../src/components/selector-dismiss.mjs')
+  const checkbox = { contains: () => false }
+  const label = { contains: node => node === checkbox }
+  const root = { contains: node => [root, label, checkbox].includes(node) }
+  const dialog = { contains: node => node === root }
+  const outside = { contains: () => false }
+  assert.ok(source.includes('shouldDismissSelector(root.current, event.target, event.type)'))
+  for (const target of [label, checkbox]) {
+    assert.equal(shouldDismissSelector(root, target, 'pointerdown'), false)
+    assert.equal(shouldDismissSelector(root, target, 'focusin'), false)
+  }
+  assert.equal(shouldDismissSelector(root, dialog, 'focusin'), false)
+  assert.equal(shouldDismissSelector(root, dialog, 'pointerdown'), true)
+  assert.equal(shouldDismissSelector(root, outside, 'focusin'), true)
+  assert.equal(shouldDismissSelector(root, outside, 'pointerdown'), true)
+  assert.equal(shouldDismissSelector(null, outside, 'focusin'), false)
+})
