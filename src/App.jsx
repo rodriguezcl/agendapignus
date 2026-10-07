@@ -5764,10 +5764,10 @@ function History({ history, setHistory, customers, services, employees, authUser
   const clearReminderFilter = () => setReminderFilter(null)
   return <>{canManage
     ? <HistoryManagement {...{ history, setHistory, customers, services, employees, authUser, persistHistoryRecord, persistHistoryRecordRemoval, historyScheduling, reminderFilter, clearReminderFilter }} />
-    : <HistoryReadOnly history={history} supervisorView={supervisorView} reminderFilter={reminderFilter} clearReminderFilter={clearReminderFilter} />}</>
+    : <HistoryReadOnly history={history} customers={customers} supervisorView={supervisorView} reminderFilter={reminderFilter} clearReminderFilter={clearReminderFilter} />}</>
 }
 
-function HistoryReadOnly({ history, supervisorView = false, reminderFilter = null, clearReminderFilter = () => {} }) {
+function HistoryReadOnly({ history, customers = [], supervisorView = false, reminderFilter = null, clearReminderFilter = () => {} }) {
   const [search, setSearch] = useState('')
   const [detail, setDetail] = useState(null)
   const records = history.filter(record => normalizeSearchText(`${record.client} ${serviceTypesLabel(record)} ${record.technicians?.join(' ')}`).includes(normalizeSearchText(search))).sort(supervisorView ? sortHistoryByDateAndTime : sortOperationalHistory)
