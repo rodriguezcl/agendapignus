@@ -1,4 +1,5 @@
 .customer-map { margin-top: 20px; min-width: 0; }
+.weekly-task-form > .customer-map { grid-column: 1 / -1; }
 .customer-map h3 { margin: 0 0 8px; font-size: 16px; }
 .customer-map p, .customer-map small { overflow-wrap: anywhere; }
 .customer-map p { font-size: 13px; margin: 0 0 12px; }
