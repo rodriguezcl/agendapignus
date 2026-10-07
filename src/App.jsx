@@ -1,5 +1,6 @@
 import { requiresDifferentRescheduleDay } from './domain/history/history-edit-policy.mjs'
 import { retirementClientLabel } from './domain/customers/retirement-label.mjs'
+import { isInstallationRecord, isAlarmInstallationRecord } from './domain/services/installation-metrics.mjs'
 import { customerLocationFields, serviceDirections } from './domain/customers/customer-location.mjs'
 import CustomerMap from './components/CustomerMap.jsx'
 import ServiceCustomerMap from './components/ServiceCustomerMap.jsx'
@@ -5005,7 +5006,7 @@ function Dashboard({ history, services, vehicles = [], customers = [], onEditVeh
   return <DashboardView onOpenReservation={onOpenReservation} customers={customers} history={history} services={services} vehicles={vehicles} onEditVehicle={onEditVehicle} isAdministrator={globalThis.__pignusCurrentUser?.roleCode === 'administrator'} />
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
   const records = history.filter(record => record.date?.startsWith(month)).sort((a, b) => b.date.localeCompare(a.date))
-  const installations = records.filter(record => serviceTypesFor(record).some(type => services.find(service => String(service.id) === String(type.id))?.category === 'installation' || normalizeServiceName(type.name).includes('instalacion')))
+  const installations = records.filter(record => isInstallationRecord(record, services))
   const alarms = installations.filter(record => record.service?.toLowerCase().includes('alarma'))
   const byZone = category => alarms.filter(record => { const address = `${record.address || ''} ${record.client || ''}`.toLowerCase(); return category === 'docta' ? address.includes('docta') : category === 'nobu' ? address.includes('nobu') : !address.includes('docta') && !address.includes('nobu') })
   const zones = [['docta', 'Docta Urbanización'], ['nobu', 'Nobu'], ['otros', 'Otros barrios']]
@@ -5034,7 +5035,7 @@ function DashboardView({ history, services, vehicles = [], customers = [], isAdm
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
   const year = month.slice(0, 4)
   const records = history.filter(record => record.date?.startsWith(month)).sort((a, b) => b.date.localeCompare(a.date))
-  const installations = records.filter(record => serviceTypesFor(record).some(type => services.find(service => String(service.id) === String(type.id))?.category === 'installation' || normalizeServiceName(type.name).includes('instalacion')))
+  const installations = records.filter(record => isInstallationRecord(record, services))
   const alarms = installations.filter(record => record.service?.toLowerCase().includes('alarma'))
   const zoneOf = record => record.installationZone || (`${record.address || ''} ${record.client || ''}`.toLowerCase().includes('docta') ? 'docta' : `${record.address || ''} ${record.client || ''}`.toLowerCase().includes('nobu') ? 'nobu-town' : 'residencial')
   const zones = [['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residenciales']]
@@ -5549,16 +5550,9 @@ function DashboardStatusView({ history, services, vehicles = [], customers = [] 
   const records = history.filter(record => record.date?.startsWith(month) && isComplete(record)).sort((a, b) => b.date.localeCompare(a.date))
   const pendingGroups = dashboardPendingGroups(history, currentLocalDate())
   const openPending = pendingGroup => window.dispatchEvent(new CustomEvent('pignus:open-history', { detail: { pendingGroup, date: currentLocalDate() } }))
-  const serviceForRecord = record => services.find(service => String(service.id) === String(record.serviceId)) || services.find(service => normalizeServiceName(service.name) === normalizeServiceName(record.service))
-  const isAlarmRecord = record => {
-    if (record.subscriberReservation) return false
-    const configuredService = serviceForRecord(record)
-    if (configuredService) return serviceCode(configuredService) === 'alarm-installation'
-    const legacyName = normalizeServiceName(record.service)
-    return legacyName.includes('instalacion') && legacyName.includes('alarma')
-  }
+  const isAlarmRecord = record => isAlarmInstallationRecord(record, services)
   const zoneOf = record => record.installationZone || (`${record.address || ''} ${record.client || ''}`.toLowerCase().includes('docta') ? 'docta' : `${record.address || ''} ${record.client || ''}`.toLowerCase().includes('nobu') ? 'nobu-town' : 'residencial')
-  const installations = records.filter(record => serviceTypesFor(record).some(type => services.find(service => String(service.id) === String(type.id))?.category === 'installation' || normalizeServiceName(type.name).includes('instalacion')))
+  const installations = records.filter(record => isInstallationRecord(record, services))
   const alarms = installations.filter(record => isAlarmRecord(record) && zoneOf(record) !== 'no-monitoreada')
   const isRetirementRecord = isEquipmentRetirementRecord
   const retirements = records.filter(isRetirementRecord)
