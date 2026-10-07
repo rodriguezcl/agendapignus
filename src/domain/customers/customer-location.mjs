@@ -37,3 +37,21 @@ export function serviceDirections(record) {
   if (location) return location // Docta never falls back to imported coordinates or text geocoding.
   return record.address ? { url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(record.address)}`, label: 'Cómo llegar' } : null
 }
+
+export function customerMapLocation(customer = {}) {
+  const docta = doctaLocation(customer)
+  if (docta?.unresolved) return docta
+  const raw = String(customer.fields?.['Ubicación de la cuenta'] || '').trim()
+  const match = raw.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/)
+  const imported = match ? [Number(match[1]), Number(match[2])] : null
+  const valid = imported && Math.abs(imported[0]) <= 90 && Math.abs(imported[1]) <= 180 && imported.some(value => value !== 0)
+  const coordinates = docta?.coordinates || (valid ? imported : null)
+  const address = [customer.street || customer.fields?.Calle, customer.locality || customer.fields?.Localidad].filter(value => value && value !== '-').join(', ')
+  const query = coordinates?.join(',') || (customer.address && customer.address !== '-' ? customer.address : address)
+  if (!query || !coordinates && !/\p{L}/u.test(query)) return { unresolved: true, label: 'No hay una dirección o coordenadas válidas para mostrar el mapa.' }
+  return {
+    label: docta?.label || (coordinates ? 'Ubicación informada en la cuenta.' : 'Referencia por dirección. Verificá el resultado antes de viajar.'),
+    embedUrl: `https://www.google.com/maps?q=${encodeURIComponent(query)}&z=16&output=embed`,
+    url: docta?.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+  }
+}
