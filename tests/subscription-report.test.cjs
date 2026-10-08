@@ -23,8 +23,27 @@ test('ambos servidores usan las mismas columnas y ocho anchos en Excel y PDF', (
   const path = require('node:path')
   for (const file of ['api/index.js', 'server.cjs']) {
     const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
-    assert.ok(source.includes('...subscriptionHeaders'))
-    assert.ok(source.includes('...subscriptionColumns(record,'))
+    assert.ok(source.includes('includeSubscription ? subscriptionHeaders : []'))
+    assert.ok(source.includes('includeSubscription ? subscriptionColumns(record,'))
+    assert.ok(source.includes("const includeSubscription = !['docta', 'nobu-town'].includes(category)"))
+    assert.ok(source.includes('[60, 175, 235, 110, 189]'))
     assert.ok(source.includes('[55, 125, 160, 85, 100, 95, 80, 69]'))
   }
+})
+
+test('Docta y Nobu no aplican abono ni meses congelados sin modificar el histórico', () => {
+  for (const installationZone of ['docta', 'nobu-town']) {
+    const record = { installationZone, monthlyFee: '45000', freezeMonthlyFee: true, frozenMonths: 6 }
+    const original = { ...record }
+    assert.deepEqual(subscriptionColumns(record), ['No aplica', 'No aplica', 'No aplica'])
+    assert.deepEqual(subscriptionColumns({}, 'administrator', installationZone), ['No aplica', 'No aplica', 'No aplica'])
+    assert.deepEqual(record, original)
+  }
+  assert.deepEqual(subscriptionColumns({ installationZone: 'residencial', monthlyFee: '45000', freezeMonthlyFee: true, frozenMonths: 4 }), ['$ 45.000', 'Sí', '4'])
+})
+
+test('el formulario limita abono y congelamiento a instalaciones residenciales', () => {
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/App.jsx'), 'utf8')
+  assert.ok(source.includes('freezeMonthlyFee: residentialAlarm'))
+  assert.ok(source.includes("(key === 'amount' || key === 'monthlyFee') && !enabled"))
 })

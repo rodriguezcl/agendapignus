@@ -1111,7 +1111,7 @@ const serviceExtraAvailability = (service, installationZone = '') => {
   return {
     paymentMethod: residentialAlarm || PAYMENT_SERVICE_NAMES.has(normalizeServiceName(service?.name)),
     monthlyFee: residentialAlarm,
-    freezeMonthlyFee: alarmInstallation,
+    freezeMonthlyFee: residentialAlarm,
     form: alarmInstallation || ownershipChange
   }
 }
@@ -2911,7 +2911,7 @@ function ServiceExtraFields({ className, task, service, onChange, buffered = fal
       if (!available.form || normalizeFormValue(task?.form) !== FORM_OPTIONS[0]) return null
       return <label className="service-extra-field" key={key}>{label}<input type="email" autoComplete="off" value={task?.formEmail || ''} placeholder="Correo utilizado para completar el formulario" onChange={event => onChange({ formEmail: event.target.value })} /></label>
     }
-    if (key === 'amount' && !enabled) return null
+    if ((key === 'amount' || key === 'monthlyFee') && !enabled) return null
     const props = {
       value: enabled ? task?.[key] || '' : '',
       disabled: !enabled,
