@@ -10,7 +10,8 @@ function formatReportCurrency(value) {
   const hasCents = Number(normalized.split('.')[1] || 0) !== 0
   return `$ ${amount.toLocaleString('es-AR', { minimumFractionDigits: hasCents ? 2 : 0, maximumFractionDigits: 2 })}`
 }
-function subscriptionColumns(record, roleCode) {
+function subscriptionColumns(record, roleCode, installationCategory = record.installationZone) {
+  if (['docta', 'nobu-town'].includes(installationCategory)) return ['No aplica', 'No aplica', 'No aplica']
   if (roleCode === 'technician') return ['', '', '']
   const amount = formatReportCurrency(record.monthlyFee)
   const decision = record.freezeMonthlyFee === true ? 'Sí' : record.freezeMonthlyFee === false ? 'No' : 'Sin registrar'
