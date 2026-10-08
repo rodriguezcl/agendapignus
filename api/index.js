@@ -629,6 +629,7 @@ async function handleExport(req, res, sql, user) {
   const state = { services: applicationState.services || [], history: applicationState.history || [] }
   const alarmService = state.services.find(service => service.code === 'alarm-installation')
   const records = state.history.filter(record => {
+    if (record.status !== 'Completado') return false
     if (!record.date?.startsWith(month) || (user.roleCode === 'technician' && !record.technicianIds?.some(id => String(id) === String(user.id)))) return false
     if (isRetirement) return record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo')
     const installationCategory = alarmCategory(record)
