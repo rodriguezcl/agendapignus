@@ -9,6 +9,7 @@ const { DatabaseSync } = require('node:sqlite')
 const { normalizeScheduling } = require('./scripts/normalize-scheduling.cjs')
 const { rebuildWeeklyFromHistory, dedupeAgendaTeams } = require('./scripts/rebuild-weekly-from-history.cjs')
 const { writeProfessionalPdf } = require('./scripts/professional-pdf.cjs')
+const { subscriptionHeaders, subscriptionColumns } = require('./api/_lib/subscription-report.cjs')
 const { fetchNationalHolidays, validHolidayYear } = require('./api/_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./api/_lib/vehicle-control-window.cjs')
 const { ensureVehicleControlService } = require('./api/_lib/vehicle-control-service.cjs')
@@ -1728,16 +1729,16 @@ function exportHistory(res, month, category, technicianId = null, format = 'exce
     return res.end(`\ufeff${html}`)
   }
   const label = { docta: 'Docta Urbanización', 'nobu-town': 'Nobu Town', residencial: 'Residenciales', all: 'Todas las instalaciones de alarma' }[category] || 'Instalaciones de alarma'
-  const headers = ['Fecha', 'Cliente', 'Dirección', 'Contacto', 'Técnicos asignados']
-  const reportRows = records.map(record => [record.date, record.client, record.address, record.phone, record.technicians?.join(' / ')])
+  const headers = ['Fecha', 'Cliente', 'Dirección', 'Contacto', 'Técnicos asignados', ...subscriptionHeaders]
+  const reportRows = records.map(record => [record.date, record.client, record.address, record.phone, record.technicians?.join(' / '), ...subscriptionColumns(record, user.roleCode)])
   if (format === 'pdf') {
     const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
     const generatedAt = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
     setSecurityHeaders(res)
     res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="instalaciones-alarma-${category}-${month}.pdf"` })
-    return writeProfessionalPdf(res, { title: `Altas de servicio · ${label}`, description: 'Instalaciones de alarma registradas durante el período seleccionado.', monthLabel, generatedAt, headers, rows: reportRows.map(row => [reportDate(row[0]), ...row.slice(1)]), widths: [60, 175, 235, 110, 189], fileName: `instalaciones-alarma-${category}-${month}.pdf` })
+    return writeProfessionalPdf(res, { title: `Altas de servicio · ${label}`, description: 'Instalaciones de alarma registradas durante el período seleccionado.', monthLabel, generatedAt, headers, rows: reportRows.map(row => [reportDate(row[0]), ...row.slice(1)]), widths: [55, 125, 160, 85, 100, 95, 80, 69], fileName: `instalaciones-alarma-${category}-${month}.pdf` })
   }
-  const html = professionalExcelHtml({ title: `Altas de servicio · ${label}`, description: 'Instalaciones de alarma registradas durante el período seleccionado.', month, headers, rows: reportRows, widths: ['9%', '23%', '31%', '14%', '23%'] })
+  const html = professionalExcelHtml({ title: `Altas de servicio · ${label}`, description: 'Instalaciones de alarma registradas durante el período seleccionado.', month, headers, rows: reportRows, widths: ['7%', '16%', '21%', '11%', '13%', '12%', '11%', '9%'] })
   setSecurityHeaders(res)
   res.writeHead(200, { 'Content-Type': 'application/vnd.ms-excel; charset=utf-8', 'Content-Disposition': `attachment; filename="instalaciones-alarma-${category}-${month}.xls"` })
   res.end(`\ufeff${html}`)

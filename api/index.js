@@ -25,6 +25,7 @@ async function processExpiredMonthlyMeetings(sql) {
   lastMeetingCompletionScan = scanTime
 }
 const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
+const { subscriptionHeaders, subscriptionColumns } = require('./_lib/subscription-report.cjs')
 const { database, readTechnicianState, replaceCollections } = require('./_lib/database.cjs')
 const { readApplicationRevision: readRevision, readApplicationState: readState } = require('./_lib/storage-router.cjs')
 const { coordinateStateWrite } = require('./_lib/state-write-coordinator.cjs')
@@ -636,8 +637,8 @@ async function handleExport(req, res, sql, user) {
   const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
   const generatedAt = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
   const label = { docta: 'Docta Urbanización', 'nobu-town': 'Nobu Town', residencial: 'Residenciales', all: 'Todas las instalaciones de alarma' }[category] || 'Instalaciones de alarma'
-  const headers = isRetirement ? ['Fecha', 'Cliente', 'Servicio', 'Dirección', 'Contacto', 'Técnicos asignados'] : ['Fecha', 'Cliente', 'Dirección', 'Contacto', 'Técnicos asignados']
-  const rows = records.map(record => isRetirement ? [record.date, retirementClientLabel(record), record.service, record.address, record.phone, record.technicians?.join(' / ')] : [record.date, record.client, record.address, record.phone, record.technicians?.join(' / ')])
+  const headers = isRetirement ? ['Fecha', 'Cliente', 'Servicio', 'Dirección', 'Contacto', 'Técnicos asignados'] : ['Fecha', 'Cliente', 'Dirección', 'Contacto', 'Técnicos asignados', ...subscriptionHeaders]
+  const rows = records.map(record => isRetirement ? [record.date, retirementClientLabel(record), record.service, record.address, record.phone, record.technicians?.join(' / ')] : [record.date, record.client, record.address, record.phone, record.technicians?.join(' / '), ...subscriptionColumns(record, user.roleCode)])
   const title = isRetirement ? 'Bajas de servicio' : `Altas de servicio · ${label}`
   const description = isRetirement ? 'Retiros de equipos de alarma completados durante el período seleccionado.' : 'Instalaciones de alarma registradas durante el período seleccionado.'
   const fileBase = isRetirement ? `bajas-servicio-${month}` : `instalaciones-alarma-${category}-${month}`
@@ -645,9 +646,9 @@ async function handleExport(req, res, sql, user) {
   if (format === 'pdf') {
     res.setHeader('Content-Type', 'application/pdf')
     res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.pdf"`)
-    return writeProfessionalPdf(res, { title, description, monthLabel, generatedAt, headers, rows: rows.map(row => [reportDate(row[0]), ...row.slice(1)]), widths: isRetirement ? [58, 170, 95, 190, 100, 156] : [60, 175, 235, 110, 189], fileName: `${fileBase}.pdf` })
+    return writeProfessionalPdf(res, { title, description, monthLabel, generatedAt, headers, rows: rows.map(row => [reportDate(row[0]), ...row.slice(1)]), widths: isRetirement ? [58, 170, 95, 190, 100, 156] : [55, 125, 160, 85, 100, 95, 80, 69], fileName: `${fileBase}.pdf` })
   }
-  const html = professionalExcelHtml({ title, description, month, headers, rows, widths: isRetirement ? ['9%', '22%', '13%', '24%', '13%', '19%'] : ['9%', '23%', '31%', '14%', '23%'] })
+  const html = professionalExcelHtml({ title, description, month, headers, rows, widths: isRetirement ? ['9%', '22%', '13%', '24%', '13%', '19%'] : ['7%', '16%', '21%', '11%', '13%', '12%', '11%', '9%'] })
   res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8')
   res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.xls"`)
   return res.status(200).send(`\ufeff${html}`)
