@@ -1,0 +1,18 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+test('ficha de cliente limita su altura y permite desplazamiento interno en escritorio y móvil', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+  const component = source.split('function CustomerDetail(')[1].split('function Preview(')[0]
+  assert.match(component, /customer-detail-layer/)
+  assert.match(component, /customer-detail-modal/)
+  assert.match(component, /role="dialog"/)
+  const css = fs.readFileSync(path.join(__dirname, '../src/components/customer-detail-modal.css'), 'utf8')
+  assert.match(css, /max-height: calc\(100vh - 32px\)/)
+  assert.match(css, /max-height: calc\(100dvh - 32px\)/)
+  assert.match(css, /max-height: calc\(100dvh - 20px\)/)
+  assert.match(css, /overflow-y: auto/)
+  assert.match(css, /min-height: 0/)
+  assert.match(css, /touch-action: pan-y/)
+})
