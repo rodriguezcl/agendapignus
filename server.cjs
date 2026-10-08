@@ -2312,11 +2312,11 @@ const server = http.createServer((req, res) => {
         assertServiceCanBeCompleted(record)
       }
       const now = new Date().toISOString()
-      const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: ['Completado', 'Avance registrado'].includes(type) ? type : 'Requiere revisión', technicianRequest: ['Completado', 'Avance registrado'].includes(type) ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
+      const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? type : 'Requiere revisión', technicianRequest: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
       db.exec('BEGIN')
       try {
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(updated), String(record.id))
-        if (record.serviceJourney) {
+        if (record.serviceJourney || type === 'Cancelado') {
           const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
           if (agendaRow?.data) {
             const agenda = synchronizeAgendaHistoryRecord(JSON.parse(agendaRow.data), record, updated)

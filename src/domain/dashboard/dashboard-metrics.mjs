@@ -22,13 +22,17 @@ export function countYearToDateAlarmInstallations(records, { throughDate, zone =
 
 const pendingDefinitionStatuses = new Set(['Pendiente', 'Reprogramado', 'Requiere revisión'])
 
+function isReportedCancellation(record) {
+  return record?.status === 'Requiere revisión' && record?.technicalStatus === 'Cancelado'
+}
+
 export function pendingReschedulingRecords(records) {
   return (records || []).filter(record => record?.status === 'Requiere revisión'
     && (record.technicalStatus === 'Reprogramación solicitada' || record.technicianRequest === 'Reprogramación solicitada'))
 }
 
 export function dashboardPendingGroups(records, today) {
-  const confirmation = (records || []).filter(record => record.awaitingConfirmation === true && !['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(record.status))
+  const confirmation = (records || []).filter(record => !isReportedCancellation(record) && record.awaitingConfirmation === true && !['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(record.status))
   const rescheduling = pendingReschedulingRecords(records)
   const requests = new Set(rescheduling)
   const pending = pendingDefinitionRecords(records, today).filter(record => !requests.has(record) && record.awaitingConfirmation !== true)
@@ -46,11 +50,13 @@ export function historyReminderRecords(records, filter) {
 }
 
 export function historyStatusLabel(record) {
+  if (isReportedCancellation(record)) return 'Cancelado'
   return pendingReschedulingRecords([record]).length ? 'Reprogramación pendiente' : record?.status || 'Pendiente'
 }
 
 export function pendingDefinitionRecords(records, today) {
   return (records || []).filter(record => {
+    if (isReportedCancellation(record)) return false
     const status = record?.status || 'Pendiente'
     const effectiveDate = String(record?.scheduledDate || record?.date || '')
     return pendingDefinitionStatuses.has(status) && Boolean(effectiveDate) && effectiveDate <= today
