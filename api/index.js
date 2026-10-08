@@ -38,8 +38,8 @@ const { startTechnicianServiceRecord, assertTechnicianServiceStarted } = require
 const { stateForOperationComparison } = require('./_lib/legacy-estimated-minutes.cjs')
 const { stateWriteError } = require('./_lib/state-write-error.cjs')
 
-async function persistStateCollections(transaction, current, next, nextRevision, prepared) {
-  require('./_lib/completed-service-policy.cjs').assertCompletedServices(next, current)
+async function persistStateCollections(transaction, current, next, nextRevision, prepared, policyOptions) {
+  require('./_lib/completed-service-policy.cjs').assertCompletedServices(next, current, policyOptions)
   require('./_lib/journey-identity.cjs').synchronizeJourneyIdentity(next, current)
   require('./_lib/service-journeys.cjs').validateServiceJourneys(next, current)
   const versionedNext = { ...next, revision: Number(nextRevision) }
@@ -974,6 +974,30 @@ async function handleClearAgenda(req, res, sql, user) {
   return send(res, 200, { ok: true, revision })
 }
 
+async function handleSubscriptionCorrection(req, res, sql, user) {
+  if (user.roleCode === 'technician' || !userCan(user, 'accountsEdit')) return send(res, 403, { error: 'No tenés permiso para corregir datos del abono.' })
+  try {
+    const input = requestBody(req)
+    const { correctSubscription } = await import('../src/domain/customers/subscription-correction.mjs')
+    const result = await sql.begin(async transaction => {
+      await transaction`set local lock_timeout = '5s'`
+      await transaction`set local statement_timeout = '25s'`
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      const locked = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const current = await readState(transaction)
+      const correction = correctSubscription(current, input, user)
+      const revision = Number(locked[0]?.value || 0) + 1
+      await persistStateCollections(transaction, current, correction.state, revision, undefined, { subscriptionCorrectionId: correction.before.id })
+      await appendAudit(transaction, [auditEntry(user, 'Corrigió datos del abono', 'Servicio / historial', String(correction.before.id), correction.before, correction.after)])
+      return { revision, state: correction.state }
+    })
+    return send(res, 200, { ok: true, revision: result.revision, state: visibleStateForUser({ ...result.state, revision: result.revision }, user) })
+  } catch (error) {
+    const busy = ['55P03', '57014'].includes(error.code)
+    return send(res, busy ? 503 : error.statusCode || 400, { error: busy ? 'La base de datos está ocupada. Intentá nuevamente.' : error.message || 'No se pudo corregir el abono.' })
+  }
+}
+
 async function handleCustomerImport(req, res, sql, user) {
   if (req.method === 'GET') {
     if (user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede consultar importaciones reversibles.' })
@@ -1123,6 +1147,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST' && route === '/technician/advance-request') return await handleServiceAdvance(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/admin/advance-request/approve') return await handleServiceAdvance(req, res, sql, session.user, 'approved')
     if (req.method === 'POST' && route === '/admin/advance-request/deny') return await handleServiceAdvance(req, res, sql, session.user, 'denied')
+    if (req.method === 'POST' && route === '/customers/subscription-correction') return await handleSubscriptionCorrection(req, res, sql, session.user)
     if (['GET', 'POST', 'DELETE'].includes(req.method) && route === '/customers/import') return await handleCustomerImport(req, res, sql, session.user)
     if (req.method === 'GET' && route.startsWith('/vehicle-control/photo/')) return await handleVehicleControlPhoto(req, res, sql, session.user, decodeURIComponent(route.slice('/vehicle-control/photo/'.length)))
     if (['GET', 'POST', 'DELETE'].includes(req.method) && route.startsWith('/service-photo/')) return await handleServicePhoto(req, res, sql, session.user, decodeURIComponent(route.slice('/service-photo/'.length)))

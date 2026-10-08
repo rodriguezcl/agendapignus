@@ -1,0 +1,6 @@
+.customer-subscription-correction { margin: 1rem 0; border-top: 1px solid var(--border, #d5e1d8); padding-top: 1rem; }
+.customer-subscription-correction fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.customer-subscription-correction label { display: flex; flex-direction: column; gap: .4rem; min-width: 0; }
+.customer-subscription-correction input, .customer-subscription-correction select { width: 100%; min-width: 0; box-sizing: border-box; }
+.subscription-correction-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 1rem 0; }
+@media (max-width: 600px) { .subscription-correction-fields { grid-template-columns: 1fr; } }

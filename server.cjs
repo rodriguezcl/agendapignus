@@ -762,6 +762,7 @@ function readState() {
 
 function technicianSafeRecord(record = {}) {
   const { internalNote: _internalNote, internalChecklist: _internalChecklist, monthlyFee: _monthlyFee, ...visible } = record
+  for (const field of ['monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy']) delete visible[field]
   const cashPayment = normalizedRoleName(visible.paymentMethod) === 'efectivo'
   const handwrittenForm = normalizedRoleName(visible.form).startsWith('incompleto')
   if (!cashPayment) {
@@ -2051,6 +2052,30 @@ const server = http.createServer((req, res) => {
         throw error
       }
     }).catch(error => send(res, error.statusCode || 400, { code: error.code, error: error.message || 'No se pudo actualizar el servicio.' }))
+  }
+  if (req.method === 'POST' && url.pathname === '/api/customers/subscription-correction') {
+    const user = requireSession(req, res)
+    if (!user) return
+    if (user.roleCode === 'technician' || !userCan(user, 'accountsEdit')) return send(res, 403, { error: 'No tenés permiso para corregir datos del abono.' })
+    return readJson(req, 500_000).then(async input => {
+      const { correctSubscription } = await import('./src/domain/customers/subscription-correction.mjs')
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const current = readState()
+        const correction = correctSubscription(current, input, user)
+        require('./api/_lib/completed-service-policy.cjs').assertCompletedServices(correction.state, current, { subscriptionCorrectionId: correction.before.id })
+        db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(correction.after), String(correction.before.id))
+        if (JSON.stringify(current.agenda) !== JSON.stringify(correction.state.agenda)) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(correction.state.agenda), 'current')
+        writeAudit(user, 'Corrigió datos del abono', 'Servicio / historial', String(correction.before.id), correction.before, correction.after)
+        const revision = currentStateRevision() + 1
+        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
+        db.exec('COMMIT')
+        return send(res, 200, { ok: true, revision, state: readStateForUser(user) })
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+    }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo corregir el abono.' }))
   }
   if (['GET', 'POST', 'DELETE'].includes(req.method) && url.pathname === '/api/customers/import') {
     const user = requireSession(req, res)
