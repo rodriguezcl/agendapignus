@@ -32,7 +32,7 @@ const saveSnapshots = require('./_lib/save-snapshot-cache.cjs').createSaveSnapsh
 const { appendOperationalAudit: appendAudit, deleteServicePhoto, setAuxiliaryPreference, upsertServicePhoto, upsertVehicleControlPhoto, upsertVehicleInsuranceDocument } = require('./_lib/operational-storage.cjs')
 const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
-const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./_lib/service-advance.cjs')
+const { startServiceEarly, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./_lib/service-advance.cjs')
 const { startTechnicianServiceRecord, assertTechnicianServiceStarted } = require('./_lib/technician-service-start.cjs')
 const { stateForOperationComparison } = require('./_lib/legacy-estimated-minutes.cjs')
 const { stateWriteError } = require('./_lib/state-write-error.cjs')
@@ -946,14 +946,14 @@ async function handleServiceAdvance(req, res, sql, user, decision = '') {
       const currentRevision = Number(revisionRows[0]?.value || 0)
       const rows = await transaction`select data from pignus_work_history where id = ${String(recordId || '')} for update`
       const previous = rows[0]?.data
-      const next = administratorDecision ? resolveServiceAdvance(previous, user, decision) : requestServiceAdvance(previous, user)
+      const next = administratorDecision ? resolveServiceAdvance(previous, user, decision) : startServiceEarly(previous, user)
       if (next === previous) return { record: previous, revision: await readRevision(transaction) }
       await transaction`select data from pignus_agendas where id = 'current' for update`
       const currentState = await readState(transaction)
       const nextState = structuredClone(currentState)
       nextState.history = nextState.history.map(item => String(item.id) === String(next.id) ? next : item)
       if (nextState.agenda) nextState.agenda = synchronizeAgendaAdvance(nextState.agenda, next)
-      const action = administratorDecision ? (decision === 'approved' ? 'Aprobó adelanto de servicio' : 'Denegó adelanto de servicio') : 'Solicitó adelanto de servicio'
+      const action = administratorDecision ? (decision === 'approved' ? 'Aprobó adelanto de servicio' : 'Denegó adelanto de servicio') : 'Adelantó e inició servicio'
       await persistStateCollections(transaction, currentState, nextState, currentRevision + 1)
       await appendAudit(transaction, [auditEntry(user, action, 'Servicio / historial', String(next.id), previous, next)])
       return { record: next, revision: currentRevision + 1 }
