@@ -1708,6 +1708,7 @@ function exportHistory(res, month, category, technicianId = null, format = 'exce
   const isAllCategories = category === 'all'
   const alarmService = rows('services').find(service => service.code === 'alarm-installation')
   const records = rows('work_history').filter(record => {
+    if (record.status !== 'Completado') return false
     if (!record.date?.startsWith(month) || (technicianId && !record.technicianIds?.some(id => String(id) === String(technicianId)))) return false
     if (isRetirementExport) return record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo')
     const installationCategory = alarmCategory(record)
@@ -1730,7 +1731,7 @@ function exportHistory(res, month, category, technicianId = null, format = 'exce
   }
   const label = { docta: 'Docta Urbanización', 'nobu-town': 'Nobu Town', residencial: 'Residenciales', all: 'Todas las instalaciones de alarma' }[category] || 'Instalaciones de alarma'
   const headers = ['Fecha', 'Cliente', 'Dirección', 'Contacto', 'Técnicos asignados', ...subscriptionHeaders]
-  const reportRows = records.map(record => [record.date, record.client, record.address, record.phone, record.technicians?.join(' / '), ...subscriptionColumns(record, user.roleCode)])
+  const reportRows = records.map(record => [record.date, record.client, record.address, record.phone, record.technicians?.join(' / '), ...subscriptionColumns(record, technicianId ? 'technician' : 'administrator')])
   if (format === 'pdf') {
     const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
     const generatedAt = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
