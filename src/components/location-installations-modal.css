@@ -1,0 +1,12 @@
+.modal.location-installations-modal { width: min(1400px, 96vw); max-width: 1400px; max-height: 90vh; overflow-y: auto; }
+.location-installations-table { overflow-x: auto; max-height: 60vh; margin: 1rem 0; }
+.location-installations-table table { width: 100%; border-collapse: collapse; min-width: 760px; font-size: .85rem; }
+.location-installations-table th, .location-installations-table td { padding: 12px; text-align: left; vertical-align: top; border-bottom: 1px solid #d5e1d8; overflow-wrap: anywhere; }
+.location-installations-table th { position: sticky; top: 0; background: #edf3ef; color: #173c2c; }
+.location-installations-table td:first-child { white-space: nowrap; }
+.location-installations-table tbody tr:nth-child(even) { background: #f5f8f6; }
+.dashboard-summary-column .zone-summary:not(.retirement-summary) > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.dashboard-summary-column .zone-summary:not(.retirement-summary) > div > span { flex: 1 1 140px; }
+:is(body.dark, [data-theme='dark']) .location-installations-table th { background: #213e31; color: #e3f1e6; }
+:is(body.dark, [data-theme='dark']) .location-installations-table tbody tr:nth-child(even) { background: #1c3429; }
+@media (max-width: 600px) { .modal.location-installations-modal { width: 96vw; padding: 22px 14px; } }
