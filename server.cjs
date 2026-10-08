@@ -20,7 +20,7 @@ const { removeHistoryRecord } = require('./api/_lib/history-record-removal.cjs')
 const { applyStateOperations } = require('./api/_lib/state-operations.cjs')
 const { migrateLegacyEstimatedMinutes, stateForOperationComparison } = require('./api/_lib/legacy-estimated-minutes.cjs')
 const { stateWriteError } = require('./api/_lib/state-write-error.cjs')
-const { requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
+const { startServiceEarly, resolveServiceAdvance, synchronizeAgendaAdvance } = require('./api/_lib/service-advance.cjs')
 const { startTechnicianServiceRecord, assertTechnicianServiceStarted } = require('./api/_lib/technician-service-start.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
 const { canPerformTechnicalServices } = require('./api/_lib/technical-capability.cjs')
@@ -2187,7 +2187,7 @@ const server = http.createServer((req, res) => {
       try {
         const previousRow = db.prepare('SELECT data FROM work_history WHERE id = ?').get(String(recordId || ''))
         const previous = previousRow?.data ? JSON.parse(previousRow.data) : null
-        const next = decision ? resolveServiceAdvance(previous, user, decision) : requestServiceAdvance(previous, user)
+        const next = decision ? resolveServiceAdvance(previous, user, decision) : startServiceEarly(previous, user)
         if (next === previous) {
           db.exec('COMMIT')
           return send(res, 200, { record: technicianSafeRecord(previous), revision: currentStateRevision() })
@@ -2198,7 +2198,7 @@ const server = http.createServer((req, res) => {
           const nextAgenda = synchronizeAgendaAdvance(JSON.parse(agendaRow.data), next)
           db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(nextAgenda), 'current')
         }
-        const action = decision ? (decision === 'approved' ? 'Aprobó adelanto de servicio' : 'Denegó adelanto de servicio') : 'Solicitó adelanto de servicio'
+        const action = decision ? (decision === 'approved' ? 'Aprobó adelanto de servicio' : 'Denegó adelanto de servicio') : 'Adelantó e inició servicio'
         writeAudit(user, action, 'Servicio / historial', String(next.id), previous, next)
         const revision = currentStateRevision() + 1
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))

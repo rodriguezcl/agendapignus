@@ -103,7 +103,7 @@ test('la interfaz ofrece el flujo administrativo y alinea Formulario en móviles
 
   assert.match(app, /'Adelantar servicio'/)
   assert.doesNotMatch(app, /'Adelantar servicios'/)
-  assert.match(app, /Confirmar solicitud/)
+  assert.match(app, /Adelantar e iniciar/)
   assert.match(app, /Aprobar adelanto/)
   assert.match(app, /Denegar/)
   assert.match(api, /\/technician\/advance-request/)

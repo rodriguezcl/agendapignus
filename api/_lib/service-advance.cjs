@@ -46,6 +46,17 @@ function requestServiceAdvance(record, user, now = Date.now()) {
   }
 }
 
+function startServiceEarly(record, user, now = Date.now()) {
+  if (!record) throw businessError('El servicio no existe.', 404)
+  if (!assignedTo(record, user)) throw businessError('El servicio no está asignado al técnico autenticado.', 403)
+  if (record.startedAt) return record
+  const pending = requestServiceAdvance({ ...record, advanceRequest: undefined }, user, now)
+  const enabled = resolveServiceAdvance(pending, user, 'approved', now)
+  return require('./technician-service-start.cjs').startTechnicianServiceRecord({
+    ...enabled, advanceRequest: { ...enabled.advanceRequest, automatic: true }
+  }, user, new Date(now).toISOString())
+}
+
 function resolveServiceAdvance(record, administrator, decision, now = Date.now()) {
   if (decision === 'approved') require('./service-confirmation.cjs').assertServiceConfirmed(record)
   if (!record) throw businessError('El servicio no existe.', 404)
@@ -80,6 +91,7 @@ function synchronizeAgendaAdvance(agenda, record) {
       ...task,
       time: record.time,
       scheduledTime: record.scheduledTime,
+      ...(record.startedAt ? { startedAt: record.startedAt, startedById: record.startedById, startedByName: record.startedByName } : {}),
       ...(record.originalScheduledTime ? { originalScheduledTime: record.originalScheduledTime } : {}),
       advanceRequest: record.advanceRequest
     } : task)
@@ -91,4 +103,4 @@ function synchronizeAgendaAdvance(agenda, record) {
   return { ...agenda, teams: synchronizeTeams(agenda.teams), weekly }
 }
 
-module.exports = { argentinaDateTime, requestServiceAdvance, resolveServiceAdvance, synchronizeAgendaAdvance }
+module.exports = { argentinaDateTime, requestServiceAdvance, startServiceEarly, resolveServiceAdvance, synchronizeAgendaAdvance }

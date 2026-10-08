@@ -1300,14 +1300,14 @@ function Login({ onLogin, initialError = '' }) {
 
 function showAdvanceRequestConfirmation(record, onRequested) {
   const layer = document.createElement('div'); layer.className = 'modal-layer'; layer.setAttribute('role', 'presentation')
-  const modal = document.createElement('div'); modal.className = 'modal confirm-modal'; modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-label', 'Confirmar solicitud de adelanto')
+  const modal = document.createElement('div'); modal.className = 'modal confirm-modal'; modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-label', 'Confirmar inicio anticipado')
   const icon = document.createElement('span'); icon.className = 'confirm-icon'; icon.textContent = '↥'
   const title = document.createElement('h2'); title.textContent = 'Adelantar servicio'
-  const detail = document.createElement('p'); detail.textContent = `¿Querés solicitar a Administración que habilite ahora el servicio de ${record.client}? Está programado para las ${record.time || record.scheduledTime}.`
+  const detail = document.createElement('p'); detail.textContent = `¿Querés iniciar ahora el servicio de ${record.client}? Se registrará la hora real de inicio. El horario original es ${record.time || record.scheduledTime}.`
   const error = document.createElement('div'); error.className = 'notice confirm-error'; error.hidden = true; error.setAttribute('role', 'alert')
   const actions = document.createElement('div'); actions.className = 'confirm-actions'
-  const cancel = document.createElement('button'); cancel.title = "Volvé sin enviar la solicitud de adelanto del servicio."; cancel.type = 'button'; cancel.className = 'secondary'; cancel.textContent = 'Cancelar'
-  const confirm = document.createElement('button'); confirm.title = "Enviá a administración la solicitud para iniciar este servicio antes de su horario."; confirm.type = 'button'; confirm.className = 'primary'; confirm.textContent = 'Confirmar solicitud'
+  const cancel = document.createElement('button'); cancel.title = "Volvé sin iniciar el servicio."; cancel.type = 'button'; cancel.className = 'secondary'; cancel.textContent = 'Cancelar'
+  const confirm = document.createElement('button'); confirm.title = "Confirmá el inicio anticipado del servicio."; confirm.type = 'button'; confirm.className = 'primary'; confirm.textContent = 'Adelantar e iniciar'
   const close = () => layer.remove()
   cancel.onclick = close
   confirm.onclick = async () => {
@@ -1318,7 +1318,7 @@ function showAdvanceRequestConfirmation(record, onRequested) {
       close()
     } catch (requestError) {
       error.textContent = requestError.message || 'No se pudo enviar la solicitud.'
-      error.hidden = false; confirm.disabled = false; cancel.disabled = false; confirm.textContent = 'Confirmar solicitud'
+      error.hidden = false; confirm.disabled = false; cancel.disabled = false; confirm.textContent = 'Adelantar e iniciar'
     }
   }
   layer.addEventListener('mousedown', event => { if (event.target === layer) close() })
@@ -5381,11 +5381,11 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
       const advanceStatus = serviceRecord?.advanceRequest?.status
       const canRequestAdvance = view === 'agenda' && actions && !serviceRecord?.vehicleControl && serviceRecord?.date === today && !serviceHasStarted(serviceRecord, clock)
       if (canRequestAdvance) {
-        const button = document.createElement('button'); button.title = "Solicitá autorización para comenzar el servicio antes de su horario."
+        const button = document.createElement('button'); button.title = "Iniciá el servicio ahora y registrá la hora real."
         button.type = 'button'; button.className = 'secondary technician-advance-request'
-        button.textContent = advanceStatus === 'pending' ? 'Solicitud de adelanto pendiente' : advanceStatus === 'denied' ? 'Solicitud de adelanto denegada' : 'Adelantar servicio'
-        button.title = advanceStatus === 'pending' ? 'La solicitud ya fue enviada y espera la decisión de administración.' : advanceStatus === 'denied' ? 'Administración denegó el adelanto; esperá el horario programado.' : 'Solicitá autorización para iniciar este servicio antes de su horario.'
-        button.disabled = advanceStatus === 'pending' || advanceStatus === 'denied'
+        button.textContent = 'Adelantar servicio'
+        button.title = 'Iniciá ahora sin aprobación administrativa; se registrará la hora real.'
+        button.disabled = false
         button.onclick = () => showAdvanceRequestConfirmation(serviceRecord, async updated => setHistory(previous => previous.map(item => String(item.id) === String(updated.id) ? { ...item, ...updated } : item)))
         actions.querySelector('.primary')?.insertAdjacentElement('afterend', button)
       }
