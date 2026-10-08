@@ -15,7 +15,11 @@ function writeProfessionalPdf(stream, { title, description, monthLabel, generate
   const pageHeight = doc.internal.pageSize.getHeight()
   const left = 36
   const contentWidth = pageWidth - 72
-  const tableStartY = 178
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(7.5)
+  const headerLines = headers.map((header, index) => doc.splitTextToSize(header.toUpperCase(), widths[index] - 10))
+  const headerHeight = Math.max(25, ...headerLines.map(lines => lines.length * 9 + 12))
+  const tableStartY = 153 + headerHeight
   const tableEndY = pageHeight - 70
   const setText = (color, style = 'normal', size = 8) => {
     doc.setTextColor(color)
@@ -44,11 +48,11 @@ function writeProfessionalPdf(stream, { title, description, monthLabel, generate
 
   const drawTableHeader = () => {
     doc.setFillColor(COLORS.gold)
-    doc.rect(left, 153, contentWidth, 25, 'F')
+    doc.rect(left, 153, contentWidth, headerHeight, 'F')
     setText(COLORS.white, 'bold', 7.5)
     let x = left
     headers.forEach((header, index) => {
-      doc.text(header.toUpperCase(), x + 5, 169, { maxWidth: widths[index] - 10 })
+      doc.text(headerLines[index], x + 5, 165)
       x += widths[index]
     })
   }

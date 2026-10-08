@@ -1,10 +1,11 @@
 // Compare editable values only; persistence/audit metadata does not make a draft dirty.
-export const serviceEditableFields = ['time', 'serviceId', 'service', 'customerId', 'client', 'address', 'phone', 'detail', 'internalNote', 'paymentMethod', 'amount', 'monthlyFee', 'form', 'formEmail', 'installationZone', 'estimatedMinutes', 'servicePhotoUrl', 'servicePhotoAttachedAt']
+export const serviceEditableFields = ['time', 'serviceId', 'service', 'customerId', 'client', 'address', 'phone', 'detail', 'internalNote', 'paymentMethod', 'amount', 'monthlyFee', 'freezeMonthlyFee', 'frozenMonths', 'form', 'formEmail', 'installationZone', 'estimatedMinutes', 'servicePhotoUrl', 'servicePhotoAttachedAt']
 
 export function serviceHasChanges(task, saved) {
   if (!saved) return true
   if (Boolean(task.awaitingConfirmation) !== Boolean(saved.awaitingConfirmation)) return true
-  if (serviceEditableFields.some(key => String(task?.[key] ?? '') !== String(saved?.[key] ?? ''))) return true
+  const value = (item, key) => key === 'freezeMonthlyFee' ? Boolean(item?.[key]) : key === 'frozenMonths' ? Number(item?.[key] || 0) : String(item?.[key] ?? '')
+  if (serviceEditableFields.some(key => value(task, key) !== value(saved, key))) return true
   if (Boolean(task?.servicePhotoAttached) !== Boolean(saved?.servicePhotoAttached)) return true
   const checklist = value => (value || []).map(item => ({ text: String(item?.text || ''), completed: Boolean(item?.completed) }))
   return JSON.stringify(checklist(task?.internalChecklist)) !== JSON.stringify(checklist(saved?.internalChecklist))
