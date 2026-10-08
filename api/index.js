@@ -747,11 +747,11 @@ async function handleTechnicianStatus(req, res, sql, user) {
         assertServiceCanBeCompleted(record)
       }
       const now = new Date().toISOString()
-      const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: ['Completado', 'Avance registrado'].includes(type) ? type : 'Requiere revisión', technicianRequest: ['Completado', 'Avance registrado'].includes(type) ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
+      const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? type : 'Requiere revisión', technicianRequest: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
       const entries = [auditEntry(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, next)]
       if (vehicleChange) entries.push(auditEntry(user, 'Actualizó kilometraje por control semanal', 'Vehículo', String(record.vehicleId), vehicleChange.before, vehicleChange.after))
       workingState.history = workingState.history.map(item => String(item.id) === String(next.id) ? next : item)
-      if (record.serviceJourney && workingState.agenda) workingState.agenda = synchronizeAgendaHistoryRecord(workingState.agenda, record, next)
+      if ((record.serviceJourney || type === 'Cancelado') && workingState.agenda) workingState.agenda = synchronizeAgendaHistoryRecord(workingState.agenda, record, next)
       let nextState = workingState
       if (next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo')) {
         const normalized = normalizeRetirementCustomers(nextState, currentState)
