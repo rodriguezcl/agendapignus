@@ -35,6 +35,27 @@ function singleServiceMoveOperations(snapshot, command) {
   const baseTask = source?.tasks?.find(matches)
   const baseRecord = snapshot.history?.find(record => String(record.id) === String(command.record.id))
   if (!baseTask || !baseRecord) throw new Error('No se encontró la versión guardada del servicio. Actualizá la agenda antes de reasignar.')
+  if (command.advanceToFriday) {
+    const saturday = new Date(`${command.sourceDay}T12:00:00Z`)
+    const friday = new Date(saturday)
+    friday.setUTCDate(friday.getUTCDate() - 1)
+    const [hour, minute] = String(command.task.time).split(':').map(Number)
+    const duration = Number(command.task.estimatedMinutes)
+    if (saturday.getUTCDay() !== 6 || friday.toISOString().slice(0, 10) !== command.day ||
+      !/^\d{2}:\d{2}$/.test(command.task.time) || minute > 59 || command.task.time < '16:00' ||
+      !Number.isInteger(duration) || duration < 15 || hour * 60 + minute + duration > 20 * 60) {
+      throw new Error('Elegí el viernes anterior entre las 16:00 y las 20:00.')
+    }
+    if (source.memberIds?.length !== 1 || command.team.memberIds?.length !== 1 ||
+      String(source.memberIds[0]) !== String(command.team.memberIds[0])) throw new Error('Cambió el técnico de guardia. Volvé a abrir el adelanto.')
+    const currentDestination = snapshot.agenda?.weekly?.[command.day]?.teams?.find(team => String(team.teamId) === String(command.team.teamId))
+    if (currentDestination && (currentDestination.memberIds?.length !== 1 || String(currentDestination.memberIds[0]) !== String(source.memberIds[0]))) {
+      throw new Error('Cambió el equipo del viernes. Volvé a abrir el adelanto.')
+    }
+    if (baseRecord.technicalStatus || ['Completado', 'Cancelado', 'Reprogramado', 'En curso', 'Avance registrado'].includes(baseRecord.status)) {
+      throw new Error('Solo se pueden adelantar servicios pendientes.')
+    }
+  }
   const record = { ...command.record }
   const task = { ...command.task }
   if (baseRecord.vehicleControl) {
@@ -47,6 +68,11 @@ function singleServiceMoveOperations(snapshot, command) {
     record.technicians = task.technicians = [name]
   }
   const operations = weeklyServiceOperations(snapshot, { ...command, task, record, baseTask, baseRecord })
+  if (command.advanceToFriday) {
+    for (const key of ['memberIds', 'members']) {
+      operations.unshift({ path: ['agenda', 'weekly', command.sourceDay, 'teams', { key: 'teamId', id: String(source.teamId) }, key], before: source[key] ?? null, after: source[key] ?? null, existed: Object.hasOwn(source, key), exists: Object.hasOwn(source, key) })
+    }
+  }
   const destination = snapshot.agenda?.weekly?.[command.day]?.teams?.find(team => String(team.teamId) === String(command.team.teamId))
   if (destination) {
     // Membership is part of the user's choice of responsible technician.

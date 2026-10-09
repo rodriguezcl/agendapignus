@@ -70,7 +70,7 @@ test('vehicle moves use captured server snapshots without mixing pending edits',
   assert.match(source, /lastServerSnapshotRef\.current = structuredClone\(data\)/)
   assert.match(source, /const moveSnapshot = isolatedMove \? lastServerSnapshotRef\.current : null/)
   assert.match(source, /if \(serialized !== lastPersistedSnapshotRef.current\) throw new Error\('Guardá los cambios pendientes/)
-  assert.match(source, /isolatedMove: Boolean\(command.sourceDay && command.task\?\.vehicleControl\)/)
+  assert.match(source, /isolatedMove: Boolean\(command.sourceDay && \(command.task\?\.vehicleControl \|\| command.advanceToFriday\)\)/)
 })
 
 test('swaps same-time controls atomically in both agendas and history', async () => {
