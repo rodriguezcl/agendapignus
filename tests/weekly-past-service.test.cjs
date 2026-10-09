@@ -17,9 +17,17 @@ test('read-only amounts reuse currency formatting and preserve empty values', ()
 })
 test('past services open saved payment information without opening an editor', () => {
   const start = source.indexOf('  const openTaskEditor =')
-  const code = source.slice(start, source.indexOf('  const updateTaskDraft', start))
+  // Only execute the handler: the following effect belongs to reservation navigation.
+  const end = source.indexOf('  useEffect(', start)
+  assert.ok(start >= 0 && end > start, 'The openTaskEditor handler must be present')
+  const code = source.slice(start, end)
   let viewed
   const open = vm.runInNewContext(code + '\nopenTaskEditor', {
+    readOnly: false,
+    setTaskEditorError: () => {},
+    setWeeklyServiceSource: () => {},
+    setTaskEditor: () => assert.fail('Past services must not open the editor'),
+    setCompletedService: () => assert.fail('Pending services must use the read-only detail'),
     dayHasFinished: () => true,
     dayPlan: () => ({ teams: [{ label: 'Equipo 1', members: ['Mariano'], tasks: [{ client: 'Cliente', amount: 'viejo' }, {}] }] }),
     taskHasContent: task => Boolean(task.client), taskStatus: () => 'Pendiente', operationalHistory: [],

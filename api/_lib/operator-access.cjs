@@ -5,7 +5,7 @@ const isOperator = user => user?.roleCode === 'operator' || normalized(user?.rol
 function operatorRouteAllowed(method, route) {
   if (method === 'POST') return ['/auth/activity', '/auth/logout'].includes(route)
   return method === 'GET' && (
-    ['/auth/session', '/auth/session-status', '/state', '/state/revision', '/holidays'].includes(route) ||
+    ['/auth/session', '/auth/session-status', '/state', '/state/revision', '/holidays', '/weather'].includes(route) ||
     route.startsWith('/service-photo/') || route.startsWith('/vehicle-control/photo/')
   )
 }

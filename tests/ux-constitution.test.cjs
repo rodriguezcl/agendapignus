@@ -29,13 +29,21 @@ test('los selectores no modales también se cierran por teclado y los roles admi
   assert.match(app, /\['Enter', ' '\]\.includes\(event\.key\)/)
 })
 
-test('el portal técnico comunica conectividad y ofrece acciones de campo', () => {
+test('el portal técnico comunica conectividad y ofrece acciones de campo', async () => {
   assert.match(app, /connectionStatus/)
   assert.doesNotMatch(app, /Sincronizando agenda/)
   assert.doesNotMatch(app, /setConnectionStatus\('syncing'\)/)
   assert.match(app, /Sin conexión/)
   assert.match(app, /technician-quick-actions/)
-  assert.match(app, /google\.com\/maps\/search/)
+  assert.match(app, /serviceDirections\(serviceRecord\)/)
+  assert.match(app, /directions\.href = destination\.url/)
+  const { serviceDirections } = await import('../src/domain/customers/customer-location.mjs')
+  const address = 'Av. Colón 123, Córdoba'
+  const destination = new URL(serviceDirections({ address }).url)
+  assert.equal(destination.origin, 'https://www.google.com')
+  assert.equal(destination.pathname, '/maps/search/')
+  assert.equal(destination.searchParams.get('query'), address)
+  assert.equal(serviceDirections({}), null)
   assert.match(app, /tel:/)
   assert.match(app, /Iniciar servicio/)
   assert.match(app, /startTechnicianService/)

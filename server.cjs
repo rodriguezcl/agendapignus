@@ -1,4 +1,5 @@
 const http = require('node:http')
+const { fetchWeather } = require('./api/_lib/weather.cjs')
 const { isOperator, operatorRouteAllowed, operatorState } = require('./api/_lib/operator-access.cjs')
 const { retirementClientLabel } = require('./api/_lib/retirement-label.cjs')
 const path = require('node:path')
@@ -2081,6 +2082,11 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     return handleCustomerImport(req, res, user)
+  }
+  if (req.method === 'GET' && url.pathname === '/api/weather') {
+    const user = requireSession(req, res)
+    if (!user) return
+    return fetchWeather().then(weather => send(res, 200, weather))
   }
   if (req.method === 'GET' && url.pathname === '/api/holidays') {
     const user = requireSession(req, res)
