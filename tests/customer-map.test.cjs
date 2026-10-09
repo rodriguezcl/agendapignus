@@ -19,3 +19,21 @@ test('otras cuentas usan coordenadas válidas o dirección, sin interpretar URL 
   assert.equal(customerMapLocation({ address: '-' }).unresolved, true)
   assert.ok(customerMapLocation({ street: 'San Martín 100', locality: 'Córdoba' }).url)
 })
+
+test('mapa prioriza calle y altura sobre una dirección general de barrio', async () => {
+  const { customerMapLocation } = await import('../src/domain/customers/customer-location.mjs')
+  const customer = { street: 'Mariano Larra 4386', locality: 'Córdoba - B° Cerro De Las Rosas', province: 'Córdoba', address: 'Córdoba - B° Cerro De Las Rosas' }
+  const result = customerMapLocation(customer)
+  assert.equal(result.address, 'Mariano Larra 4386, Córdoba, Argentina')
+  assert.equal(new URL(result.embedUrl).searchParams.get('q'), result.address)
+  assert.equal(new URL(result.url).searchParams.get('query'), result.address)
+  assert.equal(customer.address, 'Córdoba - B° Cerro De Las Rosas')
+})
+
+test('mapa recupera campos importados cuando los campos principales tienen guiones', async () => {
+  const { customerMapLocation } = await import('../src/domain/customers/customer-location.mjs')
+  const result = customerMapLocation({ street: '-', locality: '-', fields: { Calle: 'San Martín 100', Localidad: 'Villa Allende', 'Provincia/Estado': 'Córdoba' } })
+  assert.equal(result.address, 'San Martín 100, Villa Allende, Córdoba, Argentina')
+  assert.equal(customerMapLocation({ address: '123' }).unresolved, true)
+  assert.equal(customerMapLocation({ locality: 'Córdoba' }).unresolved, true)
+})
