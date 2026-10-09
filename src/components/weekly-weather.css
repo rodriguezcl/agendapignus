@@ -1,0 +1,14 @@
+.weekly-board .week-day > header.weekly-weather-header { position: relative; isolation: isolate; overflow: hidden; min-height: 88px; }
+.weekly-weather-header > div { position: relative; z-index: 1; }
+.weekly-weather-header .weekly-weather-art { position: absolute; right: 55px; top: 0; width: 130px; height: 88px; opacity: .23; z-index: 0; pointer-events: none; }
+.weekly-board .week-day > header.weather-sun { background: linear-gradient(110deg, #fff9e8, #f9edc9); }
+.weekly-board .week-day > header.weather-partly { background: linear-gradient(110deg, #f7f7ed, #e4eef4); }
+.weekly-board .week-day > header:is(.weather-cloud, .weather-fog) { background: linear-gradient(110deg, #f1f4f6, #dfe7ed); }
+.weekly-board .week-day > header:is(.weather-rain, .weather-storm, .weather-snow) { background: linear-gradient(110deg, #eef5fa, #d8e8f6); }
+.weekly-weather-header .weekly-weather-line { display: block; color: #465e6b; line-height: 1.45; }
+.weekly-weather-header .weekly-today { display: inline-block; margin-left: 6px; padding: 1px 5px; border-radius: 5px; background: #dcebdc; color: #285438; font-size: .65rem; vertical-align: middle; }
+.weekly-weather-credit { color: #647581; font-size: .7rem; margin: 0 0 10px; }
+.weekly-weather-credit a { color: inherit; text-decoration: underline; }
+.app-shell[data-theme='dark'] .weekly-board .week-day > header.weekly-weather-header { background: #263440; }
+.app-shell[data-theme='dark'] .weekly-board .week-day > header.weather-sun { background: #3a3526; }
+.app-shell[data-theme='dark'] .weekly-weather-header .weekly-weather-line, .app-shell[data-theme='dark'] .weekly-weather-credit { color: #cad6df; }

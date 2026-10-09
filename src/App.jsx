@@ -1,3 +1,4 @@
+import { useWeeklyWeather, WeeklyWeather, WeatherArt, WeatherCredit } from './components/WeeklyWeather.jsx'
 import { requiresDifferentRescheduleDay } from './domain/history/history-edit-policy.mjs'
 import { retirementClientLabel } from './domain/customers/retirement-label.mjs'
 import { FrozenMonthsContext, FrozenMonthsFields, FrozenMonthsSettings } from './components/FrozenMonths.jsx'
@@ -3829,6 +3830,7 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
  * impactan en el Historial hasta que el operador abre y guarda la agenda diaria.
  */
 function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGuardRef, persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, openDaily, authUser, vehicles, permissions = {} }) {
+  const weather = useWeeklyWeather()
   const serviceLocality = useMemo(() => createServiceLocalityLookup(customers), [customers])
   authUser = authUser || globalThis.__pignusCurrentUser || null
   const readOnly = authUser?.roleCode === 'operator' || normalizeRoleName(authUser?.role) === 'operador'
@@ -4900,6 +4902,7 @@ function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGuardRef, 
       <button type="button" className="secondary" title="Volver a la agenda actual" onClick={() => { weeklyAnchorFollowsCurrentRef.current = true; setAnchor(defaultWeeklyAnchor()) }}>Hoy</button>
       <button type="button" className="secondary" aria-label="Jornada siguiente" title="Avanzar una jornada, omitiendo domingos" onClick={() => { weeklyAnchorFollowsCurrentRef.current = false; setAnchor(value => shiftWeeklyAnchor(value, 1)) }}><span>Siguiente</span> →</button>
     </nav>
+    <WeatherCredit />
     <div className="weekly-board" ref={weeklyBoardRef}>
       {days.map(day => {
         const storedPlan = dayPlan(day)
@@ -4912,7 +4915,7 @@ function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGuardRef, 
         const gapConflicts = gapConflictsForDay(day)
         const finishedDay = dayHasFinished(day)
         return <section className={`week-day ${!hours || holidayState.decision?.status === 'closed' ? 'closed-day' : ''} ${finishedDay ? 'finished-day' : ''}`} data-day={day} key={day}>
-          <header><div><b>{displayDate(day)}</b><small>{!hours ? 'No operativo' : finishedDay ? 'Jornada finalizada · solo lectura' : holidayState.holiday ? holidayDecisionLabel(holidayState.decision) : day === today ? 'Hoy' : prettyDate(day)}</small></div>{!readOnly && <div className="weekly-day-actions"><button className="secondary small" disabled={!finishedDay && (!hours || Boolean(advancedGuard) || calendarUnavailable || holidayState.blocked)} title={finishedDay ? 'Consultá los servicios de esta fecha en modo de solo lectura.' : advancedGuard ? advancedSaturdayGuardMessage(advancedGuard) : 'Abrí Agenda del día para consultar y cargar los servicios de esta fecha.'} onClick={() => openDay(day)}>{finishedDay ? 'Ver día' : 'Abrir día'}</button></div>}</header>
+          <header className={`weekly-weather-header weather-${day >= today ? weather.days.find(item => item.date === day)?.kind || "none" : "none"}`}><WeatherArt kind={day >= today ? weather.days.find(item => item.date === day)?.kind || "none" : "none"} /><div><b>{displayDate(day)}{day === today && <span className="weekly-today">Hoy</span>}</b><WeeklyWeather day={day} today={today} weather={weather} />{finishedDay && <small>Solo lectura</small>}</div>{!readOnly && <div className="weekly-day-actions"><button className="secondary small" disabled={!finishedDay && (!hours || Boolean(advancedGuard) || calendarUnavailable || holidayState.blocked)} title={finishedDay ? 'Consultá los servicios de esta fecha en modo de solo lectura.' : advancedGuard ? advancedSaturdayGuardMessage(advancedGuard) : 'Abrí Agenda del día para consultar y cargar los servicios de esta fecha.'} onClick={() => openDay(day)}>{finishedDay ? 'Ver día' : 'Abrir día'}</button></div>}</header>
           {!hours ? <p className="closed-day-note">Domingo · sin programación</p> : <>
             <small className="weekly-hours">Horario habilitado: {hours.label}</small>
             {calendarUnavailable ? <div className={`weekly-calendar-state ${holidayCalendar.error ? 'error' : ''}`}>{holidayCalendar.error ? 'No se pudo verificar el calendario de feriados.' : 'Verificando feriados nacionales…'}</div> : holidayState.holiday && <HolidayDecisionPanel compact holiday={holidayState.holiday} decision={holidayState.decision} canDecide={authUser?.roleCode === 'administrator'} onDecision={status => recordHolidayDecision(setWeekly, setNotice, day, holidayState.holiday, status, { weekly, history: operationalHistory, setHistory, holidays: holidayCalendar.records })} />}

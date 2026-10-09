@@ -1,4 +1,5 @@
 const crypto = require('node:crypto')
+const { fetchWeather } = require('./_lib/weather.cjs')
 const { employeeOnly, applyEmployeeOperation } = require('./_lib/employee-operation.cjs')
 const { isOperator, operatorRouteAllowed } = require('./_lib/operator-access.cjs')
 const { canPerformTechnicalServices } = require('./_lib/technical-capability.cjs')
@@ -1109,6 +1110,9 @@ module.exports = async function handler(req, res) {
     if (serviceOperation) return await handleServiceCatalog(req, res, sql, session.user, serviceOperation)
     const vehicleOperation = vehicleOperationForRequest(req.method, route)
     if (vehicleOperation) return await handleVehicles(req, res, sql, session.user, vehicleOperation)
+    if (req.method === 'GET' && route === '/weather') {
+      return send(res, 200, await fetchWeather())
+    }
     if (req.method === 'GET' && route === '/holidays') {
       const year = validHolidayYear(req.query.year)
       if (!year) return send(res, 400, { error: 'El año solicitado no es válido.' })
