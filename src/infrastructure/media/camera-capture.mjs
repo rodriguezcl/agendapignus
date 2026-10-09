@@ -2,7 +2,17 @@
 // offer the gallery on some browsers).
 export async function captureCameraPhoto() {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('La cámara no está disponible en este navegador. Usá un navegador con acceso a cámara.')
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+  let stream
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+  } catch (error) {
+    if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+      throw new Error('No se pudo acceder a la cámara. Permití el acceso a la cámara en los permisos de este sitio y del navegador en tu teléfono, y volvé a intentar.')
+    }
+    if (error.name === 'NotFoundError') throw new Error('No se encontró una cámara disponible en este dispositivo.')
+    if (error.name === 'NotReadableError') throw new Error('No se pudo abrir la cámara. Cerrá otras aplicaciones que la estén usando y volvé a intentar.')
+    throw new Error('No se pudo iniciar la cámara. Volvé a intentar desde el navegador de tu teléfono.')
+  }
   const dialog = document.createElement('dialog')
   const video = document.createElement('video')
   video.autoplay = true; video.muted = true; video.playsInline = true; video.srcObject = stream
