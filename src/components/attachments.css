@@ -1,0 +1,9 @@
+.attachments { grid-column: 1 / -1; min-width: 0; padding: 12px; border: 1px solid #94a89b; border-radius: 10px; margin-block: 12px; }
+.attachments summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+.attachment-actions, .attachment-list li { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.attachment-list { list-style: none; padding: 0; }
+.attachment-list li { padding-block: 8px; border-bottom: 1px solid #94a89b55; }
+.attachment-list li a, .attachment-list li span { overflow-wrap: anywhere; flex: 1; min-width: 100px; }
+.attachment-list img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; }
+.attachment-picker p, .attachments small { font-size: .85rem; }
+.attachments button, .attachment-picker button { min-height: 40px; }
