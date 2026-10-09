@@ -1,3 +1,4 @@
+import { createRevisionSnapshotCache } from './domain/shared/revision-snapshot-cache.mjs'
 import { fridayAdvanceDestination } from './domain/agenda/friday-advance.mjs'
 import { useWeeklyWeather, WeeklyWeather, WeatherArt, WeatherCredit } from './components/WeeklyWeather.jsx'
 import { requiresDifferentRescheduleDay } from './domain/history/history-edit-policy.mjs'
@@ -2436,6 +2437,7 @@ export default function App() {
     if (authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return undefined
     let refreshing = false
     let stopped = false
+    const pendingRemoteSnapshot = createRevisionSnapshotCache()
     const refreshRemoteState = async () => {
       // Un PUT de esta misma pestaña aumenta la revisión del servidor antes de
       // que React alcance a actualizar stateRevision. No debe tratarse como un
@@ -2462,7 +2464,7 @@ export default function App() {
         }
         const remoteRevision = Number(data.revision)
         if (!stopped && remoteRevision !== Number(stateRevisionRef.current)) {
-          const remoteState = await stateRepository.load()
+          const remoteState = await pendingRemoteSnapshot(remoteRevision, () => stateRepository.load())
           if (stopped || loggingOutRef.current) return
           const hasLocalChanges = !canRefresh(remoteState)
           if (hasLocalChanges) {
@@ -5193,8 +5195,8 @@ function PersonalTechnicalServices({ user, logout, sessionInvalidated, onBack })
   return <TechnicianPortalErrorBoundary logout={logout}><TechnicianPortal {...{ user, history, setHistory, vehicles, setVehicles, logout, sessionInvalidated, onBack }} /></TechnicianPortalErrorBoundary>
 }
 
-async function loadPersonalTechnicalState() {
-  const response = await fetchWithTimeout('/api/technician/state', { credentials: 'same-origin' })
+async function loadPersonalTechnicalState(revision, day) {
+  const response = await fetchWithTimeout('/api/technician/state' + (revision == null ? '' : `?${new URLSearchParams({ revision: String(revision), day })}`), { credentials: 'same-origin' })
   const data = await response.json()
   if (!response.ok) throw Object.assign(new Error(data.error || 'No se pudieron cargar los servicios.'), { status: response.status })
   return data
@@ -5290,6 +5292,8 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
     // Así, al informar un estado un compañero, se retira o actualiza para los demás.
     let refreshing = false
     let stopped = false
+    let loadedRevision = null
+    let loadedDay = null
     const refreshSharedAgenda = async () => {
       if (stopped || refreshing || document.visibilityState === 'hidden') return
       if (!navigator.onLine) { setConnectionStatus('offline'); return }
@@ -5297,7 +5301,9 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
       // La actualización periódica es silenciosa para no desplazar controles
       // mientras el técnico está interactuando con una tarjeta.
       try {
-        const data = await loadPersonalTechnicalState()
+        const day = currentLocalDate()
+        const data = await loadPersonalTechnicalState(loadedDay === day ? loadedRevision : null, day)
+        if (!stopped && Number.isFinite(Number(data?.revision))) { loadedRevision = Number(data.revision); loadedDay = day }
         if (!stopped && Array.isArray(data?.history)) setHistory(data.history)
         if (!stopped && Array.isArray(data?.vehicles)) setVehicles?.(data.vehicles)
         if (!stopped) setConnectionStatus('online')
