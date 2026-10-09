@@ -2133,6 +2133,26 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': photo.mime_type, 'Content-Length': photo.photo_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
     return res.end(photo.photo_data)
   }
+  if (url.pathname.startsWith('/api/attachments/')) {
+    const user = requireSession(req, res)
+    if (!user) return
+    const handle = async () => {
+      const parts = url.pathname.split('/').slice(3).map(decodeURIComponent)
+      if (parts.length < 2 || parts.length > 3) throw Object.assign(new Error('Ruta de adjuntos inválida.'), { statusCode: 400 })
+      const [scope, entityId, attachmentId] = parts
+      let entity
+      if (scope === 'service') {
+        const row = db.prepare('SELECT data FROM work_history WHERE id=?').get(entityId)
+        entity = row && JSON.parse(row.data)
+        if (entity && user.roleCode === 'supervisor') entity = { ...entity, supervisorVisible: readStateForUser(user).history.some(record => String(record.id) === entityId) }
+      } else if (scope === 'vehicle') {
+        const raw = db.prepare('SELECT value FROM preferences WHERE key=?').get('vehicles')?.value
+        entity = (JSON.parse(raw || '[]')).find(vehicle => String(vehicle.id) === entityId)
+      }
+      return require('./api/_lib/attachments.cjs').handleAttachments({ req, res, body: req.method === 'POST' ? await readJson(req, 4_100_000) : null, user, scope, entityId, attachmentId, entity, store: require('./api/_lib/attachment-store.cjs').sqliteAttachmentStore(db) })
+    }
+    return handle().catch(error => send(res, error.statusCode || 400, { error: error.message }))
+  }
   if (['GET', 'POST', 'DELETE'].includes(req.method) && url.pathname.startsWith('/api/service-photo/')) {
     const user = requireSession(req, res)
     if (!user) return

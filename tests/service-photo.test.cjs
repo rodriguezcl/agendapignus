@@ -5,8 +5,10 @@ const path = require('node:path')
 
 test('la interfaz permite adjuntar desde archivo o cámara y muestra la foto en todas las vistas solicitadas', () => {
   const source = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
-  assert.match(source, /Galería o archivo/)
-  assert.match(source, /capture="environment"/)
+  const attachments = fs.readFileSync(path.join(__dirname, '../src/components/Attachments.jsx'), 'utf8')
+  assert.match(attachments, /Agregar archivos/)
+  assert.match(attachments, /multiple accept=/)
+  assert.match(attachments, /capture="environment"/)
   assert.match(source, /weekly-service-photo/)
   assert.match(source, /daily-service-photo|ServicePhotoManager/)
   assert.match(source, /technician-service-photo/)

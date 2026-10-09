@@ -153,6 +153,32 @@ test.afterEach(async () => {
   }
 })
 
+test('adjuntos múltiples conservan archivos y restringen accesos por servicio', async () => {
+  const cookie = await login('qa-admin@pignus.test')
+  const base = '/api/attachments/service/qa-history-included'
+  assert.equal((await api(base)).status, 401)
+  const upload = id => api(base, cookie, { method: 'POST', body: JSON.stringify({ id, name: 'Referencia.pdf', data: 'data:application/pdf;base64,' + Buffer.from('%PDF-1.4\nExample').toString('base64') }) })
+  assert.equal((await upload('attachment-00000001')).status, 200)
+  assert.equal((await upload('attachment-00000002')).status, 200)
+  assert.equal((await upload('attachment-00000001')).status, 200)
+  const listed = await (await api(base, cookie)).json()
+  assert.equal(listed.attachments.length, 2)
+  assert.equal(listed.attachments[0].data, undefined)
+  const download = await api(base + '/attachment-00000001', cookie)
+  assert.equal(download.status, 200)
+  assert.match(await download.text(), /^%PDF-/)
+  assert.equal((await api(base + '/attachment-00000001', cookie, { headers: { 'If-None-Match': download.headers.get('etag') } })).status, 304)
+  assert.equal((await api(base + '/attachment-00000001', cookie, { method: 'DELETE' })).status, 200)
+  assert.equal((await (await api(base, cookie)).json()).attachments.length, 1)
+  const technician = await login('qa-tech@pignus.test')
+  assert.equal((await api(base, technician)).status, 200)
+  assert.equal((await api('/api/attachments/service/qa-history-excluded', technician)).status, 403)
+  assert.equal((await api(base + '/attachment-00000002', technician, { method: 'DELETE' })).status, 403)
+  const policy = '/api/attachments/vehicle/qa-vehicle'
+  assert.equal((await api(policy, technician)).status, 200)
+  assert.equal((await api(policy, technician, { method: 'POST', body: JSON.stringify({}) })).status, 403)
+})
+
 test('cuenta mixta conserva gestión, informa solamente lo asignado y no aprueba adelantos', async () => {
   const cookie = await login('qa-weekly@pignus.test')
   assert.equal((await api('/api/technician/state', cookie)).status, 403)

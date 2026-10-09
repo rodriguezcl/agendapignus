@@ -1084,6 +1084,21 @@ module.exports = async function handler(req, res) {
     const session = await requireSession(req, res, sql)
     if (!session) return
     if (isOperator(session.user) && !operatorRouteAllowed(req.method, route)) return send(res, 403, { error: 'Operador sólo puede consultar la Agenda semanal.' })
+    if (route.startsWith('/attachments/')) {
+      const parts = route.split('/').slice(2).map(decodeURIComponent)
+      if (parts.length < 2 || parts.length > 3) return send(res, 400, { error: 'Ruta de adjuntos inválida.' })
+      const [scope, entityId, attachmentId] = parts
+      let entity
+      if (scope === 'service') {
+        entity = (await sql`select data from pignus_work_history where id = ${entityId}`)[0]?.data
+        if (entity && session.user.roleCode === 'supervisor') entity = { ...entity, supervisorVisible: visibleStateForUser(await readState(sql), session.user).history.some(record => String(record.id) === entityId) }
+      } else if (scope === 'vehicle') {
+        const value = (await sql`select value from pignus_preferences where key = 'vehicles'`)[0]?.value
+        const vehicles = typeof value === 'string' ? JSON.parse(value) : value
+        entity = (vehicles || []).find(vehicle => String(vehicle.id) === entityId)
+      }
+      try { return await require('./_lib/attachments.cjs').handleAttachments({ req, res, body: req.method === 'POST' ? requestBody(req) : null, user: session.user, scope, entityId, attachmentId, entity, store: require('./_lib/attachment-store.cjs').postgresAttachmentStore(sql) }) } catch (error) { return send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo completar la operación de adjuntos.' }) }
+    }
     if (req.method === 'GET' && route === '/auth/session-status') {
       return send(res, 200, { active: true, expiresAt: session.expiresAt.toISOString() })
     }
