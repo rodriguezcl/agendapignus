@@ -38,6 +38,25 @@ export function serviceDirections(record) {
   return record.address ? { url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(record.address)}`, label: 'Cómo llegar' } : null
 }
 
+const addressPart = value => {
+  const text = String(value || '').trim()
+  return text === '-' ? '' : text
+}
+
+export function customerMapAddress(customer = {}) {
+  const street = addressPart(customer.street) || addressPart(customer.fields?.Calle)
+  const locality = addressPart(customer.locality) || addressPart(customer.fields?.Localidad)
+  const province = addressPart(customer.province) || addressPart(customer.fields?.['Provincia/Estado'])
+  // Neighborhood descriptions are useful on the card, but can turn a street
+  // lookup into an area lookup. Keep the city and the actual street address.
+  const city = locality.split(/\s+-\s+(?:B[°º.]|BARRIO\b)/i)[0].trim()
+  const parts = street ? [street, city, province] : [addressPart(customer.address)]
+  const unique = parts.filter(Boolean).filter((part, index, all) => all.findIndex(other => normalize(other) === normalize(part)) === index)
+  if (!unique.length || !/\p{L}/u.test(unique.join(' '))) return ''
+  if (!/\bARGENTINA\b/i.test(unique.join(', '))) unique.push('Argentina')
+  return unique.join(', ')
+}
+
 export function customerMapLocation(customer = {}) {
   const docta = doctaLocation(customer)
   if (docta?.unresolved) return docta
@@ -46,11 +65,12 @@ export function customerMapLocation(customer = {}) {
   const imported = match ? [Number(match[1]), Number(match[2])] : null
   const valid = imported && Math.abs(imported[0]) <= 90 && Math.abs(imported[1]) <= 180 && imported.some(value => value !== 0)
   const coordinates = docta?.coordinates || (valid ? imported : null)
-  const address = [customer.street || customer.fields?.Calle, customer.locality || customer.fields?.Localidad].filter(value => value && value !== '-').join(', ')
-  const query = coordinates?.join(',') || (customer.address && customer.address !== '-' ? customer.address : address)
+  const address = customerMapAddress(customer)
+  const query = coordinates?.join(',') || address
   if (!query || !coordinates && !/\p{L}/u.test(query)) return { unresolved: true, label: 'No hay una dirección o coordenadas válidas para mostrar el mapa.' }
   return {
     label: docta?.label || (coordinates ? 'Ubicación informada en la cuenta.' : 'Referencia por dirección. Verificá el resultado antes de viajar.'),
+    address: coordinates ? null : address,
     embedUrl: `https://www.google.com/maps?q=${encodeURIComponent(query)}&z=16&output=embed`,
     url: docta?.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
   }
