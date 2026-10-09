@@ -1921,10 +1921,13 @@ const server = http.createServer((req, res) => {
     if (user.roleCode === 'supervisor' || !userCan(user, 'history')) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
     return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial', null, url.searchParams.get('format') || 'excel')
   }
-  if (req.method === 'GET' && req.url === '/api/technician/state') {
+  if (req.method === 'GET' && url.pathname === '/api/technician/state') {
     const user = requireSession(req, res)
     if (!user) return
     if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
+    const revision = currentStateRevision()
+    const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+    if (require('./api/_lib/conditional-technician-state.cjs').technicianStateUnchanged(Object.fromEntries(url.searchParams), revision, today)) return send(res, 200, { unchanged: true, revision, day: today })
     return send(res, 200, readTechnicianState(user))
   }
   if (req.method === 'GET' && req.url === '/api/state') {

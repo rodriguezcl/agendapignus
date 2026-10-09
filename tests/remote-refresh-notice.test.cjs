@@ -9,19 +9,22 @@ const end = source.indexOf('const refreshWhenVisible =')
 const start = source.lastIndexOf('const refreshRemoteState = async () => {', end)
 assert.ok(start >= 0 && end > start)
 
-async function refresh({ dirty = false, fail = false } = {}) {
+async function refresh({ dirty = false, fail = false, repeatThenDiscard = false } = {}) {
   const notices = []
   const applied = []
   const state = { revision: 2 }
   const { canRefreshRemote, REMOTE_EDIT_NOTICE } = await import('../src/features/state/application/remote-refresh-policy.mjs')
+  const { createRevisionSnapshotCache } = await import('../src/domain/shared/revision-snapshot-cache.mjs')
+  let downloads = 0
   const context = {
+    pendingRemoteSnapshot: createRevisionSnapshotCache(),
     canRefreshRemote, REMOTE_EDIT_NOTICE, isReadOnly: false, hasUnsavedFormFields: () => dirty, weeklyNavigationGuard: { current: null },
     confirmedSaveRef: { current: false }, loggingOutRef: { current: false },
     refreshing: false, stopped: false, pendingStateSaves: { current: 0 },
     document: { visibilityState: 'visible', activeElement: null },
     stateRepository: {
       revision: async () => { if (fail) throw new Error('offline'); return { revision: 2 } },
-      load: async () => state
+      load: async () => { downloads++; return state }
     },
     stateRevisionRef: { current: 1 }, isSupervisor: false,
     currentSnapshotRef: { current: dirty ? 'edited' : 'saved' },
@@ -30,9 +33,22 @@ async function refresh({ dirty = false, fail = false } = {}) {
     setNotice: notice => { const value = typeof notice === 'function' ? notice('') : notice; if (value) notices.push(value) },
     applyRemoteState: value => applied.push(value)
   }
-  await vm.runInNewContext(source.slice(start, end) + '\nrefreshRemoteState()', context)
-  return { notices, applied, state }
+  const run = vm.runInNewContext(source.slice(start, end) + '\nrefreshRemoteState', context)
+  await run()
+  if (repeatThenDiscard) {
+    await run(); await run()
+    dirty = false
+    context.currentSnapshotRef.current = 'saved'
+    await run()
+  }
+  return { notices, applied, state, downloads }
 }
+
+test('pending remote state is downloaded once and applied after discarding the draft', async () => {
+  const { applied, state, downloads } = await refresh({ dirty: true, repeatThenDiscard: true })
+  assert.equal(downloads, 1)
+  assert.deepEqual(applied, [state])
+})
 
 test('remote refresh applies updates silently', async () => {
   const { notices, applied, state } = await refresh()

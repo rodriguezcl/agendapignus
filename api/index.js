@@ -6,12 +6,19 @@ const { canPerformTechnicalServices } = require('./_lib/technical-capability.cjs
 const { retirementClientLabel } = require('./_lib/retirement-label.cjs')
 const { completeExpiredMonthlyMeetings } = require('./_lib/monthly-meeting-completion.cjs')
 let lastMeetingCompletionScan = 0
+let meetingCompletionScan = null
 
 async function processExpiredMonthlyMeetings(sql) {
+  if (meetingCompletionScan) return meetingCompletionScan
+  meetingCompletionScan = scanExpiredMonthlyMeetings(sql)
+  try { await meetingCompletionScan } finally { meetingCompletionScan = null }
+}
+
+async function scanExpiredMonthlyMeetings(sql) {
   const scanTime = Date.now()
   if (scanTime - lastMeetingCompletionScan < 60000) return
-  const snapshot = await readState(sql)
-  if (!completeExpiredMonthlyMeetings(snapshot).changes.length) { lastMeetingCompletionScan = scanTime; return }
+  const history = await require('./_lib/meeting-candidates.cjs').readMeetingCandidates(sql)
+  if (!completeExpiredMonthlyMeetings({ history }).changes.length) { lastMeetingCompletionScan = scanTime; return }
   await sql.begin(async transaction => {
     await transaction`set local lock_timeout = '5s'`
     await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
@@ -1097,7 +1104,10 @@ module.exports = async function handler(req, res) {
     if (req.method === 'GET' && route === '/state/revision') return send(res, 200, { revision: await readRevision(sql) })
     if (req.method === 'GET' && route === '/technician/state') {
       if (!canPerformTechnicalServices(session.user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
-      const state = await readTechnicianState(sql, session.user.id, new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date()))
+      const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
+      const revision = await readRevision(sql)
+      if (require('./_lib/conditional-technician-state.cjs').technicianStateUnchanged(req.query, revision, today)) return send(res, 200, { unchanged: true, revision, day: today })
+      const state = await readTechnicianState(sql, session.user.id, today)
       return send(res, 200, visibleStateForUser(state, { ...session.user, roleCode: 'technician' }))
     }
     if (req.method === 'GET' && route === '/state') {
