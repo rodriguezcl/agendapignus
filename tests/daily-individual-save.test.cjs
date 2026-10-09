@@ -18,8 +18,8 @@ test('saving from dialog marks the target card and cancellation preserves saved 
 })
 
 test('daily individual save selects one task and persists history and planning together', () => {
-  assert.match(daily, /team.tasks.filter\(task => !task.vehicleControl && \(!onlyTaskId \|\| task.taskId === onlyTaskId\)\)/)
-  assert.match(daily, /await persistWeeklyService\(\{ day: date, team, task:/)
+  assert.match(daily, /team.tasks.filter\(task => !task.vehicleControl && !dailyCompleted\(task\) && \(!onlyTaskId \|\| task.taskId === onlyTaskId\)\)/)
+  assert.match(daily, /await persistWeeklyService\(\{ dailyDraft: true, day: date, team, task:/)
   assert.match(daily, /record.team = `Equipo \$\{teams.indexOf\(team\) \+ 1\}`/)
   assert.match(daily, /validateAgenda\(agendaTeams, onlyTaskId\)/)
   assert.match(daily, /if \(!team\?\.members\?\.length/)

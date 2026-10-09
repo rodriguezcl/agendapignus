@@ -6,11 +6,11 @@ const app = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
 
 test('el filtro de servicio usa coincidencia exacta y se combina con los otros filtros', () => {
   const line = app.split('\n').find(line => line.includes('const matchingRecords = history.filter'))
-  for (const expression of ['normalizeSearchText(record.service) === serviceFilter', 'fromDate', 'toDate', 'statusFilter', 'normalizedSearch']) assert.ok(line.includes(expression))
+  for (const expression of ['serviceTypesFor(record).some(type => normalizeSearchText(type.name) === serviceFilter)', 'fromDate', 'toDate', 'statusFilter', 'normalizedSearch']) assert.ok(line.includes(expression))
 })
 
 test('el filtro enumera servicios históricos y restablece selección, página y limpieza', () => {
-  assert.match(app, /historyServiceOptions = useMemo\(\(\) => \[\.\.\.new Map\(history.filter/)
+  assert.match(app, /historyServiceOptions = useMemo\(\(\) => \[\.\.\.new Map\(history.flatMap/)
   assert.match(app, /setHistoryPage\(1\); setSelected\(\[\]\).*serviceFilter/)
   assert.match(app, /const clearFilters = \(\) => \{[\s\S]*?setServiceFilter\(''\)/)
   assert.match(app, /onClick=\{clearFilters\}/)

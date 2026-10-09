@@ -29,7 +29,7 @@ export default function LocationInstallationsModal({ records, category, label, m
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
       }
     }}>
-      <button ref={closeButton} type="button" className="close-modal" aria-label="Cerrar detalle por ubicación" onClick={close}>×</button>
+      <button title="Cerrá el detalle de instalaciones de esta ubicación." ref={closeButton} type="button" className="close-modal" aria-label="Cerrar detalle por ubicación" onClick={close}>×</button>
       <p className="eyebrow">ALTAS DE SERVICIO · DETALLE POR UBICACIÓN</p>
       <h2 id="location-installations-title">{label}</h2>
       <p>{new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} · {rows.length} instalación(es) completada(s)</p>
@@ -40,7 +40,7 @@ export default function LocationInstallationsModal({ records, category, label, m
             {showSubscription && <><td>{applies ? money(record.monthlyFee) : 'No aplica'}</td><td>{!applies ? 'No aplica' : record.freezeMonthlyFee === true ? 'Sí' : record.freezeMonthlyFee === false ? 'No' : 'Sin registrar'}</td><td>{!applies ? 'No aplica' : record.freezeMonthlyFee ? record.frozenMonths || 'Sin registrar' : '—'}</td></>}
           </tr> })}</tbody></table>
       </div> : <p className="empty-state">No hay instalaciones completadas para esta ubicación en el mes seleccionado.</p>}
-      <div className="modal-actions"><button type="button" className="secondary" onClick={close}>Cerrar</button></div>
+      <div className="modal-actions"><button title="Cerrá el detalle y volvé al resumen de instalaciones." type="button" className="secondary" onClick={close}>Cerrar</button></div>
     </section>
   </div>
 }

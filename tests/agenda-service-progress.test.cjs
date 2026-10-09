@@ -1,14 +1,8 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
-const vm = require('node:vm')
 const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
-const start = source.indexOf('const agendaServiceProgress =')
-let historyStatusLabel
-test.before(async () => {
-  ;({ historyStatusLabel } = await import('../src/domain/dashboard/dashboard-metrics.mjs'))
-})
-const progress = vm.runInNewContext(source.slice(start, source.indexOf('function TaskStatusBadge', start)) + '\nagendaServiceProgress', { historyStatusLabel: record => historyStatusLabel(record) })
+const { agendaServiceProgress: progress } = require('./helpers/load-app.cjs')(['agendaServiceProgress'])
 const startedAt = '2026-09-18T14:32:00.000Z'
 
 test('confirmed technician start displays En proceso and Argentina local start time', () => {

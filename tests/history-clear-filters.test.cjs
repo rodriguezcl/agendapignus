@@ -28,6 +28,6 @@ test('clear resets all history filters, selection, page and native fields', () =
 test('header owns conditional clear button and reminder banner is removed', () => {
   const history = source.slice(source.indexOf('function History({'), source.indexOf('function HistoryManagementDetail'))
   assert.doesNotMatch(history, /Quitar filtro|className="pending-reminder"/)
-  assert.match(history, /className="history-header-actions">\{hasActiveFilters && <button className="secondary" onClick=\{clearFilters\}/)
+  assert.match(history, /className="history-header-actions">\{hasActiveFilters && <button\b[^>]*className="secondary" onClick=\{clearFilters\}/)
   assert.match(history, /Boolean\(reminderFilter \|\| search \|\| fromDate \|\| toDate \|\| statusFilter !== 'all' \|\| serviceFilter\)/)
 })

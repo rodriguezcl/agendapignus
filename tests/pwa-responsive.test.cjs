@@ -13,12 +13,13 @@ const pngSize = relative => {
 test('web y Android usan el mismo arte PNG que el acceso de iOS', () => {
   const html = fs.readFileSync(projectFile('index.html'), 'utf8')
   const manifest = JSON.parse(fs.readFileSync(projectFile('public/manifest.webmanifest'), 'utf8'))
-  assert.match(html, /rel="icon"[^>]+pignus-app-icon-192\.png\?v=2/)
-  assert.match(html, /rel="apple-touch-icon"[^>]+apple-touch-icon\.png\?v=2/)
+  assert.match(html, /rel="icon"[^>]+pignus-app-icon-192\.png\?v=3/)
+  assert.match(html, /rel="apple-touch-icon"[^>]+apple-touch-icon\.png\?v=3/)
   assert.doesNotMatch(html, /rel="icon"[^>]+favicon\.svg/)
   assert.deepEqual(manifest.icons.map(icon => [icon.src, icon.sizes]), [
-    ['/pignus-app-icon-192.png?v=2', '192x192'],
-    ['/pignus-app-icon-512.png?v=2', '512x512']
+    ['/pignus-app-icon-192.png?v=3', '192x192'],
+    ['/pignus-app-icon-512.png?v=3', '512x512'],
+    ['/pignus-maskable-512.png?v=3', '512x512']
   ])
   assert.deepEqual(pngSize('public/apple-touch-icon.png'), [180, 180])
   assert.deepEqual(pngSize('public/pignus-app-icon-192.png'), [192, 192])

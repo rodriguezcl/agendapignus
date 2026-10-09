@@ -10,7 +10,7 @@ test('weekly completed service opens the read-only detail before the editing pat
   assert.match(handler, /\['Completado', 'Avance registrado'\]\.includes\(taskStatus\(selectedTask, day, operationalHistory\)\)/)
   assert.ok(handler.indexOf('setCompletedService') < handler.indexOf('setTaskEditor('))
   assert.match(handler, /historyRecordForTask\(selectedTask, day, operationalHistory\)/)
-  assert.match(source, /completedService && <HistoryDetail record=\{completedService\}/)
+  assert.match(source, /completedService && <HistoryDetail\b[^>]*record=\{completedService\}/)
 })
 
 test('daily completed badge offers a collapsed technical disclosure', () => {

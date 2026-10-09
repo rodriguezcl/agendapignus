@@ -13,7 +13,9 @@ async function refresh({ dirty = false, fail = false } = {}) {
   const notices = []
   const applied = []
   const state = { revision: 2 }
+  const { canRefreshRemote, REMOTE_EDIT_NOTICE } = await import('../src/features/state/application/remote-refresh-policy.mjs')
   const context = {
+    canRefreshRemote, REMOTE_EDIT_NOTICE, isReadOnly: false, hasUnsavedFormFields: () => dirty, weeklyNavigationGuard: { current: null },
     confirmedSaveRef: { current: false }, loggingOutRef: { current: false },
     refreshing: false, stopped: false, pendingStateSaves: { current: 0 },
     document: { visibilityState: 'visible', activeElement: null },
@@ -25,7 +27,7 @@ async function refresh({ dirty = false, fail = false } = {}) {
     currentSnapshotRef: { current: dirty ? 'edited' : 'saved' },
     lastPersistedSnapshotRef: { current: 'saved' },
     remoteConflictRevisionRef: { current: null },
-    setNotice: notice => notices.push(notice),
+    setNotice: notice => { const value = typeof notice === 'function' ? notice('') : notice; if (value) notices.push(value) },
     applyRemoteState: value => applied.push(value)
   }
   await vm.runInNewContext(source.slice(start, end) + '\nrefreshRemoteState()', context)
@@ -42,7 +44,7 @@ test('remote refresh keeps local conflict warnings', async () => {
   const { notices, applied } = await refresh({ dirty: true })
   assert.deepEqual(applied, [])
   assert.equal(notices.length, 1)
-  assert.match(notices[0], /sin sobrescribirlos/)
+  assert.match(notices[0], /edición en curso: guardala o cancelala/)
 })
 
 test('remote refresh keeps connection error warnings', async () => {

@@ -35,7 +35,7 @@ test('history confirmation belongs to the bottom action group, not the heading n
 
 test('history actions have equal widths and stretch to a shared height with mobile wrapping', () => {
   const css = fs.readFileSync(path.join(__dirname, '../src/ui-polish.css'), 'utf8')
-  assert.match(css, /grid-template-columns: repeat\(auto-fit, minmax\(120px, 1fr\)\);\s*align-items: stretch;/)
+  assert.match(css, /grid-template-columns: repeat\(auto-fit, minmax\(145px, 1fr\)\);\s*align-items: stretch;/)
   assert.match(css, /\.modal.history-detail > \.history-actions > button \{[^}]*align-self: stretch;[^}]*height: 100% !important;[^}]*min-height: 56px !important;[^}]*width: 100%;/)
   assert.match(css, /@media \(max-width: 640px\) \{\s*\.modal.history-detail > \.history-actions \{ grid-template-columns: 1fr 1fr;/)
 })

@@ -54,7 +54,7 @@ test('real concurrent history and projection changes still reject the move', asy
     const operations = weeklyServiceMoveOperations(stored, command)
     const concurrent = structuredClone(stored)
     edit(concurrent)
-    assert.throws(() => applyStateOperations(concurrent, operations), { code: 'RECORD_WRITE_CONFLICT' })
+    assert.throws(() => applyStateOperations(concurrent, operations), { code: concurrent.history[0].status === 'Completado' ? 'COMPLETED_SERVICE_LOCKED' : 'RECORD_WRITE_CONFLICT' })
   }
 })
 
@@ -100,7 +100,7 @@ test('swaps same-time controls atomically in both agendas and history', async ()
   const concurrent = structuredClone(stored)
   concurrent.history[1].status = 'Completado'
   const unchanged = structuredClone(concurrent)
-  assert.throws(() => applyStateOperations(concurrent, operations), { code: 'RECORD_WRITE_CONFLICT' })
+  assert.throws(() => applyStateOperations(concurrent, operations), { code: 'COMPLETED_SERVICE_LOCKED' })
   assert.deepEqual(concurrent, unchanged)
   assert.throws(() => weeklyServiceMoveOperations(stored, { ...command, swapTaskId: '' }), /destino cambió/)
   assert.throws(() => weeklyServiceMoveOperations(concurrent, command), /pendientes/)

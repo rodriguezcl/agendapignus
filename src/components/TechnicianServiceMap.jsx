@@ -12,7 +12,7 @@ export default function TechnicianServiceMap({ record }) {
   return <section className="technician-map-cover" aria-label={`Mapa de ${record.client || 'servicio'}`}>
     <div className="technician-map-preview">
       <iframe key={location.embedUrl} src={location.embedUrl} title="Vista previa de ubicación" loading="lazy" referrerPolicy="no-referrer" tabIndex={-1} aria-hidden="true" />
-      <button type="button" className="secondary" onClick={() => setExpanded(true)}>Ampliar mapa</button>
+      <button title="Expandí el mapa para consultar la ubicación del servicio." type="button" className="secondary" onClick={() => setExpanded(true)}>Ampliar mapa</button>
     </div>
     <small>{location.label}</small>
     {expanded && createPortal(<EditorModal active title={record.client || 'Ubicación del servicio'} eyebrow="MAPA DEL SERVICIO" onClose={() => setExpanded(false)}>

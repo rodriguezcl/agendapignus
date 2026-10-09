@@ -31,6 +31,6 @@ export default function ReorderServicesModal({ tasks, sourceId, day, onClose, on
     <label>{second?.client} · antes {second?.time}<input disabled={busy} type="time" value={secondTime || proposed} onChange={e => setSecondTime(e.target.value)} /></label>
     <p>Revisá los nuevos horarios antes de confirmar. El segundo considera la duración y la reserva mínima del primero.</p>
     {error && <p className="field-error" role="alert">{error}</p>}
-    <div className="modal-actions"><button className="secondary" disabled={busy} onClick={onClose}>Cancelar</button><button className="primary" disabled={busy || !second || !firstTime} onClick={save}>{busy ? 'Guardando…' : 'Confirmar nuevos horarios'}</button></div>
+    <div className="modal-actions"><button title="Cancelá el cambio de orden sin modificar los horarios." className="secondary" disabled={busy} onClick={onClose}>Cancelar</button><button title="Confirmá el intercambio de horarios de los servicios seleccionados." className="primary" disabled={busy || !second || !firstTime} onClick={save}>{busy ? 'Guardando…' : 'Confirmar nuevos horarios'}</button></div>
   </EditorModal>
 }
