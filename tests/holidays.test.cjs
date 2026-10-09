@@ -13,7 +13,26 @@ test('el respaldo internacional conserva solamente feriados nacionales', () => {
   assert.deepEqual(normalizeNagerData([
     { date: '2026-07-09', name: 'Independence Day', nationalHoliday: true, holidayTypes: ['Public'] },
     { date: '2026-09-01', name: 'Provincial day', nationalHoliday: false, holidayTypes: ['Observance'] }
-  ]), [{ date: '2026-07-09', name: 'Independence Day', type: 'Public', source: 'Nager.Holidays' }])
+  ]), [{ date: '2026-07-09', name: 'Día de la Independencia', type: 'Public', source: 'Nager.Holidays' }])
+})
+
+test('el respaldo internacional traduce el motivo sin cambiar la fecha trasladada', () => {
+  const { normalizeNagerData } = require('../api/_lib/holidays.cjs')
+  const records = normalizeNagerData([
+    { date: '2027-10-11', name: 'Day of Respect for Cultural Diversity' },
+    { date: '2027-12-25', name: 'Christmas Day' },
+    { date: '2027-07-10', name: 'Unknown holiday' }
+  ])
+  assert.equal(records[0].name, 'Día del Respeto a la Diversidad Cultural')
+  assert.equal(records[0].date, '2027-10-11')
+  assert.equal(records[1].name, 'Navidad')
+  assert.equal(records[2].name, 'Feriado nacional')
+})
+
+test('descarta calendarios anteriores que pueden contener nombres en inglés', async () => {
+  const { readNationalHolidayCache } = await import('../src/holidays.mjs')
+  const storage = { getItem: key => key === 'pignus-national-holidays-v1:2026' ? JSON.stringify({ expiresAt: 999999, records: [{ date: '2026-10-12', name: 'Day of Respect for Cultural Diversity' }] }) : null }
+  assert.deepEqual(readNationalHolidayCache(['2026'], storage, 1000), { complete: false, records: [] })
 })
 
 test('el respaldo local 2026 incluye feriados móviles y puentes oficiales', () => {

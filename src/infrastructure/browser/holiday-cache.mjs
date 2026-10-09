@@ -1,4 +1,4 @@
-const NATIONAL_HOLIDAY_CACHE_PREFIX = 'pignus-national-holidays-v1'
+const NATIONAL_HOLIDAY_CACHE_PREFIX = 'pignus-national-holidays-v2-es'
 export const NATIONAL_HOLIDAY_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 
 const holidayCacheKey = year => `${NATIONAL_HOLIDAY_CACHE_PREFIX}:${year}`

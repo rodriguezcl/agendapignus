@@ -1,6 +1,23 @@
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const PROVIDER_TIMEOUT_MS = 2_000
 const holidayCache = new Map()
+const SPANISH_HOLIDAY_NAMES = new Map(Object.entries({
+  "New Year's Day": 'Año nuevo',
+  Carnival: 'Carnaval',
+  'Day of Remembrance for Truth and Justice': 'Día Nacional de la Memoria por la Verdad y la Justicia',
+  'Day of the Veterans and Fallen of the Malvinas War': 'Día del Veterano y de los Caídos en la Guerra de Malvinas',
+  'Good Friday': 'Viernes Santo',
+  'Labour Day': 'Día del Trabajador',
+  'May Revolution': 'Día de la Revolución de Mayo',
+  'Anniversary of the Passing of General Martín Miguel de Güemes': 'Paso a la Inmortalidad del General Martín Miguel de Güemes',
+  'General Manuel Belgrano Memorial Day': 'Paso a la Inmortalidad del General Manuel Belgrano',
+  'Independence Day': 'Día de la Independencia',
+  'General José de San Martín Memorial Day': 'Paso a la Inmortalidad del General José de San Martín',
+  'Day of Respect for Cultural Diversity': 'Día del Respeto a la Diversidad Cultural',
+  'National Sovereignty Day': 'Día de la Soberanía Nacional',
+  'Immaculate Conception Day': 'Día de la Inmaculada Concepción de María',
+  'Christmas Day': 'Navidad'
+}))
 
 function validHolidayYear(value, now = new Date()) {
   const year = Number(value)
@@ -22,7 +39,7 @@ function normalizeNagerData(records) {
   if (!Array.isArray(records)) return []
   return records.filter(record => record.nationalHoliday !== false).map(record => ({
     date: String(record.date || ''),
-    name: String(record.name || 'Feriado nacional').trim(),
+    name: SPANISH_HOLIDAY_NAMES.get(String(record.name || '').trim()) || 'Feriado nacional',
     type: Array.isArray(record.holidayTypes) ? record.holidayTypes.join(', ') : 'Public',
     source: 'Nager.Holidays'
   })).filter(record => /^\d{4}-\d{2}-\d{2}$/.test(record.date))
