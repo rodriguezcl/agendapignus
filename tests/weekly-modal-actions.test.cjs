@@ -5,7 +5,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '../src/App.
 
 test('weekly cards keep service identity and reports without management shortcuts', () => {
   const start = source.indexOf('<div className="week-task-title">')
-  const title = source.slice(start, source.indexOf('<TaskStatusBadge', start))
+  const title = source.slice(start, source.indexOf('<TaskStatusBadge task={task} date={day} history={operationalHistory} weekly', start))
   assert.match(title, /week-task-hour/)
   assert.match(title, /week-task-client/)
   assert.doesNotMatch(title, /<button|ServiceConfirmationButton|ServiceJourneys|week-task-title-actions/)
@@ -23,6 +23,6 @@ test('service actions are above the weekly editor form and not duplicated in its
 })
 
 test('read-only service modals retain their permitted actions', () => {
-  assert.match(source, /actions=\{weeklyServiceSource && weeklyModalActions\(weeklyServiceSource, true\)\}/)
-  assert.match(source, /<h2>\{pastService.client \|\| pastService.service\}<\/h2>\{weeklyServiceSource && weeklyModalActions/)
+  assert.match(source, /actions=\{!readOnly && weeklyServiceSource && weeklyModalActions\(weeklyServiceSource, true\)\}/)
+  assert.match(source, /<h2>\{pastService.client \|\| pastService.service\}<\/h2>\{!readOnly && weeklyServiceSource && weeklyModalActions/)
 })

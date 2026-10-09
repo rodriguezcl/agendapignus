@@ -12,7 +12,7 @@ test('history deep links select exactly the same records as each dashboard alert
   }
   assert.equal(historyReminderRecords(records, null), records)
   assert.equal(historyStatusLabel(request), 'Reprogramación pendiente')
-  assert.equal(historyStatusLabel(records[4]), 'Requiere revisión')
+  assert.equal(historyStatusLabel(records[4]), 'Cancelado')
   assert.equal(request.status, 'Requiere revisión')
 })
 

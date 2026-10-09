@@ -44,7 +44,7 @@ test('daily and weekly components render through their actual prop forwarding ch
   assert.match(compactJourney,/journey-plan-compact/)
   assert.match(compactJourney,/<svg/)
   assert.doesNotMatch(compactJourney,/>Planificar varias jornadas</)
-  assert.match(source,/persist=\{persistWeeklyService\} compact \/><ServiceJourneys record=\{historyRecordForTask\(task, day, operationalHistory\)\} compact \/>/)
+  assert.match(source, /<ServiceJourneys record=\{record\} toolbar disabled=\{Boolean\(dirty \|\| taskEditorSaving\)\} \/>/)
   assert.equal(renderToString(provider(false,React.createElement(ServiceJourneys,{record}))), '')
   const first={...record,technicianIds:['tech'],serviceJourney:{id:record.id,index:1,total:2}}
   const last={...first,id:'journey-last',date:'2099-01-06',serviceJourney:{id:record.id,index:2,total:2},technicalObservation:'Informe de prueba'}
@@ -77,7 +77,7 @@ test('la vista previa permite copiar la agenda con la misma acción del botón e
   const source = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'App.jsx'), 'utf8')
 
   assert.match(source, /const copyAgenda = \(\) => \{[\s\S]*?navigator\.clipboard\?\.writeText\(message\)[\s\S]*?return clearAgenda\(\)/)
-  assert.match(source, /<button className="primary" onClick=\{copyAgenda\}><Icon name="copy" \/>Copiar agenda<\/button>/)
+  assert.match(source, /<button\b[^>]*className="primary" onClick=\{copyAgenda\}><Icon name="copy" \/>Copiar agenda<\/button>/)
   assert.match(source, /<Preview title="Vista previa de la agenda" text=\{message\} onCopy=\{copyAgenda\}/)
   assert.match(source, /className="modal-actions preview-modal-actions"[\s\S]*?onClick=\{onCopy\}[\s\S]*?Copiar agenda/)
 })

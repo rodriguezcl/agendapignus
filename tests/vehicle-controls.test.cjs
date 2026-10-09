@@ -236,7 +236,7 @@ test('el administrador puede omitir un control semanal sin que se regenere ni ll
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
 
   assert.match(source, /selectedTask\?\.vehicleControl && !isAdministrator/)
-  assert.match(source, /\(!task\.vehicleControl \|\| isAdministrator\) && <button type="button" className="weekly-task-delete"/)
+  assert.match(source, /\(!persistedTask\.vehicleControl \|\| isAdministrator\) && <button\b[^>]*className="secondary weekly-service-delete"/)
   assert.match(source, /buildVehicleControlRecords[\s\S]*?\.filter\(record => !weeklyTaskRemovalAliases\(vehicleControlTask\(record\)\)/)
   assert.match(source, /El control vehicular fue omitido para esta semana y ya no se mostrará al técnico\./)
 })

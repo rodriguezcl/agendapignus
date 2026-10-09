@@ -30,7 +30,7 @@ export function CustomerSubscriptionCorrection({ customer, history, services, on
     finally { setBusy(false); onBusyChange?.(false) }
   }
   return <section className="customer-subscription-correction" aria-label="Corrección de datos del abono">
-    {!selection ? <button type="button" className="secondary" onClick={() => select(records[0])}>Corregir datos del abono</button> : <form onSubmit={save}>
+    {!selection ? <button title="Corregí el abono mensual del servicio seleccionado." type="button" className="secondary" onClick={() => select(records[0])}>Corregir datos del abono</button> : <form onSubmit={save}>
       <h3>Corregir datos del abono</h3>
       <p>Elegí la instalación que querés subsanar. Se actualizarán sus reportes Excel/PDF; la agenda seguirá cerrada. Esta opción no registra un aumento de abono actual.</p>
       <fieldset disabled={busy}>
@@ -50,7 +50,7 @@ export function CustomerSubscriptionCorrection({ customer, history, services, on
           </select></label>}
         </div>
         {selection.subscriptionCorrectedAt && <p>Última corrección: {selection.subscriptionCorrectedBy?.name || 'Usuario'} · {new Date(selection.subscriptionCorrectedAt).toLocaleString('es-AR')}</p>}
-        <div className="action-group"><button type="button" className="secondary" onClick={() => { setSelection(null); setError('') }}>Cancelar</button><button type="submit" className="primary">{busy ? 'Guardando…' : 'Guardar corrección'}</button></div>
+        <div className="action-group"><button title="Cancelá la corrección del abono sin guardar cambios." type="button" className="secondary" onClick={() => { setSelection(null); setError('') }}>Cancelar</button><button title="Guardá la corrección del abono mensual de este servicio." type="submit" className="primary">{busy ? 'Guardando…' : 'Guardar corrección'}</button></div>
       </fieldset>
     </form>}
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}

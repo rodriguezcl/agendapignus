@@ -1262,7 +1262,9 @@ function saveState(state, user) {
   if (employeeOnly(state.operations)) {
     db.exec('BEGIN')
     try {
-      const current = readState()
+      // readState is the public projection and deliberately strips credentials.
+      // The employee command must compare against the private persisted rows.
+      const current = { ...readState(), employees: rows('employees') }
       const next = applyEmployeeOperation(current, state.operations, user)
       auditChanges('employees', next.employees, 'id', 'Empleado', user)
       replaceRows('employees', next.employees, 'id')
@@ -1366,7 +1368,11 @@ function saveState(state, user) {
     if (key === '_monthlyTeams') return [key, Object.fromEntries(Object.entries(value || {}).map(([month, config]) => [month, { ...config, teams: normalizeTeams(config?.teams, month) }]))]
     return [key, key.startsWith('_') ? value : { ...value, teams: normalizeTeams(value?.teams, key.slice(0, 7)) }]
   }))
+  const completedHistoryIds = new Set(previousState.history.filter(serviceIsCompleted).map(record => String(record.id)))
   const normalizeHistoryRecord = record => {
+    // Closed history is a snapshot, not a projection of today's customer/catalog.
+    // Keep submitted values intact so validation still rejects actual edits.
+    if (completedHistoryIds.has(String(record.id))) return record
     const base = normalizeReference(record)
     const byId = (base.technicianIds || []).map(id => employeeById.get(String(id))).filter(Boolean)
     const byName = (base.technicians || []).map(name => employeeByName.get(normalizedCustomerValue(name))).filter(Boolean)

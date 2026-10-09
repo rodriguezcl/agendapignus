@@ -35,7 +35,7 @@ test('same record conflicts even if different fields changed; retries are idempo
   a.history[0].status = 'Completado'; b.history[0].detail = 'otro borrador'
   const operations = stateOperations(base, a), saved = applyStateOperations(base, operations)
   assert.deepEqual(applyStateOperations(saved, operations), saved)
-  assert.throws(() => applyStateOperations(saved, stateOperations(base, b)), { code: 'RECORD_WRITE_CONFLICT' })
+  assert.throws(() => applyStateOperations(saved, stateOperations(base, b)), { code: 'COMPLETED_SERVICE_LOCKED' })
   assert.equal(base.history[0].status, 'Pendiente')
 })
 test('un servicio legado se compara con la misma duración que muestra el navegador', async () => {
@@ -152,7 +152,7 @@ test('weekly team membership changes do not rewrite services or vehicle controls
     baseMemberIds: ['tech-1', 'tech-2'], baseMembers: ['Técnico 1', 'Técnico 2'],
     memberIds: ['tech-1'], members: ['Técnico 1'], fallbackPlan: base.agenda.weekly[day]
   })
-  assert.deepEqual(operations.map(operation => operation.path.at(-1)).sort(), ['memberIds', 'members'])
+  assert.deepEqual(operations.map(operation => operation.path.at(-1)).sort(), ['memberIds', 'members', 'monthlyStaffingOverride'])
   assert.doesNotMatch(JSON.stringify(operations), /createdBy|vehicle-control/)
   const saved = applyStateOperations(base, operations)
   assert.deepEqual(saved.agenda.weekly[day].teams[0].memberIds, ['tech-1'])
@@ -286,7 +286,7 @@ test('conflicting history edit rolls back task changes in the candidate', async 
   const base = fixture(), input = command(base, 'new')
   input.record.id = 'work-0'; input.task.historyId = 'work-0'; input.baseRecord = base.history[0]
   const current = clone(base); current.history[0].status = 'Completado'
-  assert.throws(() => applyStateOperations(current, weeklyServiceOperations(base, input)), { code: 'RECORD_WRITE_CONFLICT' })
+  assert.throws(() => applyStateOperations(current, weeklyServiceOperations(base, input)), { code: 'COMPLETED_SERVICE_LOCKED' })
   assert.deepEqual(current.agenda.weekly[day].teams[0].tasks, [])
 })
 test('operation paths reject prototype pollution, altered identities and numeric array positions', () => {

@@ -18,10 +18,10 @@ test('discarding an existing edit restores all saved values without deleting its
 
 test('every editable field makes a saved service dirty, reverting or saving clears it', async () => {
   const { serviceHasChanges, serviceEditableFields } = await import('../src/domain/agenda/service-changes.mjs')
-  const saved = Object.fromEntries(serviceEditableFields.map(key => [key, 'original']))
+  const saved = Object.fromEntries(serviceEditableFields.map(key => [key, key === 'freezeMonthlyFee' ? false : key === 'frozenMonths' ? 0 : 'original']))
   assert.equal(serviceHasChanges(saved, saved), false)
   for (const key of serviceEditableFields) {
-    const edited = { ...saved, [key]: 'changed' }
+    const edited = { ...saved, [key]: key === 'freezeMonthlyFee' ? true : key === 'frozenMonths' ? 3 : 'changed' }
     assert.equal(serviceHasChanges(edited, saved), true, key)
     assert.equal(serviceHasChanges(edited, edited), false, key)
   }

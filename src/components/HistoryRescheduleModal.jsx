@@ -34,6 +34,6 @@ export default function HistoryRescheduleModal({ record, estimatedMinutes, sched
     {selectedTeam && <div className="reschedule-selection" role="status"><strong>{selectedTeam.label} · {day.split('-').reverse().join('/')} · {selection.time}–{selection.end}</strong><p>Selección pendiente de confirmar.</p></div>}
     {selection && !selectedTeam && <p role="alert" className="field-error">Ese horario ya no está disponible. Elegí otra opción.</p>}
     {error && <p role="alert" className="field-error">{error}</p>}
-    <div className="reschedule-footer"><button type="button" className="secondary" disabled={saving} onClick={onCancel}>Cancelar</button><button type="button" className="primary" disabled={busy || !selectedTeam} onClick={save}>{saving ? 'Guardando…' : 'Confirmar reprogramación'}</button></div>
+    <div className="reschedule-footer"><button title="Cancelá la reprogramación sin cambiar el servicio." type="button" className="secondary" disabled={saving} onClick={onCancel}>Cancelar</button><button title="Confirmá la nueva fecha y el equipo para este servicio." type="button" className="primary" disabled={busy || !selectedTeam} onClick={save}>{saving ? 'Guardando…' : 'Confirmar reprogramación'}</button></div>
   </section></div>
 }

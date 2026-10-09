@@ -21,7 +21,7 @@ test('discard closes the local draft and continues without saving or deleting re
 })
 function harness(overrides = {}) {
   const requests = [], opened = []
-  const context = { taskEditorSaveGuardRef: { current: false }, taskEditor: null, weekly: {}, authUser: { id: 'me' }, operationalHistory: [], taskHasContent: task => Boolean(task.client), taskWithServiceEstimate: task => task, serviceForWeeklyTask: () => null, historyRecordForTask: task => task.saved, dayHasFinished: () => false, dayPlan: day => context.weekly[day], setLeaveRequest: request => requests.push(request), openTaskEditor: (...args) => opened.push(args), ...overrides }
+  const context = { readOnly: false, taskEditorSaveGuardRef: { current: false }, taskEditor: null, weekly: {}, authUser: { id: 'me' }, operationalHistory: [], taskHasContent: task => Boolean(task.client), taskWithServiceEstimate: task => task, serviceForWeeklyTask: () => null, historyRecordForTask: task => task.saved, dayHasFinished: () => false, dayPlan: day => context.weekly[day], setLeaveRequest: request => requests.push(request), openTaskEditor: (...args) => opened.push(args), ...overrides }
   return { requests, opened, run: vm.runInNewContext(body + '\nrequestWeeklyLeave', context) }
 }
 test('clean navigation continues and empty cards do not block', () => {

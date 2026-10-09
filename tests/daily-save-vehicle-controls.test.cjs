@@ -8,7 +8,7 @@ const code = source.slice(start, source.indexOf('      if (!records.length)', st
 
 function recordsFor(agendaTeams, onlyTaskId = null) {
   return vm.runInNewContext(code + '\nrecords', {
-    agendaTeams, onlyTaskId, date: '2026-09-18',
+    agendaTeams, onlyTaskId, dailyCompleted: task => task.status === 'Completado', date: '2026-09-18',
     serviceEstimateForTask: () => 90, serviceForTask: task => ({ id: task.serviceId, name: task.service }),
     normalizeInternalChecklist: value => value || [], applicableServiceExtras: () => ({}), serviceTrace: () => ({})
   })

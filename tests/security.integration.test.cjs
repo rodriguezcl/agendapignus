@@ -75,7 +75,7 @@ async function waitForServer() {
 
 async function login(email) {
   const response = await fetch(`${origin}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'Prueba1234' }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   return response.headers.get('set-cookie').split(';')[0]
 }
 
@@ -85,11 +85,11 @@ async function api(pathname, cookie, options = {}) {
 
 async function state(cookie) {
   const response = await api('/api/state', cookie)
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   return response.json()
 }
 
-test.before(async () => {
+test.beforeEach(async () => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'pignus-security-'))
   const databasePath = path.join(temporaryDirectory, 'agenda-tecnica.db')
   createFixtureDatabase(databasePath)
@@ -141,7 +141,7 @@ test.before(async () => {
   normalizedDb.close()
 })
 
-test.after(async () => {
+test.afterEach(async () => {
   if (serverProcess && serverProcess.exitCode === null) {
     const exited = new Promise(resolve => serverProcess.once('exit', resolve))
     serverProcess.kill()
@@ -162,6 +162,7 @@ test('cuenta mixta conserva gestión, informa solamente lo asignado y no aprueba
   const record = { id: 'qa-mixed-service', date: '2020-01-01', time: '09:00', status: 'Pendiente', technicianIds: ['qa-weekly'], client: 'Mi servicio', service: 'Service de alarma' }
   upsertJson(db, 'work_history', 'id', record)
   upsertJson(db, 'work_history', 'id', { ...record, id: 'qa-mixed-other', technicianIds: ['qa-tech'], client: 'Ajeno' })
+  // A pending request from a past day has expired and no longer blocks work.
   const pending = { ...record, id: 'qa-mixed-pending', advanceRequest: { status: 'pending' } }
   upsertJson(db, 'work_history', 'id', pending)
   db.close()
@@ -171,10 +172,8 @@ test('cuenta mixta conserva gestión, informa solamente lo asignado y no aprueba
   assert.ok(!personal.history.some(r => r.id === 'qa-mixed-other'))
   const post = (path, body) => api(path, cookie, { method: 'POST', body: JSON.stringify(body) })
   assert.equal((await post('/api/technician/start', { recordId: 'qa-mixed-other' })).status, 403)
-  assert.equal((await post('/api/technician/start', { recordId: pending.id })).status, 409)
-  for (const type of ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramación solicitada']) {
-    assert.equal((await post('/api/technician/status', { recordId: pending.id, type, observation: 'Prueba' })).status, 409)
-  }
+  assert.equal((await post('/api/technician/start', { recordId: pending.id })).status, 200)
+  assert.equal((await post('/api/technician/status', { recordId: pending.id, type: 'Reprogramación solicitada', observation: 'Prueba' })).status, 200)
   assert.equal((await post('/api/technician/start', { recordId: record.id })).status, 200)
   assert.equal((await post('/api/technician/status', { recordId: record.id, type: 'Reprogramación solicitada', observation: 'Cliente ausente' })).status, 200)
   assert.equal((await post('/api/admin/advance-request/approve', { recordId: pending.id })).status, 403)
@@ -214,15 +213,19 @@ test('Supervisor recibe sólo cuentas e historial CCTV y no puede escribir ni ex
 
 test('gestiona un servicio individual sin reenviar ni reducir el historial completo', async () => {
   const administratorCookie = await login('qa-admin@pignus.test')
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const editable = JSON.parse(db.prepare('SELECT data FROM work_history WHERE id = ?').get('qa-history-included').data)
+  upsertJson(db, 'work_history', 'id', { ...editable, id: 'qa-history-editable', status: 'Pendiente' })
+  db.close()
   const before = await state(administratorCookie)
-  const base = before.history.find(record => record.id === 'qa-history-included')
+  const base = before.history.find(record => record.id === 'qa-history-editable')
   const record = { ...base, detail: 'Actualización individual QA' }
 
   let response = await api(`/api/history/${encodeURIComponent(record.id)}`, administratorCookie, {
     method: 'PATCH',
     body: JSON.stringify({ base, record })
   })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   const payload = await response.json()
   assert.equal(payload.state.history.length, before.history.length)
   assert.equal(payload.state.history.find(item => item.id === record.id).detail, 'Actualización individual QA')
@@ -233,6 +236,15 @@ test('gestiona un servicio individual sin reenviar ni reducir el historial compl
     body: JSON.stringify({ base, record: { ...record, detail: 'Escritura obsoleta' } })
   })
   assert.equal(response.status, 409)
+  const completed = before.history.find(item => item.id === 'qa-history-excluded')
+  response = await api(`/api/history/${completed.id}`, administratorCookie, {
+    method: 'PATCH',
+    body: JSON.stringify({ base: completed, record: { ...completed, detail: 'No debe cambiar' } })
+  })
+  assert.equal(response.status, 409)
+  assert.equal((await response.json()).code, 'COMPLETED_SERVICE_LOCKED')
+  const after = await state(administratorCookie)
+  assert.deepEqual(after.history.find(item => item.id === completed.id), completed)
 })
 
 test('elimina un control vehicular aunque su nombre visible haya quedado desalineado del técnico', async () => {
@@ -259,7 +271,7 @@ test('elimina un control vehicular aunque su nombre visible haya quedado desalin
     method: 'DELETE',
     body: JSON.stringify({ base: { ...record, technicians: ['Pascual Gonzalez'] } })
   })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   const payload = await response.json()
   assert.equal(payload.deleted, true)
   assert.equal(payload.state.history.some(item => item.id === recordId), false)
@@ -279,7 +291,7 @@ test('gestiona uno o varios servicios en una transacción atómica', async () =>
       updates: bases.map(base => ({ base, record: { ...base, status: 'Pendiente' } }))
     })
   })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   let payload = await response.json()
   for (const base of bases) {
     assert.equal(payload.state.history.find(record => record.id === base.id).status, 'Pendiente')
@@ -308,14 +320,14 @@ test('tipos de servicio usa operaciones pequeñas con concurrencia por registro'
   let response = await api('/api/services', coordinatorCookie, { method: 'POST', body: JSON.stringify({ service: createdService }) })
   assert.equal(response.status, 403)
   response = await api('/api/services', administratorCookie, { method: 'POST', body: JSON.stringify({ service: createdService }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   let payload = await response.json()
   const created = payload.services.find(service => service.id === createdService.id)
   assert.equal(created.name, createdService.name)
 
   const edited = { ...created, name: 'Operación pequeña editada', estimatedMinutes: 45 }
   response = await api(`/api/services/${created.id}`, administratorCookie, { method: 'PUT', body: JSON.stringify({ base: created, service: edited }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   payload = await response.json()
   assert.equal(payload.service.name, edited.name)
   assert.equal(payload.service.estimatedMinutes, 45)
@@ -325,11 +337,11 @@ test('tipos de servicio usa operaciones pequeñas con concurrencia por registro'
   assert.equal((await response.json()).code, 'SERVICE_WRITE_CONFLICT')
 
   response = await api(`/api/services/${created.id}/status`, administratorCookie, { method: 'PATCH', body: JSON.stringify({ base: payload.service }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   payload = await response.json()
   assert.equal(payload.service.status, 'Inactivo')
   response = await api(`/api/services/${created.id}`, administratorCookie, { method: 'DELETE', body: JSON.stringify({ base: payload.service }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   assert.equal((await response.json()).outcome, 'deleted')
   assert.equal((await state(administratorCookie)).services.some(service => service.id === created.id), false)
 })
@@ -341,13 +353,13 @@ test('vehículos usa operaciones pequeñas con matrícula y concurrencia por reg
   let response = await api('/api/vehicles', weeklyCookie, { method: 'POST', body: JSON.stringify({ vehicle: createdVehicle }) })
   assert.equal(response.status, 403)
   response = await api('/api/vehicles', administratorCookie, { method: 'POST', body: JSON.stringify({ vehicle: createdVehicle }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   let payload = await response.json()
   const created = payload.vehicle
   assert.equal(created.plate, createdVehicle.plate)
 
   response = await api(`/api/vehicles/${created.id}`, administratorCookie, { method: 'PUT', body: JSON.stringify({ base: created, vehicle: { ...created, mileage: 250 } }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   payload = await response.json()
   assert.equal(payload.vehicle.mileage, 250)
 
@@ -359,7 +371,7 @@ test('vehículos usa operaciones pequeñas con matrícula y concurrencia por reg
   assert.equal((await response.json()).code, 'VEHICLE_PLATE_CONFLICT')
 
   response = await api(`/api/vehicles/${created.id}`, administratorCookie, { method: 'DELETE', body: JSON.stringify({ base: payload.vehicle }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   assert.equal((await response.json()).outcome, 'deleted')
   assert.equal((await state(administratorCookie)).vehicles.some(vehicle => vehicle.id === created.id), false)
 })
@@ -373,7 +385,7 @@ test('el seguro vehicular sólo se carga como administrador y se descarga con se
   const before = await state(administratorCookie)
   const vehicle = before.vehicles.find(item => item.id === 'qa-vehicle')
   response = await api('/api/vehicle-insurance/qa-vehicle', administratorCookie, { method: 'POST', body: JSON.stringify({ fileName: 'seguro-qa.pdf', pdf, vehicle, insuranceExpiresOn: '2099-12-31', revision: before.revision }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   const uploaded = await response.json()
   assert.equal(uploaded.vehicle.insuranceFileName, 'seguro-qa.pdf')
   assert.equal(uploaded.vehicle.insuranceExpiresOn, '2099-12-31')
@@ -382,7 +394,7 @@ test('el seguro vehicular sólo se carga como administrador y se descarga con se
   const staleUpload = await api('/api/vehicle-insurance/qa-vehicle', administratorCookie, { method: 'POST', body: JSON.stringify({ fileName: 'seguro-no-debe-guardarse.pdf', pdf, vehicle, insuranceExpiresOn: '2099-12-31', revision: before.revision }) })
   assert.equal(staleUpload.status, 409)
   response = await api('/api/vehicle-insurance/qa-vehicle', technicianCookie)
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   assert.equal(response.headers.get('content-type'), 'application/pdf')
   assert.match(response.headers.get('content-disposition'), /seguro-qa\.pdf/)
   response = await api('/api/vehicle-insurance/qa-vehicle', null)
@@ -400,7 +412,7 @@ test('completar un control vehicular almacena la foto y permite volver a consult
   setupDb.close()
   const photoBytes = Buffer.from('foto-interior-qa')
   const response = await api('/api/technician/status', technicianCookie, { method: 'POST', body: JSON.stringify({ recordId: record.id, type: 'Completado', observation: '', vehicleMileage: 1001, vehiclePhoto: `data:image/jpeg;base64,${photoBytes.toString('base64')}` }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   const payload = await response.json()
   assert.equal(payload.record.vehiclePhotoUrl, `/api/vehicle-control/photo/${record.id}`)
   const photoResponse = await api(payload.record.vehiclePhotoUrl, technicianCookie)
@@ -434,15 +446,15 @@ test('la foto de referencia del servicio sólo puede modificarla gestión y verl
   let response = await api(`/api/service-photo/${record.id}`, technicianCookie, { method: 'POST', body: JSON.stringify({ photo }) })
   assert.equal(response.status, 403)
   response = await api(`/api/service-photo/${record.id}`, administratorCookie, { method: 'POST', body: JSON.stringify({ photo }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   const uploaded = await response.json()
   assert.equal(uploaded.url, `/api/service-photo/${record.id}`)
   response = await api(uploaded.url, technicianCookie)
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   assert.equal(response.headers.get('content-type'), 'image/jpeg')
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes)
   response = await api(uploaded.url, administratorCookie, { method: 'DELETE' })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   assert.equal((await api(uploaded.url, technicianCookie)).status, 404)
 
   const cleanupDb = new DatabaseSync(databasePath)
@@ -471,9 +483,9 @@ test('gestiona solicitudes de contraseña únicamente para administradores', asy
   assert.match((await response.json()).error, /contacto con un Administrador/i)
 
   response = await api('/api/auth/password-reset-requests', null, { method: 'POST', body: JSON.stringify({ email: 'QA-TECH@PIGNUS.TEST' }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   response = await api('/api/auth/password-reset-requests', null, { method: 'POST', body: JSON.stringify({ email: 'qa-tech@pignus.test' }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
 
   const nonAdministratorCookie = await login('qa-employees@pignus.test')
   response = await api('/api/auth/password-reset-requests', nonAdministratorCookie)
@@ -481,13 +493,13 @@ test('gestiona solicitudes de contraseña únicamente para administradores', asy
 
   const administratorCookie = await login('qa-admin@pignus.test')
   response = await api('/api/auth/password-reset-requests', administratorCookie)
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   let payload = await response.json()
   const matching = payload.requests.filter(request => request.email === 'qa-tech@pignus.test')
   assert.equal(matching.length, 1, 'Las solicitudes repetidas deben consolidarse por correo.')
 
   response = await api('/api/auth/password-reset-requests', administratorCookie, { method: 'DELETE', body: JSON.stringify({ id: matching[0].id }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   response = await api('/api/auth/password-reset-requests', administratorCookie)
   payload = await response.json()
   assert.equal(payload.requests.some(request => request.email === 'qa-tech@pignus.test'), false)
@@ -541,7 +553,7 @@ test('cerrar sesión ignora el descarte antiguo y preserva la agenda y las otras
   const otherCookie = await login('qa-tech@pignus.test')
   const before = await state(cookie)
   const response = await api('/api/auth/logout', cookie, { method: 'POST', body: JSON.stringify({ discardDailyAgenda: true }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   assert.deepEqual(await response.json(), { ok: true })
   assert.equal((await api('/api/auth/session-status', cookie)).status, 401)
   assert.equal((await api('/api/auth/session-status', otherCookie)).status, 200)
@@ -586,6 +598,8 @@ test('alta confirmada de empleado Operador admite rol UUID y conserva agenda e h
   assert.equal(after.employees.find(item => item.id === employee.id).roleId, role.id)
   assert.deepEqual(after.agenda, before.agenda)
   assert.deepEqual(after.history, before.history)
+  await login('qa-admin@pignus.test')
+  await login('qa-tech@pignus.test')
   const operatorCookie = await login(employee.email)
   assert.equal((await api('/api/state', operatorCookie, { method: 'PATCH', body: JSON.stringify({ operations: [] }) })).status, 403)
 })
@@ -599,7 +613,7 @@ test('un gestor de empleados no puede elevar privilegios', async () => {
   administrator.role = 'Técnico'
   current.roles.find(role => String(role.id) === '1').permissions = {}
   let response = await api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(current) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   current = await state(cookie)
   assert.equal(String(current.employees.find(employee => employee.id === administrator.id).roleId), '1')
   assert.equal(current.roles.find(role => String(role.id) === '1').permissions.audit, true)
@@ -615,7 +629,7 @@ test('un permiso de configuración no permite alterar roles protegidos', async (
   current.roles.find(role => role.id === 'qa-settings-role').code = 'administrator'
   current.roles.find(role => role.id === 'qa-settings-role').permissions = { audit: true, settings: true, employees: true }
   const response = await api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(current) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   current = await state(cookie)
   assert.equal(current.roles.find(role => role.id === 'qa-settings-role').code, 'qa-settings')
 })
@@ -629,7 +643,7 @@ test('separa permisos de agenda semanal y diaria', async () => {
   current.agenda.teams = []
   current.agenda.weekly = { ...(current.agenda.weekly || {}), [weeklyKey]: { teams: [] } }
   const response = await api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(current) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   current = await state(cookie)
   assert.equal(current.agenda.date, originalDate)
   assert.ok(current.agenda.weekly[weeklyKey])
@@ -754,7 +768,7 @@ test('la exportación técnica contiene solamente trabajos asignados', async () 
   const month = preference('qa_export_month'), included = preference('qa_export_included'), excluded = preference('qa_export_excluded')
   db.close()
   const response = await api(`/api/history/export?month=${month}&category=all`, cookie)
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   const report = await response.text()
   assert.ok(report.includes(included))
   assert.ok(!report.includes(excluded))
@@ -772,13 +786,13 @@ test('el técnico inicia únicamente su servicio y el reintento no duplica la op
   db.close()
   try {
     let response = await api('/api/technician/start', technicianCookie, { method: 'POST', body: JSON.stringify({ recordId: record.id }) })
-    assert.equal(response.status, 200)
+    assert.equal(response.status, 200, await response.clone().text())
     const first = await response.json()
     assert.equal(first.record.startedById, 'qa-tech')
     assert.ok(first.record.startedAt)
 
     response = await api('/api/technician/start', technicianCookie, { method: 'POST', body: JSON.stringify({ recordId: record.id }) })
-    assert.equal(response.status, 200)
+    assert.equal(response.status, 200, await response.clone().text())
     assert.equal((await response.json()).record.startedAt, first.record.startedAt)
 
     response = await api('/api/technician/start', technicianCookie, { method: 'POST', body: JSON.stringify({ recordId: foreignRecord.id }) })
@@ -841,7 +855,7 @@ test('el historial contextual del técnico es de solo lectura y registra quién 
   const started = await api('/api/technician/start', cookie, { method: 'POST', body: JSON.stringify({ recordId: 'qa-tech-current' }) })
   assert.equal(started.status, 200)
   const response = await api('/api/technician/status', cookie, { method: 'POST', body: JSON.stringify({ recordId: 'qa-tech-current', type: 'Completado', observation: 'Trabajo completado; revisar magnético en la próxima visita.' }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   const payload = await response.json()
   assert.equal(payload.record.technicalReportedById, 'qa-tech')
   assert.equal(payload.record.technicalReportedByName, 'QA Técnico')
@@ -900,7 +914,7 @@ test('exporta en Excel únicamente las bajas completadas del mes solicitado', as
   upsertJson(db, 'work_history', 'id', { ...base, id: 'qa-retirement-export-pending', client: 'BAJA PENDIENTE QA', status: 'Pendiente' })
   db.close()
   const response = await api('/api/history/export?month=2098-05&category=retirements', cookie)
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   assert.match(response.headers.get('content-disposition') || '', /bajas-servicio-2098-05\.xls/)
   const report = await response.text()
   const pdfResponse = await api('/api/history/export?month=2098-05&category=retirements&format=pdf', cookie)
@@ -924,7 +938,7 @@ test('limpia solamente la agenda diaria mediante endpoint dedicado', async () =>
   const cookie = await login('qa-admin@pignus.test')
   const before = await state(cookie)
   const response = await api('/api/agenda/daily/clear', cookie, { method: 'POST' })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   const after = await state(cookie)
   assert.deepEqual(after.agenda.weekly, before.agenda.weekly)
   assert.equal(after.agenda.teams.length, 1)
@@ -944,7 +958,7 @@ test('normaliza como pendiente un servicio nuevo sin estado', async () => {
   const id = `qa-history-without-status-${Date.now()}`
   current.history.unshift({ ...source, id, status: undefined })
   const response = await api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(current) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   const saved = await state(cookie)
   assert.equal(saved.history.find(record => record.id === id).status, 'Pendiente')
 })
@@ -963,7 +977,7 @@ test('conserva únicamente el autor original de carga de un servicio', async () 
     createdBy: { id: 'falso', name: 'Usuario falso', role: 'Administrador', at: new Date().toISOString() }
   })
   let response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   current = await state(administratorCookie)
   let record = current.history.find(item => item.id === id)
   assert.equal(record.createdBy.name, 'QA Admin')
@@ -972,13 +986,13 @@ test('conserva únicamente el autor original de carga de un servicio', async () 
   current.employees.find(employee => employee.id === 'qa-settings').status = 'Activo'
   current.roles.find(role => role.id === 'qa-settings-role').permissions = { settings: true, history: true }
   response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   const settingsCookie = await login('qa-settings@pignus.test')
   current = await state(settingsCookie)
   record = current.history.find(item => item.id === id)
   record.detail = 'Detalle actualizado por otra sesión'
   response = await api('/api/state', settingsCookie, { method: 'PUT', body: JSON.stringify(current) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   current = await state(administratorCookie)
   record = current.history.find(item => item.id === id)
   assert.equal(record.createdBy.name, 'QA Admin')
@@ -990,9 +1004,9 @@ test('limita la auditoría almacenada y visible a los últimos 100 registros', a
   const current = await state(administratorCookie)
   current.services.push(...Array.from({ length: 105 }, (_, index) => ({ id: `qa-audit-service-${index}`, code: `qa-audit-service-${index}`, name: `Servicio de auditoría ${index}`, description: 'Prueba del límite', category: 'service', status: 'Activo' })))
   let response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   response = await api('/api/audit?limit=500', administratorCookie)
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   const records = (await response.json()).records
   assert.equal(records.length, 100)
   assert.equal(Object.hasOwn(records[0], 'before'), false)
@@ -1020,7 +1034,7 @@ test('rechaza clientes nuevos sin dirección y completa abonados importados', as
   current = await state(administratorCookie)
   current.customers.push({ customerId: 'qa-subscriber-incomplete', kind: 'subscriber', account: 'PIG-999998', name: '', street: '', address: '', locality: '', province: '', phone: '', type: '', fields: {} })
   response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   current = await state(administratorCookie)
   const imported = current.customers.find(customer => customer.customerId === 'qa-subscriber-incomplete')
   assert.equal(imported.name, '-')
@@ -1043,7 +1057,7 @@ test('mantiene vinculados los históricos cuando una baja convierte PIG en CLI',
     { ...base, id: 'qa-retirement-conversion', date: '2020-01-01', time: '10:00', customerId, clientAccount: originalAccount, client: `${originalAccount} CLIENTE CONVERTIDO QA`, serviceId: retirement.id, service: retirement.name, status: 'Completado' }
   )
   let response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   current = await state(administratorCookie)
   const converted = current.customers.find(customer => customer.customerId === customerId)
   assert.equal(converted.kind, 'client')
@@ -1071,7 +1085,7 @@ test('mantiene vinculados los históricos cuando una baja convierte PIG en CLI',
   assert.equal(response.status, 409)
   const cancelled = current.history.find(item => item.id === completed.id)
   response = await api(`/api/history/${completed.id}`, administratorCookie, { method: 'PATCH', body: JSON.stringify({ base: cancelled, record: { ...cancelled, status: 'Completado' } }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   current = await state(administratorCookie)
   const recompleted = current.history.find(item => item.id === completed.id)
   response = await api('/api/history/bulk', administratorCookie, { method: 'PATCH', body: JSON.stringify({ updates: [{ base: recompleted, record: { ...recompleted, status: 'Pendiente' } }] }) })
@@ -1080,13 +1094,13 @@ test('mantiene vinculados los históricos cuando una baja convierte PIG en CLI',
   assert.equal(current.customers.find(customer => customer.customerId === customerId).account, originalAccount)
   const pendingRetirement = current.history.find(item => item.id === completed.id)
   response = await api(`/api/history/${completed.id}`, administratorCookie, { method: 'PATCH', body: JSON.stringify({ base: pendingRetirement, record: { ...pendingRetirement, status: 'Completado' } }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   current = await state(administratorCookie)
   const cli = current.customers.find(customer => customer.customerId === customerId)
   const importedId = 'qa-reimported-pig'
   current.customers.push({ ...cli, customerId: importedId, account: originalAccount, kind: 'subscriber', convertedFromAccount: undefined, subscriptionEndedAt: undefined })
   response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   current = await state(administratorCookie)
   const toCancel = current.history.find(item => item.id === completed.id)
   response = await api(`/api/history/${completed.id}`, administratorCookie, { method: 'PATCH', body: JSON.stringify({ base: toCancel, record: { ...toCancel, status: 'Cancelado' } }) })
@@ -1106,7 +1120,7 @@ test('la importación requiere permiso, pide una revisión vigente y el administ
   const administratorCookie = await login('qa-admin@pignus.test')
   const before = await state(administratorCookie)
   response = await api('/api/customers/import', administratorCookie)
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   assert.equal((await response.json()).canUndo, false)
   response = await api('/api/customers/import', administratorCookie, { method: 'POST', body: JSON.stringify({ revision: before.revision, customers: [] }) })
   assert.equal(response.status, 409)
@@ -1114,7 +1128,7 @@ test('la importación requiere permiso, pide una revisión vigente y el administ
   assert.equal((await state(administratorCookie)).customers.length, before.customers.length)
   const importedCustomer = { customerId: 'qa-import-reversible', kind: 'subscriber', account: 'PIG-999999', name: 'IMPORTACIÓN REVERSIBLE QA', street: 'Calle QA 999', address: 'Calle QA 999', locality: 'Córdoba', province: 'Córdoba', phone: '3519999999', type: 'Residencial', fields: {} }
   response = await api('/api/customers/import', administratorCookie, { method: 'POST', body: JSON.stringify({ revision: before.revision, customers: [...before.customers, importedCustomer] }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   const importPayload = await response.json()
   assert.equal(importPayload.customers.length, before.customers.length + 1)
   assert.ok((await state(administratorCookie)).customers.some(customer => customer.customerId === importedCustomer.customerId))
@@ -1123,19 +1137,19 @@ test('la importación requiere permiso, pide una revisión vigente y el administ
   assert.equal((await response.json()).canUndo, true)
 
   response = await api('/api/customers/import', administratorCookie, { method: 'DELETE' })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   assert.ok(!(await state(administratorCookie)).customers.some(customer => customer.customerId === importedCustomer.customerId))
   response = await api('/api/customers/import', administratorCookie)
   assert.equal((await response.json()).canUndo, false)
 
   const afterUndo = await state(administratorCookie)
   response = await api('/api/customers/import', administratorCookie, { method: 'POST', body: JSON.stringify({ revision: afterUndo.revision, customers: [...afterUndo.customers, importedCustomer], responseMode: 'compact-v1' }) })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   const compactPayload = await response.json()
   assert.equal(compactPayload.customerCount, before.customers.length + 1)
   assert.equal(Object.hasOwn(compactPayload, 'customers'), false)
   response = await api('/api/customers/import', administratorCookie, { method: 'DELETE' })
-  assert.equal(response.status, 200)
+  assert.equal(response.status, 200, await response.clone().text())
   assert.ok(!(await state(administratorCookie)).customers.some(customer => customer.customerId === importedCustomer.customerId))
 })
 
