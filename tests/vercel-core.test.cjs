@@ -882,28 +882,18 @@ test('cada equipo reserva una hora mínima y oculta turnos vacíos incompatibles
   assert.match(help, /reserva operativa mínima de 60 minutos/)
 })
 
-test('el administrador configura dos horarios predeterminados para cada mes', () => {
+test('jornada laboral reemplaza los horarios mensuales en configuración', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
-  const styles = fs.readFileSync(path.resolve(__dirname, '../src/weekly-enhancements.css'), 'utf8')
-  assert.match(source, /Horarios del mes/)
-  assert.match(source, /className="modal monthly-times-modal"/)
-  assert.match(source, /monthlyTimesSetup\.times\.map\(\(time, index\)/)
-  assert.match(source, /No tenés permiso para definir los horarios mensuales/)
-  assert.match(source, /defaultTimes: monthlyTimesSetup\.times, defaultTimePeriods/)
-  assert.match(source, /applyMonthlyDefaultTimes\(previous, monthlyTimesSetup\.month, monthlyTimesSetup\.effectiveFrom, monthlyTimesSetup\.times\)/)
-  assert.match(source, /key < effectiveFrom/)
-  assert.match(source, /La configuración mensual sólo está disponible para el mes vigente y los meses futuros/)
-  assert.match(source, /Los cambios regirán desde \$\{prettyDate\(key\)\}/)
-  assert.match(source, /Los días anteriores y todos los servicios ya cargados conservarán su horario/)
-  assert.match(styles, /\.monthly-time-grid \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/)
+  assert.doesNotMatch(source, /Horarios del mes|monthly-times-modal/)
+  assert.match(source, /canConfigureWorkday=\{isAdministrator\}/)
+  assert.match(source, /<WorkdaySettings/)
 })
 
 test('los meses finalizados no solicitan ni permiten configuraciones mensuales', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
   assert.match(source, /const pastMonthSelected = monthKey < currentMonthKey/)
-  assert.match(source, /if \(pastMonthSelected\) \{[\s\S]*?setMonthlySetup\(null\)[\s\S]*?setMonthlyTimesSetup\(null\)[\s\S]*?setMonthlyVehicleSetup\(null\)[\s\S]*?return/)
+  assert.match(source, /if \(pastMonthSelected\) \{[\s\S]*?setMonthlySetup\(null\)[\s\S]*?setMonthlyVehicleSetup\(null\)[\s\S]*?return/)
   assert.match(source, /disabled=\{pastMonthSelected\}[\s\S]*?Equipos del mes/)
-  assert.match(source, /disabled=\{pastMonthSelected\}[\s\S]*?Horarios del mes/)
   assert.match(source, /disabled=\{pastMonthSelected\}[\s\S]*?Vehículos del mes/)
 })
 
@@ -1242,7 +1232,7 @@ test('la interfaz ofrece equipos semanales editables, permisos por función e im
   assert.match(weeklyToggle, /operation: 'team-members'/)
   assert.match(weeklyToggle, /await persistWeeklyService/)
   assert.doesNotMatch(weeklyToggle, /tasks: .*stampServiceRecord/)
-  for (const permission of ['weeklyTeams', 'weeklyHours', 'weeklyVehicles', 'weeklyGuards', 'historyManage', 'accountsEdit', 'accountsDelete', 'accountsImport']) assert.match(source, new RegExp(permission))
+  for (const permission of ['weeklyTeams', 'weeklyVehicles', 'weeklyGuards', 'historyManage', 'accountsEdit', 'accountsDelete', 'accountsImport']) assert.match(source, new RegExp(permission))
   assert.match(source, /Consulta de solo lectura\. Las modificaciones requieren permisos adicionales/)
   assert.match(source, /Confirmar importación/)
   assert.match(source, /Deshacer última importación/)

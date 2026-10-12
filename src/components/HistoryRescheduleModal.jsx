@@ -11,7 +11,7 @@ export default function HistoryRescheduleModal({ record, estimatedMinutes, sched
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const invalidDay = day && (day < minimumDate || (day === record.date && requiresDifferentRescheduleDay(record)))
-  const teams = day && !invalidDay ? rescheduleSlots(day, { ...record, estimatedMinutes }, scheduling?.assignedTeamsForDate?.(day) || [], scheduling?.teamsForDate || (() => [])) : []
+  const teams = day && !invalidDay ? rescheduleSlots(day, { ...record, estimatedMinutes }, scheduling?.assignedTeamsForDate?.(day) || [], scheduling?.teamsForDate || (() => []), new Date(), scheduling?.weekly) : []
   const selectedTeam = teams.find(team => String(team.teamId) === String(selection?.teamId) && team.slots.some(slot => slot.time === selection?.time))
   const busy = blocked || saving
   const save = async () => {

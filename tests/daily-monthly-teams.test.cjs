@@ -21,7 +21,7 @@ test('partial Monday loads all three monthly teams and keeps the daily technicia
   const plan = dailyPlanWithMonthlyTeams(day, weekly)
   assert.deepEqual(plan.teams.map(team => team.teamId), ['team-1', 'team-2', 'team-3'])
   assert.deepEqual(plan.teams.map(team => team.members), [['Pascual'], ['Mariano'], ['Leonardo']])
-  assert.ok(plan.teams.every(team => team.tasks.length > 0))
+  assert.ok(plan.teams.every(team => team.tasks.length === 0))
   assert.deepEqual(weekly, before)
 })
 

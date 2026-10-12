@@ -288,7 +288,7 @@ function authorizeIncomingState(incoming, current, user) {
   }
   const currentAgenda = current.agenda || {}
   const incomingAgenda = incoming.agenda || {}
-  const { _holidayOverrides: ignoredHolidayOverrides, _annualGuards: ignoredAnnualGuards, _monthlyTeams: ignoredMonthlyTeams, _frozenMonthOptions: ignoredFrozenMonthOptions, ...incomingWeeklyWithoutProtectedConfiguration } = incomingAgenda.weekly || {}
+  const { _workday: ignoredWorkday, _holidayOverrides: ignoredHolidayOverrides, _annualGuards: ignoredAnnualGuards, _monthlyTeams: ignoredMonthlyTeams, _frozenMonthOptions: ignoredFrozenMonthOptions, ...incomingWeeklyWithoutProtectedConfiguration } = incomingAgenda.weekly || {}
   const currentMonthly = currentAgenda.weekly?._monthlyTeams || {}
   const incomingMonthly = incomingAgenda.weekly?._monthlyTeams || {}
   const protectedMonthly = Object.fromEntries([...new Set([...Object.keys(currentMonthly), ...Object.keys(incomingMonthly)])].map(month => {
@@ -305,6 +305,7 @@ function authorizeIncomingState(incoming, current, user) {
   }))
   const protectedWeekly = administrator ? incomingAgenda.weekly : {
     ...incomingWeeklyWithoutProtectedConfiguration,
+    ...(currentAgenda.weekly?._workday ? { _workday: currentAgenda.weekly._workday } : {}),
     ...(currentAgenda.weekly?._frozenMonthOptions !== undefined ? { _frozenMonthOptions: currentAgenda.weekly._frozenMonthOptions } : {}),
     ...(currentAgenda.weekly?._holidayOverrides ? { _holidayOverrides: currentAgenda.weekly._holidayOverrides } : {}),
     ...(userCan(user, 'weeklyGuards') ? (incomingAgenda.weekly?._annualGuards ? { _annualGuards: incomingAgenda.weekly._annualGuards } : {}) : (currentAgenda.weekly?._annualGuards ? { _annualGuards: currentAgenda.weekly._annualGuards } : {})),
@@ -549,6 +550,7 @@ function secureEmployees(employees, previousEmployees) {
 }
 
 function validateState(state, previousState = null) {
+  require('./workday.cjs').validateWorkday(state?.agenda?.weekly?._workday)
   require('./frozen-months.cjs').validateFrozenMonths(state, previousState)
   require('./multi-service.cjs').validateServiceTypes(state)
   require('./completed-service-policy.cjs').assertCompletedServices(state, previousState)

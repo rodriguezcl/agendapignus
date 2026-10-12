@@ -1,16 +1,18 @@
 import { taskOccupiedInterval, minutesAsTime, serviceSlotReleased } from './service-scheduling.mjs'
+import workday from '../../../api/_lib/workday.cjs'
 
-export function planningHoursForDay(day) {
-  const weekDay = new Date(`${day}T12:00:00`).getDay()
-  if (!Number.isInteger(weekDay) || weekDay === 0) return null
-  const max = weekDay === 5 ? '20:00' : weekDay === 6 ? '12:00' : '17:00'
-  return { min: '08:00', max, label: `08:00 a ${max}` }
+export function planningHoursForDay(day, weekly = {}, teamId = '') {
+  const row = workday.workdayForDate(day, weekly, teamId)
+  if (!row) return null
+  return { min: row.start, max: row.end, bookable: row.bookable, breakStart: row.breakStart, breakEnd: row.breakEnd, label: `${row.start} a ${row.end}` }
 }
 
 // Empty placeholders do not reserve working time. Include the final stretch when closing hours are known.
-export function serviceGaps(tasks, { min, max, day, now = new Date() } = {}) {
+export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:30', breakEnd = '14:00', fullAvailability = false, day, now = new Date() } = {}) {
   const minutes = value => /^\d{2}:\d{2}$/.test(value || '') ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : null
-  let lower = minutes(min) ?? 0
+  let lower = minutes(fullAvailability ? bookable || min : min) ?? 0
+  const lunchStart = minutes(breakStart), lunchEnd = minutes(breakEnd)
+  const minimumGap = fullAvailability ? 15 : 90
   // Friday 16:00–20:00 is reserved for advancing Saturday guard duty,
   // not general availability. Keep planningHoursForDay unchanged for that workflow.
   const friday = day && new Date(`${day}T12:00:00`).getDay() === 5
@@ -39,17 +41,17 @@ export function serviceGaps(tasks, { min, max, day, now = new Date() } = {}) {
   // A cancelled first/only visit still provides an anchor for the released slot.
   const releasedStarts = cards.filter(({ task }) => hasService(task) && serviceSlotReleased(task, day)).map(card => card.start)
   const firstReleased = releasedStarts.length ? Math.min(...releasedStarts) : null
-  let end = firstReleased !== null && (!occupied.length || firstReleased <= occupied[0].interval.start) ? firstReleased : null
+  let end = fullAvailability ? lower : firstReleased !== null && (!occupied.length || firstReleased <= occupied[0].interval.start) ? firstReleased : null
   for (const { index, interval } of occupied) {
     const start = Math.max(end ?? lower, lower), stop = Math.min(interval.start, upper)
     // Lunch is not bookable: require 90 continuous minutes on either side,
     // rather than adding together time separated by the 13:30–14:00 break.
     if (end !== null) {
-      const available = [[start, Math.min(stop, 13 * 60 + 30)], [Math.max(start, 14 * 60), stop]]
+      const available = [[start, Math.min(stop, lunchStart)], [Math.max(start, lunchEnd), stop]]
       for (const [from, to] of available) {
-        if (to - from < 90) continue
+        if (to - from < minimumGap) continue
         // An empty card at the start already offers this available slot.
-        if (cards.some(card => card.start === from && !hasService(card.task))) continue
+        if (!fullAvailability && cards.some(card => card.start === from && !hasService(card.task))) continue
         // Empty cards are also chronological anchors, not occupied intervals.
         const nextCard = cards.find(card => card.start >= from)
         gaps.push({ beforeIndex: nextCard?.index ?? index, start: minutesAsTime(from), end: minutesAsTime(to) })
@@ -59,8 +61,8 @@ export function serviceGaps(tasks, { min, max, day, now = new Date() } = {}) {
   }
   if (end !== null && minutes(max) !== null) {
     const start = Math.max(end, lower)
-    for (const [from, to] of [[start, Math.min(upper, 13 * 60 + 30)], [Math.max(start, 14 * 60), upper]]) {
-      if (to - from < 90 || cards.some(card => card.start === from && !hasService(card.task))) continue
+    for (const [from, to] of [[start, Math.min(upper, lunchStart)], [Math.max(start, lunchEnd), upper]]) {
+      if (to - from < minimumGap || !fullAvailability && cards.some(card => card.start === from && !hasService(card.task))) continue
       const nextCard = cards.find(card => card.start >= from)
       gaps.push({ beforeIndex: nextCard?.index ?? tasks.length, start: minutesAsTime(from), end: minutesAsTime(to) })
     }
