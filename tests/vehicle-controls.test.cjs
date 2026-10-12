@@ -241,12 +241,12 @@ test('el administrador puede omitir un control semanal sin que se regenere ni ll
   assert.match(source, /El control vehicular fue omitido para esta semana y ya no se mostrará al técnico\./)
 })
 
-test('la captura vehicular admite imágenes del teléfono y solicita la cámara trasera', () => {
-  const fs = require('node:fs')
-  const path = require('node:path')
-  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
-  assert.match(source, /photoInput\.accept = 'image\/\*'/)
-  assert.match(source, /photoInput\.setAttribute\('capture', 'environment'\)/)
+test('la captura vehicular usa cámara en vivo sin galería', () => {
+  const fs = require('node:fs'), path = require('node:path')
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'infrastructure/media/camera-capture.mjs'), 'utf8')
+  assert.match(source, /getUserMedia/)
+  assert.match(source, /facingMode: \{ ideal: 'environment' \}/)
+  assert.doesNotMatch(source, /type = 'file'/)
 })
 
 test('el portal técnico evita selectores incompatibles y muestra una recuperación ante errores', () => {
