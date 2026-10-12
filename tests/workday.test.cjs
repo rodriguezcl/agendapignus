@@ -31,3 +31,21 @@ test('disponibilidad completa incluye equipos vacíos y huecos iniciales, y recu
   assert.deepEqual(serviceGaps(tasks, options), [{ beforeIndex: 0, start: '08:30', end: '10:00' }, { beforeIndex: 1, start: '12:00', end: '13:00' }, { beforeIndex: 1, start: '14:00', end: '17:00' }])
   assert.equal(serviceGaps([{ ...tasks[0], status: 'Cancelado' }], options)[0].end, '13:00')
 })
+
+test('la agenda solo ofrece huecos de al menos una hora continua', async () => {
+  const { serviceGaps } = await import('../src/domain/agenda/service-gaps.mjs')
+  const options = { min: '08:00', bookable: '08:30', max: '17:00', fullAvailability: true }
+  const task = (time, estimatedMinutes = 60) => ({ serviceId: 's', time, estimatedMinutes })
+  for (const [time, expected] of [['09:00', false], ['09:15', false], ['09:30', true]]) {
+    assert.equal(serviceGaps([task(time)], options).some(gap => gap.start === '08:30'), expected)
+  }
+  for (const [time, expected] of [['10:00', false], ['10:15', false], ['10:30', true]]) {
+    assert.equal(serviceGaps([task('08:30'), task(time)], options).some(gap => gap.start === '09:30'), expected)
+  }
+  for (const [time, expected] of [['15:00', true], ['15:15', false], ['15:30', false]]) {
+    assert.equal(serviceGaps([task(time)], options).some(gap => gap.end === '17:00'), expected)
+  }
+  // Two half-hours separated by lunch must not be combined into one hour.
+  assert.deepEqual(serviceGaps([task('08:30', 240), task('14:30', 150)], options), [])
+  assert(serviceGaps([task('09:00')], options).every(gap => gap.end !== '09:00'))
+})

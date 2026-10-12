@@ -12,7 +12,7 @@ export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:00', b
   const minutes = value => /^\d{2}:\d{2}$/.test(value || '') ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : null
   let lower = minutes(fullAvailability ? bookable || min : min) ?? 0
   const lunchStart = minutes(breakStart), lunchEnd = minutes(breakEnd)
-  const minimumGap = fullAvailability ? 15 : 90
+  const minimumGap = fullAvailability ? 60 : 90
   // Friday 16:00–20:00 is reserved for advancing Saturday guard duty,
   // not general availability. Keep planningHoursForDay unchanged for that workflow.
   const friday = day && new Date(`${day}T12:00:00`).getDay() === 5
