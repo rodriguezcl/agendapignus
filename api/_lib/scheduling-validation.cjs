@@ -1,3 +1,4 @@
+const { workingEnd, workdayForDate } = require('./workday.cjs')
 const { serviceSlotReleased } = require('./service-slot-released.cjs')
 const { independentVehicleControls } = require('./independent-vehicle-controls.cjs')
 const normalizedName = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
@@ -206,7 +207,7 @@ function validateChangedAgendaSchedules(state, previousState = null) {
         const [hours, minutes] = task.time.split(':').map(Number)
         const start = hours * 60 + minutes
         const actualRelease = completedReleaseMinute(task)
-        const plannedEnd = start + Math.max(minimumReservation(task, serviceMap), estimatedMinutesFor(task, serviceMap))
+        const plannedEnd = workingEnd(start, Math.max(minimumReservation(task, serviceMap), estimatedMinutesFor(task, serviceMap)), workdayForDate(plan.date, state.agenda?.weekly, team.teamId))
         return { task, taskIndex, start, end: actualRelease == null ? plannedEnd : Math.min(actualRelease, plannedEnd) }
       }).sort((first, second) => first.start - second.start)
       scheduled.forEach((current, index) => {
@@ -225,7 +226,7 @@ function validateChangedAgendaSchedules(state, previousState = null) {
         if (!task || !(task.serviceId || task.service) || !match) return
         const start = Number(match[1]) * 60 + Number(match[2])
         const actualRelease = completedReleaseMinute(task)
-        const plannedEnd = start + Math.max(minimumReservation(task, serviceMap), estimatedMinutesFor(task, serviceMap))
+        const plannedEnd = workingEnd(start, Math.max(minimumReservation(task, serviceMap), estimatedMinutesFor(task, serviceMap)), workdayForDate(plan.date, state.agenda?.weekly, team.teamId))
         const end = actualRelease == null ? plannedEnd : Math.min(actualRelease, plannedEnd)
         const technicianIds = task.vehicleControl && task.technicianIds?.length ? task.technicianIds : team.memberIds || []
         const technicianNames = task.vehicleControl && task.technicians?.length ? task.technicians : team.members || []

@@ -1,3 +1,4 @@
+import workday from '../../../api/_lib/workday.cjs'
 import slotPolicy from '../../../api/_lib/service-slot-released.cjs'
 import vehicleOverlapPolicy from '../../../api/_lib/independent-vehicle-controls.cjs'
 export const { serviceSlotReleased } = slotPolicy
@@ -72,15 +73,15 @@ export const taskReservationMinutes = task => Math.max(
   normalizeServiceEstimatedMinutes(task?.estimatedMinutes)
 )
 
-export const taskOccupiedInterval = task => {
+export const taskOccupiedInterval = (task, hours = {}) => {
   if (serviceSlotReleased(task)) return null
   const start = timeInMinutes(task?.time || task?.scheduledTime)
   if (start === null) return null
   const estimatedMinutes = normalizeServiceEstimatedMinutes(task?.estimatedMinutes)
   const completion = completedServiceRelease(task)
   const estimatedOccupiedMinutes = taskReservationMinutes(task)
-  const plannedServiceEnd = start + estimatedMinutes
-  const plannedEnd = start + estimatedOccupiedMinutes
+  const plannedServiceEnd = workday.workingEnd(start, estimatedMinutes, hours)
+  const plannedEnd = workday.workingEnd(start, estimatedOccupiedMinutes, hours)
   // Una finalización anticipada libera agenda. Un atraso es una contingencia
   // operativa y no debe convertir retroactivamente la planificación en conflicto.
   const earlyCompletion = Boolean(completion && completion.release < plannedEnd)
@@ -104,10 +105,10 @@ export const taskOccupiedInterval = task => {
   }
 }
 
-export const serviceScheduleConflicts = (teams = [], hasContent = task => Boolean(task?.serviceId || task?.service || task?.customerId || task?.client)) => teams.flatMap((team, teamIndex) => {
+export const serviceScheduleConflicts = (teams = [], hasContent = task => Boolean(task?.serviceId || task?.service || task?.customerId || task?.client), weekly = {}) => teams.flatMap((team, teamIndex) => {
   const scheduled = (team.tasks || [])
     .filter(hasContent)
-    .map((task, taskIndex) => ({ task, taskIndex, interval: taskOccupiedInterval(task) }))
+    .map((task, taskIndex) => ({ task, taskIndex, interval: taskOccupiedInterval(task, workday.workdayForDate(task.date, weekly, team.teamId)) }))
     .filter(item => item.interval)
     .sort((left, right) => left.interval.start - right.interval.start)
   const conflicts = []

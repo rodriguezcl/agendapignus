@@ -1,3 +1,4 @@
+const { workingEnd, workdayForDate } = require('./workday.cjs')
 const ADVANCE = 'Avance registrado'
 function activeJourneyIndexes(record, history = []) {
   if (!record?.serviceJourney) return []
@@ -34,9 +35,12 @@ function validateServiceJourneys(state, previous = null) {
     if (!prior?.serviceJourney || record.date !== prior.date || record.time !== prior.time || record.estimatedMinutes !== prior.estimatedMinutes) {
       const date = new Date(`${record.date}T12:00:00Z`)
       const time = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(record.time || '')
-      const weekday = date.getUTCDay(), end = weekday === 5 ? 1200 : weekday === 6 ? 720 : 1020
+      const weekday = date.getUTCDay()
+      const hours = workdayForDate(record.date, state.agenda?.weekly, record.teamId)
+      const minutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3))
+      const end = hours ? minutes(hours.end) : 0
       const start = time ? Number(time[1]) * 60 + Number(time[2]) : NaN
-      if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== record.date || !weekday || !Number.isFinite(start) || start < 480 || start + Number(record.estimatedMinutes) > end) throw new Error('La jornada está fuera de los días u horarios habilitados.')
+      if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== record.date || !weekday || !Number.isFinite(start) || start < (hours ? minutes(hours.start) : 480) || workingEnd(start, Number(record.estimatedMinutes), workdayForDate(record.date, state.agenda?.weekly, record.teamId)) > end) throw new Error('La jornada está fuera de los días u horarios habilitados.')
       if (state.agenda?.weekly?._holidayOverrides?.[record.date]?.status === 'closed') throw new Error('No se puede reservar una jornada en un feriado cerrado.')
     }
     // A later cancellation must not invalidate an advance already reported.

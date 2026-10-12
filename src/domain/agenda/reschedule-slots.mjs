@@ -12,13 +12,11 @@ export function rescheduleSlots(day, record, teams, availableTeams, now = new Da
   const upper = new Date(`${day}T12:00:00`).getDay() === 5 ? 16 * 60 : weekly ? 1440 : timeInMinutes(hours.max)
   for (let start = lower; start < upper; start += 15) {
     const time = minutesAsTime(start)
-    // Calculate the future pending visit, not the released original request.
-    const interval = taskOccupiedInterval({ ...record, date: day, time, scheduledTime: time, status: 'Pendiente', technicalStatus: '', technicianRequest: '', completedAt: '', technicalReportedAt: '', journeyClosedAt: '' })
-    if (!interval || interval.end > upper || !weekly && (start < 14 * 60 && interval.end > 13 * 60 + 30)) continue
     const available = new Set(availableTeams(day, time, record).map(team => String(team.teamId)))
     for (const row of rows) if (available.has(String(row.teamId))) {
-      const configured = weekly && planningHoursForDay(day, weekly, row.teamId)
-      if (configured && (start < timeInMinutes(configured.bookable) || interval.end > timeInMinutes(configured.max) || start < timeInMinutes(configured.breakEnd) && interval.end > timeInMinutes(configured.breakStart))) continue
+      const configured = planningHoursForDay(day, weekly || {}, row.teamId)
+      const interval = taskOccupiedInterval({ ...record, date: day, time, scheduledTime: time, status: 'Pendiente', technicalStatus: '', technicianRequest: '', completedAt: '', technicalReportedAt: '', journeyClosedAt: '' }, configured)
+      if (!interval || interval.end > upper || start < timeInMinutes(weekly ? configured.bookable : configured.min) || interval.end > timeInMinutes(configured.max) || start >= timeInMinutes(configured.breakStart) && start < timeInMinutes(configured.breakEnd)) continue
       row.slots.push({ time, end: minutesAsTime(interval.serviceEnd) })
     }
   }

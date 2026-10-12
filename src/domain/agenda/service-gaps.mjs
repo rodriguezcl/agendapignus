@@ -8,7 +8,7 @@ export function planningHoursForDay(day, weekly = {}, teamId = '') {
 }
 
 // Empty placeholders do not reserve working time. Include the final stretch when closing hours are known.
-export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:30', breakEnd = '14:00', fullAvailability = false, day, now = new Date() } = {}) {
+export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:00', breakEnd = '14:00', fullAvailability = false, day, now = new Date() } = {}) {
   const minutes = value => /^\d{2}:\d{2}$/.test(value || '') ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : null
   let lower = minutes(fullAvailability ? bookable || min : min) ?? 0
   const lunchStart = minutes(breakStart), lunchEnd = minutes(breakEnd)
@@ -34,7 +34,7 @@ export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:30', b
   const hasService = task => Boolean(task.serviceId || task.service || task.client || task.vehicleControl)
   const cards = tasks.map((task, index) => ({ task, index, start: minutes(task.time || task.scheduledTime) }))
     .filter(card => card.start !== null).sort((a, b) => a.start - b.start)
-  const occupied = tasks.map((task, index) => ({ task, index, interval: taskOccupiedInterval(task) }))
+  const occupied = tasks.map((task, index) => ({ task, index, interval: taskOccupiedInterval(task, { breakStart, breakEnd }) }))
     .filter(({ task, interval }) => interval && hasService(task))
     .sort((a, b) => a.interval.start - b.interval.start)
   const gaps = []
@@ -45,7 +45,7 @@ export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:30', b
   for (const { index, interval } of occupied) {
     const start = Math.max(end ?? lower, lower), stop = Math.min(interval.start, upper)
     // Lunch is not bookable: require 90 continuous minutes on either side,
-    // rather than adding together time separated by the 13:30–14:00 break.
+    // rather than adding together time separated by the 13:00–14:00 break.
     if (end !== null) {
       const available = [[start, Math.min(stop, lunchStart)], [Math.max(start, lunchEnd), stop]]
       for (const [from, to] of available) {

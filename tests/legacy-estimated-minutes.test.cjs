@@ -15,7 +15,7 @@ test('an undated legacy agenda cannot reset a dated customized service during hy
     assert.equal(loaded.history[0].estimatedMinutes, estimatedMinutes)
     assert.equal(stateForOperationComparison(state).history[0].estimatedMinutes, estimatedMinutes)
     const merged = { ...loaded.agenda.weekly['2026-10-05'].teams[0].tasks[0], ...loaded.history[0] }
-    assert.deepEqual(serviceGaps([merged, { time: '14:00' }], { min: '08:00', max: '17:00', day: '2026-10-05', now: new Date('2026-10-02T15:00:00Z') }), [])
+    assert.deepEqual(serviceGaps([merged, { time: '14:00' }], { min: '08:00', max: '17:00', day: '2026-10-05', now: new Date('2026-10-02T15:00:00Z') }), [{ beforeIndex: 2, start: estimatedMinutes === 300 ? '14:30' : '14:45', end: '17:00' }])
     assert.equal(state.history[0].estimatedMinutes, estimatedMinutes)
   }
 })

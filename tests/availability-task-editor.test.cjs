@@ -8,10 +8,10 @@ const code = source.slice(start, source.indexOf('  const removeWeeklyTask', star
 for (const persisted of [true, false]) {
   test(`availability editor retains team and task identity (persisted=${persisted})`, () => {
     const day = '2026-09-18'
-    let plan = { teams: [{ teamId: 'pascual-team', label: 'Equipo 1', members: ['Pascual'], memberIds: ['pascual'], tasks: [{ taskId: 'previous', time: '08:45' }] }] }
+    let plan = { teams: [{ teamId: 'pascual-team', label: 'Equipo 1', members: ['Pascual'], memberIds: ['pascual'], tasks: [{ taskId: 'previous', serviceId: 'existing-service', time: '08:45' }] }] }
     let editor
     const add = vm.runInNewContext(code + '\naddTask', {
-      structuredClone, dayHasFinished: () => false, holidayStateForDay: () => ({ blocked: false }), advancedGuardForDay: () => null,
+      structuredClone, taskHasContent: task => Boolean(task.serviceId || task.client), dayHasFinished: () => false, holidayStateForDay: () => ({ blocked: false }), advancedGuardForDay: () => null,
       blankTask: () => ({ taskId: 'new-task' }), dayPlan: () => plan,
       weekly: persisted ? { [day]: structuredClone(plan) } : {},
       updateDay: (_, mutate) => { plan = mutate(plan) },

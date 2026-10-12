@@ -9,7 +9,7 @@ test('daily reassignment offers a date and persists through the atomic weekly op
   assert.match(block, /dateInput.type = 'date'/)
   assert.match(block, /timeInput.type = 'time'/)
   assert.match(block, /estimatedMinutes: taskMove.estimatedMinutes/)
-  assert.match(block, /taskMoveScheduleState\(taskMove.destinationDay, moveDraft\)/)
+  assert.match(block, /taskMoveScheduleState\(taskMove.destinationDay, moveDraft, weekly, selectedTeam\?\.teamId\)/)
   assert.match(block, /Franja estimada:/)
   assert.match(block, /confirm.disabled = confirm.disabled \|\| !schedule.valid \|\| Boolean\(destinationGap\)/)
   assert.match(block, /await persistWeeklyService\(/)

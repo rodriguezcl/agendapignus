@@ -1,4 +1,4 @@
-const defaults = day => ({ start: '08:00', bookable: '08:30', end: day === 5 ? '20:00' : day === 6 ? '12:00' : '17:00', breakStart: '13:30', breakEnd: '14:00' })
+const defaults = day => ({ start: '08:00', bookable: '08:30', end: day === 5 ? '20:00' : day === 6 ? '12:00' : '17:00', breakStart: '13:00', breakEnd: '14:00' })
 const time = value => typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)
 function validateWorkday(config) {
   if (config == null) return
@@ -16,4 +16,12 @@ function workdayForDate(day, weekly = {}, teamId = '') {
   const config = weekly._workday || {}
   return { ...defaults(weekday), ...config.weekdays?.[weekday], ...config.exceptions?.[day], ...(teamId ? config.exceptions?.[`${day}|${teamId}`] : {}) }
 }
-module.exports = { defaults, validateWorkday, workdayForDate }
+// Add effective working minutes, skipping the configured lunch interval.
+function workingEnd(start, duration, hours = {}) {
+  const minutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3))
+  const lunchStart = minutes(hours?.breakStart || '13:00')
+  const lunchEnd = minutes(hours?.breakEnd || '14:00')
+  if (start >= lunchEnd || start + duration <= lunchStart) return start + duration
+  return start < lunchStart ? start + duration + lunchEnd - lunchStart : lunchEnd + duration
+}
+module.exports = { defaults, validateWorkday, workdayForDate, workingEnd }

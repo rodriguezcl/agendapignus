@@ -12,7 +12,7 @@ test('a technician reschedule request offers the same future slots as a pending 
   const actual = rescheduleSlots('2026-10-08', record, teams, available, now)
   const expected = rescheduleSlots('2026-10-08', { ...record, status: 'Pendiente', technicalStatus: '', technicianRequest: '' }, teams, available, now)
   assert.deepEqual(actual, expected)
-  assert(actual[0].slots.some(slot => slot.time === '14:00' && slot.end === '15:00'))
+  assert(actual[0].slots.some(slot => slot.time === '14:45' && slot.end === '15:45'))
   assert(!actual[0].slots.some(slot => slot.time === '12:00'))
   assert.equal(JSON.stringify(record), before, 'preview must preserve the original request')
 })
@@ -26,8 +26,20 @@ test('reschedule slots respect duration, shared technicians, lunch and closing t
   assert(!rows[1].slots.some(slot => slot.time === '09:00'))
   assert(rows[2].slots.some(slot => slot.time === '09:00'))
   assert(!rows[2].slots.some(slot => slot.time === '13:00'))
+  assert(rows[2].slots.some(slot => slot.time === '12:00'))
+  assert(rows[2].slots.some(slot => slot.time === '12:15' && slot.end === '14:15'))
+  assert(rows[2].slots.some(slot => slot.time === '14:00'))
   assert(rows[2].slots.some(slot => slot.time === '16:00'))
   assert(!rows[2].slots.some(slot => slot.time === '16:15'))
+})
+
+test('la jornada configurada también excluye toda la ventana de almuerzo de 13 a 14', async () => {
+  const { rescheduleSlots } = await import('../src/domain/agenda/reschedule-slots.mjs')
+  const teams = [{ teamId: 'a', tasks: [] }]
+  const slots = rescheduleSlots('2026-10-20', { estimatedMinutes: 60 }, teams, () => teams, new Date('2026-10-19T12:00:00Z'), {})[0].slots
+  assert(slots.some(slot => slot.time === '12:00' && slot.end === '13:00'))
+  assert(!slots.some(slot => slot.time >= '13:00' && slot.time < '14:00'))
+  assert(slots.some(slot => slot.time === '14:00'))
 })
 test('today excludes past starts, Sunday offers none, and Friday ends at 16', async () => {
   const { rescheduleSlots } = await import('../src/domain/agenda/reschedule-slots.mjs')
