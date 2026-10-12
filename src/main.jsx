@@ -8,6 +8,7 @@ import { installRequiredFeedback } from './presentation/components/forms/require
 import './presentation/components/forms/required-feedback.css'
 import './components/ui/modal-chrome.css'
 import './mobile-layout.css'
+import './presentation/components/forms/select-containment.css'
 
 const disposeRequiredFeedback = installRequiredFeedback()
 if (import.meta.hot) import.meta.hot.dispose(disposeRequiredFeedback)
