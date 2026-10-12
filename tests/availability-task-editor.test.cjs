@@ -13,10 +13,16 @@ for (const persisted of [true, false]) {
     const add = vm.runInNewContext(code + '\naddTask', {
       structuredClone, taskHasContent: task => Boolean(task.serviceId || task.client), dayHasFinished: () => false, holidayStateForDay: () => ({ blocked: false }), advancedGuardForDay: () => null,
       blankTask: () => ({ taskId: 'new-task' }), dayPlan: () => plan,
+      serviceGaps: () => [{ start: '11:30' }], taskWithServiceEstimate: task => task, historyRecordForTask: () => null, operationalHistory: [], serviceForWeeklyTask: () => null, hoursForDay: () => ({}),
       weekly: persisted ? { [day]: structuredClone(plan) } : {},
       updateDay: (_, mutate) => { plan = mutate(plan) },
       setTaskEditor: value => { editor = value }, setNotice: message => { throw new Error(message) }
     })
+    const before = JSON.stringify(plan)
+    assert.throws(() => add(day, 0, ''), /disponibilidad cambió/)
+    assert.throws(() => add(day, 0, '14:00'), /disponibilidad cambió/)
+    assert.equal(JSON.stringify(plan), before)
+    assert.equal(editor, undefined)
     add(day, 0, '11:30')
     assert.equal(editor.teamId, 'pascual-team')
     assert.equal(editor.teamSnapshot.members[0], 'Pascual')
