@@ -85,7 +85,7 @@ test('una finalización tardía se informa pero no prolonga el conflicto planifi
 test('la ventana liberada sólo admite un nuevo servicio que termine antes del siguiente', async () => {
   const { serviceScheduleConflicts } = await import('../src/service-scheduling.mjs')
   const completed = { serviceId: 'a', date: '2026-08-30', time: '08:30', estimatedMinutes: 150, status: 'Completado', completedAt: '2026-08-30T13:02:10.000Z' }
-  const next = { serviceId: 'c', time: '14:00', estimatedMinutes: 60 }
+  const next = { serviceId: 'c', time: '15:00', estimatedMinutes: 60 }
   assert.equal(serviceScheduleConflicts([{ tasks: [completed, { serviceId: 'b', time: '12:00', estimatedMinutes: 120 }, next] }]).length, 0)
   assert.equal(serviceScheduleConflicts([{ tasks: [completed, { serviceId: 'b', time: '12:15', estimatedMinutes: 120 }, next] }]).length, 1)
 })
@@ -240,7 +240,7 @@ test('la validación del servidor aprovecha la finalización anticipada de un co
     agenda: { date: today, teams: [{ teamId: 'team-1', tasks: [
       { taskId: 'done-live', historyId: 'h-live', serviceId: 's1', customerId: 'c1', time: '08:30', estimatedMinutes: 150 },
       { taskId: 'inserted', serviceId: 's1', customerId: 'c2', time: start, estimatedMinutes: 120 },
-      { taskId: 'next', serviceId: 's1', customerId: 'c3', time: '14:00', estimatedMinutes: 60 }
+      { taskId: 'next', serviceId: 's1', customerId: 'c3', time: '15:00', estimatedMinutes: 60 }
     ] }], weekly: {} }
   })
   const previous = state('11:45')

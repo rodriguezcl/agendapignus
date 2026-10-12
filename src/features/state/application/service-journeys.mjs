@@ -1,3 +1,4 @@
+import workday from '../../../../api/_lib/workday.cjs'
 import { stateOperations } from './state-operations.mjs'
 import { serviceRecordFingerprint } from '../../../domain/history/service-concurrency.mjs'
 import { planningHoursForDay } from '../../../domain/agenda/service-gaps.mjs'
@@ -16,8 +17,8 @@ export function planServiceJourneyOperations(snapshot, { base, visits, today, te
   const next = structuredClone(snapshot)
   const groupId = record.id
   for (const [index, visit] of visits.entries()) {
-    const hours = planningHoursForDay(visit.date), start = timeInMinutes(visit.time)
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(visit.date) || visit.date < today || !hours || start === null || !validServiceEstimatedMinutes(visit.estimatedMinutes) || start < timeInMinutes(hours.min) || start + Number(visit.estimatedMinutes) > timeInMinutes(hours.max)) throw new Error(`Jornada ${index + 1}: revisá fecha, horario y duración dentro de la jornada laboral.`)
+    const hours = planningHoursForDay(visit.date, snapshot.agenda?.weekly, visit.teamId), start = timeInMinutes(visit.time)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(visit.date) || visit.date < today || !hours || start === null || !validServiceEstimatedMinutes(visit.estimatedMinutes) || start < timeInMinutes(hours.min) || workday.workingEnd(start, Number(visit.estimatedMinutes), hours) > timeInMinutes(hours.max)) throw new Error(`Jornada ${index + 1}: revisá fecha, horario y duración dentro de la jornada laboral.`)
     if (index && visit.date <= visits[index - 1].date) throw new Error('Las fechas de las jornadas deben ser consecutivas en orden, aunque puedan tener días libres entre ellas.')
     const choices = teamsForDate(visit.date, snapshot.agenda?.weekly)
     const team = choices.find(item => String(item.teamId) === String(visit.teamId))

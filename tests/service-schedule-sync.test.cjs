@@ -39,5 +39,5 @@ test('five-hour Antigua Estancia visit never creates morning availability', asyn
     { time: '08:30', serviceId: 5, client: 'CLI-0006 ANTIGUA ESTANCIA', estimatedMinutes: 300 },
     { time: '14:00' }
   ], { min: '08:00', max: '17:00', day: '2026-10-05', now: new Date('2026-10-02T15:00:00Z') })
-  assert.deepEqual(gaps, [])
+  assert.deepEqual(gaps, [{ beforeIndex: 2, start: '14:30', end: '17:00' }])
 })

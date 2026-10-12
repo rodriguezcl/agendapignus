@@ -16,7 +16,7 @@ test('el Centro de ayuda documenta las funciones operativas vigentes', () => {
     'Observación técnica',
     'En Agenda semanal, cada tarjeta muestra su estado vigente',
     'tipo de servicio con el mismo color utilizado en Historial',
-    'Horarios del mes',
+    'Jornada laboral',
     'No es necesario guardar la columna del día',
     'La ficha muestra también si el servicio está Pendiente',
     'Marca, Modelo, Año, Kilometraje y Matrícula',
