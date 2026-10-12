@@ -10,7 +10,7 @@ test('el Centro de ayuda documenta las funciones operativas vigentes', () => {
     'Día laboral',
     'Día no operativo',
     'entre las 16:00 y las 20:00',
-    'Copiar un solo servicio',
+    'Guardar y consultar',
     'No aplica',
     'Ver el historial de un cliente',
     'Observación técnica',

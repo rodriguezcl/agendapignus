@@ -1028,6 +1028,30 @@ const serviceEstimateForTask = (task, service) => task?.estimatedMinutesCustomiz
   ? normalizeServiceEstimatedMinutes(service?.estimatedMinutes)
   : normalizeServiceEstimatedMinutes(task?.estimatedMinutes, normalizeServiceEstimatedMinutes(service?.estimatedMinutes))
 const taskWithServiceEstimate = (task, service) => ({ ...task, estimatedMinutes: serviceEstimateForTask(task, service) })
+function dayAgendaPreview(date, teams, services, history = [], includeUnconfirmed = false) {
+  const serviceForTask = task => resolveServiceForTask(task, services)
+  const previewValue = value => String(value || '').trim() || 'Sin información'
+  const previewDetails = task => {
+    const service = serviceForTask(task)
+    const extras = applicableServiceExtras(task, service)
+    const technicianExtras = technicianVisibleServiceExtras(extras)
+    const lines = [
+      `Observación: ${previewValue(task.detail)}`,
+      technicianExtras.paymentMethod && `Forma de pago: ${technicianExtras.paymentMethod}`,
+      technicianExtras.paymentMethod && `Monto: ${previewValue(formatCurrencyAmount(technicianExtras.amount))}`,
+      technicianExtras.form && `Formulario: ${technicianExtras.form}`
+    ].filter(Boolean)
+    return `\n📝 *Detalle:*\n${lines.join('\n')}`
+  }
+  const taskMessage = task => `${journeyLabel(task, history) ? journeyLabel(task, history) + '\n' : ''}🕒 ${task.time || '--:--'} Hs\n🛠️ *${task.service || 'Servicio'}*\n👤 *${task.client || 'Cliente'}*${task.awaitingConfirmation === true ? '\n🟡 *(A CONFIRMAR)*' : ''}${task.subscriberReservation ? '\n🟡 *Reserva de nuevo abonado · PIG pendiente*' : ''}${previewDetails(task)}${task.address ? `\n📍 *Dirección:* ${task.address}` : ''}${task.phone ? `\n📞 *Contacto:* ${task.phone}` : ''}`
+  const teamMessage = (team, index) => `👥 *${team.label || `Equipo ${index + 1}`}:* ${team.members.join(' / ') || 'Sin asignar'}\n\n${team.tasks.filter(taskHasContent).map(taskMessage).join('\n\n')}`
+  const messageSections = teams.flatMap((team, index) => {
+    const tasks = includeUnconfirmed ? team.tasks.filter(taskHasContent) : agendaPreviewTasks(team.tasks.filter(taskHasContent))
+    return tasks.length ? [teamMessage({ ...team, tasks }, index)] : []
+  })
+  const message = `📅 *Agenda de trabajo – ${prettyDate(date)}*\n\n${messageSections.join('\n\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n')}`
+  return message
+}
 function LunchCard({ hours }) {
   if (!hours || hours.breakStart >= hours.max || hours.breakEnd <= hours.min) return null
   return <aside className="lunch-break-card" style={{ margin: '8px 10px', padding: '8px 12px', border: '1px dashed #b9c7bd', borderRadius: 8, fontSize: 12 }}><strong>Almuerzo entre las {hours.breakStart} y las {hours.breakEnd} hs</strong></aside>
@@ -1412,7 +1436,7 @@ export default function App() {
   const isOperator = authUser?.roleCode === 'operator' || normalizeRoleName(authUser?.role) === 'operador' || roleCode(activeRole) === 'operator'
   const isReadOnly = isSupervisor || isOperator
   // Resolve before rendering: restoring a session must never flash statistics.
-  const module = isOperator ? 'weekly' : isSupervisor && requestedModule !== 'accounts' ? 'history' : requestedModule
+  const module = isOperator ? 'weekly' : isSupervisor && requestedModule !== 'accounts' ? 'history' : requestedModule === 'agenda' ? 'weekly' : requestedModule
   const [sessionEndedMessage, setSessionEndedMessage] = useState('')
   globalThis.__pignusCurrentUser = authUser
   globalThis.__pignusHistory = history
@@ -2539,7 +2563,7 @@ export default function App() {
     })
   }, [isAdministrator, databaseReady, activeTechs.map(tech => `${tech.id}:${tech.name}`).join('|')])
   // Cada módulo tiene un ícono propio para facilitar el reconocimiento visual en la navegación.
-  const nav = [['dashboard', 'dashboard', 'Menú principal'], ['weekly', 'calendar', 'Agenda semanal'], ['agenda', 'agenda', 'Agenda del día'], ['history', 'history', 'Historial'], ['accounts', 'accounts', 'Abonados y clientes'], ['employees', 'users', 'Empleados'], ['services', 'tools', 'Tipo de servicio'], ['vehicles', 'vehicle', 'Vehículos'], ['settings', 'settings', 'Configuración']]
+  const nav = [['dashboard', 'dashboard', 'Menú principal'], ['weekly', 'calendar', 'Agenda semanal'], ['history', 'history', 'Historial'], ['accounts', 'accounts', 'Abonados y clientes'], ['employees', 'users', 'Empleados'], ['services', 'tools', 'Tipo de servicio'], ['vehicles', 'vehicle', 'Vehículos'], ['settings', 'settings', 'Configuración']]
   const modulePermissions = isOperator ? resolvedRolePermissions({ name: 'Operador' }) : isSupervisor ? resolvedRolePermissions({ name: 'Supervisor' }) : { ...resolvedRolePermissions(activeRole), dashboard: true, help: true }
   const technicalEnabled = !isReadOnly && (employees.find(employee => String(employee.id) === String(authUser?.id))?.technicalEnabled ?? authUser?.technicalEnabled) === true
   modulePermissions.myServices = technicalEnabled
@@ -3832,6 +3856,7 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
 function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGuardRef, persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, openDaily, authUser, vehicles, permissions = {} }) {
   const minimumServiceGapConflicts = teams => serviceScheduleConflicts(teams, taskHasContent, weekly)
 
+  const [dayPreview, setDayPreview] = useState(null)
   const weather = useWeeklyWeather()
   const serviceLocality = useMemo(() => createServiceLocalityLookup(customers), [customers])
   authUser = authUser || globalThis.__pignusCurrentUser || null
@@ -4874,6 +4899,7 @@ function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGuardRef, 
         ['Detalle / observaciones', pastService.detail], ['Informe técnico', pastService.technicalObservation], ['Nota interna', pastService.internalNote]
       ]]
     ].map(([title, fields]) => <section className="past-detail-section" key={title}><h3>{title}</h3><dl className="past-detail-fields">{fields.map(([label, value]) => <div key={label} className={['Detalle / observaciones', 'Informe técnico', 'Nota interna'].includes(label) ? 'past-field-wide' : ['Dirección', 'Técnicos asignados'].includes(label) ? 'past-field-double' : ''}><dt>{label}</dt><dd className={['Monto', 'Abono mensual'].includes(label) ? 'past-field-money' : ''}>{value === '' || value == null ? <span className="past-field-empty">Sin información</span> : String(value)}</dd></div>)}</dl></section>)}{pastService.internalChecklist?.length > 0 && <section className="past-detail-section"><h3>Checklist</h3>{pastService.internalChecklist.map((item, index) => <p key={item.id || index}>{item.completed ? '✓' : '○'} {item.text}</p>)}</section>}<ServicePhoto record={pastService} className="history-service-photo" /><ServiceCustomerMap record={pastService} customers={customers} /><div className="modal-actions"><button title="Cerrá esta ventana y volvé a la pantalla anterior." type="button" className="secondary" onClick={() => setPastService(null)}><Icon name="close" size={16} />Cerrar</button></div></section></div>}
+    {dayPreview && <Preview title={`Agenda del ${prettyDate(dayPreview.day)}`} text={dayPreview.text} close={() => setDayPreview(null)} />}
     {taskEditor && (() => {
       const { day, teamIndex, taskIndex } = taskEditor
       const task = taskEditor.draft
@@ -4902,7 +4928,7 @@ function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGuardRef, 
         const gapConflicts = gapConflictsForDay(day)
         const finishedDay = dayHasFinished(day)
         return <section className={`week-day ${!hours || holidayState.decision?.status === 'closed' ? 'closed-day' : ''} ${finishedDay ? 'finished-day' : ''}`} data-day={day} key={day}>
-          <header className={`weekly-weather-header weather-${day >= today ? weather.days.find(item => item.date === day)?.kind || "none" : "none"}`}><WeatherArt kind={day >= today ? weather.days.find(item => item.date === day)?.kind || "none" : "none"} /><div><b>{displayDate(day)}{day === today && <span className="weekly-today">Hoy</span>}</b><WeeklyWeather day={day} today={today} weather={weather} />{finishedDay && <small>Solo lectura</small>}</div>{!readOnly && <div className="weekly-day-actions"><button className="secondary small" disabled={!finishedDay && (!hours || Boolean(advancedGuard) || calendarUnavailable || holidayState.blocked)} title={finishedDay ? 'Consultá los servicios de esta fecha en modo de solo lectura.' : advancedGuard ? advancedSaturdayGuardMessage(advancedGuard) : 'Abrí Agenda del día para consultar y cargar los servicios de esta fecha.'} onClick={() => openDay(day)}>{finishedDay ? 'Ver día' : 'Abrir día'}</button></div>}</header>
+          <header className={`weekly-weather-header weather-${day >= today ? weather.days.find(item => item.date === day)?.kind || "none" : "none"}`}><WeatherArt kind={day >= today ? weather.days.find(item => item.date === day)?.kind || "none" : "none"} /><div><b>{displayDate(day)}{day === today && <span className="weekly-today">Hoy</span>}</b><WeeklyWeather day={day} today={today} weather={weather} />{finishedDay && <small>Solo lectura</small>}</div><div className="weekly-day-actions"><button type="button" className="secondary small" title="Consultá la planificación de esta fecha." onClick={() => setDayPreview({ day, text: dayAgendaPreview(day, dayPlan(day).teams.map(team => ({ ...team, tasks: team.tasks.map(task => ({ ...task, ...historyRecordForTask(task, day, operationalHistory) })) })), services, operationalHistory) })}>Vista previa</button></div></header>
           {!hours ? <p className="closed-day-note">Domingo · sin programación</p> : <>
             {calendarUnavailable ? <div className={`weekly-calendar-state ${holidayCalendar.error ? 'error' : ''}`}>{holidayCalendar.error ? 'No se pudo verificar el calendario de feriados.' : 'Verificando feriados nacionales…'}</div> : holidayState.holiday && <HolidayDecisionPanel compact holiday={holidayState.holiday} decision={holidayState.decision} canDecide={authUser?.roleCode === 'administrator'} onDecision={status => recordHolidayDecision(setWeekly, setNotice, day, holidayState.holiday, status, { weekly, history: operationalHistory, setHistory, holidays: holidayCalendar.records })} />}
             {!holidayState.blocked && advancedGuard && <p className={`weekly-guard-advanced ${advancedGuard.hasSaturdayConflict ? 'has-conflict' : ''}`}><Icon name={advancedGuard.hasSaturdayConflict ? 'alert' : 'check'} size={16} /><span>{advancedSaturdayGuardMessage(advancedGuard)}</span></p>}

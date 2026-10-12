@@ -1,0 +1,4 @@
+/* Long option text must not determine a form's grid or flex minimum width. */
+select { min-width: 0; max-width: 100%; box-sizing: border-box; }
+label:has(> select) { min-width: 0; max-width: 100%; }
+select:not([multiple]) { text-overflow: ellipsis; }
