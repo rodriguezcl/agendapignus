@@ -1,5 +1,5 @@
 const relevant = ['serviceId', 'service', 'serviceTypes', 'detail', 'internalNote', 'internalChecklist', 'customerId', 'address', 'date', 'teamId', 'technicianIds']
-const canPrepare = record => Boolean(record && !record.vehicleControl && !record.startedAt && !record.technicalStatus && !['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(record.status))
+const canPrepare = record => Boolean(record && !record.vehicleControl && !['Cancelado', 'Reprogramado'].includes(record.status))
 function applyServicePreparation(state, current, user, allowed, now = new Date().toISOString()) {
   const old = new Map((current.history || []).map(record => [String(record.id), record]))
   const history = (state.history || []).map(record => {

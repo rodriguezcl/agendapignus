@@ -793,3 +793,19 @@ body:has(.app-shell[data-theme='dark']) .modal :is(input, select, textarea, .ser
  background: #1c1c1c !important; color: #ededed !important; border-color: #555 !important;
 }
 body:has(.app-shell[data-theme='dark']) .modal :is(.helper, small, .field-label-text) { color: #bcbcbc; }
+
+/* Audit and dashboard surfaces also need explicit night styles where none existed. */
+.app-shell[data-theme='dark'] :is(.audit-table, .audit-row, .stats-grid article, .zone-grid article) {
+ background: #262626 !important; border-color: #484848 !important; color: #ededed;
+}
+.app-shell[data-theme='dark'] .audit-table-head { background: #333 !important; color: #ddd; border-color: #484848; }
+.app-shell[data-theme='dark'] .audit-row:hover { background: #303030 !important; }
+.app-shell[data-theme='dark'] :is(.audit-filters label, .audit-filters > span, .audit-row small, .month-filter, .stats-grid span, .stats-grid small, .zone-grid p, .zone-grid span) { color: #bcbcbc !important; }
+.app-shell[data-theme='dark'] :is(.audit-filters > span b, .audit-row b) { color: #ededed !important; }
+.app-shell[data-theme='dark'] .stats-grid:not(.annual-stats-grid) b { color: #ededed !important; }
+.app-shell[data-theme='dark'] .audit-create { background: #294137; color: #aee5c5; }
+.app-shell[data-theme='dark'] .audit-edit { background: #29394e; color: #b5d4ff; }
+.app-shell[data-theme='dark'] .audit-delete { background: #4b2d2d; color: #ffc2bc; }
+.app-shell[data-theme='dark'] .audit-status { background: #3e304c; color: #ddc3fa; }
+.app-shell[data-theme='dark'] :is(.audit-detail-meta, .audit-detail-meta span, .audit-detail-meta b, .audit-diff h3) { color: #ccc; border-color: #484848; }
+.app-shell[data-theme='dark'] .audit-diff pre { background: #1c1c1c; color: #ededed; border-color: #484848; }
