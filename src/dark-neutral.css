@@ -52,3 +52,13 @@ body.dark .modal :is(input, select, textarea):not([type='checkbox']):not([type='
 .app-shell[data-theme='dark'] :is(.profile-avatar, .role-dot, .team-number) { background: #454545; color: #fff; }
 .app-shell[data-theme='dark'] :is(.nav-label, .sidebar-bottom) { color: #aaa; }
 .app-shell[data-theme='dark'] .weekly-board .week-members { color: #d0d0d0; }
+
+/* Dialogs must dim the scene without tinting the neutral night palette. */
+.app-shell[data-theme='dark'] :is(.modal-layer, .modal-backdrop, .backdrop),
+body.dark :is(.modal-layer, .modal-backdrop, .backdrop),
+body:has(.app-shell[data-theme='dark']) > :is(.modal-layer, .modal-backdrop) {
+  background: rgb(0 0 0 / 60%) !important;
+}
+body:has(.app-shell[data-theme='dark']) > .modal-layer .modal {
+  background: #262626; color: #ededed; border-color: #484848;
+}
