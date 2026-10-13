@@ -8,6 +8,12 @@
 .vehicle-photo-history { display: grid; gap: 12px; }
 .vehicle-photo-history > details { border: 1px solid #b7cabe; border-radius: 10px; padding: 16px; }
 .vehicle-photo-history summary { cursor: pointer; font-weight: 600; line-height: 1.5; }
+.vehicle-control-thumbnails { display: flex; flex-wrap: wrap; gap: 10px; }
+.vehicle-control-thumbnails > button { padding: 0; width: 112px; height: 88px; border: 1px solid #b7cabe; border-radius: 8px; overflow: hidden; background: transparent; cursor: zoom-in; }
+.vehicle-control-thumbnails img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.vehicle-control-thumbnails > button.expanded { width: 100%; height: auto; cursor: zoom-out; }
+.vehicle-control-thumbnails > button.expanded img { max-height: 65vh; object-fit: contain; }
+.vehicle-control-thumbnails > button:focus-visible { outline: 3px solid #b88000; outline-offset: 2px; }
 @media (max-width: 1100px) {
   .vehicles-table .table-head { display: none; }
   .vehicles-table .vehicle-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
@@ -15,3 +21,9 @@
   .vehicles-table .vehicle-row > .row-actions { grid-column: 2; grid-row: 1 / span 6; }
   .vehicles-table .vehicle-row > span:nth-child(2)::before { content: 'Año: '; }
 }
+
+.vehicle-mileage-link { display: block; border: 0; background: transparent; color: inherit; text-decoration: underline; padding: 6px 0; cursor: pointer; font-size: .75rem; }
+.vehicle-mileage-stats { display: grid; gap: 12px; }
+.vehicle-mileage-stats p { margin: 0; line-height: 1.5; }
+.mileage-month > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.mileage-month meter { width: 100%; height: 18px; }
