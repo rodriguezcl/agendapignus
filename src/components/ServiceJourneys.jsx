@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from './ui/Icon.jsx'
+import ReschedulingHistory from './ReschedulingHistory.jsx'
 import { durationLabel } from '../domain/agenda/duration-label.mjs'
 import { availableRescheduleTeams } from '../domain/agenda/reschedule-availability.mjs'
 import { isMonthlyMeeting } from '../domain/agenda/service-scheduling.mjs'
@@ -19,9 +20,9 @@ export function JourneyIdentityField({ record, customer = false, children }) {
 
 export function JourneyHistory({ record }) {
   const context = useContext(ServiceJourneysContext)
-  if (!record?.serviceJourney) return null
+  if (!record?.serviceJourney) return <ReschedulingHistory record={record} />
   const visits = (context?.history || [record]).filter(item => item.serviceJourney?.id === record.serviceJourney.id).sort((a,b) => a.serviceJourney.index - b.serviceJourney.index)
-  return <section className="journey-history"><h3>Planificación original e informes</h3>{visits.map(item => <article key={item.id}><b>Jornada {item.serviceJourney.index} de {item.serviceJourney.total} · {item.date.split('-').reverse().join('/')} · {item.time}</b><p>{item.team} · {item.technicians?.join(' / ')} · {durationLabel(item.estimatedMinutes)}</p><p>{item.status}</p>{item.technicalObservation && <p className="journey-report">{item.technicalReportedByName || 'Técnico'}: {item.technicalObservation}</p>}</article>)}</section>
+  return <><ReschedulingHistory record={record} /><section className="journey-history"><h3>Planificación original e informes</h3>{visits.map(item => <article key={item.id}><b>Jornada {item.serviceJourney.index} de {item.serviceJourney.total} · {item.date.split('-').reverse().join('/')} · {item.time}</b><p>{item.team} · {item.technicians?.join(' / ')} · {durationLabel(item.estimatedMinutes)}</p><p>{item.status}</p>{item.technicalObservation && <p className="journey-report">{item.technicalReportedByName || 'Técnico'}: {item.technicalObservation}</p>}</article>)}</section></>
 }
 
 export function ServiceJourneys({ record, disabled = false, compact = false, action = false, toolbar = false }) {

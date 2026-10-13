@@ -1,4 +1,5 @@
 import { stateOperations } from './state-operations.mjs'
+import { rescheduledServiceFields } from '../../../domain/agenda/service-rescheduling.mjs'
 
 export const vehicleControlSwapCandidate = (task, destination, sourceDay, destinationDay) => {
   if (!task?.vehicleControl || sourceDay !== destinationDay) return null
@@ -88,6 +89,11 @@ function singleServiceMoveOperations(snapshot, command) {
 // One logical command: create/update the history record and both projections.
 // The modal's original record is kept as the compare-and-swap baseline.
 export function weeklyServiceOperations(snapshot, { day, team, task, record, baseRecord, baseTask, customer, sourceDay = '', sourceTeamId = '' }) {
+  if (baseRecord && sourceDay && sourceDay !== day && !record.vehicleControl) {
+    const fields = rescheduledServiceFields(baseRecord, record.reprogrammedAt || new Date().toISOString())
+    record = { ...record, ...fields }
+    task = { ...task, ...fields }
+  }
   const next = structuredClone(snapshot)
   next.history ||= []
   const index = next.history.findIndex(item => String(item.id) === String(record.id))
