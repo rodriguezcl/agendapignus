@@ -1,0 +1,17 @@
+.vehicles-table .table-head, .vehicles-table .vehicle-row {
+  grid-template-columns: minmax(150px, 1.3fr) 65px minmax(100px, .7fr) 100px minmax(190px, 1.2fr) minmax(170px, 1fr) 100px;
+  gap: 16px;
+}
+.vehicles-table { overflow-x: auto; }
+.vehicles-table .vehicle-row { padding: 18px; align-items: center; }
+.vehicles-table .vehicle-row > * { min-width: 0; }
+.vehicle-photo-history { display: grid; gap: 12px; }
+.vehicle-photo-history > details { border: 1px solid #b7cabe; border-radius: 10px; padding: 16px; }
+.vehicle-photo-history summary { cursor: pointer; font-weight: 600; line-height: 1.5; }
+@media (max-width: 1100px) {
+  .vehicles-table .table-head { display: none; }
+  .vehicles-table .vehicle-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+  .vehicles-table .vehicle-row > b, .vehicles-table .vehicle-row > span, .vehicles-table .vehicle-row > strong { grid-column: 1; }
+  .vehicles-table .vehicle-row > .row-actions { grid-column: 2; grid-row: 1 / span 6; }
+  .vehicles-table .vehicle-row > span:nth-child(2)::before { content: 'Año: '; }
+}

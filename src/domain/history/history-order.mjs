@@ -8,21 +8,8 @@ export const historyStatusPriority = record => {
 }
 
 export function sortOperationalHistory(left, right) {
-  const statusOrder = historyStatusPriority(left) - historyStatusPriority(right)
-  if (statusOrder) return statusOrder
-
-  const actionable = historyStatusPriority(left) === 0
-  const leftDate = String(left?.date || (actionable ? '9999-12-31' : ''))
-  const rightDate = String(right?.date || (actionable ? '9999-12-31' : ''))
-  const dateOrder = actionable
-    ? leftDate.localeCompare(rightDate)
-    : rightDate.localeCompare(leftDate)
+  const dateOrder = String(left?.date || '9999-12-31').localeCompare(String(right?.date || '9999-12-31'))
   if (dateOrder) return dateOrder
-
-  const leftTime = String(left?.time || left?.scheduledTime || '99:99')
-  const rightTime = String(right?.time || right?.scheduledTime || '99:99')
-  const timeOrder = actionable
-    ? leftTime.localeCompare(rightTime)
-    : rightTime.localeCompare(leftTime)
+  const timeOrder = String(left?.time || left?.scheduledTime || '99:99').localeCompare(String(right?.time || right?.scheduledTime || '99:99'))
   return timeOrder || String(left?.client || '').localeCompare(String(right?.client || ''), 'es', { numeric: true, sensitivity: 'base' })
 }
