@@ -30,3 +30,15 @@ test('every editable field makes a saved service dirty, reverting or saving clea
   assert.equal(serviceHasChanges({ ...saved, updatedAt: 'later' }, saved), false)
   assert.equal(serviceHasChanges({}, null), true)
 })
+
+test('discard preserves an unanswered freeze choice independently of an explicit yes or no', async () => {
+  const { restoreSavedService, serviceHasChanges } = await import('../src/domain/agenda/service-changes.mjs')
+  for (const freezeMonthlyFee of [undefined, null, false, true]) {
+    const saved = { id: 'saved', freezeMonthlyFee }
+    const restored = restoreSavedService({ taskId: 'task', freezeMonthlyFee: freezeMonthlyFee !== true }, saved)
+    assert.equal(restored.freezeMonthlyFee, freezeMonthlyFee ?? null)
+    assert.equal(serviceHasChanges(restored, saved), false)
+    assert.equal(restored.taskId, 'task')
+    assert.equal(restored.historyId, 'saved')
+  }
+})

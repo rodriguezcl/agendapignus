@@ -30,3 +30,9 @@ import './components/weekly-toolbar.css'
 import './dark-neutral.css'
 
 import './dark-neutral-legacy.css'
+
+// Shared admin theme comes last so legacy modules use the same visual system.
+import './presentation/theme/tokens.css'
+import './presentation/theme/shell.css'
+import './presentation/theme/modules.css'
+import './presentation/theme/forms.css'

@@ -6,16 +6,21 @@ const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
 const start = source.indexOf("  const addTask = (day, teamIndex, startTime = '')")
 const code = source.slice(start, source.indexOf('  const removeWeeklyTask', start))
 for (const persisted of [true, false]) {
-  test(`availability editor retains team and task identity (persisted=${persisted})`, () => {
+  test(`availability editor retains a local draft identity without saving a placeholder (persisted=${persisted})`, () => {
     const day = '2026-09-18'
     let plan = { teams: [{ teamId: 'pascual-team', label: 'Equipo 1', members: ['Pascual'], memberIds: ['pascual'], tasks: [{ taskId: 'previous', serviceId: 'existing-service', time: '08:45' }] }] }
     let editor
+    const saveGuard = { current: true }
+    const editorStates = []
     const add = vm.runInNewContext(code + '\naddTask', {
       structuredClone, taskHasContent: task => Boolean(task.serviceId || task.client), dayHasFinished: () => false, holidayStateForDay: () => ({ blocked: false }), advancedGuardForDay: () => null,
       blankTask: () => ({ taskId: 'new-task' }), dayPlan: () => plan,
       serviceGaps: () => [{ start: '11:30' }], taskWithServiceEstimate: task => task, historyRecordForTask: () => null, operationalHistory: [], serviceForWeeklyTask: () => null, hoursForDay: () => ({}),
       weekly: persisted ? { [day]: structuredClone(plan) } : {},
-      updateDay: (_, mutate) => { plan = mutate(plan) },
+      updateDay: () => { throw new Error('Opening the editor must not mutate the persisted plan') },
+      taskEditorSaveGuardRef: saveGuard,
+      setTaskEditorSaving: value => editorStates.push(['saving', value]),
+      setTaskEditorError: value => editorStates.push(['error', value]),
       setTaskEditor: value => { editor = value }, setNotice: message => { throw new Error(message) }
     })
     const before = JSON.stringify(plan)
@@ -30,8 +35,15 @@ for (const persisted of [true, false]) {
     assert.equal(editor.taskId, editor.draft.taskId)
     assert.equal(editor.taskId, 'new-task')
     assert.equal(editor.draft.time, '11:30')
-    assert.equal(plan.teams[0].tasks.length, 2)
-    assert.equal(plan.teams[0].tasks.filter(task => task.taskId !== editor.taskId).length, 1)
+    assert.equal(JSON.stringify(plan), before)
+    assert.equal(plan.teams[0].tasks.length, 1)
+    assert.equal(editor.taskIndex, 1)
+    assert.equal(editor.baseTask, null)
+    assert.equal(editor.baseRecord, null)
+    assert.equal(JSON.stringify(editor.initialDraft), JSON.stringify(editor.draft))
+    assert.notEqual(editor.initialDraft, editor.draft)
+    assert.equal(saveGuard.current, false)
+    assert.deepEqual(editorStates, [['saving', false], ['error', '']])
     plan.teams[0].members.push('Otro')
     assert.equal(editor.teamSnapshot.members.length, 1)
   })

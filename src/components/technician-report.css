@@ -1,0 +1,14 @@
+.technician-status-modal .vehicle-control-report-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; margin-top: 18px; }
+.technician-status-modal .vehicle-report-photo { min-width: 0; margin: 0; padding: 14px; border: 1px solid var(--ap-border, #d5dde3); border-radius: 8px; }
+.vehicle-report-photo legend { padding: 0 5px; font-weight: 600; }
+.vehicle-report-photo-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.vehicle-report-photo-option { display: flex; flex-direction: column; gap: 8px; align-items: center; padding: 8px; min-height: 44px; color: var(--ap-text, #29343f); background: var(--ap-surface, #fff); border: 1px solid var(--ap-border, #d5dde3); border-radius: 8px; }
+.vehicle-report-photo-option img { width: 100%; max-width: 180px; height: 84px; object-fit: cover; border-radius: 5px; }
+.vehicle-report-selected { display: grid; gap: 6px; margin-bottom: 14px; }
+.vehicle-report-selected .vehicle-control-photo-preview { display: block; width: 100%; max-height: 140px; object-fit: contain; border-radius: 6px; }
+.vehicle-report-photo .vehicle-report-change-photo { margin-bottom: 8px; }
+.technician-report-pending { padding: 10px 12px; background: var(--ap-surface-alt, #f3f5f7); border: 1px solid var(--ap-border, #d5dde3); border-radius: 6px; }
+.technician-page .technician-service > .technician-quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0 16px; }
+.technician-service .technician-quick-actions .technician-start-service, .technician-service .technician-quick-actions > small { grid-column: 1 / -1; }
+.technician-service .technician-quick-actions .technician-detail-toggle { grid-column: 1 / -1; }
+.technician-service .technician-quick-actions > :is(a, button) { min-width: 0; min-height: 44px; justify-content: center; white-space: normal; }

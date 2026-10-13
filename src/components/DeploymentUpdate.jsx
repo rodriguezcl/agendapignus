@@ -26,6 +26,10 @@ export function useDeploymentUpdate({ active, busy, guard, logout }) {
   }
   const proceed = () => {
     if (latest.current.busy || running.current) return
+    if (document.querySelector('.technician-page[aria-busy="true"], [data-unsaved-attachments="true"]')) {
+      setError('Guardá las fotos o los archivos pendientes antes de actualizar. La página conservará tu trabajo hasta que termines.')
+      return
+    }
     // Login inputs (including autofill) are not unsaved operational drafts.
     // A session may expire while the update banner is already displayed.
     if (!latest.current.active) {
@@ -99,7 +103,7 @@ export function useDeploymentUpdate({ active, busy, guard, logout }) {
     return () => { const root = bannerRoot.current; bannerRoot.current = null; queueMicrotask(() => { root.unmount(); host.remove() }) }
   }, [])
 
-  useEffect(() => { bannerRoot.current?.render(available ? <aside role="alert" style={{ position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: 'white', color: '#173c2c', border: '1px solid #bbcebf', borderRadius: 12, padding: 16, width: 'min(600px, 94vw)', boxShadow: '0 4px 24px #0003' }}>
+  useEffect(() => { bannerRoot.current?.render(available ? <aside className="deployment-update-banner" role="alert" style={{ position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: 'var(--ap-surface)', color: 'var(--ap-text)', border: '1px solid var(--ap-border)', borderRadius: 12, padding: 16, width: 'min(600px, 94vw)', boxSizing: 'border-box', boxShadow: '0 4px 24px #0003' }}>
     <b>Nueva versión disponible</b>
     <p>{error || 'Guardá o cancelá los cambios pendientes antes de actualizar. Luego deberás ingresar nuevamente.'}</p>
     <button title="Cargá la nueva versión de la plataforma; primero guardá o cancelá los formularios abiertos. Se cerrará tu sesión." type="button" className="primary" disabled={busy} onClick={() => { document.activeElement?.blur?.(); setTimeout(() => proceedRef.current(), 100) }}>Actualizar</button>

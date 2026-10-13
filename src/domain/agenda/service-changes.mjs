@@ -13,7 +13,7 @@ export function serviceHasChanges(task, saved) {
 
 export function restoreSavedService(task, saved) {
   const restored = { ...task }
-  for (const key of serviceEditableFields) restored[key] = saved[key] ?? ''
+  for (const key of serviceEditableFields) restored[key] = saved[key] ?? (key === 'freezeMonthlyFee' ? null : '')
   return {
     ...restored,
     awaitingConfirmation: saved.awaitingConfirmation === true,

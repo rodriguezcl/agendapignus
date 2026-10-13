@@ -5,6 +5,11 @@ tmp/visual-qa/*.db
 tmp/visual-qa/*.db-wal
 tmp/visual-qa/*.db-shm
 tmp/mobile-layout/
+tmp/visual-qa/theme-review/
+tmp/visual-qa/admin-chrome/
+tmp/visual-qa/annual-evolution/
+# Capturas, fixtures y registros de verificación locales.
+tmp/
 dist/
 node_modules/
 *.lnk

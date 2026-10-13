@@ -11,7 +11,9 @@ test('todos los modales se cierran desde el fondo o con Escape', () => {
   assert.match(source, /event\.key !== 'Escape'/)
   assert.match(source, /dismiss\(layers\[layers\.length - 1\]\)/)
   assert.match(source, /document\.addEventListener\('click', closeFromBackdrop\)/)
-  assert.match(source, /document\.addEventListener\('keydown', closeFromEscape, true\)/)
+  assert.match(source, /document\.addEventListener\('keydown', closeFromEscape\)/)
+  assert.match(source, /event\.defaultPrevented/)
+  assert.match(source, /document\.querySelector\('dialog\[open\]'\)/)
 })
 
 test('el cierre global no activa acciones y respeta operaciones en curso', () => {

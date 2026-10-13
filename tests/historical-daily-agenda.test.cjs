@@ -2,6 +2,8 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
+const { parse } = require('@babel/parser')
+const traverse = require('@babel/traverse').default
 const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
 const code = source.slice(source.indexOf('function historicalAgendaTeams('), source.indexOf('function HistoricalDailyAgenda('))
 const recover = vm.runInNewContext(code + '\nhistoricalAgendaTeams', {
@@ -49,6 +51,38 @@ test('la consulta está separada del editor y no expone acciones de escritura', 
   const view = source.slice(source.indexOf('function HistoricalDailyAgenda('), source.indexOf('function AgendaWorkspace('))
   assert.doesNotMatch(view, /setTeams|setWeekly|Guardar|Eliminar|onCommit|persistWeeklyService/)
   assert.match(view, /HistoricalServiceFields/)
-  assert.match(source, /finishedDay \? 'Ver día' : 'Abrir día'/)
   assert.match(source, /if \(nextDate < currentLocalDate\(\)\) setHistoricalDate\(nextDate\)/)
+})
+
+test('el banner abre una vista previa de cualquier día sin cambiar la agenda ni abrir el editor', () => {
+  let trigger
+  traverse(parse(source, { sourceType: 'module', plugins: ['jsx'] }), {
+    JSXOpeningElement({ node }) {
+      if (node.name.name === 'button' && node.attributes.some(attribute => attribute.name?.name === 'className' && attribute.value?.value === 'weekly-day-preview-trigger')) trigger = node
+    }
+  })
+  assert.ok(trigger)
+  assert.equal(trigger.attributes.some(attribute => attribute.name?.name === 'disabled'), false, 'Historical dates must still have a usable preview')
+  const callback = trigger.attributes.find(attribute => attribute.name?.name === 'onClick').value.expression
+  for (const day of ['2026-09-17', '2026-10-13']) {
+    const plan = { teams: [{ teamId: 'a', tasks: [{ taskId: 't', detail: 'borrador' }] }] }
+    const before = JSON.stringify(plan)
+    let preview
+    const onClick = vm.runInNewContext(source.slice(callback.start, callback.end), {
+      day, services: [], operationalHistory: [], dayPlan: () => plan,
+      historyRecordForTask: () => ({ detail: 'guardado', status: 'Completado' }),
+      setDayPreview: value => { preview = value },
+      dayAgendaPreview: (date, teams) => {
+        assert.equal(date, day)
+        assert.equal(teams[0].tasks[0].detail, 'guardado')
+        assert.equal(teams[0].tasks[0].status, 'Completado')
+        return 'Vista previa de prueba'
+      },
+      openDaily: () => { throw new Error('Preview must not navigate to the editing module') }
+    })
+    onClick()
+    assert.equal(preview.day, day)
+    assert.equal(preview.text, 'Vista previa de prueba')
+    assert.equal(JSON.stringify(plan), before)
+  }
 })
