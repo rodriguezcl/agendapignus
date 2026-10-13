@@ -30,10 +30,10 @@ test('edits invalidate preparation; unrelated edits and missing fields preserve 
  const unrelated=structuredClone(before);unrelated.history[0].phone='123';delete unrelated.history[0].servicePreparation
  assert.deepEqual(applyServicePreparation(unrelated,before,user,true).history[0].servicePreparation,before.history[0].servicePreparation)
 })
-test('readonly users, vehicle controls and closed services cannot be marked ready',()=>{
+test('readonly users, vehicle controls and cancelled services cannot be marked ready',()=>{
  const before=state(),incoming=state();incoming.history[0].servicePreparation={ready:true}
  assert.equal(applyServicePreparation(incoming,before,user,false).history[0].servicePreparation,undefined)
- for(const patch of [{vehicleControl:true},{status:'Completado'},{status:'Cancelado'},{startedAt:'2026-10-13T12:00:00Z'}]) {
+ for(const patch of [{vehicleControl:true},{status:'Cancelado'},{status:'Reprogramado'}]) {
   incoming.history[0]={...record,...patch,servicePreparation:{ready:true}}
   assert.equal(applyServicePreparation(incoming,before,user,true).history[0].servicePreparation,undefined)
  }
@@ -46,4 +46,15 @@ test('button is icon only with tooltip and pressed state',()=>{
  assert.match(html,/aria-pressed="true"/)
  assert.doesNotMatch(html,/>Servicio listo/)
  assert.equal(renderToStaticMarkup(React.createElement(ServicePreparationButton,{record:{...record,vehicleControl:true}})),'')
+})
+
+test('past and completed services allow readiness without changing service status',()=>{
+ for (const patch of [{date:'2020-01-01'}, {status:'Completado',technicalStatus:'Completado',startedAt:'2020-01-01T12:00:00Z'}]) {
+  const before=state();before.history[0]={...record,...patch}
+  const incoming=structuredClone(before);incoming.history[0].servicePreparation={ready:true}
+  const result=applyServicePreparation(incoming,before,user,true).history[0]
+  assert.equal(result.servicePreparation.ready,true)
+  assert.equal(result.status,before.history[0].status)
+  assert.equal(result.servicePreparation.byId,String(user.id))
+ }
 })
