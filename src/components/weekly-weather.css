@@ -23,3 +23,8 @@
 
 .weekly-weather-header > div { min-width: 0; width: 100%; }
 .weekly-board .week-day > header.weekly-weather-header b { text-transform: none; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
+
+.weekly-weather-attribution { position: relative; margin: 0 0 6px; color: #647581; font-size: .8rem; }
+.weekly-weather-attribution > summary { cursor: pointer; list-style: none; width: 24px; text-align: center; }
+.weekly-weather-attribution > summary::-webkit-details-marker { display: none; }
+.weekly-weather-attribution .weekly-weather-credit { margin: 6px 0; }

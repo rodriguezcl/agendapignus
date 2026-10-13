@@ -1,0 +1,17 @@
+/* Keep every control on the same baseline and at the same height. */
+.weekly-intro .weekly-actions { align-items: flex-end; }
+.weekly-date-navigation > button.secondary,
+.weekly-intro .weekly-actions .secondary,
+.weekly-intro .weekly-service-search input,
+.weekly-intro .weekly-actions .week-selector input[type='date'] {
+  box-sizing: border-box;
+  height: 44px;
+  min-height: 44px;
+  max-height: 44px;
+  border-radius: 7px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.weekly-date-navigation > button.secondary,
+.weekly-intro .weekly-actions .secondary { display: inline-flex; align-items: center; justify-content: center; }
+.weekly-intro .weekly-service-search { align-items: flex-end; }
