@@ -26,3 +26,5 @@ import './components/settings-layout.css'
 import './components/vehicle-history.css'
 
 import './components/weekly-toolbar.css'
+
+import './dark-neutral.css'

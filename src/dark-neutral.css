@@ -1,0 +1,35 @@
+/* Neutral night surfaces; semantic badges and action colors remain distinct. */
+body.dark, .app-shell[data-theme='dark'], .technician-page[data-theme='dark'] {
+ color-scheme: dark;
+ --pignus-color-surface: #242424;
+ --pignus-color-surface-subtle: #1d1d1d;
+ --pignus-color-text: #ededed;
+ --pignus-color-muted: #bcbcbc;
+ --pignus-color-border: #484848;
+ background: #181818; color: #ededed;
+}
+.app-shell[data-theme='dark'] :is(main, .content) { background: #181818; color: #ededed; }
+.app-shell[data-theme='dark'] :is(.sidebar, .topbar, .sidebar-bottom) { background: #202020; border-color: #3d3d3d; }
+.app-shell[data-theme='dark'] .sidebar nav button { color: #d0d0d0; }
+.app-shell[data-theme='dark'] .sidebar nav button:hover { background: #303030; }
+.app-shell[data-theme='dark'] .sidebar nav button.active { background: #39352b; color: #f2c75c; }
+.app-shell[data-theme='dark'] :is(.data-card, .stat-card, .week-team, .week-task, .team-card, .employee-row, .vehicle-row, .account-row, .history-row, .roles-card, .permissions-card, .technician-service) { background: #242424; color: #ededed; border-color: #424242; }
+.app-shell[data-theme='dark'] :is(.table-head, .team-header, .week-team-header, .agenda-toolbar, .feature-permissions, .weekly-guide, .technician-crew-summary) { background: #303030; color: #e0e0e0; border-color: #484848; }
+.app-shell[data-theme='dark'] .weekly-board .week-day { background: #202020; border-color: #424242; }
+.app-shell[data-theme='dark'] .weekly-board .week-day > header.weekly-weather-header { background: #303030; border-color: #484848; }
+.app-shell[data-theme='dark'] .weekly-board .week-team { background: #242424; border-color: #424242; }
+.app-shell[data-theme='dark'] .weekly-board .week-team-header { background: #343434; color: #ededed; }
+.app-shell[data-theme='dark'] .weekly-time-gap { background: #292929; color: #ededed; border-color: #585858; border-left-color: #69bd8a; }
+.app-shell[data-theme='dark'] :is(.week-members, .helper, .eyebrow, .module-intro p, .permission small, .roles-card p, .settings-section > p) { color: #bcbcbc; }
+.app-shell[data-theme='dark'] :is(.modal, .confirm-modal, .detail-modal, .bulk-modal, .weekly-task-form, .role-editor, .feature-permissions, .service-extra-field, .detail-grid > div, .internal-preparation, .attachments),
+body.dark :is(.modal, .confirm-modal, .detail-modal) { background: #262626; color: #ededed; border-color: #484848; }
+.app-shell[data-theme='dark'] :is(input, select, textarea):not([type='checkbox']):not([type='radio']),
+body.dark .modal :is(input, select, textarea):not([type='checkbox']):not([type='radio']) { background: #1c1c1c; color: #ededed; border-color: #555; }
+.app-shell[data-theme='dark'] :is(.secondary, .icon-btn, .row-actions button, .theme-toggle, .logout-button) { background: #303030; color: #e5e5e5; border-color: #555; }
+.app-shell[data-theme='dark'] :is(.secondary, .icon-btn, .row-actions button):hover { background: #3b3b3b; }
+.app-shell[data-theme='dark'] .settings-grid .roles-card > .selected-role,
+.app-shell[data-theme='dark'] .settings-grid .roles-card > div:hover { background: #363636; }
+.app-shell[data-theme='dark'] :is(.data-card, .modal, .week-task, .vehicle-row) :is(h2, h3, b, strong) { color: inherit; }
+.app-shell[data-theme='dark'] .annual-stats-grid > article { background: #292929 !important; }
+.app-shell[data-theme='dark'] .weekly-board .weekly-day-preview-trigger { background: transparent; }
+.app-shell[data-theme='dark'] .weekly-board .weekly-day-preview-trigger:hover { background: rgb(255 255 255 / 4%); }
