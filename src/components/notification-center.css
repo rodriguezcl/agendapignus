@@ -86,7 +86,6 @@
 .notification-panel .notification-empty p { margin: 0; line-height: 1.5; font-size: 12px; }
 .notification-panel .notification-footer { padding: 12px 16px; border-top: 1px solid var(--ap-border); background: var(--ap-surface-alt); }
 .notification-panel .notification-footer small { display: block; color: var(--ap-muted); font-size: 11px; line-height: 1.5; }
-.topbar .profile .notification-panel .notification-footer button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; margin: 8px 0 0; padding: 8px 12px; border: 1px solid var(--ap-border); border-radius: 6px; background: var(--ap-surface); color: var(--ap-text); font-size: 13px; font-weight: 600; cursor: pointer; }
 .topbar .profile .notification-center button:focus-visible { outline: 2px solid var(--ap-accent); outline-offset: -3px; }
 @media (max-width: 640px) {
   .notification-center .notification-panel { position: fixed; top: 70px; right: 12px; width: calc(100vw - 24px); max-height: calc(100dvh - 86px); }

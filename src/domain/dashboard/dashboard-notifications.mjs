@@ -39,7 +39,7 @@ export function dashboardExpiredInsuranceVehicles(vehicles = [], today) {
 }
 
 /**
- * A read-only snapshot of the notices already present in the main menu.
+ * A read-only snapshot of active operational notices for the notification bell.
  * The caller supplies the current calendar date/instant and existing password
  * request state: this selector performs no requests, mutation or clock reads.
  * Targets describe navigation only; resolution remains in the existing modules.
