@@ -1,7 +1,5 @@
 .week-task-heading .service-preparation-button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 28px; width: 28px; min-width: 28px; height: 28px; min-height: 28px; padding: 3px; margin-right: 5px; border: 1px solid #b6c2ba; border-radius: 6px; color: #7b8980; background: transparent; cursor: pointer; }
 .week-task-heading .service-preparation-button.is-ready { color: #146c3b; border-color: #70af86; background: #d8f2df; }
 .week-task-heading .service-preparation-button:focus-visible { outline: 2px solid #237449; outline-offset: 2px; }
-.week-task.week-task-summary.service-prepared { background: #edf8ef; }
-[data-theme='dark'] .week-task.week-task-summary.service-prepared { background: #203d2c; }
 [data-theme='dark'] .service-preparation-button.is-ready { color: #b4ebc2; background: #28513a; }
 @media (pointer: coarse) { .week-task-heading .service-preparation-button { width: 44px; height: 44px; flex-basis: 44px; } }
