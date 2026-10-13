@@ -20,3 +20,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </AppErrorBoundary>
   </React.StrictMode>
 )
+
+import './components/settings-layout.css'
+
+import './components/vehicle-history.css'

@@ -1,0 +1,45 @@
+.settings-section {
+  padding: 24px;
+  margin-bottom: 28px;
+  display: grid;
+  gap: 16px;
+}
+.settings-section.data-card h2 { padding: 0; margin: 0; font-size: 18px; }
+.settings-section > p { margin: 0; color: #586e64; line-height: 1.6; max-width: 85ch; }
+.settings-section label { display: grid; gap: 8px; min-width: 0; font-weight: 600; }
+.settings-section input, .settings-section select { width: 100%; min-width: 0; box-sizing: border-box; }
+.frozen-months-settings > label { width: min(100%, 340px); }
+.frozen-months-settings > .primary { justify-self: start; }
+.settings-section > [role='status'] { padding: 12px; border-radius: 8px; background: #edf5ef; color: #245039; }
+.workday-settings fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.workday-settings .monthly-time-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.workday-settings .modal-actions { margin-top: 20px; justify-content: flex-start; flex-wrap: wrap; }
+.settings-grid { grid-template-columns: minmax(260px, .7fr) minmax(0, 1.3fr); align-items: start; gap: 24px; }
+.settings-grid > .data-card { min-width: 0; overflow: hidden; }
+.settings-grid .roles-card > div { cursor: pointer; padding: 18px; transition: background .15s; }
+.settings-grid .roles-card > div:hover { background: #f0f5f1; }
+.settings-grid .roles-card > .selected-role { background: #eaf3ec; box-shadow: inset 3px 0 #297049; }
+.settings-grid .role-dot { flex: 0 0 34px; width: 34px; height: 34px; }
+.settings-grid .roles-card > div > div { min-width: 0; }
+.settings-grid .roles-card p { line-height: 1.5; overflow-wrap: anywhere; }
+.settings-grid .roles-card button { flex-shrink: 0; min-width: 36px; min-height: 36px; }
+.settings-grid .permission { gap: 16px; }
+.settings-grid .permission span { min-width: 0; }
+.settings-grid .permission small { line-height: 1.5; }
+.settings-grid .permission i { flex-shrink: 0; }
+.settings-grid .permission.locked-permission { opacity: 1; }
+.settings-grid .permission.locked-permission i { opacity: .65; }
+.settings-grid .role-editor { padding: 24px; display: grid; gap: 16px; }
+.settings-grid .role-editor .eyebrow { margin: 0; }
+.settings-grid .role-editor label { display: grid; gap: 8px; }
+.app-shell[data-theme='dark'] .settings-section > p { color: #bdcdc3; }
+.app-shell[data-theme='dark'] .settings-grid .roles-card > div:hover,
+.app-shell[data-theme='dark'] .settings-grid .roles-card > .selected-role,
+.app-shell[data-theme='dark'] .settings-section > [role='status'] { background: #203b2d; color: #e3f1e6; }
+@media (max-width: 900px) { .settings-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  .settings-section { padding: 18px; gap: 14px; margin-bottom: 22px; }
+  .workday-settings .monthly-time-grid { grid-template-columns: minmax(0, 1fr); }
+  .settings-grid .feature-permissions { margin-left: 14px; }
+  .settings-grid .permission { padding: 14px; }
+}

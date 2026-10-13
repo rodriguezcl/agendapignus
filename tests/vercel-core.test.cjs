@@ -354,7 +354,7 @@ test('la confirmación espera el guardado y el servidor admite reintentos idempo
   assert.match(apiSource, /technicalReportedById\) === String\(user\.id\)/)
 })
 
-test('el historial muestra primero los pendientes desde la fecha y hora más antiguas', async () => {
+test('el historial ordena por fecha y hora sin agrupar por estado', async () => {
   const { sortOperationalHistory } = await import('../src/history-order.mjs')
   const records = [
     { id: 'completed-friday', date: '2026-08-28', time: '08:30', status: 'Completado', client: 'Completado viernes' },
@@ -366,7 +366,7 @@ test('el historial muestra primero los pendientes desde la fecha y hora más ant
     { id: 'review', date: '2026-08-28', time: '10:00', status: 'Requiere revisión', client: 'Revisión' },
     { id: 'friday-no-time', date: '2026-08-28', status: 'Pendiente', client: 'Sin horario' }
   ]
-  assert.deepEqual(records.sort(sortOperationalHistory).map(record => record.id), ['friday-early', 'review', 'friday-late', 'friday-no-time', 'monday-early', 'completed-monday', 'completed-friday', 'cancelled-later'])
+  assert.deepEqual(records.sort(sortOperationalHistory).map(record => record.id), ['completed-friday', 'friday-early', 'review', 'friday-late', 'friday-no-time', 'completed-monday', 'monday-early', 'cancelled-later'])
 })
 
 test('el historial muestra la hora asignada como una columna propia', () => {
@@ -1250,7 +1250,7 @@ test('el ABM de vehículos integra estado, permisos, seguro privado y campos req
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(source, /\['vehicles', 'Vehículos', 'Administrar la flota de la empresa'\]/)
   assert.match(source, /\['vehicles', 'vehicle', 'Vehículos'\]/)
-  assert.match(source, /function Vehicles\(\{ vehicles, setVehicles, setNotice, ask, isAdministrator, stateRevision, refreshRemoteState, editRequest, onEditRequestHandled \}\)/)
+  assert.match(source, /function Vehicles\(\{ history = \[\], vehicles, setVehicles, setNotice, ask, isAdministrator, stateRevision, refreshRemoteState, editRequest, onEditRequestHandled \}\)/)
   for (const label of ['Marca', 'Modelo', 'Año', 'Kilometraje', 'Matrícula']) assert.match(source, new RegExp(`<RequiredLabel>${label}<\\/RequiredLabel>`))
   assert.match(source, /Ya existe un vehículo con esa matrícula/)
   assert.match(source, /Seguro vigente \(PDF\)/)
