@@ -12,7 +12,6 @@ test('technical uploads reject PDFs and file-origin images even for assigned veh
   await assert.rejects(handleAttachments({ ...args, body: { ...photo, source: 'file' } }), error => error.statusCode === 403)
   await handleAttachments({ ...args, body: { ...photo, source: 'camera' } })
   assert.equal(added, 1)
-  await assert.rejects(handleAttachments({ ...args, entity: { technicianIds: ['tech'] }, body: { ...photo, source: 'camera' } }), error => error.statusCode === 403)
 })
 test('camera-only picker exposes no gallery or file input', () => {
   const React = require('react')
@@ -46,7 +45,7 @@ test('rejects other types, invalid contents and oversized data', () => {
 test('attachment permissions preserve roles and technician assignment', () => {
   const entity = { technicianIds: ['tech'] }
   assert.deepEqual(attachmentAccess({ id: 'other', roleCode: 'technician' }, 'service', entity), { read: false, write: false })
-  assert.deepEqual(attachmentAccess({ id: 'tech', roleCode: 'technician' }, 'service', entity), { read: true, write: false })
+  assert.deepEqual(attachmentAccess({ id: 'tech', roleCode: 'technician' }, 'service', entity), { read: true, write: true })
   assert.equal(attachmentAccess({ id: 'tech', roleCode: 'technician' }, 'service', { ...entity, vehicleControl: true }).write, true)
   assert.equal(attachmentAccess({ roleCode: 'operator' }, 'service', entity).write, false)
   assert.equal(attachmentAccess({ roleCode: 'technician' }, 'vehicle', {}).write, false)
@@ -63,5 +62,21 @@ test('authorized cached downloads avoid binary reads; technicians cannot delete 
   await assert.rejects(handleAttachments({ ...args, req: { method: 'DELETE' } }), error => error.statusCode === 403)
   await assert.rejects(handleAttachments({ ...args, user: { id: 'other', roleCode: 'technician' } }), error => error.statusCode === 403)
   assert.equal(store.list('service', 'job').length, 1)
+  db.close()
+})
+
+test('assigned service exposes gallery and camera and accepts image and PDF attachments', async () => {
+  const db = new DatabaseSync(':memory:'), store = sqliteAttachmentStore(db)
+  let response
+  const args = {req:{method:'GET'},res:{setHeader(){},end(value){response=JSON.parse(value)}},user:{id:'tech',roleCode:'technician'},scope:'service',entityId:'job',entity:{technicianIds:['tech']},store}
+  await handleAttachments(args)
+  assert.equal(response.canWrite,true)
+  assert.equal(response.cameraOnly,false)
+  for (const body of [file(),{id:'attachment-00000002',name:'photo.jpg',data:'data:image/jpeg;base64,/9j/AA==',source:'camera'},{id:'attachment-00000003',name:'gallery.jpg',data:'data:image/jpeg;base64,/9j/AA==',source:'file'}]) {
+    await handleAttachments({...args,req:{method:'POST'},body})
+  }
+  assert.equal(store.list('service','job').length,3)
+  assert(store.list('service','job').every(item=>item.uploadedBy==='tech'))
+  await assert.rejects(handleAttachments({...args,user:{id:'other',roleCode:'technician'},req:{method:'POST'},body:file('attachment-00000004')}),error=>error.statusCode===403)
   db.close()
 })

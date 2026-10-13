@@ -24,7 +24,7 @@ function attachmentAccess(user, scope, entity) {
   if (scope === 'vehicle') return { read: user.roleCode !== 'operator' && (user.roleCode === 'technician' || user.technicalEnabled || Boolean(user.permissions?.vehicles)), write: false }
   if (user.roleCode === 'operator') return { read: true, write: false }
   const assigned = entity.technicianIds?.some(id => String(id) === String(user.id))
-  if (user.roleCode === 'technician') return { read: Boolean(assigned), write: Boolean(assigned && entity.vehicleControl) }
+  if (user.roleCode === 'technician') return { read: Boolean(assigned), write: Boolean(assigned) }
   if (user.roleCode === 'supervisor') return { read: Boolean(entity.supervisorVisible), write: false }
   const manage = ['weekly', 'agenda', 'history'].some(key => user.permissions?.[key])
   return { read: manage || Boolean(assigned), write: manage || Boolean(assigned && user.technicalEnabled) }
@@ -33,14 +33,15 @@ function attachmentAccess(user, scope, entity) {
 async function handleAttachments({ req, res, body, user, scope, entityId, attachmentId, entity, store }) {
   if (!['service', 'vehicle'].includes(scope) || !entityId || entityId.length > 200) throw fail('Destino de adjuntos inválido.')
   const access = attachmentAccess(user, scope, entity)
+  const cameraOnly = user.roleCode === 'technician' && Boolean(entity?.vehicleControl)
   if (!access.read || (req.method !== 'GET' && !access.write)) throw fail('No tenés permiso para acceder a estos adjuntos.', 403)
   const json = value => { res.statusCode = 200; res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'no-store'); res.end(JSON.stringify(value)) }
   await store.ensure()
   const canDelete = file => access.write && (user.roleCode === 'administrator' || (user.roleCode !== 'technician' && ['weekly', 'agenda', 'history'].some(key => user.permissions?.[key])) || String(file.uploadedBy) === String(user.id))
-  if (req.method === 'GET' && !attachmentId) return json({ attachments: (await store.list(scope, entityId)).map(file => ({ ...file, canDelete: canDelete(file) })), canWrite: access.write, cameraOnly: user.roleCode === 'technician', limit: MAX_FILES })
+  if (req.method === 'GET' && !attachmentId) return json({ attachments: (await store.list(scope, entityId)).map(file => ({ ...file, canDelete: canDelete(file) })), canWrite: access.write, cameraOnly, limit: MAX_FILES })
   if (req.method === 'POST' && !attachmentId) {
     const file = decodeAttachment(body)
-    if (user.roleCode === 'technician' && (!file.mime.startsWith('image/') || body.source !== 'camera')) throw fail('Los técnicos solo pueden cargar fotos desde la cámara en controles vehiculares.', 403)
+    if (cameraOnly && (!file.mime.startsWith('image/') || body.source !== 'camera')) throw fail('Los técnicos solo pueden cargar fotos desde la cámara en controles vehiculares.', 403)
     await store.add(scope, entityId, { ...file, uploadedBy: String(user.id) })
     return json({ ok: true, id: file.id })
   }
