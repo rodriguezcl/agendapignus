@@ -5475,7 +5475,7 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
             directions.target = '_blank'
             directions.rel = 'noopener noreferrer'
             directions.href = destination.url
-            directions.textContent = destination.coordinates ? (destination.approximate ? 'Cómo llegar · referencia aproximada' : 'Cómo llegar · manzana') : 'Cómo llegar'
+            directions.textContent = 'Cómo llegar'
             directions.title = destination.label
             directions.prepend(createIconElement('navigation'))
             directions.setAttribute('aria-label', `Cómo llegar a ${serviceRecord.client || serviceRecord.address}`)
@@ -5517,6 +5517,8 @@ function TechnicianPortal({ user, history, setHistory, vehicles = [], setVehicle
             syncDetailState(expanded)
           }
           quickActions.append(detailToggle)
+          // Keep route context below the actions so it cannot split their layout.
+          quickActions.querySelectorAll('small').forEach(note => quickActions.append(note))
           const start = document.createElement('button'); start.title = "Registrá la hora real de inicio de este servicio."
           start.type = 'button'
           start.className = 'primary technician-start-service'
