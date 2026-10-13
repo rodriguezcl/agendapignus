@@ -1,0 +1,93 @@
+/* Trama de precisión: decorative movement stays outside the sign-in form. */
+.login-page.login-page--precision {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  width: 100% !important;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 48px 24px 20px;
+  overflow: clip;
+  background: radial-gradient(ellipse at 50% 42%, #2a2e31 0, #22262a 56%, #1b2024 100%);
+}
+
+.login-precision-art {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.login-precision-art svg { display: block; width: 100%; height: 100%; }
+.login-precision-grid { fill: none; stroke: #e1e4e8; stroke-width: 1; opacity: .045; }
+.login-precision-trace { fill: none; stroke: #aeb3b8; stroke-width: 1.1; opacity: .16; }
+.login-precision-node { fill: #292e31; stroke: #ad965f; stroke-width: 1.2; opacity: .65; }
+.login-precision-signal {
+  fill: none;
+  stroke: #d9b767;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-dasharray: 75 1400;
+  opacity: .65;
+  animation: login-precision-flow 26s linear infinite;
+}
+.login-precision-signal--second { animation-delay: -11s; opacity: .48; }
+.login-precision-art[data-paused='true'] .login-precision-signal { animation-play-state: paused; }
+
+.login-page--precision .login-panel {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 440px);
+  margin-block: auto;
+}
+.login-page--precision .login-panel .login-card { width: 100%; }
+.login-page--precision .login-version {
+  margin: 18px 0 0;
+  color: #b5b9bd;
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: .025em;
+  text-align: center;
+}
+.login-page--precision .login-motion-control {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-end;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #454a4f;
+  border-radius: 6px;
+  background: #23272a;
+  color: #c6cbd0;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.login-page--precision .login-motion-control:hover { background: #303539; color: #fff; }
+.login-page--precision .login-motion-control:focus-visible { outline: 2px solid #edc45d; outline-offset: 3px; }
+
+/* Field IDs override the shared control padding without changing other forms. */
+.login-page--precision #login-password { padding-right: 96px; }
+
+@keyframes login-precision-flow {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -1475; }
+}
+
+@media (max-width: 480px) {
+  .login-page.login-page--precision { padding: 28px 16px 16px; gap: 20px; }
+  .login-page--precision .login-motion-control { align-self: center; }
+  .login-page--precision :is(#login-email, #login-password) { font-size: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-precision-signal { animation: none; }
+  .login-page--precision .login-motion-control { display: none; }
+}
