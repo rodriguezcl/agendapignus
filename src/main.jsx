@@ -24,3 +24,5 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 import './components/settings-layout.css'
 
 import './components/vehicle-history.css'
+
+import './components/weekly-toolbar.css'

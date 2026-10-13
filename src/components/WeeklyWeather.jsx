@@ -45,11 +45,10 @@ export function WeeklyWeather({ day, today, weather }) {
   const forecast = day >= today && weather.days.find(item => item.date === day)
   if (!forecast) return <small className="weekly-weather-line">{day < today ? 'Sin pronóstico histórico' : weather.loading ? 'Consultando clima…' : weather.unavailable ? 'Clima no disponible' : 'Sin pronóstico disponible'}</small>
   return <div className="weekly-weather-copy" title="Córdoba capital · Rango aproximado de temperaturas de los períodos disponibles; para hoy incluye las horas restantes. La condición destaca el fenómeno más relevante previsto.">
-    <small className="weekly-weather-line">{forecast.label}</small>
-    <small className="weekly-weather-line">{forecast.min}–{forecast.max} °C · Córdoba{weather.stale ? ' · Sin actualizar' : ''}</small>
+    <small className="weekly-weather-line">{forecast.label} · {forecast.min}–{forecast.max} °C · Córdoba{weather.stale ? ' · Sin actualizar' : ''}</small>
   </div>
 }
 
 export function WeatherCredit() {
-  return <p className="weekly-weather-credit">Clima en Córdoba capital · <a href="https://www.met.no/" target="_blank" rel="noreferrer">MET Norway</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a> · Resumen diario de períodos previstos.</p>
+  return <details className="weekly-weather-attribution"><summary title="Fuente y licencia del pronóstico" aria-label="Información del pronóstico">ⓘ</summary><p className="weekly-weather-credit">Clima en Córdoba capital · <a href="https://www.met.no/" target="_blank" rel="noreferrer">MET Norway</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a> · Resumen diario de períodos previstos.</p></details>
 }
