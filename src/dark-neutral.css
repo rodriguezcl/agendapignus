@@ -33,3 +33,22 @@ body.dark .modal :is(input, select, textarea):not([type='checkbox']):not([type='
 .app-shell[data-theme='dark'] .annual-stats-grid > article { background: #292929 !important; }
 .app-shell[data-theme='dark'] .weekly-board .weekly-day-preview-trigger { background: transparent; }
 .app-shell[data-theme='dark'] .weekly-board .weekly-day-preview-trigger:hover { background: rgb(255 255 255 / 4%); }
+
+/* Override legacy green surfaces with their full component specificity. */
+.app-shell > .sidebar > .brand { background-color: transparent !important; border-bottom-color: transparent; }
+.app-shell[data-theme='dark'] .weekly-intro .weekly-service-search input,
+.app-shell[data-theme='dark'] .weekly-intro .weekly-actions .week-selector input[type='date'] {
+ background: #1c1c1c !important; color: #ededed !important; border-color: #555 !important;
+}
+.app-shell[data-theme='dark'] .weekly-intro .weekly-service-search label,
+.app-shell[data-theme='dark'] .weekly-intro .week-selector { color: #bcbcbc; }
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary,
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary.available-slot {
+ background: #242424 !important; color: #ededed; border-color: #484848;
+}
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary:hover,
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary:focus-visible { background: #303030 !important; }
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary > .week-task-locality { color: #bcbcbc !important; }
+.app-shell[data-theme='dark'] :is(.profile-avatar, .role-dot, .team-number) { background: #454545; color: #fff; }
+.app-shell[data-theme='dark'] :is(.nav-label, .sidebar-bottom) { color: #aaa; }
+.app-shell[data-theme='dark'] .weekly-board .week-members { color: #d0d0d0; }
