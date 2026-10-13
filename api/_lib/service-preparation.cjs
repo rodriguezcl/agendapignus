@@ -1,4 +1,3 @@
-const relevant = ['serviceId', 'service', 'serviceTypes', 'detail', 'internalNote', 'internalChecklist', 'customerId', 'address', 'date', 'teamId', 'technicianIds']
 const canPrepare = record => Boolean(record && !record.vehicleControl && !['Cancelado', 'Reprogramado'].includes(record.status))
 function applyServicePreparation(state, current, user, allowed, now = new Date().toISOString()) {
   const old = new Map((current.history || []).map(record => [String(record.id), record]))
@@ -7,9 +6,7 @@ function applyServicePreparation(state, current, user, allowed, now = new Date()
     const before = previous?.servicePreparation
     const requested = record.servicePreparation
     let preparation = before
-    const changed = previous && relevant.some(key => JSON.stringify(previous[key] ?? null) !== JSON.stringify(record[key] ?? null))
-    if (before?.ready && changed) preparation = { ...before, ready: false, needsReview: true }
-    else if (allowed && canPrepare(record) && requested && Boolean(requested.ready) !== Boolean(before?.ready)) {
+    if (allowed && canPrepare(record) && requested && Boolean(requested.ready) !== Boolean(before?.ready)) {
       preparation = { ready: requested.ready === true, byId: String(user.id), byName: user.name || user.email || 'Usuario', at: now }
     }
     const { servicePreparation: ignored, ...rest } = record
