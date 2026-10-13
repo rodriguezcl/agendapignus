@@ -1,6 +1,7 @@
 import { weeklyServiceOperations } from './weekly-service-save.mjs'
 import { requiresDifferentRescheduleDay } from '../../../domain/history/history-edit-policy.mjs'
 import { serviceRecordFingerprint } from '../../../domain/history/service-concurrency.mjs'
+import { rescheduledServiceFields } from '../../../domain/agenda/service-rescheduling.mjs'
 
 export function historyRescheduleOperations(snapshot, { base, day, time, team, today, now = new Date().toISOString() }) {
   if (day === base.date && requiresDifferentRescheduleDay(base)) throw new Error('La reprogramación pendiente requiere una fecha distinta del día original.')
@@ -12,12 +13,11 @@ export function historyRescheduleOperations(snapshot, { base, day, time, team, t
   const sourceTeams = snapshot.agenda?.weekly?.[base.date]?.teams || []
   const source = sourceTeams.find(item => item.tasks?.some(task => String(task.historyId || '') === String(base.id) || (base.sourceTaskId && String(task.taskId) === String(base.sourceTaskId))))
   const baseTask = source?.tasks.find(task => String(task.historyId || '') === String(base.id) || (base.sourceTaskId && String(task.taskId) === String(base.sourceTaskId)))
-  const reset = { status: 'Pendiente', scheduledDate: '', technicianRequest: '', technicalStatus: '', technicalObservation: '', technicalReportedAt: '', technicalReportedById: '', technicalReportedByName: '', startedAt: '', startedById: '', startedByName: '', completedAt: '' }
+  const reset = rescheduledServiceFields(current, now)
   const record = {
     ...current, ...reset, date: day, time, scheduledTime: time,
     teamId: team.teamId, team: team.label, technicianIds: [...team.memberIds], technicians: [...team.members],
-    rescheduledFrom: base.date, reprogrammedAt: now,
-    reschedulingHistory: [...(current.reschedulingHistory || []), { date: current.date, time: current.time, team: current.team, technicianIds: current.technicianIds, technicalStatus: current.technicalStatus, technicalObservation: current.technicalObservation, technicalReportedAt: current.technicalReportedAt, technicalReportedByName: current.technicalReportedByName, reprogrammedAt: now }]
+    rescheduledFrom: base.date, reprogrammedAt: now
   }
   const task = { ...baseTask, ...record, taskId: baseTask?.taskId || current.sourceTaskId || current.id, historyId: current.id }
   record.sourceTaskId = task.taskId
