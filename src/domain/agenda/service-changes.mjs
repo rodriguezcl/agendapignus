@@ -4,7 +4,7 @@ export const serviceEditableFields = ['time', 'serviceId', 'service', 'customerI
 export function serviceHasChanges(task, saved) {
   if (!saved) return true
   if (Boolean(task.awaitingConfirmation) !== Boolean(saved.awaitingConfirmation)) return true
-  const value = (item, key) => key === 'freezeMonthlyFee' ? Boolean(item?.[key]) : key === 'frozenMonths' ? Number(item?.[key] || 0) : String(item?.[key] ?? '')
+  const value = (item, key) => key === 'freezeMonthlyFee' ? (item?.[key] ?? null) : key === 'frozenMonths' ? Number(item?.[key] || 0) : String(item?.[key] ?? '')
   if (serviceEditableFields.some(key => value(task, key) !== value(saved, key))) return true
   if (Boolean(task?.servicePhotoAttached) !== Boolean(saved?.servicePhotoAttached)) return true
   const checklist = value => (value || []).map(item => ({ text: String(item?.text || ''), completed: Boolean(item?.completed) }))
