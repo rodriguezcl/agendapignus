@@ -2,6 +2,23 @@
 .week-task-heading .service-preparation-button.is-ready { color: #ffffff; border-color: #087536; background: #138a43; }
 .week-task-heading .service-preparation-button:focus-visible { outline: 2px solid #237449; outline-offset: 2px; }
 [data-theme='dark'] .week-task-heading .service-preparation-button.is-ready { color: #ffffff; border-color: #28b862; background: #087536; }
-@media (pointer: coarse) { .week-task-heading .service-preparation-button { width: 44px; height: 44px; flex-basis: 44px; } }
+@media (max-width: 640px), (pointer: coarse) {
+  .week-task-heading .service-preparation-button {
+    position: relative;
+    flex-basis: 20px;
+    width: 20px;
+    min-width: 20px;
+    height: 20px;
+    min-height: 20px;
+    padding: 2px;
+    border-radius: 4px;
+  }
+  /* Extend the touch area without enlarging the visible check. */
+  .week-task-heading .service-preparation-button::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+  }
+}
 
 .week-task-heading .service-preparation-button svg { stroke-width: 3; }
