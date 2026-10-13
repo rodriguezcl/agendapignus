@@ -136,6 +136,23 @@
   overflow: hidden;
 }
 
+.topbar-module-description { display: none; }
+@media (min-width: 1200px) {
+  .app-shell[data-theme] .topbar > .page-heading { display: flex; align-items: center; gap: 24px; }
+  .app-shell[data-theme] .topbar .page-heading b { flex-shrink: 0; }
+  .app-shell[data-theme] .topbar-module-description {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ap-muted);
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .weekly-intro .weekly-description-mobile { display: none; }
+}
+
 .app-shell[data-theme] .topbar .page-heading b {
   color: var(--ap-text);
   font-size: 15px !important;
