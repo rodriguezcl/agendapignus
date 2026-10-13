@@ -12,3 +12,37 @@
 .technician-service .technician-quick-actions .technician-start-service, .technician-service .technician-quick-actions > small { grid-column: 1 / -1; }
 .technician-service .technician-quick-actions .technician-detail-toggle { grid-column: 1 / -1; }
 .technician-service .technician-quick-actions > :is(a, button) { min-width: 0; min-height: 44px; justify-content: center; white-space: normal; }
+
+@media (max-width: 640px) {
+  .technician-page .technician-service > .technician-quick-actions,
+  .technician-page .technician-service > .technician-actions {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .technician-page .technician-service :is(.technician-quick-actions > a, .technician-quick-actions > button, .technician-actions > button, .technician-customer-history, .technician-map-preview > button) {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: 10px 12px;
+    margin: 0;
+    gap: 8px;
+    font-size: 13px;
+    line-height: 1.4;
+    white-space: normal;
+  }
+  .technician-page .technician-quick-actions > small { line-height: 1.4; }
+  .technician-page .technician-map-preview { height: 194px; }
+  .technician-page .technician-map-preview iframe { height: 150px; }
+  .technician-page .technician-map-preview > button {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
