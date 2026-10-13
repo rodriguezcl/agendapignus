@@ -1152,7 +1152,7 @@ const applicableServiceExtras = (task, service) => {
     paymentMethod,
     amount: paymentMethod && paymentMethod !== 'No aplica' ? task?.amount || '' : '',
     monthlyFee: available.monthlyFee ? task?.monthlyFee || '' : '',
-    freezeMonthlyFee: available.freezeMonthlyFee && task?.freezeMonthlyFee === true,
+    freezeMonthlyFee: available.freezeMonthlyFee ? task?.freezeMonthlyFee ?? null : false,
     frozenMonths: available.freezeMonthlyFee && task?.freezeMonthlyFee ? Number(task.frozenMonths || 0) : 0,
     form: available.form ? normalizeFormValue(task?.form) : '',
     formEmail: available.form && normalizeFormValue(task?.form) === FORM_OPTIONS[0] ? String(task?.formEmail || '').trim() : ''
@@ -1177,6 +1177,11 @@ const weeklyTaskMissingFields = (task, service) => {
     .map(([label]) => label)
   if (serviceCode(service) === 'alarm-installation' && !task?.installationZone) missing.push('ubicación de la instalación')
   if (task?.subscriberReservation && serviceCode(service) !== 'alarm-installation') missing.push('una cuenta CLI o PIG registrada (Reserva PIG sólo está disponible para Instalación de alarma)')
+  if (task?.installationZone === 'residencial' && (serviceCode(service) === 'alarm-installation' || serviceTypesFor(task).some(type => serviceCode(type) === 'alarm-installation'))) {
+    if (!(Number(normalizeCurrencyAmount(task.monthlyFee)) > 0)) missing.push('abono mensual mayor a cero')
+    if (typeof task.freezeMonthlyFee !== 'boolean') missing.push('meses congelados (Sí o No)')
+    if (task.freezeMonthlyFee === true && !(Number.isInteger(Number(task.frozenMonths)) && Number(task.frozenMonths) > 0)) missing.push('cantidad de meses congelados')
+  }
   if (requiresPaymentAmount(task, service)) missing.push('monto')
   if (invalidFormEmail(task, service)) missing.push('email del formulario válido')
   return missing
@@ -1985,7 +1990,7 @@ export default function App() {
            internalChecklist: normalizeInternalChecklist(draft.internalChecklist),
            paymentMethod: draft.paymentMethod || '',
            amount: draft.amount || '',
-           monthlyFee: draft.monthlyFee || '', freezeMonthlyFee: draft.freezeMonthlyFee === true, frozenMonths: Number(draft.frozenMonths || 0),
+           monthlyFee: draft.monthlyFee || '', freezeMonthlyFee: draft.freezeMonthlyFee ?? null, frozenMonths: Number(draft.frozenMonths || 0),
            awaitingConfirmation: draft.awaitingConfirmation === true, form: draft.form || '', formEmail: draft.formEmail || '',
            installationZone: draft.installationZone || '',
           ...serviceTrace(draft)
@@ -2022,7 +2027,7 @@ export default function App() {
            internalChecklist: normalizeInternalChecklist(draft.internalChecklist),
            paymentMethod: draft.paymentMethod || '',
            amount: draft.amount || '',
-           monthlyFee: draft.monthlyFee || '', freezeMonthlyFee: draft.freezeMonthlyFee === true, frozenMonths: Number(draft.frozenMonths || 0),
+           monthlyFee: draft.monthlyFee || '', freezeMonthlyFee: draft.freezeMonthlyFee ?? null, frozenMonths: Number(draft.frozenMonths || 0),
            awaitingConfirmation: draft.awaitingConfirmation === true, form: draft.form || '', formEmail: draft.formEmail || '',
            installationZone: draft.installationZone || '',
           ...serviceTrace(draft),
@@ -2967,7 +2972,7 @@ function ServiceExtraFields({ className, task, service, onChange, buffered = fal
       return <label className="service-extra-field" key={key}>{required ? <RequiredLabel>{label}</RequiredLabel> : label}<CurrencyInput {...amountProps} buffered={buffered} onCommit={value => onChange({ amount: value })} /></label>
     }
     if (key === 'monthlyFee') {
-      const monthlyFeeProps = { ...props, inputMode: 'decimal', placeholder: enabled ? 'Ingresar abono mensual' : props.placeholder }
+      const monthlyFeeProps = { ...props, required: enabled, inputMode: 'decimal', placeholder: enabled ? 'Ingresar abono mensual' : props.placeholder }
       return <label className="service-extra-field" key={key}>{label}<CurrencyInput {...monthlyFeeProps} buffered={buffered} onCommit={value => onChange({ monthlyFee: value })} /></label>
     }
     return <label className="service-extra-field" key={key}>{label}{buffered
@@ -3228,7 +3233,7 @@ function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persist
         current.members = record.technicians?.length ? record.technicians : current.members
       }
       // Se aceptan los nombres anteriores del campo para recuperar también agendas ya existentes.
-      const recoveredTask = taskWithServiceEstimate({ awaitingConfirmation: record.awaitingConfirmation === true, vehicleControl: Boolean(record.vehicleControl), taskId: record.sourceTaskId || record.id || createTaskId(), historyId: record.id, time: record.time || record.scheduledTime || record.hora || record.Hora || '', serviceTypes: record.serviceTypes, serviceId: record.serviceId || '', service: record.service || '', estimatedMinutes: record.estimatedMinutes, estimatedMinutesCustomized: record.estimatedMinutesCustomized, customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', internalNote: record.internalNote || '', internalChecklist: normalizeInternalChecklist(record.internalChecklist), paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', freezeMonthlyFee: record.freezeMonthlyFee === true, frozenMonths: Number(record.frozenMonths || 0), form: record.form || '', formEmail: record.formEmail || '', installationZone: record.installationZone || '', ...serviceTrace(record) }, resolveServiceForTask(record, services))
+      const recoveredTask = taskWithServiceEstimate({ awaitingConfirmation: record.awaitingConfirmation === true, vehicleControl: Boolean(record.vehicleControl), taskId: record.sourceTaskId || record.id || createTaskId(), historyId: record.id, time: record.time || record.scheduledTime || record.hora || record.Hora || '', serviceTypes: record.serviceTypes, serviceId: record.serviceId || '', service: record.service || '', estimatedMinutes: record.estimatedMinutes, estimatedMinutesCustomized: record.estimatedMinutesCustomized, customerId: record.customerId || '', client: record.client || '', clientAccount: record.clientAccount || record.account || '', clientNameAtService: record.clientNameAtService || '', address: record.address || '', phone: record.phone || '', detail: record.detail || '', internalNote: record.internalNote || '', internalChecklist: normalizeInternalChecklist(record.internalChecklist), paymentMethod: record.paymentMethod || '', amount: record.amount || '', monthlyFee: record.monthlyFee || '', freezeMonthlyFee: record.freezeMonthlyFee ?? null, frozenMonths: Number(record.frozenMonths || 0), form: record.form || '', formEmail: record.formEmail || '', installationZone: record.installationZone || '', ...serviceTrace(record) }, resolveServiceForTask(record, services))
       const sameTask = task => (record.id && String(task.historyId || '') === String(record.id)) || (record.sourceTaskId && String(task.taskId || '') === String(record.sourceTaskId))
       if (current.tasks.some(sameTask)) current.tasks = current.tasks.map(task => sameTask(task) ? { ...task, ...recoveredTask } : task)
       else current.tasks.push(recoveredTask)
