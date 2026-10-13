@@ -190,7 +190,7 @@ function userForEmployee(employee, roles) {
 }
 
 function technicianSafeRecord(record = {}) {
-  const { internalNote: _internalNote, internalChecklist: _internalChecklist, monthlyFee: _monthlyFee, ...visible } = record
+  const { servicePreparation: _servicePreparation, internalNote: _internalNote, internalChecklist: _internalChecklist, monthlyFee: _monthlyFee, ...visible } = record
   for (const field of ['monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy']) delete visible[field]
   const cashPayment = normalizedRoleName(visible.paymentMethod) === 'efectivo'
   const handwrittenForm = normalizedRoleName(visible.form).startsWith('incompleto')
@@ -245,7 +245,7 @@ function visibleStateForUser(state, user) {
       const account = String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()
       return (customerId && customerIds.has(customerId)) || (account && accounts.has(account))
     }).map(record => {
-      const { internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, formEmail: _formEmail, ...visible } = record
+      const { servicePreparation: _servicePreparation, internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, formEmail: _formEmail, ...visible } = record
       return visible
     })
     return { revision: state.revision, roles: [], employees: [], services: [], vehicles: [], customers: trackedCustomers, history, agenda: null, preferences: {} }
@@ -324,7 +324,7 @@ function authorizeIncomingState(incoming, current, user) {
     customers = customers.filter(customer => !existingCustomerIds.has(String(customer.customerId)) || incomingIds.has(String(customer.customerId)))
   }
   const planningHistory = canPlan ? planningHistoryForAgenda(incoming.history || [], current.history || [], incomingAgenda) : current.history
-  return {
+  return require('./service-preparation.cjs').applyServicePreparation({
     ...incoming,
     roles: administrator ? incoming.roles : current.roles,
     employees,
@@ -338,7 +338,7 @@ function authorizeIncomingState(incoming, current, user) {
       ...(userCan(user, 'agenda') ? { date: incomingAgenda.date, teams: incomingAgenda.teams } : {}),
       ...(userCan(user, 'weekly') ? { weekly: protectedWeekly } : {})
     }
-  }
+  }, current, user, canPlan)
 }
 
 function customerKind(customer) {
