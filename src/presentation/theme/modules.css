@@ -1,0 +1,513 @@
+/* AdminLTE-inspired module surfaces. Layout and application state stay in their
+   existing components; every structural surface uses the shared theme tokens. */
+.app-shell[data-theme] :is(.data-card, .audit-table),
+.technician-page :is(.data-card, .technician-service) {
+  background: var(--ap-surface) !important;
+  color: var(--ap-text) !important;
+  border: 1px solid var(--ap-border) !important;
+  border-radius: var(--ap-radius);
+  box-shadow: var(--ap-shadow);
+}
+
+.app-shell[data-theme] :is(.data-card, .audit-table) > :is(.table-head, .audit-table-head) {
+  background: var(--ap-surface-alt) !important;
+  color: var(--ap-muted) !important;
+  border-color: var(--ap-border) !important;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .055em;
+  min-height: 46px;
+}
+
+.app-shell[data-theme] :is(.employee-row, .service-row, .account-row, .history-row, .audit-row, .dashboard-row, .vehicle-row) {
+  background: var(--ap-surface) !important;
+  color: var(--ap-text) !important;
+  border-color: var(--ap-border) !important;
+  transition: background-color .15s ease;
+}
+
+.app-shell[data-theme] :is(.employee-row, .service-row, .account-row, .history-row, .audit-row, .dashboard-row, .vehicle-row):hover {
+  background: var(--ap-surface-alt) !important;
+}
+
+.app-shell[data-theme] :is(.employee-row, .service-row, .account-row, .history-row, .audit-row, .dashboard-row, .vehicle-row) > :is(b, strong),
+.app-shell[data-theme] :is(.person, .history-client strong, .account-row strong, .audit-row span b, .service-duration-value, .history-bulk .history-time) {
+  color: var(--ap-text) !important;
+  font-weight: 600;
+}
+
+.app-shell[data-theme] :is(.employee-row, .service-row, .account-row, .history-row, .audit-row, .dashboard-row, .vehicle-row) small,
+.app-shell[data-theme] :is(.history-technicians, .account-row .customer-locality, .vehicle-insurance-current) {
+  color: var(--ap-muted) !important;
+}
+
+.app-shell[data-theme] :is(.employee-row, .service-row, .account-row, .audit-row, .vehicle-row) {
+  padding-block: 16px;
+}
+
+.app-shell[data-theme] :is(.person > span, .role-dot) {
+  background: var(--ap-surface-alt) !important;
+  border: 1px solid var(--ap-border);
+  color: var(--ap-text) !important;
+  border-radius: 50%;
+}
+
+.app-shell[data-theme] :is(.accounts-bar, .audit-filters) {
+  padding: 16px;
+  margin-block: 0 20px;
+  background: var(--ap-surface);
+  border: 1px solid var(--ap-border);
+  border-radius: var(--ap-radius);
+  color: var(--ap-muted);
+}
+
+.app-shell[data-theme] :is(.accounts-bar b, .audit-filters > span b) {
+  color: var(--ap-text) !important;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.app-shell[data-theme] :is(.audit-filters label, .audit-filters > span, .month-filter, .accounts-bar label) {
+  color: var(--ap-muted) !important;
+}
+
+.app-shell[data-theme] .empty-state {
+  padding: 40px 20px;
+  color: var(--ap-muted);
+  line-height: 1.6;
+}
+
+.app-shell[data-theme] .data-card > h2 {
+  padding: 18px 20px;
+  color: var(--ap-text) !important;
+  font-size: 16px;
+  font-weight: 650;
+  border-bottom: 1px solid var(--ap-border);
+}
+
+/* Indicators use a quiet card body and a slim categorical accent. */
+.app-shell[data-theme] :is(.stats-grid, .zone-grid) {
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.app-shell[data-theme] .stats-grid > article,
+.app-shell[data-theme] .zone-grid > article {
+  min-width: 0;
+  padding: 20px;
+  background: var(--ap-surface) !important;
+  color: var(--ap-text);
+  border: 1px solid var(--ap-border) !important;
+  border-top: 3px solid var(--ap-accent) !important;
+  border-radius: var(--ap-radius);
+  box-shadow: var(--ap-shadow);
+}
+
+.app-shell[data-theme] .stats-grid > article > span {
+  color: var(--ap-muted) !important;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-shell[data-theme] .stats-grid:not(.annual-stats-grid) > article > b {
+  color: var(--ap-text) !important;
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.035em;
+  margin: 12px 0 8px;
+}
+
+.app-shell[data-theme] :is(.stats-grid small, .zone-grid p, .zone-grid span) {
+  color: var(--ap-muted) !important;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.app-shell[data-theme] .stats-grid .nobu-ytd-stat { border-top-color: #4d8aca !important; }
+.app-shell[data-theme] .stats-grid .residential-ytd-stat { border-top-color: #4d9272 !important; }
+.app-shell[data-theme] .stats-grid :is(.retirements-ytd-stat, .retirement-stat) { border-top-color: #c96a63 !important; }
+.app-shell[data-theme] .clickable-stat:hover { transform: translateY(-2px); box-shadow: 0 5px 14px rgb(0 0 0 / 10%); }
+.app-shell[data-theme] .clickable-stat:focus-visible { outline: 2px solid var(--ap-accent); outline-offset: 3px; }
+
+.app-shell[data-theme] :is(.annual-kpi-heading, .dashboard-subtitle) h2 {
+  color: var(--ap-text) !important;
+  font-size: 19px;
+  font-weight: 650;
+}
+
+.app-shell[data-theme] .dashboard-analytics { gap: 20px; align-items: start; }
+.app-shell[data-theme] :is(.annual-chart, .zone-summary) { padding: 20px; }
+.app-shell[data-theme] :is(.annual-chart, .zone-summary) h2 {
+  padding: 0 0 16px;
+  margin: 4px 0 16px;
+  color: var(--ap-text) !important;
+  font-size: 17px;
+  border-bottom: 1px solid var(--ap-border);
+}
+
+.app-shell[data-theme] .zone-summary > div {
+  color: var(--ap-text) !important;
+  border-color: var(--ap-border) !important;
+  row-gap: 10px;
+  padding-block: 12px;
+}
+
+/* The summary cards are narrower than the chart: give each export the same
+   action row instead of letting the last button wrap beneath the next record. */
+.app-shell[data-theme] .zone-summary > div:has(> span):has(> b):has(> button) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 8px;
+}
+
+.app-shell[data-theme] .zone-summary > div:has(> button) > span {
+  grid-column: 1 / span 2;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.app-shell[data-theme] .zone-summary > div:has(> button) > b {
+  grid-column: 3;
+  justify-self: end;
+  min-width: 0;
+}
+
+.app-shell[data-theme] .zone-summary > div:has(> span):has(> b) > button {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ap-control-height);
+  justify-content: center;
+  padding-inline: 8px;
+  margin: 0;
+}
+
+.app-shell[data-theme] .retirement-summary > div:has(> span):has(> b):has(> button) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.app-shell[data-theme] .retirement-summary > div:has(> button) > span { grid-column: 1; }
+.app-shell[data-theme] .retirement-summary > div:has(> button) > b { grid-column: 2; }
+
+/* Counts and comparisons must remain readable on both card surfaces. */
+.app-shell[data-theme] .zone-summary > div > b { color: var(--ap-accent) !important; }
+.app-shell[data-theme] .zone-summary:not(.retirement-summary) > div:nth-last-of-type(2) > b { color: var(--ap-info) !important; }
+.app-shell[data-theme] .zone-summary:not(.retirement-summary) > div:last-of-type > b { color: var(--ap-success) !important; }
+.app-shell[data-theme] .retirement-summary > div > b,
+.app-shell[data-theme] .projection-variation.negative { color: var(--ap-danger) !important; }
+.app-shell[data-theme] .projection-variation.positive { color: var(--ap-success) !important; }
+.app-shell[data-theme] .vehicle-row a { color: var(--ap-info) !important; }
+
+/* These panels also appear in body portals, outside the app shell. */
+body .configuration-history,
+body .configuration-history-list section {
+  background: var(--ap-surface-alt) !important;
+  border-color: var(--ap-border) !important;
+}
+body .configuration-history-list article {
+  background: var(--ap-surface) !important;
+  border-color: var(--ap-border) !important;
+}
+body .configuration-history > summary,
+body .configuration-history-list :is(p, b, strong, small),
+body .configuration-history-empty { color: var(--ap-text) !important; }
+body .configuration-history > summary span { background: var(--ap-surface) !important; }
+
+@media (max-width: 900px) {
+  .app-shell[data-theme] .employee-row > div:nth-child(5) {
+    display: flex;
+    align-items: center;
+  }
+}
+
+.app-shell[data-theme] .zone-summary > div .all-alarms-export {
+  background: var(--ap-surface) !important;
+  color: var(--ap-text) !important;
+  border-color: var(--ap-border) !important;
+}
+
+.app-shell[data-theme] :is(.chart-legend, .bar-item span, .bar-item small) { color: var(--ap-muted) !important; }
+.app-shell[data-theme] .bar-chart { border-color: var(--ap-border); }
+.app-shell[data-theme] .annual-stats-grid { margin-bottom: 0; }
+
+/* Each day is a compact column with visible team grouping, not a tinted panel. */
+.app-shell[data-theme] .weekly-board { gap: 16px; padding-block: 2px 20px; }
+.app-shell[data-theme] .weekly-board .week-day {
+  background: var(--ap-surface-alt) !important;
+  border: 1px solid var(--ap-border) !important;
+  border-radius: var(--ap-radius);
+  box-shadow: var(--ap-shadow);
+}
+
+.app-shell[data-theme] .weekly-board .week-day > header.weekly-weather-header {
+  background: var(--ap-surface) !important;
+  border-color: var(--ap-border) !important;
+  color: var(--ap-text);
+  min-height: 88px;
+  padding: 16px 14px;
+}
+
+.app-shell[data-theme] .weekly-weather-header b { color: var(--ap-text) !important; line-height: 1.45; }
+.app-shell[data-theme] .weekly-weather-header .weekly-weather-line { color: var(--ap-muted) !important; }
+.app-shell[data-theme] .weekly-weather-header .weekly-today { background: var(--ap-accent-soft); color: var(--ap-accent); }
+.app-shell[data-theme] .weekly-board .week-teams { gap: 12px; }
+.app-shell[data-theme] .weekly-board .week-team {
+  background: var(--ap-surface) !important;
+  border-color: var(--ap-border) !important;
+  border-radius: var(--ap-radius);
+  box-shadow: none;
+}
+
+.app-shell[data-theme] .weekly-board .week-team-header { min-height: 52px; padding: 10px 12px; }
+.app-shell[data-theme] .weekly-board .week-task-summary,
+.app-shell[data-theme] .weekly-board .week-task-summary.available-slot {
+  background: var(--ap-surface) !important;
+  color: var(--ap-text);
+  border-bottom: 1px solid var(--ap-border);
+  box-shadow: none;
+  padding: 14px 12px;
+}
+
+.app-shell[data-theme] .weekly-board .week-task-summary:hover,
+.app-shell[data-theme] .weekly-board .week-task-summary:focus-visible {
+  background: var(--ap-surface-alt) !important;
+  transform: none;
+}
+
+.app-shell[data-theme] .weekly-board .week-task-summary:focus-visible {
+  outline: 2px solid var(--ap-accent);
+  outline-offset: -2px;
+}
+
+.app-shell[data-theme] .weekly-board :is(.week-task-client, .week-task-heading > span, .week-task-hour) {
+  color: var(--ap-text) !important;
+}
+
+.app-shell[data-theme] .weekly-board .week-task-summary > .week-task-locality {
+  color: var(--ap-muted) !important;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.app-shell[data-theme] .weekly-board .weekly-time-gap {
+  margin: 10px;
+  padding: 13px;
+  border: 1px dashed var(--ap-border) !important;
+  border-left: 3px solid var(--ap-border) !important;
+  border-radius: 6px;
+  background: var(--ap-surface-alt) !important;
+  color: var(--ap-text) !important;
+}
+
+.app-shell[data-theme] .weekly-time-gap strong { font-size: 13px; line-height: 1.6; font-weight: 600; }
+.app-shell[data-theme] .weekly-time-gap .secondary { margin-top: 10px; }
+.app-shell[data-theme] .lunch-break-card {
+  background: var(--ap-surface-alt) !important;
+  border-color: var(--ap-border) !important;
+  color: var(--ap-muted) !important;
+}
+
+.app-shell[data-theme] .lunch-break-card strong { font-weight: 600; }
+.app-shell[data-theme] :is(.weekly-add-team, .weekly-add-task) {
+  background: transparent !important;
+  border-color: var(--ap-border) !important;
+  border-radius: 6px;
+  color: var(--ap-muted) !important;
+}
+
+.app-shell[data-theme] :is(.weekly-add-team, .weekly-add-task):hover { background: var(--ap-surface-alt) !important; color: var(--ap-text) !important; }
+.app-shell[data-theme] .weekly-scroll-top { background: var(--ap-bg) !important; scrollbar-color: var(--ap-border) var(--ap-bg); }
+.app-shell[data-theme] .weekly-board .weekly-day-preview-trigger:focus-visible { outline: 2px solid var(--ap-accent); outline-offset: -3px; }
+
+/* Configuration shares the same card language as operational modules. */
+.app-shell[data-theme] .settings-section { padding: 24px; gap: 18px; }
+.app-shell[data-theme] .settings-section.data-card > h2 { border-bottom: 1px solid var(--ap-border); padding: 0 0 16px; }
+.app-shell[data-theme] .settings-section > p { color: var(--ap-muted) !important; }
+.app-shell[data-theme] .settings-grid .roles-card > h2 { background: var(--ap-surface-alt); }
+.app-shell[data-theme] .settings-grid .roles-card > div {
+  background: var(--ap-surface) !important;
+  color: var(--ap-text) !important;
+  border-color: var(--ap-border) !important;
+}
+
+.app-shell[data-theme] .settings-grid .roles-card > div:hover { background: var(--ap-surface-alt) !important; }
+.app-shell[data-theme] .settings-grid .roles-card > .selected-role {
+  background: var(--ap-accent-soft) !important;
+  box-shadow: inset 3px 0 var(--ap-accent);
+}
+
+.app-shell[data-theme] .settings-grid .roles-card p { color: var(--ap-muted) !important; }
+.app-shell[data-theme] .settings-grid .roles-card > div > button { color: var(--ap-muted); }
+.app-shell[data-theme] .settings-grid :is(.permission, .permission-group, .feature-permissions) { border-color: var(--ap-border) !important; }
+.app-shell[data-theme] .settings-grid .permission { color: var(--ap-text) !important; }
+.app-shell[data-theme] .settings-grid .permission small { color: var(--ap-muted) !important; }
+.app-shell[data-theme] .settings-grid .feature-permissions { background: var(--ap-surface-alt) !important; border-radius: 6px; }
+.app-shell[data-theme] .settings-grid .permission i { background: var(--ap-border); }
+.app-shell[data-theme] .settings-grid .permission input:checked + i { background: var(--ap-accent); }
+.app-shell[data-theme] .settings-grid .permission input:focus-visible + i { outline: 2px solid var(--ap-accent); outline-offset: 3px; }
+
+/* Help remains readable in the administrative and technician layouts. */
+:is(.app-shell[data-theme], .technician-page) :is(.help-search, .help-categories, .help-content, .help-results) {
+  background: var(--ap-surface) !important;
+  color: var(--ap-text) !important;
+  border: 1px solid var(--ap-border) !important;
+  border-radius: var(--ap-radius);
+  box-shadow: var(--ap-shadow);
+}
+
+:is(.app-shell[data-theme], .technician-page) :is(.help-hero h1, .help-section-title h2, .help-empty h3, .help-tip b) { color: var(--ap-text) !important; }
+:is(.app-shell[data-theme], .technician-page) :is(.help-hero > div > p:last-child, .help-section-title p:not(.eyebrow), .help-categories > h2, .help-categories small, .help-answer, .help-result small, .help-empty) { color: var(--ap-muted) !important; }
+:is(.app-shell[data-theme], .technician-page) :is(.help-articles > article, .help-section-title, .help-result) { border-color: var(--ap-border) !important; }
+:is(.app-shell[data-theme], .technician-page) :is(.help-categories > button, .help-articles > article > button, .help-result) { color: var(--ap-text) !important; }
+:is(.app-shell[data-theme], .technician-page) .help-categories > button:hover { background: var(--ap-surface-alt) !important; }
+:is(.app-shell[data-theme], .technician-page) .help-categories > button.active {
+  background: var(--ap-accent-soft) !important;
+  color: var(--ap-accent) !important;
+}
+
+:is(.app-shell[data-theme], .technician-page) :is(.help-categories > button > span, .help-section-title > div > span, .help-articles > article > button i, .help-result > svg, .help-search button) {
+  background: var(--ap-surface-alt) !important;
+  color: var(--ap-muted) !important;
+  border-radius: 6px;
+}
+
+:is(.app-shell[data-theme], .technician-page) :is(.help-categories > button.active > span, .help-articles > article.open > button i) {
+  background: var(--ap-accent-soft) !important;
+  color: var(--ap-accent) !important;
+}
+
+:is(.app-shell[data-theme], .technician-page) .help-tip {
+  border-color: var(--ap-border) !important;
+  background: var(--ap-surface-alt) !important;
+  color: var(--ap-muted) !important;
+  border-radius: var(--ap-radius);
+}
+
+:is(.app-shell[data-theme], .technician-page) .help-tip > span { background: var(--ap-text); color: var(--ap-surface); }
+
+/* Cards in the field keep large touch targets and the same neutral surfaces. */
+.technician-page .technician-service { padding: 22px; margin-bottom: 20px; }
+.technician-page :is(.technician-content h1, .technician-service h2, .tech-client, .technician-service-head > div > b) { color: var(--ap-text) !important; }
+.technician-page :is(.technician-help, .technician-service-head small, .reported-at, .technician-history-search small) { color: var(--ap-muted) !important; }
+.technician-page .technician-service-head > span { background: var(--ap-accent-soft); color: var(--ap-accent); border-radius: 6px; }
+.technician-page :is(.technician-team, .technician-crew-summary, .locked-info, .technician-day-heading) {
+  background: var(--ap-surface-alt) !important;
+  color: var(--ap-text) !important;
+  border-color: var(--ap-border) !important;
+  border-radius: var(--ap-radius);
+}
+
+.technician-page .technician-day-heading { border-left: 3px solid var(--ap-accent) !important; padding: 18px 20px; }
+.technician-page .technician-day-heading h2 { font-size: 20px; }
+.technician-page .technician-day-heading p { color: var(--ap-muted); font-size: 14px; }
+.technician-page .technician-history-search {
+  background: var(--ap-surface) !important;
+  border-color: var(--ap-border) !important;
+  border-radius: var(--ap-radius);
+}
+
+.technician-page .technician-history-search > label { color: var(--ap-muted); }
+.technician-page .technician-history-search > div {
+  background: var(--ap-input) !important;
+  border-color: var(--ap-border) !important;
+  color: var(--ap-text);
+}
+
+.technician-page .technician-service.locked { background: var(--ap-surface-alt) !important; }
+.technician-page .technician-service.technician-next-service { border-top: 3px solid var(--ap-accent) !important; }
+.technician-page .technician-service.blocked-by-vehicle-control { box-shadow: inset 3px 0 #d79224; }
+
+@media (max-width: 900px) {
+  .app-shell[data-theme] :is(.accounts-bar, .audit-filters) { padding: 14px; }
+  .app-shell[data-theme] .dashboard-analytics { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .app-shell[data-theme] :is(.stats-grid, .zone-grid) { gap: 14px; }
+  .app-shell[data-theme] :is(.annual-chart, .zone-summary, .settings-section) { padding: 18px; }
+  .app-shell[data-theme] .weekly-board { gap: 12px; }
+  .app-shell[data-theme] .weekly-board .week-task-summary { padding: 14px 12px; }
+  .technician-page .technician-service { padding: 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-theme] .clickable-stat:hover { transform: none; }
+}
+
+/* Filters wrap within the workspace, including when the sidebar is expanded. */
+.app-shell[data-theme] .content .history-toolbar {
+  display: grid !important;
+  grid-template-columns: minmax(180px, 1fr) minmax(0, 3fr);
+  gap: 12px;
+  align-items: end;
+}
+.app-shell[data-theme] .history-toolbar > label {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+}
+.app-shell[data-theme] .history-toolbar .history-date-filters {
+  display: grid;
+  grid-column: 2;
+  grid-row: 1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
+  min-width: 0;
+  gap: 8px;
+}
+.app-shell[data-theme] .history-date-filters > label { min-width: 0; }
+.app-shell[data-theme] .history-toolbar > div:not(.history-date-filters) {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: auto;
+  margin: 0;
+  color: var(--ap-muted);
+  font-size: 12px;
+}
+.app-shell[data-theme] .accounts-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  background: var(--ap-surface) !important;
+  border-color: var(--ap-border) !important;
+  color: var(--ap-muted) !important;
+}
+.app-shell[data-theme] .pagination-controls {
+  margin-left: auto;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.app-shell[data-theme] .pagination-controls > span { color: var(--ap-text) !important; }
+.app-shell[data-theme] .history-page-selection {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0;
+  color: var(--ap-text);
+}
+.app-shell[data-theme] .history-page-selection input[type='checkbox'] { width: 18px; min-height: 18px; flex: 0 0 18px; margin: 0; }
+
+/* The same feedback tone applies above modals and on ordinary pages. */
+body .app-shell[data-theme] .content > .notice[data-tone] {
+  --notice-accent: var(--ap-success);
+  background: var(--ap-surface) !important;
+  color: var(--ap-text) !important;
+  border-color: var(--ap-border) !important;
+  border-left: 4px solid var(--notice-accent) !important;
+}
+body .app-shell[data-theme] .content > .notice[data-tone='error'] { --notice-accent: var(--ap-danger); }
+body .app-shell[data-theme] .content > .notice[data-tone='warning'] { --notice-accent: var(--ap-accent); }
+body .app-shell[data-theme] .content > .notice[data-tone='offline'] { --notice-accent: var(--ap-info); }
+body .app-shell[data-theme] .content > .notice[data-tone] span::before { content: none !important; display: none !important; }
+body .app-shell[data-theme] .content > .notice[data-tone] span > svg { display: block !important; flex-shrink: 0; color: var(--notice-accent); }
+body .app-shell[data-theme] .content > .notice[data-tone] > button { color: var(--ap-muted); }
+@media (max-width: 1100px) {
+  .app-shell[data-theme] .content .history-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .app-shell[data-theme] .history-toolbar .history-date-filters { grid-column: 1; grid-row: 2; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .app-shell[data-theme] .history-toolbar > div:not(.history-date-filters) { grid-row: 3; }
+  .app-shell[data-theme] .history-toolbar .history-date-filters > label { grid-column: auto !important; }
+}

@@ -21,12 +21,12 @@ test('actual readiness validation accepts valid hours including 14:00 and reject
   assert.equal(ready({ rescheduleDate: '2026-09-18' }), false)
 })
 
-test('closing an unfinished reschedule prompts, an empty one closes, saving cannot close', () => {
+test('closing an unfinished reschedule prompts, an empty one checks unsaved edits, saving cannot close', () => {
   const start = source.indexOf('  const requestClose = () => {')
   const end = source.indexOf('  useEffect(', start)
-  for (const [saving, hasRescheduleDraft, expected] of [[false, true, 'leave'], [false, false, 'closed'], [true, true, 'none']]) {
+  for (const [saving, hasRescheduleDraft, expected] of [[false, true, 'leave'], [false, false, 'check-edits'], [true, true, 'none']]) {
     let result = 'none'
-    vm.runInNewContext(source.slice(start, end) + '\nrequestClose()', { saving, hasRescheduleDraft, close: () => { result = 'closed' }, setReschedulePrompt: value => { result = value } })
+    vm.runInNewContext(source.slice(start, end) + '\nrequestClose()', { saving, hasRescheduleDraft, requestDiscardClose: () => { result = 'check-edits' }, setReschedulePrompt: value => { result = value } })
     assert.equal(result, expected)
   }
 })

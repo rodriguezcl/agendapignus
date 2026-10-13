@@ -8,6 +8,8 @@ const MODULES = [
     id: 'start', module: 'dashboard', icon: 'dashboard', title: 'Primeros pasos', summary: 'Conocé el recorrido completo desde la planificación hasta el cierre del servicio.',
     articles: [
       { title: 'Recorrido recomendado', intro: 'Para mantener la información ordenada, conviene trabajar en este orden:', steps: ['Revisá que el abonado o cliente exista y que sus datos estén actualizados.', 'Planificá equipos y servicios desde Agenda semanal. Si la fecha es feriado, definí primero si será laboral o no operativa.', 'Abrí el servicio en Agenda semanal para completar o ajustar la planificación.', 'Guardá cada servicio. Los servicios quedarán disponibles en Historial y en la agenda del técnico asignado.', 'Cuando el técnico informe el resultado, revisá el estado y sus observaciones desde Historial o desde la ficha del cliente.'] },
+      { title: 'Menú y pantalla completa', body: 'El botón de tres líneas de la barra superior permite contraer el menú lateral a sus iconos o volver a expandirlo. En una computadora se conserva tu elección al recargar; en el teléfono abre y cierra el menú. El icono de pantalla completa amplía la plataforma; podés volver con el mismo botón o con Escape cuando el navegador lo permita.' },
+      { title: 'Notificaciones', body: 'La campana de la barra superior reúne los avisos activos del Menú principal según tus permisos. El número cuenta avisos, y algunos agrupan varios servicios. Seleccioná uno para abrir su gestión. Consultarlo no lo elimina: se actualiza cuando se resuelve la causa del aviso.' },
       { title: 'Diferencia entre PIG y CLI', body: 'Los códigos PIG identifican abonados con alarma y abono mensual. Los códigos CLI identifican clientes que recibieron un servicio pero no poseen ese abono. El código permite reconocer correctamente a la persona aunque su nombre cambie.' },
       { title: 'Qué puede hacer cada perfil', body: 'El administrador configura el sistema y puede definir feriados, permisos y accesos. Los perfiles de planificación trabajan con agendas, clientes e historial según los permisos asignados. El técnico ve sus servicios, informa el resultado, consulta su historial y accede en modo lectura al historial del cliente.' },
       { title: 'Antes de guardar', body: 'Confirmá fecha, equipo, técnicos, horario, tipo de servicio y cliente. Dirección y contacto deben estar completos en la ficha del cliente. En una instalación de alarma también es obligatorio indicar la ubicación de la instalación.' },
@@ -20,7 +22,7 @@ const MODULES = [
       { title: 'Qué muestran los indicadores', body: 'Las estadísticas consideran únicamente servicios completados del mes elegido. Altas de servicio cuenta instalaciones de alarmas; Bajas de servicio cuenta retiros; Proyección neta de abonados resta las bajas a las altas; Trabajos completados incluye instalaciones y servicios técnicos.' },
       { title: 'Abrir el detalle', body: 'Presioná las tarjetas de Altas o Bajas para consultar los registros que forman el total del período seleccionado.' },
       { title: 'Acumulado anual', body: 'Las cuatro tarjetas anuales muestran desde el 1 de enero hasta el día actual las instalaciones completadas en Docta, Nobu Town y Residenciales, además de las bajas de servicio. No es necesario sumar los meses manualmente.' },
-      { title: 'Evolución anual', body: 'El gráfico muestra solamente los meses transcurridos del año y separa Docta, Nobu Town, Residenciales y Bajas por color. En pantallas pequeñas se adapta para conservar la lectura de valores y referencias.' },
+      { title: 'Evolución anual', body: 'El gráfico muestra las cantidades por mes con cuatro curvas: Docta en amarillo, Nobu Town en azul, Residenciales en verde y Bajas en rojo. Para el año actual aparecen los meses transcurridos; para años anteriores, los doce meses. Pasá el cursor o tocá un mes para consultar sus cantidades. Podés ocultar o mostrar cada serie desde la leyenda. También se puede recorrer con el teclado.' },
       { title: 'Descargar reportes para Gerencia', body: 'En el detalle por ubicación y en Bajas de servicio podés descargar Excel o PDF. Los archivos incluyen los registros ordenados por fecha y funcionan tanto en computadora como en smartphone.' },
       { title: 'Servicios pendientes', body: 'El aviso amarillo contabiliza únicamente trabajos de hoy o de días anteriores que todavía necesitan una definición. Los servicios de mañana y fechas posteriores —incluidos los controles vehiculares programados— no se cuentan hasta que llegue su fecha. En una reprogramación se considera la nueva fecha asignada. Ingresá a Historial para completar, cancelar o reprogramar los trabajos vencidos.' }
     ]
@@ -195,7 +197,7 @@ export function TechnicianHelpCenter({ onNavigate }) {
   return <HelpCenter onNavigate={onNavigate} technicianOnly />
 }
 
-function HelpCenter({ onNavigate, isAdministrator = false, allowedModules = [], technicianOnly = false }) {
+export function HelpCenter({ onNavigate, isAdministrator = false, allowedModules = [], technicianOnly = false }) {
   const allowedModuleKey = allowedModules.join('|')
   const available = useMemo(() => MODULES.filter(item => technicianOnly
     ? TECHNICIAN_MODULE_IDS.has(item.id)

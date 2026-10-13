@@ -1,0 +1,484 @@
+/* Application chrome follows the compact AdminLTE layout. The React shell
+   continues to own navigation, mobile menus and profile interactions. */
+.app-shell[data-theme] {
+  --ap-sidebar-width: 240px;
+  --ap-header-height: 64px;
+  min-height: 100vh;
+  background: var(--ap-bg);
+  color: var(--ap-text);
+}
+
+.app-shell[data-theme] > .sidebar,
+.technician-sidebar {
+  width: var(--ap-sidebar-width, 240px);
+  background: var(--ap-sidebar);
+  color: var(--ap-sidebar-text);
+  border-right: 1px solid rgb(255 255 255 / 6%);
+  box-shadow: 2px 0 8px rgb(0 0 0 / 6%);
+}
+
+.app-shell[data-theme] > .sidebar > .brand,
+.technician-sidebar > .brand {
+  flex: 0 0 var(--ap-header-height, 64px);
+  height: var(--ap-header-height, 64px);
+  background: transparent url('/logo-pignus.png') center / 160px auto no-repeat !important;
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+}
+
+.app-shell[data-theme] .sidebar > .nav-label,
+.technician-sidebar > .nav-label {
+  margin: 26px 22px 10px;
+  color: #92979d;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .12em;
+}
+
+.app-shell[data-theme] .sidebar > nav,
+.technician-sidebar > nav {
+  padding: 0 12px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #575b60 transparent;
+}
+
+.app-shell[data-theme] .sidebar nav > button,
+.technician-sidebar nav > button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  width: 100%;
+  margin: 3px 0;
+  padding: 11px 13px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ap-sidebar-text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  transition: background-color .15s, color .15s;
+}
+
+.app-shell[data-theme] .sidebar nav > button > svg {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  opacity: .85;
+}
+
+.app-shell[data-theme] .sidebar nav > button > .nav-item-label {
+  min-width: 0;
+  width: auto;
+  font-size: inherit;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell[data-theme] .sidebar nav > button:hover,
+.technician-sidebar nav > button:hover {
+  background: rgb(255 255 255 / 7%);
+  color: #fff;
+}
+
+.app-shell[data-theme] .sidebar nav > button.active,
+.technician-sidebar nav > button.active {
+  background: rgb(210 161 41 / 13%);
+  color: #f4cc6b;
+  box-shadow: inset 3px 0 #d2a129;
+  font-weight: 600;
+}
+
+.app-shell[data-theme] .sidebar nav > button:focus-visible,
+.technician-sidebar nav > button:focus-visible {
+  outline: 2px solid #f4cc6b;
+  outline-offset: 2px;
+}
+
+.app-shell[data-theme] .sidebar > .sidebar-bottom,
+.technician-sidebar > .sidebar-bottom {
+  margin-top: auto;
+  padding: 17px 22px;
+  background: transparent;
+  color: #a0a5ab;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  font-size: 11px;
+}
+
+.app-shell[data-theme] > main {
+  min-width: 0;
+  width: calc(100% - var(--ap-sidebar-width));
+  margin-left: var(--ap-sidebar-width);
+  background: var(--ap-bg);
+}
+
+.app-shell[data-theme] > main > .topbar {
+  height: var(--ap-header-height);
+  min-height: var(--ap-header-height);
+  padding: 0 28px;
+  gap: 18px;
+  background: var(--ap-topbar);
+  color: var(--ap-text);
+  border-bottom: 1px solid var(--ap-border);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 2%);
+}
+
+.app-shell[data-theme] .topbar > .page-heading {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-right: auto;
+  overflow: hidden;
+}
+
+.app-shell[data-theme] .topbar .page-heading b {
+  color: var(--ap-text);
+  font-size: 15px !important;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell[data-theme] .topbar .profile {
+  gap: 12px;
+  flex-shrink: 0;
+  color: var(--ap-text);
+}
+
+.app-shell[data-theme] .topbar .profile-trigger {
+  gap: 9px;
+  min-height: var(--ap-control-height);
+  min-width: var(--ap-control-height);
+  justify-content: center;
+  color: var(--ap-text) !important;
+  font-weight: 500;
+}
+
+.app-shell[data-theme] .topbar .profile-avatar {
+  width: 32px;
+  height: 32px;
+  background: var(--ap-surface-alt);
+  color: var(--ap-text);
+  border: 1px solid var(--ap-border);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.app-shell[data-theme] .topbar :is(.sidebar-toggle, .theme-toggle, .logout-button, .refresh-button, .topbar-icon-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-height: var(--ap-control-height);
+  border: 1px solid var(--ap-border) !important;
+  border-radius: 6px;
+  background: transparent !important;
+  color: var(--ap-muted) !important;
+  box-shadow: none;
+}
+
+.app-shell[data-theme] .topbar :is(.sidebar-toggle, .theme-toggle, .topbar-icon-button) {
+  position: relative;
+  width: var(--ap-control-height);
+  height: var(--ap-control-height);
+  padding: 0;
+}
+
+.app-shell[data-theme] .topbar .sidebar-toggle {
+  border-color: transparent !important;
+}
+
+.app-shell[data-theme] .topbar :is(.sidebar-toggle, .theme-toggle, .logout-button, .refresh-button, .topbar-icon-button):hover {
+  border-color: var(--ap-accent) !important;
+  background: var(--ap-surface-alt) !important;
+  color: var(--ap-text) !important;
+}
+
+.app-shell[data-theme] .topbar :is(.sidebar-toggle, .theme-toggle, .logout-button, .refresh-button, .topbar-icon-button):focus-visible {
+  outline: 2px solid var(--pignus-focus);
+  outline-offset: 2px;
+}
+
+.app-shell[data-theme] .topbar-fullscreen {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.app-shell[data-theme] .fullscreen-feedback {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 12px);
+  right: 0;
+  width: 280px;
+  max-width: calc(100vw - 24px);
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--ap-border);
+  border-radius: var(--ap-radius);
+  background: var(--ap-surface);
+  color: var(--ap-text);
+  box-shadow: var(--pignus-shadow-floating);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.app-shell[data-theme] .profile-popover {
+  padding: 16px;
+  border: 1px solid var(--ap-border);
+  border-radius: var(--ap-radius);
+  background: var(--ap-surface);
+  color: var(--ap-text);
+  box-shadow: var(--ap-shadow);
+}
+
+.app-shell[data-theme] .profile-popover span { color: var(--ap-muted); }
+.app-shell[data-theme] .profile-popover small { color: var(--ap-muted); }
+
+.app-shell[data-theme] > main > .content {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  margin: 0 auto;
+  padding: 28px 28px 48px;
+  background: var(--ap-bg);
+  color: var(--ap-text);
+}
+
+.app-shell[data-theme] .content .module-intro {
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.app-shell[data-theme] .module-intro h1 {
+  color: var(--ap-text);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -.025em;
+}
+
+.app-shell[data-theme] .module-intro p:not(.eyebrow) {
+  color: var(--ap-muted);
+  font-size: 14px;
+  line-height: 1.5;
+  margin-top: 7px;
+}
+
+.app-shell[data-theme] .eyebrow {
+  color: var(--ap-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .1em;
+}
+
+/* The technician view uses a separate root and the same mobile drawer. */
+.technician-page {
+  margin-left: 240px !important;
+  width: calc(100% - 240px) !important;
+  background: var(--ap-bg);
+  color: var(--ap-text);
+}
+
+.technician-page .technician-header {
+  background: var(--ap-surface);
+  color: var(--ap-text);
+  border-bottom: 1px solid var(--ap-border);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 2%);
+}
+
+.technician-page .technician-header > div span { color: var(--ap-muted); }
+.technician-page .technician-header > div b { color: var(--ap-text); }
+.technician-page .technician-content { padding-top: 28px; }
+
+.technician-page .technician-header :is(.logout-button, .refresh-button) {
+  background: transparent !important;
+  color: var(--ap-text) !important;
+  border-color: var(--ap-border) !important;
+}
+
+.technician-page .technician-header-nav {
+  border-color: var(--ap-border);
+}
+
+.technician-page .technician-header-nav button {
+  border-color: var(--ap-border);
+  background: var(--ap-surface);
+  color: var(--ap-text);
+}
+
+.technician-page .technician-header-nav button.active {
+  border-color: var(--ap-accent);
+  background: var(--ap-accent-soft);
+  color: var(--ap-accent);
+}
+
+@media (max-width: 1100px) {
+  .app-shell[data-theme] > main > .content { padding-inline: 20px; }
+  .app-shell[data-theme] > main > .topbar { padding-inline: 20px; gap: 12px; }
+  .app-shell[data-theme] .topbar .profile { gap: 6px; }
+  .app-shell[data-theme] .topbar .profile-trigger > span:not(.profile-avatar) { display: none; }
+  .app-shell[data-theme] .topbar .profile :is(.logout-button, .refresh-button) {
+    width: var(--ap-control-height);
+    height: var(--ap-control-height);
+    padding: 0 !important;
+    gap: 0;
+    font-size: 0 !important;
+  }
+  .app-shell[data-theme] .topbar .profile :is(.logout-button, .refresh-button) > span { display: none; }
+}
+
+@media (min-width: 641px) {
+  .app-shell[data-theme].sidebar-collapsed { --ap-sidebar-width: 72px; }
+  .app-shell[data-theme] > .sidebar { transition: width .18s ease; }
+  .app-shell[data-theme] > main { transition: width .18s ease, margin-left .18s ease; }
+  .app-shell[data-theme].sidebar-collapsed > .sidebar,
+  .app-shell[data-theme] > .sidebar.sidebar-compact { width: 72px !important; }
+  .app-shell[data-theme].sidebar-collapsed > .sidebar > .brand,
+  .app-shell[data-theme] > .sidebar.sidebar-compact > .brand {
+    min-width: 0;
+    height: var(--ap-header-height) !important;
+    padding: 0 !important;
+    background: transparent url('/logo-pignus.png') center / 58px auto no-repeat !important;
+    border-bottom-color: rgb(255 255 255 / 10%) !important;
+  }
+  .app-shell[data-theme].sidebar-collapsed .sidebar :is(.nav-label, .sidebar-bottom, .nav-item-label),
+  .app-shell[data-theme] .sidebar.sidebar-compact :is(.nav-label, .sidebar-bottom, .nav-item-label) { display: none !important; }
+  .app-shell[data-theme].sidebar-collapsed .sidebar > nav,
+  .app-shell[data-theme] .sidebar.sidebar-compact > nav { padding: 18px 10px 20px !important; }
+  .app-shell[data-theme].sidebar-collapsed .sidebar nav > button,
+  .app-shell[data-theme] .sidebar.sidebar-compact nav > button {
+    width: 52px !important;
+    min-height: 44px;
+    margin: 4px 0 !important;
+    padding: 0 !important;
+    justify-content: center !important;
+    gap: 0;
+  }
+  .app-shell[data-theme].sidebar-collapsed .sidebar nav > button::after,
+  .app-shell[data-theme] .sidebar.sidebar-compact nav > button::after { content: none; display: none; }
+}
+
+.app-shell[data-theme] .sidebar-session { display: none; }
+
+@media (max-width: 640px) {
+  .app-shell[data-theme] > main,
+  .technician-page {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  .app-shell[data-theme] > .sidebar,
+  .technician-sidebar {
+    width: min(280px, calc(100vw - 48px)) !important;
+    box-shadow: none;
+  }
+
+  .app-shell[data-theme] > .sidebar.open,
+  .technician-sidebar.open {
+    box-shadow: 8px 0 32px rgb(0 0 0 / 25%);
+  }
+
+  .app-shell[data-theme] > main > .topbar {
+    gap: 4px;
+    padding-inline: 8px;
+  }
+
+  .app-shell[data-theme] .topbar .mobile-menu,
+  .technician-page .technician-mobile-menu {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ap-text);
+  }
+
+  .app-shell[data-theme] .topbar .profile { gap: 3px; }
+  .app-shell[data-theme] .topbar > .page-heading { display: none; }
+  .app-shell[data-theme] .topbar .profile { margin-left: auto; }
+  .app-shell[data-theme] .topbar .profile-menu { display: none; }
+  .app-shell[data-theme] .sidebar .sidebar-session {
+    display: grid;
+    gap: 4px;
+    padding: 16px 20px;
+    border-top: 1px solid rgb(255 255 255 / 12%);
+    color: var(--ap-sidebar-text);
+    overflow-wrap: anywhere;
+    font-size: 13px;
+  }
+  .app-shell[data-theme] .fullscreen-feedback {
+    position: fixed;
+    top: calc(var(--ap-header-height) + 8px);
+    right: 12px;
+    width: min(320px, calc(100vw - 24px));
+  }
+  .app-shell[data-theme].sidebar-collapsed .sidebar nav > button { font-size: 14px; }
+  .app-shell[data-theme] > main > .content { padding: 20px 12px 36px; }
+  .app-shell[data-theme] .content .module-intro { gap: 14px; margin-bottom: 18px; }
+  .app-shell[data-theme] .module-intro h1 { font-size: 23px; }
+  .app-shell[data-theme] .module-intro p:not(.eyebrow) { font-size: 13px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-theme] .sidebar,
+  .app-shell[data-theme] .sidebar nav > button,
+  .technician-sidebar,
+  .technician-sidebar nav > button { transition: none; }
+}
+
+/* The entry screen belongs to the same visual system as the signed-in app. */
+.login-page {
+  min-height: 100dvh;
+  padding: 24px;
+  background: #212529;
+}
+.login-page .login-card {
+  width: min(100%, 440px);
+  padding: 32px;
+  gap: 14px;
+  border: 1px solid var(--ap-border);
+  border-top: 3px solid var(--ap-accent);
+  border-radius: 10px;
+  background: var(--ap-surface);
+  color: var(--ap-text);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 22%);
+}
+.login-page .login-card img {
+  width: 182px;
+  max-height: 82px;
+  margin-bottom: 8px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 6px;
+  background: #212529;
+}
+.login-page .login-card h1 {
+  color: var(--ap-text);
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -.025em;
+}
+.login-page .login-card > p:not(.login-error):not(.login-success),
+.login-page .login-card > small,
+.login-page .login-card .password-visibility { color: var(--ap-muted); }
+.login-page .login-card .password-visibility:hover { background: var(--ap-surface-alt); }
+.login-page .login-card .forgot-password { color: var(--ap-accent); }
+@media (max-width: 480px) {
+  .login-page { padding: 16px; }
+  .login-page .login-card { padding: 24px; }
+}

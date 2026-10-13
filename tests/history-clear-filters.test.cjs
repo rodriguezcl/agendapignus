@@ -2,6 +2,8 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
+const { parse } = require('@babel/parser')
+const traverse = require('@babel/traverse').default
 const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
 
 test('clear resets all history filters, selection, page and native fields', () => {
@@ -28,6 +30,20 @@ test('clear resets all history filters, selection, page and native fields', () =
 test('header owns conditional clear button and reminder banner is removed', () => {
   const history = source.slice(source.indexOf('function History({'), source.indexOf('function HistoryManagementDetail'))
   assert.doesNotMatch(history, /Quitar filtro|className="pending-reminder"/)
-  assert.match(history, /className="history-header-actions">\{hasActiveFilters && <button\b[^>]*className="secondary" onClick=\{clearFilters\}/)
+  const clearButtons = []
+  traverse(parse(history, { sourceType: 'module', plugins: ['jsx'] }), {
+    JSXElement(path) {
+      const opening = path.node.openingElement
+      if (opening.name.name !== 'button' || !opening.attributes.some(attribute => attribute.name?.name === 'onClick' && attribute.value?.expression?.name === 'clearFilters')) return
+      const header = path.findParent(parent => parent.isJSXElement() && parent.node.openingElement.attributes.some(attribute => attribute.name?.name === 'className' && attribute.value?.value === 'history-header-actions'))
+      assert.ok(header, 'Clear filters must remain inside the history header actions')
+      const conditional = path.parentPath.node
+      assert.equal(conditional.type, 'LogicalExpression')
+      assert.equal(conditional.operator, '&&')
+      assert.equal(conditional.left.name, 'hasActiveFilters')
+      clearButtons.push(opening)
+    }
+  })
+  assert.equal(clearButtons.length, 1)
   assert.match(history, /Boolean\(reminderFilter \|\| search \|\| fromDate \|\| toDate \|\| statusFilter !== 'all' \|\| serviceFilter\)/)
 })

@@ -213,7 +213,7 @@ test('el portal técnico deshabilita el control anticipado y muestra cuándo se 
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
   const styles = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui-polish.css'), 'utf8')
   assert.match(source, /const earlyVehicleControl = record\.vehicleControl && !vehicleControlIsOpen\(record, clock\)/)
-  assert.match(source, /disabled=\{earlyVehicleControl \|\| !canComplete\}/)
+  assert.match(source, /disabled=\{earlyVehicleControl \|\| !canComplete \|\| Boolean\(attachmentsPreparing\[record.id\]\)\}/)
   assert.match(source, /Este control se habilita el \{vehicleControlWindowLabel\(record\)\}/)
   assert.match(styles, /\.vehicle-control-early-notice/)
 })
@@ -226,7 +226,15 @@ test('el control vehicular es autónomo y no muestra dirección, contacto ni avi
   assert.match(source, /\{record\.vehicleControl \? null : unlocked \? <>/)
   assert.match(source, /\{unlocked && !done && <>/)
   assert.match(source, /Los controles vehiculares son tareas autónomas/)
-  assert.match(source, /No hace falta agregar una observación/)
+  const React = require('react')
+  const { renderToStaticMarkup } = require('react-dom/server')
+  const { TechnicianReportModal } = require('./helpers/load-app.cjs')(['TechnicianReportModal'])
+  const report = renderToStaticMarkup(React.createElement(TechnicianReportModal, {
+    record: { id: 'control', vehicleControl: true }, type: 'Completado', serviceLabel: 'Control vehicular',
+    onPendingAttachmentsChange() {}, onClose() {}, onSubmit() {}
+  }))
+  assert.match(report, /Kilometraje actualizado/)
+  assert.doesNotMatch(report, /<textarea/)
   assert.match(source, /Reemplazos por contingencia/)
 })
 

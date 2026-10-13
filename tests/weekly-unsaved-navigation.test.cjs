@@ -54,3 +54,15 @@ test('local editor changes prevent navigation and unsuccessful saves never resum
   assert.equal(h.requests.length, 1)
   assert.match(source, /if \(await saveTaskEditor\(\)\) setResumeNavigation\(request\)/)
 })
+
+test('a new local editor can close untouched but prompts after changes without needing a persisted placeholder', () => {
+  const initialDraft = { client: '', time: '11:00', estimatedMinutes: 60 }
+  for (const changed of [false, true]) {
+    const h = harness({ taskEditor: { initialDraft, baseTask: null, baseRecord: null, draft: { ...initialDraft, detail: changed ? 'Instalar equipo' : undefined } } })
+    // Undefined fields are omitted by the draft comparison, as in a pristine form.
+    let continued = false
+    h.run(() => { continued = true })
+    assert.equal(continued, !changed)
+    assert.equal(h.requests.length, changed ? 1 : 0)
+  }
+})

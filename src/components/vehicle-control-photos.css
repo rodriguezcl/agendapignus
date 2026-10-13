@@ -1,0 +1,2 @@
+.vehicle-control-photo-error { display: grid; align-content: start; justify-items: start; gap: 8px; max-width: 100%; padding: 12px; border: 1px solid var(--ap-border, #b7cabe); border-radius: 8px; color: inherit; overflow-wrap: anywhere; }
+.vehicle-control-photo-error span { font-size: .85rem; line-height: 1.5; }

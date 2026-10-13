@@ -1,0 +1,109 @@
+/* Pignus admin theme: one palette shared by the application and body portals.
+   The layout is inspired by AdminLTE 4; existing React interactions stay native. */
+:root,
+body,
+.app-shell[data-theme],
+.technician-page[data-theme] {
+  --ap-bg: #f4f6f9;
+  --ap-surface: #ffffff;
+  --ap-surface-alt: #f8f9fa;
+  --ap-input: #ffffff;
+  --ap-border: #dce0e5;
+  --ap-text: #303741;
+  --ap-muted: #626c78;
+  --ap-success: #176f46;
+  --ap-danger: #b53b37;
+  --ap-info: #226a9e;
+  --ap-accent: #956600;
+  --ap-accent-ink: #ffffff;
+  --ap-accent-soft: #fff4d8;
+  --ap-shadow: 0 1px 3px rgb(20 28 38 / 6%), 0 1px 2px rgb(20 28 38 / 3%);
+  --ap-radius: 8px;
+  --ap-sidebar: #343a40;
+  --ap-topbar: #ffffff;
+  --ap-sidebar-text: #d0d4da;
+  --ap-control-height: 44px;
+  --ap-overlay: rgb(18 24 32 / 44%);
+  color-scheme: light;
+}
+
+body.dark,
+body:has(.app-shell[data-theme='dark']),
+body:has(.technician-page[data-theme='dark']),
+.app-shell[data-theme='dark'],
+.technician-page[data-theme='dark'] {
+  --ap-bg: #191919;
+  --ap-surface: #252525;
+  --ap-surface-alt: #303030;
+  --ap-input: #202020;
+  --ap-border: #494949;
+  --ap-text: #eeeeee;
+  --ap-muted: #b9b9b9;
+  --ap-success: #85d4a7;
+  --ap-danger: #ffaaa5;
+  --ap-info: #91c5ff;
+  --ap-accent: #e3b64b;
+  --ap-accent-ink: #252014;
+  --ap-accent-soft: #393327;
+  --ap-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+  --ap-sidebar: #242629;
+  --ap-topbar: #303030;
+  --ap-sidebar-text: #d0d0d0;
+  --ap-overlay: rgb(0 0 0 / 64%);
+  color-scheme: dark;
+}
+
+/* Bridge the existing semantic component tokens to the new theme. */
+:root,
+body,
+.app-shell[data-theme],
+.technician-page[data-theme] {
+  --pignus-color-brand: var(--ap-text);
+  --pignus-color-brand-strong: var(--ap-text);
+  --pignus-color-accent: var(--ap-accent);
+  --pignus-color-surface: var(--ap-surface);
+  --pignus-color-surface-subtle: var(--ap-surface-alt);
+  --pignus-color-text: var(--ap-text);
+  --pignus-color-muted: var(--ap-muted);
+  --pignus-color-border: var(--ap-border);
+  --pignus-control-height: var(--ap-control-height);
+  --pignus-radius-sm: 6px;
+  --pignus-radius-md: var(--ap-radius);
+  --pignus-radius-lg: 12px;
+  --pignus-shadow-card: var(--ap-shadow);
+  --pignus-shadow-floating: 0 8px 24px rgb(0 0 0 / 14%);
+  --pignus-shadow-modal: 0 20px 70px rgb(0 0 0 / 28%);
+  --ui-radius: var(--ap-radius);
+  --ui-radius-sm: 6px;
+  --ui-border: var(--ap-border);
+  --ui-border-strong: var(--ap-muted);
+  --ui-surface: var(--ap-surface);
+  --ui-surface-soft: var(--ap-surface-alt);
+  --ui-text: var(--ap-text);
+  --ui-muted: var(--ap-muted);
+  --ui-focus: rgb(69 143 230 / 22%);
+  --pignus-focus: #438dd6;
+}
+
+body {
+  margin: 0;
+  background: var(--ap-bg);
+  color: var(--ap-text);
+  font-family: var(--pignus-font-family);
+  -webkit-font-smoothing: antialiased;
+}
+
+:where(.app-shell, .technician-page, .modal) {
+  font-variant-numeric: tabular-nums;
+  accent-color: var(--ap-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(.app-shell, .technician-page, .modal) *,
+  :where(.app-shell, .technician-page, .modal) *::before,
+  :where(.app-shell, .technician-page, .modal) *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

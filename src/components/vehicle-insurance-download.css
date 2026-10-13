@@ -1,0 +1,5 @@
+.vehicle-insurance-download-control { display: grid; justify-items: start; gap: 6px; min-width: 0; }
+.vehicle-insurance-download { display: inline-flex; align-items: center; justify-content: flex-start; gap: 6px; font: inherit; font-weight: 600; color: inherit; border: 0; background: transparent; padding: 4px 0; text-decoration: underline; cursor: pointer; }
+.vehicle-insurance-download:disabled { cursor: wait; }
+.vehicle-download-status, .vehicle-download-error { display: grid; gap: 8px; max-width: 100%; overflow-wrap: anywhere; font-size: .8rem; line-height: 1.5; color: inherit; }
+.vehicle-download-error button { justify-self: start; }
