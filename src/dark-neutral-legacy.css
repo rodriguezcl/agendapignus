@@ -1,0 +1,795 @@
+/* Neutral replacements for legacy dark-theme rules, grouped by source. */
+
+/* src/components/location-installations-modal.css */
+:is(body.dark, [data-theme='dark']) .location-installations-table th {
+  background: #373737 !important;
+  color: #ededed !important;
+}
+:is(body.dark, [data-theme='dark']) .location-installations-table tbody tr:nth-child(even) {
+  background: #2e2e2e !important;
+}
+
+/* src/components/service-types-field.css */
+:is(body.dark, [data-theme='dark']) .service-types-field,
+:is(body.dark, [data-theme='dark']) .service-types-field .service-types-trigger,
+:is(body.dark, [data-theme='dark']) .service-types-field .service-types-options {
+  background: #282828 !important;
+  color: #ededed !important;
+  border-color: #5c5c5c !important;
+}
+:is(body.dark, [data-theme='dark']) .service-types-options > label:hover {
+  background: #414141 !important;
+}
+
+/* src/components/settings-layout.css */
+.app-shell[data-theme='dark'] .settings-section > p {
+  color: #c9c9c9 !important;
+}
+.app-shell[data-theme='dark'] .settings-grid .roles-card > div:hover,
+.app-shell[data-theme='dark'] .settings-grid .roles-card > .selected-role {
+  background: #343434 !important;
+  color: #ededed !important;
+}
+
+/* src/components/ui/modal-chrome.css */
+.app-shell[data-theme='dark'] .modal {
+  --modal-scroll-thumb: #848484 !important;
+  --modal-close-bg: #2b2b2b !important;
+  --modal-close-border: #5c5c5c !important;
+  --modal-close-color: #e9e9e9 !important;
+}
+
+/* src/constitution-ui.css */
+.app-shell[data-theme='dark'],
+.technician-page[data-theme='dark'],
+body.dark {
+  --pignus-color-surface: #262626 !important;
+  --pignus-color-surface-subtle: #232323 !important;
+  --pignus-color-text: #f3f3f3 !important;
+  --pignus-color-muted: #c5c5c5 !important;
+  --pignus-color-border: #4c4c4c !important;
+  --pignus-color-success: #e2e2e2 !important;
+  --pignus-color-success-surface: #3e3e3e !important;
+}
+.app-shell[data-theme='dark'] .weekly-time-gap {
+  color: #e7e7e7 !important;
+  border-color: #727272 !important;
+  border-left-color: #a7a7a7 !important;
+}
+.app-shell[data-theme="dark"] .subscriber-reservation-reminders article,
+body.dark .subscriber-reservation-reminders article {
+  background: #333333 !important;
+  border-color: #8d8d8d !important;
+  color: #e2e2e2 !important;
+}
+
+/* src/help-center.css */
+.app-shell[data-theme="dark"] .help-hero h1,
+.app-shell[data-theme="dark"] .help-section-title h2 {
+  color: #f3f3f3 !important;
+}
+.app-shell[data-theme="dark"] .help-search,
+.app-shell[data-theme="dark"] .help-categories,
+.app-shell[data-theme="dark"] .help-content,
+.app-shell[data-theme="dark"] .help-results {
+  background: #262626 !important;
+  border-color: #4a4a4a !important;
+}
+.app-shell[data-theme="dark"] .help-categories>button {
+  color: #e5e5e5 !important;
+}
+.app-shell[data-theme="dark"] .help-categories>button:hover {
+  background: #323232 !important;
+}
+.app-shell[data-theme="dark"] .help-categories>button.active {
+  background: #404040 !important;
+}
+.app-shell[data-theme="dark"] .help-articles>article,
+.app-shell[data-theme="dark"] .help-section-title,
+.app-shell[data-theme="dark"] .help-result {
+  border-color: #4a4a4a !important;
+}
+.app-shell[data-theme="dark"] .help-articles>article>button,
+.app-shell[data-theme="dark"] .help-answer,
+.app-shell[data-theme="dark"] .help-result {
+  color: #dcdcdc !important;
+}
+.app-shell[data-theme="dark"] .help-tip {
+  background: #2b2b2b !important;
+  border-color: #4d4d4d !important;
+  color: #cfcfcf !important;
+}
+
+/* src/login.css */
+body.dark .password-visibility {
+  color: #c9c9c9 !important;
+}
+body.dark .password-visibility:hover {
+  background: #3c3c3c !important;
+}
+
+/* src/style.css */
+.app-shell[data-theme="dark"] .bulk-modal select,
+.app-shell[data-theme="dark"] .bulk-modal input {
+  background: #1e1e1e !important;
+  color: #f2f2f2 !important;
+  border-color: #555555 !important;
+}
+.app-shell[data-theme="dark"] .history-actions input {
+  background: #1e1e1e !important;
+  color: #f2f2f2 !important;
+  border-color: #555555 !important;
+}
+.app-shell[data-theme="dark"] .history-table .table-head {
+  background: #303030 !important;
+  border-color: #4a4a4a !important;
+}
+.app-shell[data-theme="dark"] .history-detail-grid,
+.app-shell[data-theme="dark"] .history-detail-grid>div {
+  border-color: #4c4c4c !important;
+}
+.app-shell[data-theme="dark"] .history-detail-grid span {
+  color: #eaeaea !important;
+}
+.app-shell[data-theme="dark"] .installation-zone {
+  background: #262626 !important;
+  border-color: #4a4a4a !important;
+}
+.app-shell[data-theme="dark"] .installation-zone label,
+.app-shell[data-theme="dark"] .installation-zone legend {
+  color: #dfdfdf !important;
+}
+.app-shell[data-theme="dark"] .dashboard-analytics .data-card {
+  background: #262626 !important;
+  border-color: #4a4a4a !important;
+}
+.app-shell[data-theme="dark"] .zone-summary>div {
+  border-color: #444444 !important;
+}
+.app-shell[data-theme="dark"] .chart-legend {
+  color: #c5c5c5 !important;
+}
+.app-shell[data-theme="dark"] .zone-grid article {
+  background: #262626 !important;
+}
+.app-shell[data-theme="dark"] .dashboard-row {
+  border-color: #444444 !important;
+  color: #c4c4c4 !important;
+}
+.app-shell[data-theme="dark"] .dashboard-row b {
+  color: #f3f3f3 !important;
+}
+.app-shell[data-theme="dark"] .month-filter input {
+  background: #1e1e1e !important;
+  color: #f2f2f2 !important;
+  border-color: #555555 !important;
+}
+.app-shell[data-theme="dark"] .history-row {
+  border-color: #444444 !important;
+  color: #c4c4c4 !important;
+}
+.app-shell[data-theme="dark"] .history-row>b,
+.app-shell[data-theme="dark"] .history-row strong {
+  color: #f3f3f3 !important;
+}
+.app-shell[data-theme="dark"] .alarm-details-list {
+  border-color: #4a4a4a !important;
+}
+.app-shell[data-theme="dark"] .alarm-details-list article {
+  border-color: #444444 !important;
+}
+.app-shell[data-theme="dark"] .alarm-details-list article>div:first-child b {
+  color: #efefef !important;
+}
+.app-shell[data-theme="dark"] .alarm-detail-data {
+  color: #d1d1d1 !important;
+}
+.app-shell[data-theme="dark"] .alarm-details-modal .modal-actions {
+  border-color: #4c4c4c !important;
+}
+.app-shell[data-theme="dark"] .zone-summary>div .all-alarms-export {
+  background: #262626 !important;
+  border-color: #4a4a4a !important;
+  color: #e5e5e5 !important;
+}
+.app-shell[data-theme="dark"] .whatsapp-preview {
+  background: #1e1e1e !important;
+  border-color: #4c4c4c !important;
+  color: #ededed !important;
+}
+.app-shell[data-theme="dark"] .service-form {
+  background: #303030 !important;
+  border-color: #4f4f4f !important;
+}
+.app-shell[data-theme="dark"] .service-form select {
+  background: #1e1e1e !important;
+  color: #f2f2f2 !important;
+  border-color: #555555 !important;
+}
+.app-shell[data-theme="dark"] .service-row {
+  border-color: #444444 !important;
+  color: #c4c4c4 !important;
+}
+.app-shell[data-theme="dark"] .service-row>b,
+.app-shell[data-theme="dark"] .service-duration-value {
+  color: #f3f3f3 !important;
+}
+.app-shell[data-theme="dark"] .tech-list {
+  border-color: #4c4c4c !important;
+}
+.app-shell[data-theme="dark"] .tech-popover label {
+  color: #ededed !important;
+}
+.app-shell[data-theme="dark"] .tech-popover label:hover {
+  background: #3d3d3d !important;
+}
+.app-shell[data-theme="dark"] {
+  background: #191919 !important;
+  color: #e0e0e0 !important;
+}
+.app-shell[data-theme="dark"] .content {
+  color: #e0e0e0 !important;
+}
+.app-shell[data-theme="dark"] .team-card,
+.app-shell[data-theme="dark"] .data-card,
+.app-shell[data-theme="dark"] .add-team,
+.app-shell[data-theme="dark"] .secondary,
+.app-shell[data-theme="dark"] .accounts-bar input {
+  background: #262626 !important;
+  color: #e5e5e5 !important;
+  border-color: #4a4a4a !important;
+}
+.app-shell[data-theme="dark"] .agenda-toolbar,
+.app-shell[data-theme="dark"] .table-head,
+.app-shell[data-theme="dark"] .employee-form,
+.app-shell[data-theme="dark"] .customer-form {
+  background: #303030 !important;
+  border-color: #4f4f4f !important;
+}
+.app-shell[data-theme="dark"] .task-row,
+.app-shell[data-theme="dark"] .employee-row,
+.app-shell[data-theme="dark"] .account-row,
+.app-shell[data-theme="dark"] .roles-card>div,
+.app-shell[data-theme="dark"] .permission {
+  border-color: #444444 !important;
+}
+.app-shell[data-theme="dark"] input,
+.app-shell[data-theme="dark"] select,
+.app-shell[data-theme="dark"] textarea {
+  background: #1e1e1e !important;
+  color: #f2f2f2 !important;
+  border-color: #555555 !important;
+}
+.app-shell[data-theme="dark"] .module-intro h1,
+.app-shell[data-theme="dark"] .person,
+.app-shell[data-theme="dark"] .account-row strong {
+  color: #f3f3f3 !important;
+}
+.app-shell[data-theme="dark"] .module-intro p:not(.eyebrow),
+.app-shell[data-theme="dark"] .account-row,
+.app-shell[data-theme="dark"] .employee-row {
+  color: #c4c4c4 !important;
+}
+.app-shell[data-theme="dark"] .tech-popover {
+  background: #2b2b2b !important;
+  border-color: #595959 !important;
+}
+.app-shell[data-theme="dark"] .modal {
+  background: #272727 !important;
+  color: #ededed !important;
+}
+.app-shell[data-theme="dark"] .modal pre {
+  background: #1e1e1e !important;
+  border-color: #4c4c4c !important;
+  color: #ededed !important;
+}
+.app-shell[data-theme="dark"] .detail-grid,
+.app-shell[data-theme="dark"] .detail-grid div {
+  border-color: #4c4c4c !important;
+}
+.app-shell[data-theme="dark"] .detail-grid span {
+  color: #eaeaea !important;
+}
+.app-shell[data-theme="dark"] .service-breakdown {
+  background: #262626 !important;
+  border-color: #4a4a4a !important;
+}
+.app-shell[data-theme="dark"] .service-breakdown-title h2 {
+  color: #f3f3f3 !important;
+}
+.app-shell[data-theme="dark"] .service-breakdown-grid article {
+  background: #303030 !important;
+  border-color: #4a4a4a !important;
+}
+.app-shell[data-theme="dark"] .service-breakdown-grid b {
+  color: #bababa !important;
+}
+.app-shell[data-theme="dark"] .history-date-filters input {
+  background: #1e1e1e !important;
+  color: #f2f2f2 !important;
+  border-color: #555555 !important;
+}
+.app-shell[data-theme="dark"] .history-edit-grid {
+  border-color: #4c4c4c !important;
+}
+.app-shell[data-theme="dark"] .history-edit-grid input,
+.app-shell[data-theme="dark"] .history-edit-grid select,
+.app-shell[data-theme="dark"] .history-edit-grid textarea {
+  background: #1e1e1e !important;
+  color: #f2f2f2 !important;
+  border-color: #555555 !important;
+}
+.app-shell[data-theme="dark"] .profile-popover {
+  background: #272727 !important;
+  color: #f1f1f1 !important;
+  border-color: #4c4c4c !important;
+}
+.app-shell[data-theme="dark"] .profile-popover span {
+  color: #cbcbcb !important;
+}
+.app-shell[data-theme="dark"] .history-date-filters select {
+  background: #1e1e1e !important;
+  color: #f2f2f2 !important;
+  border-color: #555555 !important;
+}
+.app-shell[data-theme="dark"] .history-bulk .role-chip.service-cameras {
+  background: #3e3e3e !important;
+  color: #e2e2e2 !important;
+}
+.app-shell[data-theme="dark"] .history-bulk .role-chip.service-survey {
+  background: #3d3d3d !important;
+  color: #e4e4e4 !important;
+}
+.app-shell[data-theme="dark"] .history-bulk .role-chip.service-other {
+  background: #404040 !important;
+  color: #dedede !important;
+}
+.app-shell[data-theme="dark"] .history-technicians {
+  color: #d3d3d3 !important;
+}
+.app-shell[data-theme="dark"] .accounts-pagination {
+  background: #262626 !important;
+  border-color: #4a4a4a !important;
+  color: #c4c4c4 !important;
+}
+.app-shell[data-theme="dark"] .pagination-controls>span {
+  color: #e5e5e5 !important;
+}
+.app-shell[data-theme="dark"] .projection-highlight,
+.app-shell[data-theme="dark"] .insight-metrics article {
+  background: #2c2c2c !important;
+  border-color: #4d4d4d !important;
+}
+.app-shell[data-theme="dark"] .projection-highlight b,
+.app-shell[data-theme="dark"] .insight-metrics b,
+.app-shell[data-theme="dark"] .donut-chart span,
+.app-shell[data-theme="dark"] .donut-legend b {
+  color: #ededed !important;
+}
+.app-shell[data-theme="dark"] .donut-chart:after {
+  background: #242424 !important;
+}
+.app-shell[data-theme="dark"] .donut-legend>div {
+  border-color: #4a4a4a !important;
+}
+.app-shell[data-theme="dark"] .donut-legend span {
+  color: #d4d4d4 !important;
+}
+.app-shell[data-theme="dark"] .annual-kpi-heading h2 {
+  color: #f3f3f3 !important;
+}
+
+/* src/ui-polish.css */
+.app-shell[data-theme='dark'] .daily-team-member-names {
+  color: #d9d9d9 !important;
+}
+.app-shell[data-theme='dark'] .vehicle-form {
+  background: #303030 !important;
+  border-color: #4f4f4f !important;
+}
+.app-shell[data-theme='dark'] .vehicle-form input {
+  background: #1e1e1e !important;
+  border-color: #555555 !important;
+  color: #f2f2f2 !important;
+}
+.app-shell[data-theme='dark'] .vehicle-row {
+  border-color: #444444 !important;
+  color: #c4c4c4 !important;
+}
+.app-shell[data-theme='dark'] .vehicle-row > b,
+.app-shell[data-theme='dark'] .vehicle-row > strong {
+  color: #f3f3f3 !important;
+}
+.app-shell[data-theme='dark'] .vehicle-row:hover {
+  background: #2b2b2b !important;
+}
+.app-shell[data-theme='dark'] .service-photo-field,
+.technician-page[data-theme='dark'] .service-photo-field {
+  background: #212121 !important;
+  border-color: #4b4b4b !important;
+}
+.app-shell[data-theme='dark'] .service-photo img,
+.technician-page[data-theme='dark'] .service-photo img {
+  background: #1e1e1e !important;
+  border-color: #4b4b4b !important;
+}
+.app-shell[data-theme='dark'] .monthly-vehicle-list label {
+  background: #303030 !important;
+  border-color: #4f4f4f !important;
+}
+.app-shell[data-theme='dark'] .monthly-vehicle-list b {
+  color: #f3f3f3 !important;
+}
+.app-shell[data-theme='dark'] .vehicle-control-overrides {
+  background: #2b2b2b !important;
+  border-color: #4f4f4f !important;
+}
+.app-shell[data-theme='dark'] .history-bulk .history-time {
+  color: #e6e6e6 !important;
+}
+.app-shell[data-theme='dark'] .agenda-service-chip.service-cameras {
+  background: #3e3e3e !important;
+  color: #e2e2e2 !important;
+}
+.app-shell[data-theme='dark'] .agenda-service-chip.service-survey {
+  background: #3d3d3d !important;
+  color: #e4e4e4 !important;
+}
+.app-shell[data-theme='dark'] .agenda-service-chip.service-other {
+  background: #404040 !important;
+  color: #dedede !important;
+}
+.app-shell[data-theme='dark'] .customer-history-entry,
+.technician-page[data-theme='dark'] .customer-history-entry {
+  border-color: #444444 !important;
+  background: #232323 !important;
+}
+.app-shell[data-theme='dark'] .help-updated {
+  border-color: #5d5d5d !important;
+  background: #353535 !important;
+}
+.app-shell[data-theme='dark'] :is(.modal, .confirm-modal, .detail-modal, .bulk-modal, .alarm-details-modal, .dashboard-insight-modal, .audit-modal) {
+  background: #272727 !important;
+  border-color: #4c4c4c !important;
+}
+.app-shell[data-theme='dark'] .modal h2 {
+  color: #f3f3f3 !important;
+}
+.app-shell[data-theme='dark'] .modal > p:not(.eyebrow) {
+  color: #c5c5c5 !important;
+}
+.app-shell[data-theme='dark'] :is(.weekly-task-form, .modal > .history-edit-grid, .modal > .monthly-team-list, .modal > .role-editor) {
+  border-color: #525252 !important;
+  background: #232323 !important;
+}
+.app-shell[data-theme='dark'] :is(.modal > label:not(.file-drop), .weekly-task-form > label, .weekly-task-form .week-task-top > label, .weekly-task-form > .task-duration-field, .weekly-task-form .weekly-extra-fields > label, .weekly-task-form > .customer-autocomplete) {
+  border-color: #555555 !important;
+  background: #2d2d2d !important;
+}
+body.dark .content :is(input, select, textarea):not([type='checkbox']):not([type='radio']),
+body.dark .modal :is(input, select, textarea):not([type='checkbox']):not([type='radio']),
+body.dark .login-card :is(input, select, textarea):not([type='checkbox']):not([type='radio']) {
+  border-color: #5b5b5b !important;
+  background: #262626 !important;
+  color: #f5f5f5 !important;
+}
+body.dark .secondary,
+body.dark .detail-button,
+body.dark .icon-btn {
+  border-color: #5c5c5c !important;
+  background: #2a2a2a !important;
+}
+body.dark .permission:hover,
+body.dark :is(.employee-row, .service-row, .account-row, .history-row, .audit-row, .dashboard-row):hover {
+  background: #2b2b2b !important;
+}
+.app-shell[data-theme='dark'] .customer-editor-modal .customer-cctv-field {
+  background: #303030 !important;
+  border-color: #4f4f4f !important;
+}
+.app-shell[data-theme='dark'] .customer-editor-modal .customer-cctv-field b {
+  color: #f3f3f3 !important;
+}
+.app-shell[data-theme="dark"] .daily-extra-fields :is(input, select):disabled,
+.app-shell[data-theme="dark"] .weekly-extra-fields :is(input, select):disabled {
+  background: #2f2f2f !important;
+  border-color: #494949 !important;
+  color: #b9b9b9 !important;
+}
+.app-shell[data-theme="dark"] .customer-autocomplete-results {
+  border-color: #555555 !important;
+  background: #262626 !important;
+}
+.app-shell[data-theme="dark"] .customer-autocomplete-results button {
+  color: #ededed !important;
+}
+.app-shell[data-theme="dark"] .customer-autocomplete-results button strong {
+  color: #cbcbcb !important;
+}
+.app-shell[data-theme="dark"] .customer-autocomplete-results button:hover,
+.app-shell[data-theme="dark"] .customer-autocomplete-results button.active {
+  background: #3d3d3d !important;
+}
+.technician-page[data-theme='dark'] .technician-team {
+  border-color: #4a4a4a !important;
+  background: #2e2e2e !important;
+  color: #e3e3e3 !important;
+}
+.app-shell[data-theme='dark'] .content > .team-card .task-row {
+  border-color: #444444 !important;
+  background: #232323 !important;
+}
+.app-shell[data-theme='dark'] .content > .team-card .task-row > .daily-task-actions {
+  border-color: #444444 !important;
+}
+.app-shell[data-theme=dark] .internal-preparation {
+  background: #242424 !important;
+  border-color: #4e4e4e !important;
+}
+.app-shell[data-theme=dark] .internal-preparation-heading b,
+.app-shell[data-theme=dark] .internal-checklist-heading b,
+.app-shell[data-theme=dark] .internal-note-value {
+  color: #ececec !important;
+}
+.app-shell[data-theme=dark] .internal-preparation-heading small {
+  color: #b9b9b9 !important;
+}
+.app-shell[data-theme="dark"] .week-day.finished-day,
+.app-shell[data-theme="dark"] .week-day.finished-day > header {
+  background: #202020 !important;
+}
+
+/* src/weekly-dark-cards.css */
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary {
+  background: #282828 !important;
+  color: #ececec !important;
+  border-bottom-color: #4c4c4c !important;
+}
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary:hover,
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary:focus-visible {
+  background: #373737 !important;
+  box-shadow: inset 0 0 0 1px #8d8d8d !important;
+}
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary.available-slot {
+  background: #252525 !important;
+  border-left-color: #aaaaaa !important;
+}
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary.available-slot:hover,
+.app-shell[data-theme='dark'] .weekly-board .week-task-summary.available-slot:focus-visible {
+  background: #353535 !important;
+}
+.app-shell[data-theme='dark'] .weekly-board :is(.week-task-client, .week-task-title span, .week-task-title small) {
+  color: #ececec !important;
+}
+.app-shell[data-theme='dark'] .weekly-board .available-slot :is(.week-task-client, .week-task-title span, .week-task-title small) {
+  color: #d6d6d6 !important;
+}
+.app-shell[data-theme='dark'] .weekly-board .weekly-add-task {
+  background: #313131 !important;
+  border-color: #5d5d5d !important;
+}
+.app-shell[data-theme='dark'] .weekly-board .weekly-add-task:hover {
+  background: #3f3f3f !important;
+}
+.app-shell[data-theme='dark'] .weekly-board :is(.weekly-task-delete, .weekly-task-move) {
+  background: #313131 !important;
+  border-color: #696969 !important;
+  color: #ececec !important;
+}
+
+/* src/weekly-enhancements.css */
+.app-shell[data-theme='dark'] .weekly-guard-advanced {
+  border-color: #686868 !important;
+  background: #323232 !important;
+  color: #dbdbdb !important;
+}
+.app-shell[data-theme='dark'] .weekly-scroll-top {
+  background: #191919 !important;
+  scrollbar-color: #6c6c6c #272727 !important;
+}
+body.dark .week-task-summary.available-slot {
+  border-left-color: #aaaaaa !important;
+  background: linear-gradient(90deg, rgba(45, 138, 85, 0.2) 0, #1f1f1f 38%) !important;
+}
+body.dark .week-task-summary.available-slot .week-task-title span,
+body.dark .week-task-summary.available-slot .week-task-title small,
+body.dark .week-task-summary.available-slot .week-task-client {
+  color: #c2c2c2 !important;
+}
+.app-shell[data-theme='dark'] .weekly-tech-popover-title {
+  color: #eeeeee !important;
+}
+.app-shell[data-theme='dark'] .weekly-tech-popover-title small,
+.app-shell[data-theme='dark'] .weekly-tech-popover-title > span {
+  color: #c8c8c8 !important;
+}
+.app-shell[data-theme='dark'] .weekly-tech-popover-title > span,
+.app-shell[data-theme='dark'] .weekly-tech-popover .tech-list label:hover {
+  background: #3c3c3c !important;
+}
+body.dark .week-task > label,
+body.dark .week-task-top > label,
+body.dark .weekly-extra-fields > label {
+  color: #d6d6d6 !important;
+}
+body.dark .weekly-board .closed-day {
+  background: #2b2b2b !important;
+}
+body.dark .week-task {
+  background: #1f1f1f !important;
+}
+body.dark .week-task-title span {
+  color: #ececec !important;
+}
+body.dark .week-task-title small {
+  color: #b9b9b9 !important;
+}
+body.dark .week-task input,
+body.dark .week-task select,
+body.dark .week-task textarea {
+  background: #242424 !important;
+  border-color: #555555 !important;
+}
+body.dark .weekly-extra-fields,
+body.dark .weekly-add-task {
+  background: #2a2a2a !important;
+  border-color: #535353 !important;
+}
+body.dark .weekly-task-move {
+  border-color: #616161 !important;
+  background: #252525 !important;
+  color: #c8c8c8 !important;
+}
+.app-shell[data-theme="dark"] .weekly-task-modal > .modal-close {
+  border-color: #5a5a5a !important;
+  background: #2d2d2d !important;
+  color: #e9e9e9 !important;
+}
+body.dark .week-task-summary:hover,
+body.dark .week-task-summary:focus-visible {
+  background: #2a2a2a !important;
+}
+body.dark .week-task-client {
+  color: #ececec !important;
+}
+body.dark .weekly-modal-team,
+body.dark .weekly-task-form > label,
+body.dark .weekly-task-form .week-task-top > label,
+body.dark .weekly-task-form .weekly-extra-fields > label {
+  color: #d6d6d6 !important;
+}
+body.dark .weekly-task-form input,
+body.dark .weekly-task-form select,
+body.dark .weekly-task-form textarea {
+  background: #242424 !important;
+  border-color: #555555 !important;
+  color: #f4f4f4 !important;
+}
+body.dark .weekly-task-form input[readonly] {
+  background: #2b2b2b !important;
+  color: #bababa !important;
+}
+body.dark .weekly-customer-data-note {
+  color: #b9b9b9 !important;
+}
+body.dark .weekly-task-form .weekly-installation-zone {
+  border-color: #555555 !important;
+  background: #2b2b2b !important;
+}
+body.dark .weekly-task-form .weekly-installation-zone legend,
+body.dark .weekly-task-form .weekly-installation-zone label {
+  color: #d6d6d6 !important;
+}
+body.dark .closed-day-note,
+body.dark .weekly-hours {
+  color: #b9b9b9 !important;
+}
+body.dark .weekly-add-team {
+  border-color: #5b5b5b !important;
+}
+body.dark .week-selector {
+  color: #d5d5d5 !important;
+}
+body.dark .week-selector input[type='date'] {
+  border-color: #595959 !important;
+  background: #262626 !important;
+  color: #f5f5f5 !important;
+}
+body.dark .monthly-teams-modal > p:not(.eyebrow),
+body.dark .monthly-times-modal > p:not(.eyebrow),
+body.dark .annual-guards-modal > p:not(.eyebrow),
+body.dark .monthly-team-list small {
+  color: #b9b9b9 !important;
+}
+body.dark .annual-guard-year {
+  color: #d4d4d4 !important;
+}
+body.dark .annual-guard-row > span {
+  background: #3e3e3e !important;
+  color: #ededed !important;
+}
+body.dark .monthly-time-grid label {
+  color: #d4d4d4 !important;
+}
+body.dark .monthly-time-grid input {
+  border-color: #535353 !important;
+  background: #262626 !important;
+  color: #f5f5f5 !important;
+}
+body.dark .monthly-times-modal > .monthly-times-scope {
+  border-color: #535353 !important;
+  background: #2b2b2b !important;
+  color: #d4d4d4 !important;
+}
+body.dark .monthly-team-list label {
+  border-color: #535353 !important;
+  background: #2b2b2b !important;
+}
+body.dark .configuration-history,
+body.dark .configuration-history-list section {
+  border-color: #535353 !important;
+  background: #2b2b2b !important;
+}
+body.dark .configuration-history-list article {
+  border-color: #535353 !important;
+  background: #262626 !important;
+}
+body.dark .configuration-history > summary,
+body.dark .configuration-history-list p,
+body.dark .configuration-history-empty {
+  color: #e6e6e6 !important;
+}
+body.dark .configuration-history > summary span {
+  background: #404040 !important;
+}
+body.dark .week-task-summary.available-slot,
+body.dark .week-task-summary.available-slot:hover,
+body.dark .week-task-summary.available-slot:focus-visible {
+  border-left-color: #aaaaaa !important;
+  background: linear-gradient(90deg, rgba(45, 138, 85, 0.2) 0, #1f1f1f 38%) !important;
+}
+body.dark .week-task-summary > .week-task-locality {
+  color: #c7c7c7 !important;
+}
+
+/* src/weekly.css */
+[data-theme=dark] .weekly-guide,
+[data-theme=dark] .week-day {
+  background: #262626 !important;
+  border-color: #4c4c4c !important;
+  color: #e4e4e4 !important;
+}
+[data-theme=dark] .week-day>header {
+  background: #343434 !important;
+  color: #ededed !important;
+}
+[data-theme=dark] .week-team {
+  background: #1f1f1f !important;
+  border-color: #4c4c4c !important;
+}
+[data-theme=dark] .week-members {
+  color: #d6d6d6 !important;
+}
+[data-theme=dark] .week-task input,
+[data-theme=dark] .week-task select,
+[data-theme=dark] .week-task textarea {
+  background: #1d1d1d !important;
+  color: #f4f4f4 !important;
+  border-color: #535353 !important;
+}
+
+/* Common form chrome and dialogs rendered through portals. */
+body:has(.app-shell[data-theme='dark']) .modal,
+.app-shell[data-theme='dark'] .modal {
+ --modal-scroll-thumb: #777;
+ --modal-close-bg: #343434;
+ --modal-close-border: #555;
+ --modal-close-color: #ededed;
+}
+body:has(.app-shell[data-theme='dark']) .modal :is(label, fieldset, .weekly-task-form, .week-task-top, .service-types-field, .task-duration-field, .customer-autocomplete, .weekly-extra-fields) {
+ background-color: #292929 !important; border-color: #505050 !important; color: #d4d4d4 !important;
+}
+body:has(.app-shell[data-theme='dark']) .modal :is(input, select, textarea, .service-types-trigger, .service-types-options):not([type='checkbox']):not([type='radio']) {
+ background: #1c1c1c !important; color: #ededed !important; border-color: #555 !important;
+}
+body:has(.app-shell[data-theme='dark']) .modal :is(.helper, small, .field-label-text) { color: #bcbcbc; }

@@ -28,3 +28,5 @@ import './components/vehicle-history.css'
 import './components/weekly-toolbar.css'
 
 import './dark-neutral.css'
+
+import './dark-neutral-legacy.css'
