@@ -4830,7 +4830,7 @@ function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGuardRef, 
     servicePhotoAttachedAt: task.servicePhotoAttachedAt || '',
     ...serviceTrace(task)
   })
-  const displayDate = day => new Date(`${day}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).replace('.', '')
+  const displayDate = day => prettyDate(day).replace(/ de (\p{L})/u, (_, letter) => ` de ${letter.toUpperCase()}`)
   return <>
     {techPicker && <button title="Cerrá el selector de técnicos y volvé a la agenda." className="picker-backdrop" aria-label="Cerrar selector de técnicos" onClick={() => setTechPicker(null)} />}
     {teamRemoval && <Confirm title="Quitar equipo" detail={`¿Querés quitar ${teamRemoval.label} de la planificación del ${prettyDate(teamRemoval.day)}? Se quitará el equipo y su asignación de técnicos de ese día. Si sólo tiene controles vehiculares pendientes, un administrador también los omitirá porque esos vehículos no se utilizarán. Otros servicios o controles completados impiden eliminarlo.`} destructive action={() => removeWeeklyTeam(teamRemoval.day, teamRemoval.teamIndex)} close={() => setTeamRemoval(null)} />}
