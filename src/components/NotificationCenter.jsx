@@ -2,8 +2,8 @@ import React, { useEffect, useId, useRef, useState } from 'react'
 import Icon from './ui/Icon.jsx'
 import './notification-center.css'
 
-/** Active notices from the dashboard, never a separate inbox or read state. */
-export default function NotificationCenter({ notifications = [], onSelect, onViewAll }) {
+/** Active operational notices; opening one never marks its cause as resolved. */
+export default function NotificationCenter({ notifications = [], onSelect }) {
   const [open, setOpen] = useState(false)
   const root = useRef(null)
   const toggle = useRef(null)
@@ -59,7 +59,7 @@ export default function NotificationCenter({ notifications = [], onSelect, onVie
           <span className="notification-copy"><strong>{notification.title}</strong><span>{notification.detail}</span></span>
         </button>) : <div className="notification-empty"><Icon name="check" size={24} /><strong>No hay avisos activos</strong><p>Acá aparecerán los avisos que requieran seguimiento.</p></div>}
       </div>
-      <footer className="notification-footer"><small>Los avisos se actualizan cuando se resuelve su causa.</small>{onViewAll && <button type="button" title="Abrí el menú principal para revisar los avisos y los indicadores." onClick={() => { close(); onViewAll() }}>Ver menú principal <span aria-hidden="true">→</span></button>}</footer>
+      <footer className="notification-footer"><small>Los avisos se actualizan cuando se resuelve su causa.</small></footer>
     </section>}
   </div>
 }

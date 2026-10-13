@@ -123,6 +123,28 @@
 }
 :is(body, .app-shell[data-theme], .technician-page[data-theme]) .confirm-modal.confirm-modal h2 { padding-right: 0; }
 
+/* Compact dialogs for file selection and single-notification actions. */
+:is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal:is(.import-confirm-modal, .notification-action-modal) {
+  width: min(640px, calc(100vw - 32px));
+  max-width: 640px;
+  overflow-wrap: anywhere;
+}
+:is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.import-confirm-modal .file-drop {
+  min-height: 116px;
+  padding: 20px;
+}
+.notification-action-modal :is(.password-reset-reminder, .service-advance-reminders article) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.notification-action-modal :is(.password-reset-actions, .service-advance-actions) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
 /* The legacy sticky close button otherwise occupies the date's first line. */
 :is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.history-detail > .close-modal {
   position: absolute;

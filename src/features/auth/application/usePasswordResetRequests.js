@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchWithTimeout } from '../../../infrastructure/http/fetch-timeout.mjs'
 
-// One authorized subscription feeds both the dashboard and the notification bell.
+// One authorized subscription feeds the notification bell and its action dialog.
 export function usePasswordResetRequests({ enabled, accountKey }) {
   const [state, setState] = useState({ accountKey: null, requests: [] })
   const [error, setError] = useState('')
