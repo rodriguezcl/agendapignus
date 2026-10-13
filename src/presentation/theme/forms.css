@@ -80,7 +80,7 @@
 :is(body, .app-shell[data-theme], .technician-page[data-theme]) :is(.primary, .secondary, .danger-button, .detail-button, .save):disabled { cursor: not-allowed; opacity: .5; transform: none; }
 :is(.modal, .content, .technician-content) :is(.primary, .secondary, .danger-button, .detail-button, .save):focus-visible { outline: 2px solid var(--pignus-focus) !important; outline-offset: 3px !important; }
 
-/* Dialogs retain their existing widths, focus management and scroll behavior. */
+/* Dialogs use content-sized widths instead of stretching to the viewport. */
 :is(body, .app-shell[data-theme], .technician-page[data-theme]) :is(.modal-layer, .modal-backdrop) {
   background: var(--ap-overlay) !important;
 }
@@ -91,13 +91,23 @@
   --modal-close-color: var(--ap-text);
   box-sizing: border-box;
   padding: 28px;
-  max-width: calc(100vw - 32px);
+  width: min(var(--ap-modal-width, 520px), calc(100vw - 32px));
+  max-width: min(var(--ap-modal-width, 520px), calc(100vw - 32px));
   border: 1px solid var(--ap-border) !important;
   border-radius: 10px !important;
   background: var(--ap-surface) !important;
   color: var(--ap-text) !important;
   box-shadow: 0 18px 60px #00000040 !important;
 }
+.modal:is(.confirm-modal, .catalog-discard-modal) { --ap-modal-width: 420px; }
+.modal.bulk-modal { --ap-modal-width: 480px; }
+.modal:is(.technician-status-modal, .import-confirm-modal, .notification-action-modal, .unsaved-service-modal) { --ap-modal-width: 640px; }
+.modal:is(.detail-modal, .history-detail, .customer-history-modal, .preview-modal, .annual-guards-modal) { --ap-modal-width: 720px; }
+.modal:is(.catalog-editor-modal, .customer-editor-modal, .journey-modal, .history-reschedule-modal, .audit-modal, .dashboard-insight-modal) { --ap-modal-width: 800px; }
+.modal:is(.weekly-task-modal, .past-service-detail) { --ap-modal-width: 840px; }
+.modal.monthly-teams-modal { --ap-modal-width: 640px; }
+.modal.alarm-details-modal { --ap-modal-width: 980px; }
+.modal.location-installations-modal { --ap-modal-width: 1200px; }
 :is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal > :is(h2, .eyebrow) { padding-right: 38px; }
 :is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal h2 { color: var(--ap-text) !important; font-size: 23px; line-height: 1.3; font-weight: 600; letter-spacing: -.35px; }
 :is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal > p:not(.field-error):not(.notice) { color: var(--ap-muted) !important; font-size: 13px; line-height: 1.6; }
