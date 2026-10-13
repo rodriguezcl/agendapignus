@@ -459,13 +459,16 @@
   box-shadow: 0 16px 48px rgb(0 0 0 / 22%);
 }
 .login-page .login-card img {
-  width: 182px;
-  max-height: 82px;
+  width: 260px;
+  max-width: 100%;
+  height: auto;
+  max-height: none;
   margin-bottom: 8px;
-  padding: 12px 16px;
+  padding: 0;
   border: 0;
-  border-radius: 6px;
-  background: #212529;
+  border-radius: 0;
+  background: transparent;
+  filter: brightness(0) invert(.42);
 }
 .login-page .login-card h1 {
   color: var(--ap-text);
