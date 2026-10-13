@@ -1,3 +1,4 @@
+import ModuleIntroduction from './components/ModuleIntroduction.jsx'
 import React, { useMemo, useState } from 'react'
 import Icon from './components/ui/Icon.jsx'
 import RefreshButton from './components/ui/RefreshButton.jsx'
@@ -223,7 +224,7 @@ export function HelpCenter({ onNavigate, isAdministrator = false, allowedModules
   const visibleArticles = selected?.articles || []
   return <div className="help-center">
     <header className="help-hero">
-      <div><p className="eyebrow">GUÍAS Y PREGUNTAS FRECUENTES</p><h1>Centro de ayuda</h1><span className="help-updated">Actualizado · 15 de septiembre de 2026</span><p>{technicianOnly ? 'Consultá las funciones disponibles en tu perfil técnico.' : 'Encontrá instrucciones simples para completar cada tarea con seguridad.'}</p></div>
+      <ModuleIntroduction><p className="eyebrow">GUÍAS Y PREGUNTAS FRECUENTES</p><h1>Centro de ayuda</h1><span className="help-updated">Actualizado · 15 de septiembre de 2026</span><p>{technicianOnly ? 'Consultá las funciones disponibles en tu perfil técnico.' : 'Encontrá instrucciones simples para completar cada tarea con seguridad.'}</p></ModuleIntroduction>
       <label className="help-search"><Icon name="search" size={19} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="¿Qué necesitás hacer?" autoComplete="off" />{query && <button title="Borrá el texto de búsqueda para volver a consultar toda la ayuda." onClick={() => setQuery('')} aria-label="Limpiar búsqueda"><Icon name="close" size={15} /></button>}</label>
     </header>
     {query ? <section className="help-results data-card"><div className="help-section-title"><div><span>{searchResults.length}</span><h2>Resultados para “{query}”</h2></div></div>{searchResults.length ? searchResults.map(result => <button title="Abrí el artículo de ayuda encontrado en la búsqueda." className="help-result" key={`${result.section.id}-${result.index}`} onClick={() => choose(result.section.id, result.index)}><Icon name={result.section.icon} /><span><b>{result.title}</b><small>{result.section.title}</small></span><i>Ver respuesta →</i></button>) : <div className="help-empty"><Icon name="search" size={30} /><h3>No encontramos una respuesta con esas palabras</h3><p>Probá con términos como “feriado”, “guardia”, “cliente”, “técnico” o “copiar”.</p></div>}</section> : <div className="help-layout">

@@ -1,3 +1,4 @@
+import ModuleIntroduction from '../../../components/ModuleIntroduction.jsx'
 import React, { useState } from 'react'
 import Icon from '../../../components/ui/Icon.jsx'
 import EditorModal from '../../../components/ui/EditorModal.jsx'
@@ -81,7 +82,7 @@ export default function ServiceTypes({ services, setServices, setNotice, ask, st
 
   return <>
     <div className="module-intro">
-      <div><p className="eyebrow">CATÁLOGO OPERATIVO</p><h1>Tipo de servicio</h1><p>Administrá los servicios disponibles para planificar en la agenda técnica.</p></div>
+      <ModuleIntroduction><p className="eyebrow">CATÁLOGO OPERATIVO</p><h1>Tipo de servicio</h1><p>Administrá los servicios disponibles para planificar en la agenda técnica.</p></ModuleIntroduction>
       <button title="Creá un tipo de servicio para utilizarlo en la planificación." className="primary" onClick={startCreate}><Icon name="plus" />Nuevo servicio</button>
     </div>
     {open && <EditorModal active={Boolean(editing)} title="Editar tipo de servicio" onClose={() => setOpen(false)}><form className="service-form" onSubmit={save}>
