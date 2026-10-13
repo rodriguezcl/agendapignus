@@ -23,12 +23,24 @@ test('atomic ready flag is stamped by server and synchronized without completing
  assert.equal(authorizeIncomingState(unmarked,next,user).history[0].servicePreparation.ready,false)
  assert.throws(()=>servicePreparationOperations(next,{base:record,ready:false}),/cambió/)
 })
-test('edits invalidate preparation; unrelated edits and missing fields preserve attribution',()=>{
+test('service edits and missing preparation fields preserve readiness and attribution',()=>{
  const before=state();before.history[0].servicePreparation={ready:true,byName:'Preparador',byId:'u',at:'2026-10-13T12:00:00Z'}
  const edit=structuredClone(before);edit.history[0].detail='Kit B'
- assert.deepEqual(applyServicePreparation(edit,before,user,true).history[0].servicePreparation,{...before.history[0].servicePreparation,ready:false,needsReview:true})
+ assert.deepEqual(applyServicePreparation(edit,before,user,true).history[0].servicePreparation,before.history[0].servicePreparation)
  const unrelated=structuredClone(before);unrelated.history[0].phone='123';delete unrelated.history[0].servicePreparation
  assert.deepEqual(applyServicePreparation(unrelated,before,user,true).history[0].servicePreparation,before.history[0].servicePreparation)
+})
+
+test('linking a PIG preserves the ready check in history and agenda',()=>{
+ const before=state()
+ before.history[0].servicePreparation={ready:true,byName:'Preparador',byId:'u',at:'2026-10-13T12:00:00Z'}
+ const incoming=structuredClone(before)
+ Object.assign(incoming.history[0],{customerId:'pig-6803',customer:'MARÍA PAULA LOBO',address:'Dirección del abonado'})
+ delete incoming.history[0].servicePreparation
+ const next=authorizeIncomingState(incoming,before,user)
+ assert.deepEqual(next.history[0].servicePreparation,before.history[0].servicePreparation)
+ assert.deepEqual(next.agenda.weekly[record.date].teams[0].tasks[0].servicePreparation,before.history[0].servicePreparation)
+ assert.equal(next.history[0].customerId,'pig-6803')
 })
 test('readonly users, vehicle controls and cancelled services cannot be marked ready',()=>{
  const before=state(),incoming=state();incoming.history[0].servicePreparation={ready:true}
