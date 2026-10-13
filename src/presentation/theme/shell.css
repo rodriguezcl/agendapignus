@@ -349,7 +349,7 @@
     min-width: 0;
     height: var(--ap-header-height) !important;
     padding: 0 !important;
-    background: transparent url('/logo-pignus.png') center / 58px auto no-repeat !important;
+    background: transparent url('/pignus-owl-white.svg') center / 42px 46px no-repeat !important;
     border-bottom-color: rgb(255 255 255 / 10%) !important;
   }
   .app-shell[data-theme].sidebar-collapsed .sidebar :is(.nav-label, .sidebar-bottom, .nav-item-label),
