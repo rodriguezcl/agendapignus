@@ -15,5 +15,5 @@ export default function ServicePreparationButton({ record, disabled, persist, on
     try { await persist({ operation: 'service-preparation', base: record, ready: !ready }); onNotice(ready ? 'Servicio desmarcado como listo.' : 'Servicio listo. Preparación registrada.') }
     catch (error) { onNotice('No se cambió la preparación. ' + error.message) }
     finally { busy.current = false; setSaving(false) }
-  }}><Icon name="check" size={15} /></button>
+  }}><Icon name="check" size={14} /></button>
 }
