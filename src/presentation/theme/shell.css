@@ -136,23 +136,6 @@
   overflow: hidden;
 }
 
-.topbar-module-description { display: none; }
-@media (min-width: 1200px) {
-  .app-shell[data-theme] .topbar > .page-heading { display: flex; align-items: center; gap: 24px; }
-  .app-shell[data-theme] .topbar .page-heading b { flex-shrink: 0; }
-  .app-shell[data-theme] .topbar-module-description {
-    display: block;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--ap-muted);
-    font-size: 12px;
-    font-weight: 400;
-  }
-  .weekly-intro .weekly-description-mobile { display: none; }
-}
-
 .app-shell[data-theme] .topbar .page-heading b {
   color: var(--ap-text);
   font-size: 15px !important;
@@ -501,4 +484,18 @@
 @media (max-width: 480px) {
   .login-page { padding: 16px; }
   .login-page .login-card { padding: 24px; }
+}
+
+/* Module titles and contextual guidance share one responsive header. */
+.app-shell[data-theme] .topbar > .page-heading { display:flex; align-items:center; gap:24px !important; }
+.app-shell[data-theme] .topbar .page-heading > h1 { margin:0; flex-shrink:0; font-size:15px; line-height:1.4; font-weight:600; color:var(--ap-text); }
+#module-description-slot { min-width:0; }
+.topbar-module-description { color:var(--ap-muted); font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
+.app-shell .module-intro:has(> .module-intro-placeholder) { justify-content:flex-end; }
+.app-shell .module-intro:has(> .module-intro-placeholder:only-child) { display:none; }
+.app-shell .weekly-intro:has(> .module-intro-placeholder) .weekly-actions { width:100%; }
+@media(max-width:1199px) {
+ .app-shell[data-theme] > main > .topbar { height:auto; flex-wrap:wrap; padding-block:10px; }
+ .app-shell[data-theme] .topbar > .page-heading { order:3; flex:1 0 100%; flex-direction:column; align-items:flex-start; gap:4px !important; }
+ .app-shell[data-theme] .topbar .profile { margin-left:auto; }
 }
