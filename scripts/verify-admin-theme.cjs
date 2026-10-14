@@ -5,6 +5,7 @@ const path = require('node:path')
 const assert = require('node:assert/strict')
 const { buildSync } = require('esbuild')
 const { chromium } = require('playwright')
+const inspectModalGeometry = require('./lib/modal-geometry.cjs')
 
 const root = path.resolve(__dirname, '..')
 const output = path.join(root, 'tmp/visual-qa/theme-review')
@@ -88,7 +89,7 @@ createRoot(document.getElementById('root')).render(<ThemeReviewFixture/>);
 
 // Preserve main.jsx's first import before the App component's CSS dependencies;
 // reversing this order would let legacy table grids override history-layout.css.
-const built = buildSync({ stdin: { contents: "import './style.css';\n" + source + '\n' + fixture, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, outdir: 'out', format: 'iife', external: ['/logo-pignus.png'], define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'false' }, loader: { '.css': 'css' }, logLevel: 'silent' })
+const built = buildSync({ stdin: { contents: "import './style.css';\n" + source + '\n' + fixture, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, outdir: 'out', format: 'iife', external: ['/logo-pignus.png', '/pignus-owl-white.svg'], define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'false' }, loader: { '.css': 'css' }, logLevel: 'silent' })
 const css = built.outputFiles.find(file => file.path.endsWith('.css')).text
 const js = built.outputFiles.find(file => file.path.endsWith('.js')).text
 const auditRecord = { id: 'audit-review', at: '2026-10-13T12:00:00Z', action: 'Modificó servicio', entity: 'Servicio', entityId: 'h-pending', user: { name: 'Administración Pignus', email: 'administracion@example.test' }, before: { time: '08:30', status: 'Pendiente' }, after: { time: '09:00', status: 'Pendiente' } }
@@ -99,6 +100,7 @@ const themes = (process.env.THEME_MODES || 'light,dark').split(',')
 const widths = (process.env.THEME_WIDTHS || '1440,768,390').split(',').map(Number)
 
 async function inspect(page, label, theme) {
+ const dialogs = await inspectModalGeometry(page, label);
  const metrics = await page.evaluate(() => {
   const visible = el => Boolean(el.getClientRects().length) && getComputedStyle(el).visibility !== 'hidden';
   const surfaces = [...document.querySelectorAll('.topbar,.data-card,.audit-table,.audit-row,.audit-table-head,.stats-grid article,.week-task-summary,.modal,.weekly-task-form,.customer-form,.employee-form,.vehicle-form,.role-editor,input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea')].filter(visible).map(el=>({selector:el.className||el.tagName,color:getComputedStyle(el).backgroundColor}));
@@ -113,8 +115,8 @@ async function inspect(page, label, theme) {
   const rgb=channels.slice(0,3);
   assert(Math.max(...rgb)<95&&Math.max(...rgb)-Math.min(...rgb)<12,`${label}: non-neutral surface ${surface.selector}: ${surface.color}`);
  }
- await page.screenshot({path:path.join(output,label+'.png'),fullPage:true});
- results.push({label,controls:metrics.controls.length,surfaces:metrics.surfaces.length});
+ await page.screenshot({path:path.join(output,label+'.png'),fullPage:!dialogs.length});
+ results.push({label,controls:metrics.controls.length,surfaces:metrics.surfaces.length,dialogs});
 }
 
 async function openAndCapture(page, label, theme, trigger, ready, closeAfter = true) {
@@ -178,6 +180,8 @@ async function openAndCapture(page, label, theme, trigger, ready, closeAfter = t
     if(view==='weekly'){
      await openAndCapture(page,label+'-preview',theme,page.locator('.weekly-day-preview-trigger').first(),'.modal');
      await openAndCapture(page,label+'-monthly',theme,page.getByRole('button',{name:'Equipos del mes',exact:true}),'.monthly-teams-modal');
+     await openAndCapture(page,label+'-monthly-vehicles',theme,page.getByRole('button',{name:'Vehículos del mes',exact:true}),'.monthly-vehicles-modal');
+     await openAndCapture(page,label+'-guards',theme,page.getByRole('button',{name:'Guardias del año',exact:true}),'.annual-guards-modal');
      await openAndCapture(page,label+'-service',theme,page.locator('.week-day').nth(1).getByRole('button',{name:'Agregar servicio',exact:true}).first(),'.weekly-task-form',false);
      if(await page.locator('.service-types-trigger').count()){
       await page.locator('.service-types-trigger').first().click();
@@ -189,9 +193,28 @@ async function openAndCapture(page, label, theme, trigger, ready, closeAfter = t
     if(view==='vehicles'){
      await openAndCapture(page,label+'-editor',theme,page.locator('.vehicle-row .row-actions button').first(),'.vehicle-form');
      await openAndCapture(page,label+'-photos',theme,page.getByRole('button',{name:'Historial de fotos',exact:true}).first(),'.vehicle-photo-history');
+     await openAndCapture(page,label+'-mileage',theme,page.getByRole('button',{name:'Ver estadísticas',exact:true}).first(),'.catalog-editor-modal');
     }
-    if(view==='accounts')await openAndCapture(page,label+'-editor',theme,page.locator('.account-row .row-actions button[title="Abrí el formulario para modificar los datos de este abonado o cliente."]').first(),'.customer-form');
-    if(view==='history')await openAndCapture(page,label+'-detail',theme,page.getByRole('button',{name:'Gestionar',exact:true}).first(),'.modal');
+    if(view==='accounts'){
+     await openAndCapture(page,label+'-editor',theme,page.locator('.account-row .row-actions button[title="Abrí el formulario para modificar los datos de este abonado o cliente."]').first(),'.customer-form');
+     await openAndCapture(page,label+'-import',theme,page.getByRole('button',{name:'Importar abonados',exact:true}),'.import-confirm-modal');
+    }
+    if(view==='history'){
+     await openAndCapture(page,label+'-detail',theme,page.getByRole('button',{name:'Gestionar',exact:true}).first(),'.modal');
+     await openAndCapture(page,label+'-pending',theme,page.locator('.history-row').filter({hasText:'Instalación de alarma'}).getByRole('button',{name:'Gestionar',exact:true}),'.modal',false);
+     await page.getByRole('button',{name:'Editar datos',exact:true}).click();
+     await page.locator('.history-edit-grid').waitFor();
+     await inspect(page,label+'-edit',theme);
+     await page.locator('.service-types-trigger').click();
+     await inspect(page,label+'-edit-options',theme);
+     await page.locator('.service-types-options input').first().focus();
+     await page.keyboard.press('Escape');
+     assert.equal(await page.locator('.service-types-options').count(),0,'Escape closes only the selector');
+     await page.locator('.history-actions').getByRole('button',{name:'Cancelar',exact:true}).click();
+     await page.getByRole('button',{name:'Reprogramar',exact:true}).click();
+     await page.locator('.history-reschedule-modal').waitFor();
+     await inspect(page,label+'-reschedule',theme);
+    }
     if(view==='services')await openAndCapture(page,label+'-editor',theme,page.locator('.service-row .row-actions button').first(),'.service-form');
     if(view==='audit')await openAndCapture(page,label+'-detail',theme,page.getByRole('button',{name:'Ver detalle',exact:true}).first(),'.audit-modal');
     if(view==='settings'){

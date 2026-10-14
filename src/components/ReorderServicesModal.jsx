@@ -25,10 +25,10 @@ export default function ReorderServicesModal({ tasks, sourceId, day, onClose, on
   return <EditorModal active title="Reordenar servicios" eyebrow="AGENDA SEMANAL" onClose={onClose} busy={busy}>
     <p>Se guardarán ambos horarios juntos, sin borrar servicios ni cambiar sus duraciones.</p>
     {tasks.length < 2 && <p role="status">No hay otro servicio pendiente y no iniciado para reordenar en este equipo y día.</p>}
-    <label>Otro servicio del mismo equipo<select disabled={busy} value={otherId} onChange={e => { setOtherId(e.target.value); setFirstId(sourceId); setSecondTime('') }}>{tasks.filter(task => task.taskId !== sourceId).map(task => <option key={task.taskId} value={task.taskId}>{task.time} · {task.client}</option>)}</select></label>
+    <div className="reorder-service-fields"><label>Otro servicio del mismo equipo<select disabled={busy} value={otherId} onChange={e => { setOtherId(e.target.value); setFirstId(sourceId); setSecondTime('') }}>{tasks.filter(task => task.taskId !== sourceId).map(task => <option key={task.taskId} value={task.taskId}>{task.time} · {task.client}</option>)}</select></label>
     <label>Realizar primero<select disabled={busy} value={first?.taskId} onChange={e => { setFirstId(e.target.value); setSecondTime('') }}>{pair.map(task => <option key={task.taskId} value={task.taskId}>{task.client}</option>)}</select></label>
     <label>{first?.client} · antes {first?.time}<input disabled={busy} type="time" value={firstTime} onChange={e => { setFirstTime(e.target.value); setSecondTime('') }} /></label>
-    <label>{second?.client} · antes {second?.time}<input disabled={busy} type="time" value={secondTime || proposed} onChange={e => setSecondTime(e.target.value)} /></label>
+    <label>{second?.client} · antes {second?.time}<input disabled={busy} type="time" value={secondTime || proposed} onChange={e => setSecondTime(e.target.value)} /></label></div>
     <p>Revisá los nuevos horarios antes de confirmar. El segundo considera la duración y la reserva mínima del primero.</p>
     {error && <p className="field-error" role="alert">{error}</p>}
     <div className="modal-actions"><button title="Cancelá el cambio de orden sin modificar los horarios." className="secondary" disabled={busy} onClick={onClose}>Cancelar</button><button title="Confirmá el intercambio de horarios de los servicios seleccionados." className="primary" disabled={busy || !second || !firstTime} onClick={save}>{busy ? 'Guardando…' : 'Confirmar nuevos horarios'}</button></div>
