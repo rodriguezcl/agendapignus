@@ -1,3 +1,4 @@
+const { serviceCompletionMinute } = require('./service-completion-minute.cjs')
 const { workingEnd, workdayForDate } = require('./workday.cjs')
 const { serviceSlotReleased } = require('./service-slot-released.cjs')
 const { independentVehicleControls } = require('./independent-vehicle-controls.cjs')
@@ -66,20 +67,7 @@ const agendaTaskForScheduleOccupancy = (task, date, history = [], today = argent
   return { ...task, date, status, technicalStatus: record ? record.technicalStatus || '' : task?.technicalStatus || '', completedAt: record?.completedAt || task?.completedAt || '', technicalReportedAt: record?.journeyClosedAt || record?.technicalReportedAt || task?.technicalReportedAt || '' }
 }
 
-const completedReleaseMinute = task => {
-  if (!['Completado', 'Avance registrado'].includes(task?.status) && !['Completado', 'Avance registrado'].includes(task?.technicalStatus)) return null
-  const value = task?.completedAt || task?.journeyClosedAt || task?.technicalReportedAt
-  const instant = new Date(value)
-  if (!value || Number.isNaN(instant.getTime())) return null
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(instant).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
-  if (`${parts.year}-${parts.month}-${parts.day}` !== String(task.date || '')) return null
-  const startParts = String(task.time || task.scheduledTime || '').match(/^(\d{1,2}):(\d{2})$/)
-  if (!startParts) return null
-  const start = Number(startParts[1]) * 60 + Number(startParts[2])
-  const completed = Number(parts.hour) * 60 + Number(parts.minute)
-  if (completed < start) return null
-  return completed + Number(parts.second) / 60
-}
+const completedReleaseMinute = task => serviceCompletionMinute(task)?.minutes ?? null
 
 const serviceMapFor = services => ({
   byId: new Map((services || []).map(service => [String(service.id), service])),

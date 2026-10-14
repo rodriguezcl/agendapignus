@@ -1,3 +1,4 @@
+import completionPolicy from '../../../api/_lib/service-completion-minute.cjs'
 import workday from '../../../api/_lib/workday.cjs'
 import slotPolicy from '../../../api/_lib/service-slot-released.cjs'
 import vehicleOverlapPolicy from '../../../api/_lib/independent-vehicle-controls.cjs'
@@ -32,35 +33,14 @@ export const minutesAsTime = value => {
   return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`
 }
 
-const zonedDateTime = value => {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return null
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
-    timeZone: SCHEDULE_TIME_ZONE,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
-  }).formatToParts(date).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
-  return {
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-    minutes: Number(parts.hour) * 60 + Number(parts.minute),
-    seconds: Number(parts.second)
-  }
-}
-
 export const completedServiceRelease = task => {
-  const completed = ['Completado', 'Avance registrado'].includes(task?.status) || ['Completado', 'Avance registrado'].includes(task?.technicalStatus)
-  const completedAt = task?.completedAt || task?.journeyClosedAt || task?.technicalReportedAt
-  const completion = completed && completedAt ? zonedDateTime(completedAt) : null
-  const taskDate = String(task?.date || '')
-  const start = timeInMinutes(task?.time || task?.scheduledTime)
-  if (!completion || !taskDate || completion.date !== taskDate || start === null || completion.minutes < start) return null
-  // Quarter-hour steps suggest new slots; they must not extend actual work.
-  const release = completion.minutes + completion.seconds / 60
+  const completion = completionPolicy.serviceCompletionMinute(task)
+  if (!completion) return null
   return {
-    completedAt,
+    completedAt: completion.completedAt,
     completedMinutes: completion.minutes,
     completedTime: minutesAsTime(completion.minutes),
-    release,
+    release: completion.minutes,
     releaseTime: minutesAsTime(completion.minutes)
   }
 }
