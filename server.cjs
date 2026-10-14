@@ -2068,6 +2068,33 @@ const server = http.createServer((req, res) => {
       }
     }).catch(error => send(res, error.statusCode || 400, { code: error.code, error: error.message || 'No se pudo actualizar el servicio.' }))
   }
+  if (req.method === 'POST' && url.pathname === '/api/history/category-correction') {
+    const user = requireSession(req, res)
+    if (!user) return
+    if (user.roleCode !== 'administrator' || !userCan(user, 'historyManage')) return send(res, 403, { error: 'Sólo Administración puede corregir categorías.' })
+    return readJson(req, 500_000).then(async input => {
+      // Load the module before opening the synchronous SQLite transaction.
+      const { correctServiceCategory } = await import('./src/domain/history/category-correction.mjs')
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const current = readState()
+        const correction = require('./api/_lib/category-correction.cjs').prepareCategoryCorrection(current, input, user, correctServiceCategory)
+        for (const record of correction.state.history) db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(record), String(record.id))
+        for (const { before, after } of correction.conversions) {
+          db.prepare('DELETE FROM customers WHERE account = ?').run(String(before.account))
+          db.prepare('INSERT INTO customers (account, data) VALUES (?, ?) ON CONFLICT(account) DO UPDATE SET data = excluded.data').run(after.account, JSON.stringify(after))
+          writeAudit(user, after.kind === 'subscriber' ? 'Restituyó abonado al corregir retiro' : 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)
+        }
+        for (const review of correction.state.reviews || []) db.prepare('UPDATE reviews SET data = ? WHERE id = ?').run(JSON.stringify(review), String(review.id))
+        db.prepare('INSERT OR REPLACE INTO agendas (id, data) VALUES (?, ?)').run('current', JSON.stringify(correction.state.agenda))
+        writeAudit(user, 'Corrigió categoría', 'Servicio / historial', String(correction.before.id), correction.before, correction.after)
+        const revision = currentStateRevision() + 1
+        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
+        db.exec('COMMIT')
+        return send(res, 200, { ok: true, revision, state: readStateForUser(user) })
+      } catch (error) { db.exec('ROLLBACK'); throw error }
+    }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo corregir la categoría.' }))
+  }
   if (req.method === 'POST' && url.pathname === '/api/collections/manage') {
     const user = requireSession(req, res)
     if (!user) return

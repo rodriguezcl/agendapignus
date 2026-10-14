@@ -3,19 +3,19 @@ const serviceFields = ['serviceId', 'service', 'serviceTypes']
 const changed = (a, b, key) => JSON.stringify(a?.[key]) !== JSON.stringify(b?.[key])
 const hasWork = record => Boolean(record.startedAt || record.technicalStatus || record.technicalReportedAt || record.journeyClosedAt || ['Avance registrado', 'Completado'].includes(record.status))
 
-function restoredRetirementReference(before, next, state, previous) {
+function restoredRetirementReference(before, next, state, previous, categoryCorrection = false) {
   const source = previous.customers?.find(customer => String(customer.customerId) === String(before.customerId))
   const target = state.customers?.find(customer => String(customer.customerId) === String(next.customerId))
   if (!source?.convertedFromAccount || !target || target.kind !== 'subscriber' || target.account !== source.convertedFromAccount || next.clientAccount !== target.account || next.client !== `${target.account} ${target.name}` || next.clientNameAtService !== target.name) return false
   const referenceKeys = ['customerId', 'client', 'clientAccount', 'clientNameAtService']
-  if ([...customerFields, ...serviceFields].some(key => !referenceKeys.includes(key) && changed(before, next, key))) return false
+  if ([...customerFields, ...serviceFields].some(key => !referenceKeys.includes(key) && !(categoryCorrection && serviceFields.includes(key)) && changed(before, next, key))) return false
   if (String(source.customerId) !== String(target.customerId)) {
     const originalTarget = previous.customers?.find(customer => String(customer.customerId) === String(target.customerId))
     if (!originalTarget || originalTarget.account !== source.convertedFromAccount || !require('./retirement-customer-match.cjs').matchesRetiredSubscriber(source, originalTarget)) return false
   }
   const retirement = record => String(record.service || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes('retiro de equipo')
   if (state.history.some(record => [String(source.customerId), String(target.customerId)].includes(String(record.customerId)) && record.status === 'Completado' && retirement(record))) return false
-  return previous.history.some(record => String(record.customerId) === String(source.customerId) && record.status === 'Completado' && retirement(record) && state.history.some(updated => String(updated.id) === String(record.id) && updated.status !== 'Completado' && String(updated.customerId) === String(target.customerId)))
+  return previous.history.some(record => String(record.customerId) === String(source.customerId) && record.status === 'Completado' && retirement(record) && state.history.some(updated => String(updated.id) === String(record.id) && (updated.status !== 'Completado' || !retirement(updated)) && String(updated.customerId) === String(target.customerId)))
 }
 
 function identityPatch(previous, next) {

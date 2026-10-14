@@ -14,6 +14,40 @@ const origin = `http://127.0.0.1:${port}`
 let temporaryDirectory
 let serverProcess
 
+test('Corrección de categoría: conserva el completado y restituye el abonado con auditoría', async () => {
+  const fixture = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const customer = { customerId: 'qa-category-customer', account: 'CLI-993781', kind: 'client', name: 'MUDANZA QA', convertedFromAccount: 'PIG-993781', convertedFromType: 'Abonado' }
+  upsertJson(fixture, 'customers', 'account', customer)
+  upsertJson(fixture, 'services', 'id', { id: 'qa-other-service', name: 'Otro service', status: 'Activo' })
+  const record = { id: 'qa-category-correction', customerId: customer.customerId, client: 'CLI-993781 MUDANZA QA', clientAccount: customer.account, clientNameAtService: customer.name, date: '2026-10-14', time: '11:00', serviceId: 'qa-retirement', service: 'Retiro de equipo', status: 'Completado', technicalStatus: 'Completado', technicalObservation: 'Se retiraron cámaras para mudanza', technicalReportedAt: '2026-10-14T15:00:00Z', completedAt: '2026-10-14T15:00:00Z', amount: '1234', paymentMethod: 'Efectivo' }
+  upsertJson(fixture, 'work_history', 'id', record)
+  fixture.close()
+  const admin = await login('qa-admin@pignus.test')
+  const tech = await login('qa-tech@pignus.test')
+  const base = (await state(admin)).history.find(item => item.id === record.id)
+  const input = { recordId: record.id, base, serviceIds: ['qa-other-service'], reason: 'Mudanza: conserva el servicio' }
+  for (const cookie of [tech, null]) assert.equal((await api('/api/history/category-correction', cookie, { method: 'POST', body: JSON.stringify(input) })).status, cookie ? 403 : 401)
+  const response = await api('/api/history/category-correction', admin, { method: 'POST', body: JSON.stringify(input) })
+  assert.equal(response.status, 200, await response.clone().text())
+  const next = await state(admin), saved = next.history.find(item => item.id === record.id)
+  assert.equal(saved.service, 'Otro service')
+  assert.equal(saved.status, 'Completado')
+  assert.equal(saved.technicalObservation, record.technicalObservation)
+  assert.equal(saved.completedAt, record.completedAt)
+  assert.equal(saved.amount, record.amount)
+  assert.equal(saved.clientAccount, 'PIG-993781')
+  assert.equal(next.customers.find(item => item.customerId === customer.customerId).kind, 'subscriber')
+  assert.equal(saved.categoryCorrections[0].reason, input.reason)
+  assert.equal((await api('/api/history/category-correction', admin, { method: 'POST', body: JSON.stringify(input) })).status, 409)
+  const tampered = await api('/api/history/' + record.id, admin, { method: 'PATCH', body: JSON.stringify({ base: saved, record: { ...saved, categoryCorrections: [] } }) })
+  assert.equal(tampered.status, 409)
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const entries = db.prepare('SELECT data FROM audit_log').all().map(row => JSON.parse(row.data))
+  db.close()
+  assert.ok(entries.some(entry => entry.action === 'Corrigió categoría' && entry.entityId === record.id))
+  assert.ok(entries.some(entry => entry.action === 'Restituyó abonado al corregir retiro' && entry.entityId === customer.customerId))
+})
+
 test('Cobranzas: permisos, confirmación concurrente, auditoría y persistencia sin reabrir servicios', async () => {
   const { collectionBase } = await import('../src/domain/collections/collections.mjs')
   const fixture = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
