@@ -6,6 +6,15 @@ import './help-center.css'
 
 const MODULES = [
   {
+    id: 'collections', module: 'collections', icon: 'wallet', title: 'Cobranzas', summary: 'Revisá y confirmá los pagos de servicios con monto y forma de pago.',
+    articles: [
+      { title: 'Qué se incluye', body: 'El seguimiento comienza con los servicios del 14 de octubre de 2026 en adelante que tengan monto mayor a cero y forma de pago. No se incorporan servicios anteriores ni sus reprogramaciones. Un servicio dividido en varias jornadas tiene una sola cobranza compartida.' },
+      { title: 'Avisos de pago pendiente', body: 'Cada cobranza pendiente aparece en la campana. Al seleccionarla se abre su ficha en Cobranzas. Consultar el aviso o completar el trabajo no confirma el pago: permanece pendiente hasta verificar su recepción.' },
+      { title: 'Confirmar o rectificar', body: 'En Gestionar, revisá el monto y la forma de pago efectivos. Guardar corrección mantiene el estado actual del pago. Confirmar pago registra que el dinero fue recibido y retira su notificación. El historial conserva los valores anteriores, la fecha, el usuario y la observación. Las correcciones posteriores de un pago confirmado conservan su confirmación.' },
+      { title: 'Permisos', body: 'Administración tiene acceso completo. En Configuración, el permiso Cobranzas habilita la consulta y Gestionar cobranzas permite confirmar y rectificar. Los técnicos no confirman pagos desde su agenda.' }
+    ]
+  },
+  {
     id: 'start', module: 'dashboard', icon: 'dashboard', title: 'Primeros pasos', summary: 'Conocé el recorrido completo desde la planificación hasta el cierre del servicio.',
     articles: [
       { title: 'Recorrido recomendado', intro: 'Para mantener la información ordenada, conviene trabajar en este orden:', steps: ['Revisá que el abonado o cliente exista y que sus datos estén actualizados.', 'Planificá equipos y servicios desde Agenda semanal. Si la fecha es feriado, definí primero si será laboral o no operativa.', 'Abrí el servicio en Agenda semanal para completar o ajustar la planificación.', 'Guardá cada servicio. Los servicios quedarán disponibles en Historial y en la agenda del técnico asignado.', 'Cuando el técnico informe el resultado, revisá el estado y sus observaciones desde Historial o desde la ficha del cliente.'] },

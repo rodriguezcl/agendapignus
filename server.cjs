@@ -53,6 +53,7 @@ const PASSWORD_RESET_REQUESTS_KEY = 'password_reset_requests'
 const PASSWORD_RESET_REQUESTS_LIMIT = 50
 const CUSTOMER_IMPORT_BACKUP_KEY = 'last_customer_import_backup'
 const FEATURE_PERMISSION_PARENTS = {
+  collectionsManage: 'collections',
   weeklyTeams: 'weekly',
   weeklyHours: 'weekly',
   weeklyVehicles: 'weekly',
@@ -763,7 +764,7 @@ function readState() {
 
 function technicianSafeRecord(record = {}) {
   const { internalNote: _internalNote, internalChecklist: _internalChecklist, monthlyFee: _monthlyFee, ...visible } = record
-  for (const field of ['monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy']) delete visible[field]
+  for (const field of ['collection', 'monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy']) delete visible[field]
   const cashPayment = normalizedRoleName(visible.paymentMethod) === 'efectivo'
   const handwrittenForm = normalizedRoleName(visible.form).startsWith('incompleto')
   if (!cashPayment) {
@@ -819,7 +820,7 @@ function readStateForUser(user) {
       const account = String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()
       return (customerId && customerIds.has(customerId)) || (account && accounts.has(account))
     }).map(record => {
-      const { internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, formEmail: _formEmail, ...visible } = record
+      const { collection: _collection, internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, formEmail: _formEmail, ...visible } = record
       return visible
     })
     return { revision: state.revision, roles: [], employees: [], services: [], vehicles: [], customers: trackedCustomers, history, agenda: null, preferences: {} }
@@ -831,7 +832,7 @@ function readStateForUser(user) {
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? ensureVehicleControlService(state.services) : [],
     vehicles: userCan(user, 'vehicles') || userCan(user, 'weeklyVehicles') ? state.vehicles : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
-    history: userCan(user, 'history') || userCan(user, 'accounts') ? state.history : [],
+    history: userCan(user, 'history') || userCan(user, 'accounts') || userCan(user, 'collections') ? state.history : [],
     agenda: canPlan ? state.agenda : null
   }
 }
@@ -1209,6 +1210,10 @@ function assertServiceCanBeCompleted(record, now = new Date().toISOString()) {
 
 function managedHistoryRecord(current, proposed, user, now = new Date().toISOString()) {
   require('./api/_lib/completed-service-policy.cjs').assertCompletedServiceChange(current, proposed)
+  if (current.serviceJourney) {
+    const root = db.prepare('SELECT data FROM work_history WHERE id = ?').get(String(current.serviceJourney.id))
+    require('./api/_lib/collection-policy.cjs').assertSharedCollection(root?.data ? JSON.parse(root.data) : null, { ...current, ...proposed })
+  }
   require('./api/_lib/service-confirmation.cjs').assertServiceConfirmationChange(current, { ...current, ...proposed }, now)
   const allowedStatuses = ['Pendiente', 'Completado', 'Avance registrado', 'Cancelado', 'Reprogramado', 'Requiere revisión']
   if (!allowedStatuses.includes(proposed.status || 'Pendiente')) throw new Error('El estado solicitado no es válido.')
@@ -2062,6 +2067,30 @@ const server = http.createServer((req, res) => {
         throw error
       }
     }).catch(error => send(res, error.statusCode || 400, { code: error.code, error: error.message || 'No se pudo actualizar el servicio.' }))
+  }
+  if (req.method === 'POST' && url.pathname === '/api/collections/manage') {
+    const user = requireSession(req, res)
+    if (!user) return
+    if (user.roleCode === 'technician' || !userCan(user, 'collectionsManage')) return send(res, 403, { error: 'No tenés permiso para gestionar cobranzas.' })
+    return readJson(req, 500_000).then(async input => {
+      const { manageCollection } = await import('./src/domain/collections/collections.mjs')
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const current = readState()
+        const correction = manageCollection(current, input, user)
+        require('./api/_lib/completed-service-policy.cjs').assertCompletedServices(correction.state, current, { collectionCorrectionIds: correction.recordIds })
+        for (const record of correction.state.history.filter(item => correction.recordIds.includes(String(item.id)))) db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(record), String(record.id))
+        if (JSON.stringify(current.agenda) !== JSON.stringify(correction.state.agenda)) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(correction.state.agenda), 'current')
+        writeAudit(user, input.action === 'confirm' ? 'Confirmó pago' : 'Rectificó cobranza', 'Servicio / historial', String(correction.before.id), correction.before, correction.after)
+        const revision = currentStateRevision() + 1
+        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
+        db.exec('COMMIT')
+        return send(res, 200, { ok: true, revision, state: readStateForUser(user) })
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+    }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo guardar la cobranza.' }))
   }
   if (req.method === 'POST' && url.pathname === '/api/customers/subscription-correction') {
     const user = requireSession(req, res)

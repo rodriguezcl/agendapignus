@@ -24,6 +24,20 @@ test('all journeys are one atomic command with daily, weekly and history project
   assert.equal(next.agenda.weekly['2099-01-06'].teams[0].tasks[0].historyId,'work-two')
   assert.doesNotThrow(()=>validateServiceJourneys(next,state))
 })
+
+test('planificar jornadas conserva una cobranza confirmada sin copiar su confirmación a registros nuevos', async () => {
+  const { state, options, planServiceJourneyOperations } = await planned()
+  const { manageCollection, collectionBase, collectionRecords } = await import('../src/domain/collections/collections.mjs')
+  const { assertCompletedServices } = require('../api/_lib/completed-service-policy.cjs')
+  const record = state.history[0]
+  Object.assign(record, { amount: '10000', paymentMethod: 'Efectivo' })
+  const paid = manageCollection(state, { recordId: record.id, base: collectionBase(record), action: 'confirm', amount: '10000', paymentMethod: 'Efectivo' }, { id: 'admin', name: 'Admin' }).state
+  const next = applyStateOperations(paid, planServiceJourneyOperations(paid, { ...options, base: paid.history[0] }))
+  assert.doesNotThrow(() => assertCompletedServices(next, paid))
+  assert.equal(collectionRecords(next.history).length, 1)
+  assert.equal(next.history[0].collection.status, 'confirmed')
+  assert.equal(next.history[1].collection, undefined)
+})
 test('stale base or invalid destination never generates partial reservations',async()=>{
   const {state,options,planServiceJourneyOperations:plan}=await planned()
   assert.throws(()=>plan({...state,history:[{...state.history[0],detail:'changed'}]},options),/cambió/)

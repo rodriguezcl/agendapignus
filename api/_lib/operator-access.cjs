@@ -17,7 +17,7 @@ function operatorState(state) {
     employees: (state.employees || []).map(({ id, firstName, lastName, name, roleId, role, status }) => ({ id, firstName, lastName, name, roleId, role, status })),
     services: state.services || [],
     customers: state.customers || [],
-    history: state.history || [],
+    history: (state.history || []).map(({ collection, ...record }) => record),
     vehicles: [], preferences: {},
     agenda: { date: state.agenda?.date, teams: [], weekly: state.agenda?.weekly || {} }
   }

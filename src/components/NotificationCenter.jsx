@@ -55,7 +55,7 @@ export default function NotificationCenter({ notifications = [], onSelect }) {
       <header className="notification-header"><div><h2>Notificaciones</h2><p>{count} aviso{count === 1 ? '' : 's'} activo{count === 1 ? '' : 's'}</p></div><button type="button" className="notification-close" aria-label="Cerrar notificaciones" title="Cerrá las notificaciones y volvé a la pantalla actual." onClick={() => close(true)}><Icon name="close" size={17} /></button></header>
       <div className="notification-list">
         {count ? notifications.map(notification => <button type="button" key={notification.id} className="notification-item" data-tone={notification.tone || 'info'} title={`Abrir: ${notification.title}`} onClick={() => activate(notification)}>
-          <span className="notification-marker" aria-hidden="true"><Icon name={notification.tone === 'danger' ? 'alert' : 'calendar'} size={17} /></span>
+          <span className="notification-marker" aria-hidden="true"><Icon name={notification.target?.type === 'collection' ? 'wallet' : notification.tone === 'danger' ? 'alert' : 'calendar'} size={17} /></span>
           <span className="notification-copy"><strong>{notification.title}</strong><span>{notification.detail}</span></span>
         </button>) : <div className="notification-empty"><Icon name="check" size={24} /><strong>No hay avisos activos</strong><p>Acá aparecerán los avisos que requieran seguimiento.</p></div>}
       </div>
