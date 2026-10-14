@@ -2585,7 +2585,7 @@ export default function App() {
   const [activeNotificationId, setActiveNotificationId] = useState(null)
   const [collectionOpenRequest, setCollectionOpenRequest] = useState(null)
   useEffect(() => {
-    if (!authUser || !databaseReady || (!isAdministrator && !modulePermissions.dashboard)) return undefined
+    if (!authUser || !databaseReady || (!isAdministrator && !modulePermissions.dashboard && !modulePermissions.collections)) return undefined
     const refresh = () => { if (!document.hidden) setNotificationNow(Date.now()) }
     // Expiry rules use local minutes: update at the minute boundary, not 30s later.
     let timer
@@ -2597,7 +2597,7 @@ export default function App() {
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', refresh)
     return () => { window.clearTimeout(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh) }
-  }, [authUser?.id, databaseReady, isAdministrator, modulePermissions.dashboard])
+  }, [authUser?.id, databaseReady, isAdministrator, modulePermissions.dashboard, modulePermissions.collections])
   const notifications = useMemo(() => selectDashboardNotifications({
     history, vehicles, customers, passwordResetRequests: passwordResetState.requests,
     today: currentLocalDate(), now: notificationNow, isAdministrator, permissions: modulePermissions
