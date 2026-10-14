@@ -817,6 +817,29 @@ function managedHistoryRecord(current, proposed, user, now) {
   return next
 }
 
+async function handleCategoryCorrection(req, res, sql, user) {
+  if (user.roleCode !== 'administrator' || !userCan(user, 'historyManage')) return send(res, 403, { error: 'Sólo Administración puede corregir categorías.' })
+  try {
+    const result = await sql.begin(async transaction => {
+      await transaction`set local lock_timeout = '5s'`
+      await transaction`set local statement_timeout = '30s'`
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      const locked = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const revision = Number(locked[0]?.value || 0) + 1
+      const current = await readState(transaction)
+      const { correctServiceCategory } = await import('../src/domain/history/category-correction.mjs')
+      const correction = require('./_lib/category-correction.cjs').prepareCategoryCorrection(current, requestBody(req), user, correctServiceCategory)
+      await persistStateCollections(transaction, current, correction.state, revision, undefined, correction.policyOptions)
+      await appendAudit(transaction, [auditEntry(user, 'Corrigió categoría', 'Servicio / historial', String(correction.before.id), correction.before, correction.after), ...correction.conversions.map(({ before, after }) => auditEntry(user, after.kind === 'subscriber' ? 'Restituyó abonado al corregir retiro' : 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after))])
+      return { revision, state: correction.state }
+    })
+    return send(res, 200, { ok: true, revision: result.revision, state: visibleStateForUser({ ...result.state, revision: result.revision }, user) })
+  } catch (error) {
+    const busy = ['55P03', '57014'].includes(error.code)
+    return send(res, busy ? 503 : (error.statusCode || 400), { error: busy ? 'La base de datos está ocupada. Intentá nuevamente.' : error.message })
+  }
+}
+
 async function handleHistoryRecordUpdate(req, res, sql, user, recordId) {
   if (!userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
   const { base, record: proposed } = requestBody(req)
@@ -1200,6 +1223,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST' && route === '/technician/advance-request') return await handleServiceAdvance(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/admin/advance-request/approve') return await handleServiceAdvance(req, res, sql, session.user, 'approved')
     if (req.method === 'POST' && route === '/admin/advance-request/deny') return await handleServiceAdvance(req, res, sql, session.user, 'denied')
+    if (req.method === 'POST' && route === '/history/category-correction') return await handleCategoryCorrection(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/collections/manage') return await handleCollectionManagement(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/customers/subscription-correction') return await handleSubscriptionCorrection(req, res, sql, session.user)
     if (['GET', 'POST', 'DELETE'].includes(req.method) && route === '/customers/import') return await handleCustomerImport(req, res, sql, session.user)

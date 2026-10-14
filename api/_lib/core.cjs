@@ -487,7 +487,7 @@ function normalizeRetirementCustomers(state, previous = null) {
   const currentRecords = new Map((state.history || []).map(record => [String(record.id), record]))
   const correctedCustomerIds = new Set((previous?.history || []).filter(record => {
     const next = currentRecords.get(String(record.id))
-    return record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo') && next && next.status !== 'Completado' && String(next.customerId) === String(record.customerId)
+    return record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo') && next && (next.status !== 'Completado' || !normalizedServiceName(next.service).includes('retiro de equipo')) && String(next.customerId) === String(record.customerId)
   }).map(record => String(record.customerId || '')).filter(Boolean))
   let nextNumber = Math.max(0, ...(state.customers || []).map(customer => Number(String(customer.account || '').match(/^CLI-(\d+)$/i)?.[1]) || 0)) + 1
   const conversions = new Map()

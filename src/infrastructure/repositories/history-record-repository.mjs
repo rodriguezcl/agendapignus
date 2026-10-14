@@ -22,6 +22,10 @@ export async function writeHistoryRequest(url, options, fallbackMessage, { fetch
 }
 
 export const historyRecordRepository = {
+  correctCategory: (base, correction) => writeHistoryRequest('/api/history/category-correction', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recordId: base.id, base, ...correction })
+  }, 'No se pudo corregir la categoría.'),
   update: (base, record) => writeHistoryRequest(`/api/history/${encodeURIComponent(String(record.id))}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
