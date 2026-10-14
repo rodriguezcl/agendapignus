@@ -1,4 +1,4 @@
-.modal.catalog-editor-modal:has(.category-correction-form) { max-width: 640px; }
+.modal.catalog-editor-modal:has(.category-correction-form) { --ap-modal-width: 640px; }
 .category-correction-form > fieldset { border: 0; margin: 20px 0; padding: 0; display: grid; gap: 16px; min-width: 0; }
 .category-correction-form > fieldset > label { display: grid; gap: 6px; }
 .category-correction-form textarea { width: 100%; min-height: 88px; resize: vertical; }

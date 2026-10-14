@@ -5,7 +5,7 @@
   box-sizing: border-box;
   min-width: 0;
   max-width: 100%;
-  min-height: var(--ap-control-height);
+  min-height: var(--ap-field-min-height, var(--ap-control-height));
   padding: 10px 12px;
   border: 1px solid var(--ap-border) !important;
   border-radius: 6px !important;
@@ -91,6 +91,9 @@
   --modal-close-color: var(--ap-text);
   box-sizing: border-box;
   padding: 28px;
+  min-width: 0;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
   width: min(var(--ap-modal-width, 520px), calc(100vw - 32px));
   max-width: min(var(--ap-modal-width, 520px), calc(100vw - 32px));
   border: 1px solid var(--ap-border) !important;
@@ -108,6 +111,10 @@
 .modal.monthly-teams-modal { --ap-modal-width: 640px; }
 .modal.alarm-details-modal { --ap-modal-width: 980px; }
 .modal.location-installations-modal { --ap-modal-width: 1200px; }
+.modal.catalog-editor-modal:has(.service-form) { --ap-modal-width: 640px; }
+.modal.catalog-editor-modal:has(.reorder-service-fields) { --ap-modal-width: 640px; }
+.modal.catalog-editor-modal:has(.vehicle-form) { --ap-modal-width: 720px; }
+.modal.catalog-editor-modal:has(.vehicle-photo-history, .vehicle-mileage-stats) { --ap-modal-width: 640px; }
 :is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal > :is(h2, .eyebrow) { padding-right: 38px; }
 :is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal h2 { color: var(--ap-text) !important; font-size: 23px; line-height: 1.3; font-weight: 600; letter-spacing: -.35px; }
 :is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal > p:not(.field-error):not(.notice) { color: var(--ap-muted) !important; font-size: 13px; line-height: 1.6; }
@@ -201,7 +208,7 @@ body :is(.service-duration-field > span, .service-duration-inputs small, .system
 }
 :is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal :is(.internal-preparation-heading b, .internal-checklist-heading b, .internal-note-value, .attachments summary) { color: var(--ap-text) !important; }
 :is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal .weekly-task-form .weekly-extra-fields { gap: 16px; }
-:is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal.weekly-task-modal .weekly-task-form > label > textarea { min-height: 112px; }
+:is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal.weekly-task-modal .weekly-task-form > label > textarea { --ap-field-min-height: 112px; min-height: 112px; }
 
 @media (min-width: 1024px) {
   /* ServiceTypesField is a fieldset, so place it explicitly rather than
@@ -293,4 +300,78 @@ body :is(.service-duration-field > span, .service-duration-inputs small, .system
 
 @media (prefers-reduced-motion: reduce) {
   :is(.primary, .secondary, .danger-button, .detail-button, .save, input, select, textarea) { transition: none !important; }
+}
+
+/* Modal layout contract: keep legacy form rules from stretching rows, placing
+   actions in numbered grid rows, or turning popup options into stacked fields. */
+.modal textarea { --ap-field-min-height: 94px; }
+:is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal :is(.employee-form, .customer-form, .service-form, .vehicle-form) {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  align-items: start;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--ap-border) !important;
+  border-radius: var(--ap-radius);
+  background: var(--ap-surface-alt) !important;
+  color: var(--ap-text);
+}
+.modal.modal :is(.history-edit-grid, .weekly-task-form, .customer-form, .employee-form, .service-form, .vehicle-form) > * { min-width: 0; }
+.modal.modal :is(.customer-form, .employee-form, .service-form, .vehicle-form) > label { margin: 0; }
+.modal.modal .customer-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.modal.modal .reorder-service-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
+.modal.modal .reorder-service-fields > label { display: grid; align-content: start; gap: 6px; min-width: 0; margin: 0; }
+.modal.modal .reorder-service-fields > label:nth-child(-n+2) { grid-column: 1 / -1; }
+.modal.modal .reorder-service-fields :is(select, input) { width: 100%; }
+.modal.modal .vehicle-form > :is(.attachment-picker, .attachments, .vehicle-insurance-current),
+.modal.modal form > :is(.modal-actions, .employee-form-actions, .service-form-actions) { grid-column: 1 / -1; }
+.modal.modal .vehicle-form > .attachments { margin: 0; }
+.modal.modal .attachment-picker > p { margin-top: 0; line-height: 1.5; }
+.modal.modal input[type='file']:not([hidden]) { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+.modal.modal .service-types-field { align-self: start; align-content: start; }
+.modal.modal .service-types-options input[type='checkbox'] { align-self: center; }
+.modal.modal .history-detail-heading { flex-direction: row; align-items: center; gap: 12px; }
+.modal.modal .history-detail-heading h2 { flex: 1 1 280px; min-width: 0; margin: 0; }
+.modal.modal .history-detail-heading > .detail-edit { min-width: 0 !important; max-width: 100%; white-space: normal; }
+.modal.modal .history-detail-grid { max-height: none; overflow: visible; }
+.modal.modal .history-detail-grid > div { min-width: 0; overflow-wrap: anywhere; }
+.modal.modal :is(.history-actions, .modal-actions, .confirm-actions, .employee-form-actions, .service-form-actions, .reschedule-footer) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 10px;
+}
+:is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal :is(.history-actions, .modal-actions, .confirm-actions, .employee-form-actions, .service-form-actions, .reschedule-footer) > button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 140px;
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 44px !important;
+  height: auto !important;
+  padding: 10px 12px;
+  margin: 0;
+  white-space: normal;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.modal.modal :is(.history-actions, .modal-actions, .confirm-actions, .employee-form-actions, .service-form-actions, .reschedule-footer) > button > svg { flex-shrink: 0; }
+:is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal form :is(.modal-actions, .employee-form-actions, .service-form-actions) { margin-top: 4px; padding-top: 16px; }
+.modal.modal :is(.internal-preparation-heading, .internal-checklist-heading) { flex-wrap: wrap; gap: 10px; }
+.modal.modal :is(.internal-preparation-heading, .internal-checklist-heading) > div { min-width: 0; flex: 1 1 220px; }
+
+@media (max-width: 640px) {
+  :is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal { max-height: calc(100dvh - 20px); }
+  .modal.modal .customer-form { grid-template-columns: minmax(0, 1fr); }
+  .modal.modal .reorder-service-fields { grid-template-columns: minmax(0, 1fr); }
+  :is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal :is(.employee-form, .customer-form, .service-form, .vehicle-form) { padding: 12px; gap: 14px; }
+  .modal.modal .history-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .modal.modal .history-detail-grid > .detail-notes { grid-column: 1 / -1; }
+}
+@media (max-width: 359px) {
+  .modal.modal .history-detail-grid { grid-template-columns: minmax(0, 1fr); }
 }
