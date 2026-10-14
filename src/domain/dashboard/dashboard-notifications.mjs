@@ -46,7 +46,7 @@ export function dashboardExpiredInsuranceVehicles(vehicles = [], today) {
  * Targets describe navigation only; resolution remains in the existing modules.
  */
 export function selectDashboardNotifications({ history = [], vehicles = [], customers = [], passwordResetRequests = [], today, now, isAdministrator = false, permissions = {} } = {}) {
-  const notices = (isAdministrator || permissions.collections === true) ? collectionRecords(history).filter(record => !collectionConfirmed(record)).map(record => ({
+  const notices = (isAdministrator || permissions.collections === true) ? collectionRecords(history).filter(record => !collectionConfirmed(record) && record.date && record.date <= today).map(record => ({
     id: `collection:${record.id}`, title: 'Cobranza pendiente de pago', tone: 'warning',
     detail: `${record.client || 'Servicio'} · ${dateLabel(record.date)} · ${collectionMoney(record.amount)} · ${record.paymentMethod}.`,
     target: { type: 'collection', recordId: String(record.id) }

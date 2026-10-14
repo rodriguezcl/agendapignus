@@ -5,6 +5,27 @@ const today = '2026-10-13'
 const now = Date.parse('2026-10-13T12:00:00Z') // 09:00 in Córdoba
 const readPermissions = { dashboard: true, history: true, weekly: true, vehicles: true }
 
+test('collection notices include today and earlier dates, become due across month/year boundaries and follow rescheduling', async () => {
+  const { selectDashboardNotifications } = await load()
+  const base = { amount: '10000', paymentMethod: 'Efectivo', status: 'Pendiente' }
+  const history = [
+    { ...base, id: 'past', date: '2026-12-30' },
+    { ...base, id: 'today', date: '2026-12-31', time: '23:59' },
+    { ...base, id: 'future', date: '2027-01-01' },
+    { ...base, id: 'confirmed', date: '2026-12-30', collection: { status: 'confirmed' } },
+    { ...base, id: 'corrected-future', date: '2027-01-01', collection: { status: 'pending' } },
+    { ...base, id: 'before-rollout', date: '2026-10-13' }
+  ]
+  const snapshot = structuredClone(history)
+  const ids = (date, records = history, access = { permissions: { collections: true } }) => selectDashboardNotifications({ history: records, today: date, ...access }).filter(item => item.target.type === 'collection').map(item => item.id).sort()
+  assert.deepEqual(ids('2026-12-31'), ['collection:past', 'collection:today'])
+  assert.deepEqual(ids('2026-12-31', history, { isAdministrator: true }), ['collection:past', 'collection:today'])
+  assert.deepEqual(ids('2027-01-01'), ['collection:corrected-future', 'collection:future', 'collection:past', 'collection:today'])
+  assert.deepEqual(ids('2026-12-31', history.map(record => record.id === 'today' ? { ...record, date: '2027-01-02' } : record)), ['collection:past'])
+  assert.deepEqual(ids('2026-12-31', history, { permissions: { dashboard: true } }), [])
+  assert.deepEqual(history, snapshot)
+})
+
 test('includes every existing dashboard notice family without modifying the snapshot', async () => {
   const { selectDashboardNotifications } = await load()
   const input = {
