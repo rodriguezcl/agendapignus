@@ -182,13 +182,6 @@
   margin: 0;
 }
 
-.app-shell[data-theme] .retirement-summary > div:has(> span):has(> b):has(> button) {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.app-shell[data-theme] .retirement-summary > div:has(> button) > span { grid-column: 1; }
-.app-shell[data-theme] .retirement-summary > div:has(> button) > b { grid-column: 2; }
-
 /* Counts and comparisons must remain readable on both card surfaces. */
 .app-shell[data-theme] .zone-summary > div > b { color: var(--ap-accent) !important; }
 .app-shell[data-theme] .zone-summary:not(.retirement-summary) > div:nth-last-of-type(2) > b { color: var(--ap-info) !important; }
