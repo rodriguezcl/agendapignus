@@ -1,0 +1,47 @@
+.collections-page { min-width: 0; color: var(--ap-text); }
+.collections-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.collections-summary article { padding: 20px; border: 1px solid var(--ap-border); border-top: 3px solid var(--ap-accent); border-radius: 8px; background: var(--ap-surface); box-shadow: var(--ap-shadow); }
+.collections-summary article > * { display: block; }
+.collections-summary strong { font-size: clamp(22px, 3vw, 30px); margin: 8px 0; overflow-wrap: anywhere; }
+.collections-summary small, .collections-help, .collections-table small, .collection-trace small { color: var(--ap-muted); }
+.collections-help { font-size: 13px; line-height: 1.5; }
+.collections-filters { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(140px, 1fr)); gap: 12px; align-items: end; margin-top: 20px; }
+.collections-filters label, .collection-fields label, .collections-editor form label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.collections-filters input, .collections-filters select, .collections-editor input, .collections-editor select, .collections-editor textarea { width: 100%; min-width: 0; box-sizing: border-box; color: var(--ap-text); background: var(--ap-input); border: 1px solid var(--ap-border); }
+.collections-table-wrap { border: 1px solid var(--ap-border); border-radius: 8px; overflow: auto; background: var(--ap-surface); }
+.collections-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.collections-table th { text-align: left; background: var(--ap-surface-alt); color: var(--ap-muted); font-size: 12px; }
+.collections-table :is(th, td) { padding: 14px 16px; border-bottom: 1px solid var(--ap-border); vertical-align: middle; }
+.collections-table tr:last-child td { border-bottom: 0; }
+.collections-table small { display: block; margin-top: 5px; font-size: 12px; line-height: 1.5; }
+.collections-table button { white-space: nowrap; }
+.collection-status { display: inline-block; padding: 4px 8px; border-radius: 5px; background: var(--ap-accent-soft); color: var(--ap-accent); font-size: 12px; font-weight: 600; }
+.collection-status.confirmed { background: var(--ap-surface-alt); color: var(--ap-success); }
+.collections-pagination { display: flex; justify-content: flex-end; align-items: center; gap: 16px; margin-top: 16px; }
+.collections-editor .modal.catalog-editor-modal { --ap-modal-width: 680px; }
+.collections-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.collection-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 18px 0; }
+.collection-actions { display: flex; justify-content: flex-end; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
+.collection-error { color: var(--ap-danger); }
+.collection-trace { border-top: 1px solid var(--ap-border); margin-top: 22px; padding-top: 12px; overflow-wrap: anywhere; }
+.collection-trace ol { padding-left: 20px; }
+.collection-trace li { padding: 12px 0; border-bottom: 1px solid var(--ap-border); }
+.collection-trace small { display: block; margin-top: 6px; }
+.collection-trace p { margin: 8px 0; }
+@media (max-width: 850px) {
+  .collections-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .collections-table thead { display: none; }
+  .collections-table, .collections-table tbody { display: block; }
+  .collections-table tr { display: grid; grid-template-columns: 1fr 1fr; padding: 12px; gap: 12px; border-bottom: 1px solid var(--ap-border); }
+  .collections-table td { display: block; padding: 0; border: 0; overflow-wrap: anywhere; }
+  .collections-table td::before { content: attr(data-label); display: block; font-size: 11px; color: var(--ap-muted); margin-bottom: 5px; }
+  .collections-table td:nth-child(2), .collections-table td:last-child { grid-column: 1 / -1; }
+  .collections-table td:last-child::before { display: none; }
+  .collections-table button { width: 100%; min-height: 44px; }
+}
+@media (max-width: 480px) {
+  .collections-summary { gap: 10px; }
+  .collections-summary article { padding: 12px; }
+  .collection-fields { grid-template-columns: 1fr; }
+  .collection-actions > button { width: 100%; min-height: 44px; }
+}

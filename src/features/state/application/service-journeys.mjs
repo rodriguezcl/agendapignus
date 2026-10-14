@@ -29,6 +29,8 @@ export function planServiceJourneyOperations(snapshot, { base, visits, today, te
     const serviceJourney = { id: groupId, index: index + 1, total: visits.length }
     const child = { ...record, id, sourceTaskId: taskId, date: visit.date, time: visit.time, scheduledTime: visit.time, estimatedMinutes: Number(visit.estimatedMinutes), estimatedMinutesCustomized: true, teamId: team.teamId, team: team.label, technicianIds: [...team.memberIds], technicians: [...team.members], serviceJourney }
     if (index) {
+      // The first visit owns the payment history for the whole service.
+      delete child.collection
       for (const key of ['completedAt', 'startedAt', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'servicePhotoUrl', 'servicePhotoAttachedAt']) delete child[key]
       child.servicePhotoAttached = false
     }

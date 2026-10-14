@@ -14,6 +14,59 @@ const origin = `http://127.0.0.1:${port}`
 let temporaryDirectory
 let serverProcess
 
+test('Cobranzas: permisos, confirmación concurrente, auditoría y persistencia sin reabrir servicios', async () => {
+  const { collectionBase } = await import('../src/domain/collections/collections.mjs')
+  const fixture = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  for (const manage of [false, true]) {
+    const id = manage ? 'qa-collections-manager' : 'qa-collections-reader'
+    upsertJson(fixture, 'roles', 'id', { id, code: id, name: id, permissions: { collections: true, collectionsManage: manage } })
+    upsertJson(fixture, 'employees', 'id', { id, name: id, roleId: id, role: id, email: `${id}@pignus.test`, status: 'Activo', passwordHash: passwordHash('Prueba1234') })
+  }
+  const record = { id: 'qa-collection', sourceTaskId: 'qa-collection-task', customerId: 'qa-customer-a', client: 'CLI-1 COBRANZA QA', date: '2026-10-14', time: '09:00', serviceId: 'qa-service', service: 'Service técnico', status: 'Completado', technicianIds: ['qa-tech'], technicians: ['QA Técnico'], amount: '10000', paymentMethod: 'Efectivo' }
+  upsertJson(fixture, 'work_history', 'id', record)
+  fixture.close()
+  const admin = await login('qa-admin@pignus.test')
+  const manager = await login('qa-collections-manager@pignus.test')
+  const reader = await login('qa-collections-reader@pignus.test')
+  const tech = await login('qa-tech@pignus.test')
+  const weekly = await login('qa-weekly@pignus.test')
+  const initial = (await state(reader)).history.find(item => item.id === record.id)
+  assert.ok(initial, 'El permiso Cobranzas permite consultar sin Historial ni Dashboard')
+  const input = { recordId: record.id, base: collectionBase(initial), action: 'confirm', amount: '9500.50', paymentMethod: 'Transferencia', note: 'Acreditación verificada' }
+  for (const cookie of [reader, tech, weekly, null]) {
+    const denied = await api('/api/collections/manage', cookie, { method: 'POST', body: JSON.stringify(input) })
+    assert.equal(denied.status, cookie ? 403 : 401)
+  }
+  const responses = await Promise.all([manager, admin].map(cookie => api('/api/collections/manage', cookie, { method: 'POST', body: JSON.stringify(input) })))
+  assert.deepEqual(responses.map(response => response.status).sort(), [200, 409])
+  const saved = (await state(reader)).history.find(item => item.id === record.id)
+  assert.equal(saved.collection.status, 'confirmed')
+  assert.equal(saved.status, 'Completado')
+  assert.equal(saved.amount, '9500.5')
+  assert.equal(saved.paymentMethod, 'Transferencia')
+  assert.equal(saved.collection.events.length, 1)
+  assert.equal(saved.collection.original.amount, '10000')
+  const rectified = await api('/api/collections/manage', manager, { method: 'POST', body: JSON.stringify({ ...input, base: collectionBase(saved), action: 'correct', amount: '9700' }) })
+  assert.equal(rectified.status, 200, await rectified.clone().text())
+  const final = (await state(admin)).history.find(item => item.id === record.id)
+  assert.equal(final.collection.events.length, 2)
+  assert.equal(final.collection.status, 'confirmed')
+  assert.equal(final.amount, '9700')
+  for (const operation of [
+    { method: 'DELETE', body: JSON.stringify({ base: final }) },
+    { method: 'PATCH', body: JSON.stringify({ base: final, record: { ...final, amount: '1' } }) },
+    { method: 'PATCH', body: JSON.stringify({ base: final, record: { ...final, collection: null } }) }
+  ]) assert.equal((await api('/api/history/' + record.id, admin, operation)).status, 409)
+  const technical = (await state(tech)).history.find(item => item.id === record.id)
+  assert.ok(technical)
+  assert.equal(technical.collection, undefined)
+  const auditDb = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const entries = auditDb.prepare('SELECT data FROM audit_log').all().map(row => JSON.parse(row.data))
+  auditDb.close()
+  assert.ok(entries.some(entry => entry.action === 'Confirmó pago' && entry.entityId === record.id))
+  assert.ok(entries.some(entry => entry.action === 'Rectificó cobranza' && entry.entityId === record.id))
+})
+
 function passwordHash(password) {
   const salt = crypto.randomBytes(16).toString('hex')
   return `${salt}:${crypto.scryptSync(password, salt, 64).toString('hex')}`

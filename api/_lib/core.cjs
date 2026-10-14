@@ -31,6 +31,7 @@ const normalizeServiceEstimatedMinutes = value => {
 }
 
 const FEATURE_PERMISSION_PARENTS = {
+  collectionsManage: 'collections',
   weeklyTeams: 'weekly',
   weeklyHours: 'weekly',
   weeklyVehicles: 'weekly',
@@ -191,7 +192,7 @@ function userForEmployee(employee, roles) {
 
 function technicianSafeRecord(record = {}) {
   const { servicePreparation: _servicePreparation, internalNote: _internalNote, internalChecklist: _internalChecklist, monthlyFee: _monthlyFee, ...visible } = record
-  for (const field of ['monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy']) delete visible[field]
+  for (const field of ['collection', 'monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy']) delete visible[field]
   const cashPayment = normalizedRoleName(visible.paymentMethod) === 'efectivo'
   const handwrittenForm = normalizedRoleName(visible.form).startsWith('incompleto')
   if (!cashPayment) {
@@ -245,7 +246,7 @@ function visibleStateForUser(state, user) {
       const account = String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()
       return (customerId && customerIds.has(customerId)) || (account && accounts.has(account))
     }).map(record => {
-      const { servicePreparation: _servicePreparation, internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, formEmail: _formEmail, ...visible } = record
+      const { collection: _collection, servicePreparation: _servicePreparation, internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, formEmail: _formEmail, ...visible } = record
       return visible
     })
     return { revision: state.revision, roles: [], employees: [], services: [], vehicles: [], customers: trackedCustomers, history, agenda: null, preferences: {} }
@@ -258,7 +259,7 @@ function visibleStateForUser(state, user) {
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? ensureVehicleControlService(state.services) : [],
     vehicles: userCan(user, 'vehicles') || userCan(user, 'weeklyVehicles') ? state.vehicles || [] : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
-    history: userCan(user, 'history') || userCan(user, 'accounts') ? state.history : [],
+    history: userCan(user, 'history') || userCan(user, 'accounts') || userCan(user, 'collections') ? state.history : [],
     agenda: canPlan ? state.agenda : null,
     preferences: state.preferences
   }

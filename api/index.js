@@ -982,6 +982,30 @@ async function handleClearAgenda(req, res, sql, user) {
   return send(res, 200, { ok: true, revision })
 }
 
+async function handleCollectionManagement(req, res, sql, user) {
+  if (user.roleCode === 'technician' || !userCan(user, 'collectionsManage')) return send(res, 403, { error: 'No tenés permiso para gestionar cobranzas.' })
+  try {
+    const input = requestBody(req)
+    const { manageCollection } = await import('../src/domain/collections/collections.mjs')
+    const result = await sql.begin(async transaction => {
+      await transaction`set local lock_timeout = '5s'`
+      await transaction`set local statement_timeout = '25s'`
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      const locked = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const current = await readState(transaction)
+      const correction = manageCollection(current, input, user)
+      const revision = Number(locked[0]?.value || 0) + 1
+      await persistStateCollections(transaction, current, correction.state, revision, undefined, { collectionCorrectionIds: correction.recordIds })
+      await appendAudit(transaction, [auditEntry(user, input.action === 'confirm' ? 'Confirmó pago' : 'Rectificó cobranza', 'Servicio / historial', String(correction.before.id), correction.before, correction.after)])
+      return { revision, state: correction.state }
+    })
+    return send(res, 200, { ok: true, revision: result.revision, state: visibleStateForUser({ ...result.state, revision: result.revision }, user) })
+  } catch (error) {
+    const busy = ['55P03', '57014'].includes(error.code)
+    return send(res, busy ? 503 : error.statusCode || 400, { error: busy ? 'La base de datos está ocupada. Intentá nuevamente.' : error.message || 'No se pudo guardar la cobranza.' })
+  }
+}
+
 async function handleSubscriptionCorrection(req, res, sql, user) {
   if (user.roleCode === 'technician' || !userCan(user, 'accountsEdit')) return send(res, 403, { error: 'No tenés permiso para corregir datos del abono.' })
   try {
@@ -1176,6 +1200,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST' && route === '/technician/advance-request') return await handleServiceAdvance(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/admin/advance-request/approve') return await handleServiceAdvance(req, res, sql, session.user, 'approved')
     if (req.method === 'POST' && route === '/admin/advance-request/deny') return await handleServiceAdvance(req, res, sql, session.user, 'denied')
+    if (req.method === 'POST' && route === '/collections/manage') return await handleCollectionManagement(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/customers/subscription-correction') return await handleSubscriptionCorrection(req, res, sql, session.user)
     if (['GET', 'POST', 'DELETE'].includes(req.method) && route === '/customers/import') return await handleCustomerImport(req, res, sql, session.user)
     if (req.method === 'GET' && route.startsWith('/vehicle-control/photo/')) return await handleVehicleControlPhoto(req, res, sql, session.user, decodeURIComponent(route.slice('/vehicle-control/photo/'.length)))

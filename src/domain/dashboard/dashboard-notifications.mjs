@@ -1,3 +1,4 @@
+import { collectionRecords, collectionConfirmed, collectionMoney } from '../collections/collections.mjs'
 import { dashboardPendingGroups } from './dashboard-metrics.mjs'
 import { isAdvanceRequestActive } from '../agenda/advance-request-active.mjs'
 import { reservationFormReady } from '../agenda/reservation-form-ready.mjs'
@@ -45,8 +46,12 @@ export function dashboardExpiredInsuranceVehicles(vehicles = [], today) {
  * Targets describe navigation only; resolution remains in the existing modules.
  */
 export function selectDashboardNotifications({ history = [], vehicles = [], customers = [], passwordResetRequests = [], today, now, isAdministrator = false, permissions = {} } = {}) {
-  if (!isAdministrator && permissions.dashboard !== true) return []
-  const notices = []
+  const notices = (isAdministrator || permissions.collections === true) ? collectionRecords(history).filter(record => !collectionConfirmed(record)).map(record => ({
+    id: `collection:${record.id}`, title: 'Cobranza pendiente de pago', tone: 'warning',
+    detail: `${record.client || 'Servicio'} · ${dateLabel(record.date)} · ${collectionMoney(record.amount)} · ${record.paymentMethod}.`,
+    target: { type: 'collection', recordId: String(record.id) }
+  })) : []
+  if (!isAdministrator && permissions.dashboard !== true) return notices
   const can = module => isAdministrator || permissions[module] === true
   const dashboard = (section, id) => ({ type: 'dashboard', section, ...(id == null ? {} : { id: String(id) }) })
 
