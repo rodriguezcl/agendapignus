@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import ModuleIntroduction from './ModuleIntroduction.jsx'
 import EditorModal from './ui/EditorModal.jsx'
 import Icon from './ui/Icon.jsx'
-import { COLLECTION_PAYMENT_METHODS, collectionBase, collectionConfirmed, collectionMoney, collectionRecords } from '../domain/collections/collections.mjs'
+import { COLLECTION_PAYMENT_METHODS, collectionBase, collectionConfirmed, collectionMoney, collectionRecords, collectionService } from '../domain/collections/collections.mjs'
 import './collections.css'
 
 const dateLabel = value => value?.split('-').reverse().join('/') || 'Sin fecha'
@@ -18,6 +18,7 @@ export default function Collections({ history, canManage, onSave, openRequest, o
   const [page, setPage] = useState(1)
   const [selection, setSelection] = useState(null)
   const records = useMemo(() => collectionRecords(history), [history])
+  const schedule = record => collectionService(record, history) || record
   useEffect(() => {
     if (!openRequest) return
     const record = records.find(item => String(item.id) === String(openRequest.id))
@@ -27,7 +28,7 @@ export default function Collections({ history, canManage, onSave, openRequest, o
   }, [openRequest, records, onOpenRequestHandled, setNotice])
   useEffect(() => { setPage(1) }, [status, query, from, through])
   const filtered = records.filter(record => (status === 'all' || collectionConfirmed(record) === (status === 'confirmed'))
-    && (!from || record.date >= from) && (!through || record.date <= through)
+    && (!from || schedule(record).date >= from) && (!through || schedule(record).date <= through)
     && normalize(`${record.client} ${record.service} ${(record.technicians || []).join(' ')} ${record.paymentMethod}`).includes(normalize(query)))
   const pending = records.filter(record => !collectionConfirmed(record))
   const confirmed = records.filter(collectionConfirmed)
@@ -39,7 +40,7 @@ export default function Collections({ history, canManage, onSave, openRequest, o
       <article><span>Pendiente de pago</span><strong>{collectionMoney(pending.reduce((sum, record) => sum + Number(record.amount), 0))}</strong><small>{pending.length} servicio(s)</small></article>
       <article><span>Pagos confirmados</span><strong>{collectionMoney(confirmed.reduce((sum, record) => sum + Number(record.amount), 0))}</strong><small>{confirmed.length} servicio(s)</small></article>
     </div>
-    <p className="collections-help">Seguimiento desde el 14/10/2026. Incluye servicios con monto mayor a cero y forma de pago. El estado del trabajo no confirma el pago.</p>
+    <p className="collections-help">Seguimiento desde el 14/10/2026. Los servicios cancelados dejan de generar cobranzas pendientes. Los avisos comienzan en la fecha del servicio o de su primera jornada vigente.</p>
     <div className="collections-filters">
       <label>Buscar<input type="search" placeholder="Cliente, servicio o forma de pago" value={query} onChange={event => setQuery(event.target.value)} /></label>
       <label>Estado del pago<select value={status} onChange={event => setStatus(event.target.value)}><option value="pending">Pendientes</option><option value="confirmed">Confirmados</option><option value="all">Todos</option></select></label>
@@ -50,8 +51,8 @@ export default function Collections({ history, canManage, onSave, openRequest, o
     <div className="collections-table-wrap"><table className="collections-table">
       <thead><tr>{['Fecha del servicio', 'Cliente y servicio', 'Monto', 'Forma de pago', 'Estado del pago', 'Acciones'].map(label => <th key={label}>{label}</th>)}</tr></thead>
       <tbody>{filtered.slice((currentPage - 1) * 25, currentPage * 25).map(record => <tr key={record.id}>
-        <td data-label="Fecha del servicio">{dateLabel(record.date)}<small>{record.time || 'Sin horario'}</small></td>
-        <td data-label="Cliente y servicio"><strong>{record.client}</strong><small>{record.service}</small><small>{record.status} · {(record.technicians || []).join(' / ') || 'Sin técnicos asignados'}</small></td>
+        <td data-label="Fecha del servicio">{dateLabel(schedule(record).date)}<small>{schedule(record).time || 'Sin horario'}</small></td>
+        <td data-label="Cliente y servicio"><strong>{record.client}</strong><small>{record.service}</small><small>{schedule(record).status} · {(schedule(record).technicians || []).join(' / ') || 'Sin técnicos asignados'}</small></td>
         <td data-label="Monto"><strong>{collectionMoney(record.amount)}</strong></td>
         <td data-label="Forma de pago">{record.paymentMethod}</td>
         <td data-label="Estado del pago"><span className={`collection-status ${collectionConfirmed(record) ? 'confirmed' : ''}`}>{collectionConfirmed(record) ? 'Confirmado' : 'Pendiente de pago'}</span>{record.collection?.confirmedAt && <small>{timestamp(record.collection.confirmedAt)}</small>}</td>
@@ -59,11 +60,11 @@ export default function Collections({ history, canManage, onSave, openRequest, o
       </tr>)}</tbody>
     </table>{!filtered.length && <p className="empty-state">No hay cobranzas que coincidan con estos filtros.</p>}</div>
     {pages > 1 && <nav className="collections-pagination" aria-label="Paginación de cobranzas"><button className="secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Anterior</button><span>{currentPage} de {pages}</span><button className="secondary" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Siguiente</button></nav>}
-    {selection && <CollectionEditor key={selection.id} record={selection} canManage={canManage} onSave={onSave} close={() => setSelection(null)} onSaved={message => { setSelection(null); setNotice(message) }} />}
+    {selection && <CollectionEditor key={selection.id} record={selection} serviceDate={schedule(selection).date} canManage={canManage} onSave={onSave} close={() => setSelection(null)} onSaved={message => { setSelection(null); setNotice(message) }} />}
   </div>
 }
 
-function CollectionEditor({ record, canManage, onSave, close, onSaved }) {
+function CollectionEditor({ record, serviceDate, canManage, onSave, close, onSaved }) {
   const [amount, setAmount] = useState(String(record.amount))
   const [method, setMethod] = useState(record.paymentMethod)
   const [note, setNote] = useState('')
@@ -82,7 +83,7 @@ function CollectionEditor({ record, canManage, onSave, close, onSaved }) {
     finally { setBusy(false) }
   }
   return <div className="collections-editor"><EditorModal active title={canManage ? 'Gestionar cobranza' : 'Detalle de cobranza'} eyebrow={collectionConfirmed(record) ? 'PAGO CONFIRMADO' : 'PENDIENTE DE PAGO'} onClose={close} dirty={canManage && (changed || Boolean(note))} busy={busy}>
-    <p><strong>{record.client}</strong><br />{record.service} · {dateLabel(record.date)}{record.serviceJourney && <><br />Cobranza compartida entre las {record.serviceJourney.total} jornadas del servicio.</>}</p>
+    <p><strong>{record.client}</strong><br />{record.service} · {dateLabel(serviceDate)}{record.serviceJourney && <><br />Cobranza única del servicio, desde su primera jornada vigente.</>}</p>
     {record.collection?.confirmedAt && <p>Confirmado por {record.collection.confirmedBy?.name} · {timestamp(record.collection.confirmedAt)}</p>}
     {canManage ? <form onSubmit={save}><fieldset disabled={busy}>
       <div className="collection-fields">

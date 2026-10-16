@@ -118,6 +118,54 @@ test('varias jornadas generan una sola cobranza y rectifican sus importes en con
   assert.equal(collectionRecords(old.history).length, 0)
 })
 
+test('cancelar retira cobranzas pendientes, incluidas las rectificadas, y bloquea su gestión sin borrar trazas', async () => {
+  const { manageCollection, collectionRecords } = await domain
+  const { selectDashboardNotifications } = await import('../src/domain/dashboard/dashboard-notifications.mjs')
+  const initial = fixture()
+  const corrected = manageCollection(initial, await command(initial, 'correct'), actor).state
+  for (const source of [initial, corrected]) {
+    const input = await command(source)
+    for (const cancellation of [{ status: 'Cancelado' }, { technicalStatus: 'Cancelado' }]) {
+      const state = structuredClone(source)
+      Object.assign(state.history[0], cancellation)
+      const snapshot = structuredClone(state)
+      assert.deepEqual(collectionRecords(state.history), [])
+      assert.deepEqual(selectDashboardNotifications({ history: state.history, today: '2026-10-16', permissions: { collections: true } }), [])
+      assert.throws(() => manageCollection(state, input, actor), { statusCode: 404 })
+      assert.deepEqual(state, snapshot)
+    }
+  }
+  const paid = manageCollection(initial, await command(initial), actor).state
+  paid.history[0].status = 'Cancelado'
+  assert.equal(collectionRecords(paid.history).length, 1, 'Un pago recibido conserva su historial')
+  assert.deepEqual(selectDashboardNotifications({ history: paid.history, today: '2026-10-16', permissions: { collections: true } }), [])
+})
+
+test('una cobranza desde la primera jornada vigente, aunque termine antes y se cancele la sobrante', async () => {
+  const { collectionRecords, collectionService, manageCollection } = await domain
+  const { selectDashboardNotifications } = await import('../src/domain/dashboard/dashboard-notifications.mjs')
+  const state = fixture(), base = { ...state.history[0], status: 'Pendiente' }
+  state.history = [1, 2, 3].map(index => ({ ...base, id: index === 1 ? 'payment' : `visit-${index}`, sourceTaskId: `t${index}`, date: `2026-10-${13 + index}`, serviceJourney: { id: 'payment', index, total: 3 } }))
+  const notices = today => selectDashboardNotifications({ history: state.history, today, permissions: { collections: true } })
+  assert.equal(notices('2026-10-13').length, 0)
+  assert.equal(notices('2026-10-14').length, 1)
+  assert.equal(collectionRecords(state.history).length, 1)
+  state.history[0].status = 'Avance registrado'
+  state.history[1].status = 'Completado'
+  state.history[2].status = 'Cancelado'
+  assert.equal(notices('2026-10-15').length, 1)
+  assert.equal(collectionService(state.history[0], state.history).date, '2026-10-14')
+  state.history[0].status = 'Cancelado'
+  state.history[1].status = 'Pendiente'
+  assert.equal(notices('2026-10-14').length, 0)
+  assert.equal(notices('2026-10-15').length, 1)
+  assert.equal(collectionService(state.history[0], state.history).date, '2026-10-15')
+  assert.equal(manageCollection(state, await command(state), actor).after.collection.status, 'confirmed')
+  state.history[1].status = 'Cancelado'
+  assert.deepEqual(collectionRecords(state.history), [])
+  assert.deepEqual(notices('2026-10-16'), [])
+})
+
 test('la base normalizada conserva el historial de pagos al guardar y volver a leer', async () => {
   const fs = require('node:fs'), path = require('node:path')
   const { PGlite } = await import('@electric-sql/pglite')

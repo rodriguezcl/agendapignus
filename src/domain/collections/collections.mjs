@@ -6,12 +6,22 @@ export const COLLECTIONS_START_DATE = '2026-10-14'
 export const COLLECTION_PAYMENT_METHODS = ['Efectivo', 'Transferencia', 'Débito', 'Crédito']
 export const collectionMoney = value => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(value) || 0)
 export const collectionConfirmed = record => record?.collection?.status === 'confirmed'
+const cancelled = record => record?.status === 'Cancelado' || record?.technicalStatus === 'Cancelado'
 
-export function hasCollection(record) {
+// Keep the original payment owner, even when the first planned visit is cancelled.
+// The first remaining visit determines when the single shared receivable is due.
+export function collectionService(record, history = [record]) {
+  if (!record?.serviceJourney) return cancelled(record) ? null : record
+  return history.filter(item => item.serviceJourney?.id === record.serviceJourney.id && !cancelled(item))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.serviceJourney.index - b.serviceJourney.index)[0] || null
+}
+
+export function hasCollection(record, history = [record]) {
   // A multi-day job carries copied commercial fields on each visit. Its first
   // record owns the receivable; visits must not multiply the amount to collect.
   if (record?.serviceJourney && String(record.id) !== String(record.serviceJourney.id)) return false
-  if (record?.collection) return true // Keep the audit even after rescheduling/cancellation.
+  if (!collectionConfirmed(record) && !collectionService(record, history)) return false
+  if (record?.collection) return true // Confirmed payments retain their audit after cancellation.
   if (!record?.id || record.vehicleControl || !/^\d{4}-\d{2}-\d{2}$/.test(record.date || '')) return false
   const originalDates = [record.date, record.rescheduledFrom, ...(record.reschedulingHistory || []).map(visit => visit.date)].filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date || ''))
   if (originalDates.some(date => date < COLLECTIONS_START_DATE)) return false
@@ -19,7 +29,8 @@ export function hasCollection(record) {
 }
 
 export function collectionRecords(history = []) {
-  return history.filter(hasCollection).sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.time || '').localeCompare(String(b.time || '')) || String(a.id).localeCompare(String(b.id)))
+  const schedule = record => collectionService(record, history) || record
+  return history.filter(record => hasCollection(record, history)).sort((a, b) => String(schedule(a).date).localeCompare(String(schedule(b).date)) || String(schedule(a).time || '').localeCompare(String(schedule(b).time || '')) || String(a.id).localeCompare(String(b.id)))
 }
 
 export function collectionBase(record) {
@@ -30,7 +41,7 @@ const fail = (message, statusCode = 400) => { throw Object.assign(new Error(mess
 
 export function manageCollection(state, input, user, now = new Date().toISOString()) {
   const before = state.history?.find(record => String(record.id) === String(input?.recordId))
-  if (!before || !hasCollection(before)) fail('La cobranza ya no está disponible. Actualizá el listado.', 404)
+  if (!before || !hasCollection(before, state.history)) fail('La cobranza ya no está disponible. Actualizá el listado.', 404)
   if (serviceRecordFingerprint(collectionBase(before)) !== serviceRecordFingerprint(input.base)) fail('La cobranza cambió en otra sesión. Cerrá la ficha, actualizá y revisá los datos antes de guardar.', 409)
   if (!['correct', 'confirm'].includes(input.action)) fail('La acción de cobranza no es válida.')
   if (input.action === 'confirm' && collectionConfirmed(before)) fail('Este pago ya fue confirmado.', 409)

@@ -1,4 +1,4 @@
-import { collectionRecords, collectionConfirmed, collectionMoney } from '../collections/collections.mjs'
+import { collectionRecords, collectionConfirmed, collectionMoney, collectionService } from '../collections/collections.mjs'
 import { dashboardPendingGroups } from './dashboard-metrics.mjs'
 import { isAdvanceRequestActive } from '../agenda/advance-request-active.mjs'
 import { reservationFormReady } from '../agenda/reservation-form-ready.mjs'
@@ -46,9 +46,10 @@ export function dashboardExpiredInsuranceVehicles(vehicles = [], today) {
  * Targets describe navigation only; resolution remains in the existing modules.
  */
 export function selectDashboardNotifications({ history = [], vehicles = [], customers = [], passwordResetRequests = [], today, now, isAdministrator = false, permissions = {} } = {}) {
-  const notices = (isAdministrator || permissions.collections === true) ? collectionRecords(history).filter(record => !collectionConfirmed(record) && record.date && record.date <= today).map(record => ({
+  const collectionDate = record => collectionService(record, history)?.date
+  const notices = (isAdministrator || permissions.collections === true) ? collectionRecords(history).filter(record => !collectionConfirmed(record) && collectionDate(record) && collectionDate(record) <= today).map(record => ({
     id: `collection:${record.id}`, title: 'Cobranza pendiente de pago', tone: 'warning',
-    detail: `${record.client || 'Servicio'} · ${dateLabel(record.date)} · ${collectionMoney(record.amount)} · ${record.paymentMethod}.`,
+    detail: `${record.client || 'Servicio'} · ${dateLabel(collectionDate(record))} · ${collectionMoney(record.amount)} · ${record.paymentMethod}.`,
     target: { type: 'collection', recordId: String(record.id) }
   })) : []
   if (!isAdministrator && permissions.dashboard !== true) return notices
