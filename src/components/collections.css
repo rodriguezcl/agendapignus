@@ -20,6 +20,9 @@
 .collections-pagination { display: flex; justify-content: flex-end; align-items: center; gap: 16px; margin-top: 16px; }
 .collections-editor .modal.catalog-editor-modal { --ap-modal-width: 680px; }
 .collections-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.collection-owner { display: grid; gap: 4px; padding: 12px 14px; margin: 14px 0; border: 1px solid var(--ap-border); border-radius: 8px; background: var(--ap-surface-alt); color: var(--ap-text); overflow-wrap: anywhere; }
+.collection-owner > span, .collection-owner > small { color: var(--ap-muted); font-size: 12px; line-height: 1.5; }
+.collection-owner > strong { font-size: 14px; }
 .collection-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 18px 0; }
 .collection-actions { display: flex; justify-content: flex-end; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
 .collection-error { color: var(--ap-danger); }
