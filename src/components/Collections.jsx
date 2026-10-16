@@ -4,6 +4,7 @@ import EditorModal from './ui/EditorModal.jsx'
 import Icon from './ui/Icon.jsx'
 import { COLLECTION_PAYMENT_METHODS, collectionBase, collectionConfirmed, collectionMoney, collectionRecords, collectionService } from '../domain/collections/collections.mjs'
 import './collections.css'
+import { parseCollectionAmount, displayCollectionAmount } from '../domain/collections/collection-amount.mjs'
 
 const dateLabel = value => value?.split('-').reverse().join('/') || 'Sin fecha'
 const timestamp = value => new Date(value).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })
@@ -66,18 +67,24 @@ export default function Collections({ history, canManage, onSave, openRequest, o
 
 function CollectionEditor({ record, serviceDate, canManage, onSave, close, onSaved }) {
   const [amount, setAmount] = useState(String(record.amount))
+  const [amountFocused, setAmountFocused] = useState(false)
   const [method, setMethod] = useState(record.paymentMethod)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const changed = Number(amount) !== Number(record.amount) || method !== record.paymentMethod
+  const normalizedAmount = parseCollectionAmount(amount)
+  const changed = normalizedAmount === null || Number(normalizedAmount) !== Number(record.amount) || method !== record.paymentMethod
   const save = async event => {
     event.preventDefault()
     if (busy) return
+    if (normalizedAmount === null) {
+      setError('Ingresá un monto mayor a cero y hasta 999.999.999,99, con un máximo de dos decimales. Podés usar coma o punto.')
+      return
+    }
     const action = event.nativeEvent.submitter?.value || 'correct'
     setBusy(true); setError('')
     try {
-      await onSave({ recordId: record.id, base: collectionBase(record), action, amount, paymentMethod: method, note })
+      await onSave({ recordId: record.id, base: collectionBase(record), action, amount: normalizedAmount, paymentMethod: method, note })
       onSaved(action === 'confirm' ? 'Pago confirmado. La notificación de cobranza fue resuelta.' : 'Corrección guardada en el historial de la cobranza.')
     } catch (failure) { setError(failure.message || 'No se pudo guardar. Intentá nuevamente.') }
     finally { setBusy(false) }
@@ -92,7 +99,7 @@ function CollectionEditor({ record, serviceDate, canManage, onSave, close, onSav
     {record.collection?.confirmedAt && <p>Confirmado por {record.collection.confirmedBy?.name} · {timestamp(record.collection.confirmedAt)}</p>}
     {canManage ? <form onSubmit={save}><fieldset disabled={busy}>
       <div className="collection-fields">
-        <label>Monto {collectionConfirmed(record) ? 'cobrado' : 'a cobrar'} ($)<input required type="number" min="0.01" max="999999999.99" step="0.01" inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} /></label>
+        <label>Monto {collectionConfirmed(record) ? 'cobrado' : 'a cobrar'} ($)<input required type="text" inputMode="decimal" value={amountFocused ? amount : displayCollectionAmount(amount)} onFocus={() => { setAmountFocused(true); if (normalizedAmount !== null) setAmount(normalizedAmount.replace('.', ',')) }} onChange={event => setAmount(event.target.value)} onBlur={() => setAmountFocused(false)} /></label>
         <label>Forma de pago<select required value={method} onChange={event => setMethod(event.target.value)}>{!COLLECTION_PAYMENT_METHODS.includes(method) && <option value={method} disabled>{method || 'Seleccionar'}</option>}{COLLECTION_PAYMENT_METHODS.map(value => <option key={value}>{value}</option>)}</select></label>
       </div>
       <label>Observación (opcional)<textarea maxLength={1000} rows={2} value={note} onChange={event => setNote(event.target.value)} placeholder="Por ejemplo: transfirió en lugar de pagar en efectivo" /></label>
