@@ -12,6 +12,20 @@ const fixture = () => {
 }
 const command = state => ({ base: state.history[0], day, time: '14:00', team: state.agenda.weekly[day].teams[0], today: sourceDay })
 
+test('la cobranza rectificada espera la nueva fecha tras reprogramar y conserva su historial', async () => {
+  const { historyRescheduleOperations } = await import('../src/features/state/application/history-reschedule.mjs')
+  const { selectDashboardNotifications } = await import('../src/domain/dashboard/dashboard-notifications.mjs')
+  const state = fixture()
+  Object.assign(state.history[0], { amount: '10000', paymentMethod: 'Transferencia', collection: { status: 'pending', events: [{ action: 'correct' }] } })
+  const notices = (history, today) => selectDashboardNotifications({ history, today, permissions: { collections: true } })
+  assert.equal(notices(state.history, sourceDay).length, 1)
+  const next = applyStateOperations(state, historyRescheduleOperations(state, command(state)))
+  assert.equal(notices(next.history, sourceDay).length, 0)
+  assert.equal(notices(next.history, day).length, 1)
+  assert.equal(notices(next.history, '2096-09-12').length, 1)
+  assert.deepEqual(next.history[0].collection, state.history[0].collection)
+})
+
 test('confirmed reschedule moves both agendas, resets technician workflow and removes reminder', async () => {
   const { historyRescheduleOperations } = await import('../src/features/state/application/history-reschedule.mjs')
   const { dashboardPendingGroups } = await import('../src/domain/dashboard/dashboard-metrics.mjs')

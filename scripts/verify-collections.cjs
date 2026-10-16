@@ -10,6 +10,7 @@ const fixture = `import {createRoot} from 'react-dom/client';
 ${cssImports}
 ${fixtures}
 const records=[{...themeReviewHistory[0], id:'pay-1', date:'2026-10-14', amount:'15000', paymentMethod:'Efectivo'}, {...themeReviewHistory[2], id:'pay-2', date:'2026-10-15', amount:'25000', paymentMethod:'Transferencia'}, {...themeReviewHistory[0],id:'old',date:'2026-10-13',amount:'20000',paymentMethod:'Efectivo'}];
+records.push({...records[0],id:'cancelled',status:'Cancelado',amount:'90000'}, {...records[0],id:'cancelled-corrected',status:'Cancelado',amount:'80000',collection:{status:'pending',events:[]}});
 const params=new URLSearchParams(location.search), reader=params.get('reader')==='true';
 const user=reader?{...themeReviewUser,id:'reader',roleCode:'collections-reader',role:'Consulta cobranzas',roleId:'r-reader',permissions:{collections:true}}:themeReviewUser;
 window.__user=user;
@@ -57,6 +58,7 @@ const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewp
       await page.getByRole('dialog', { name: reader ? 'Detalle de cobranza' : 'Gestionar cobranza', exact: true }).waitFor()
       assert.equal(await page.locator('.topbar h1').innerText(), 'Cobranzas')
       assert.equal(await page.locator('.collections-table tbody tr').count(), 2, 'La cobranza futura sigue disponible en el módulo')
+      assert.match(await page.locator('.collections-summary article').first().innerText(), /40\.000,00/, 'Los servicios cancelados no suman al saldo pendiente')
       const modal = page.locator('.catalog-editor-modal')
       const geometry = await modal.boundingBox()
       assert.ok(geometry.width <= Math.min(720, width - 20), JSON.stringify(geometry))
