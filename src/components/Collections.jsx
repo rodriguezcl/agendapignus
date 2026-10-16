@@ -84,6 +84,11 @@ function CollectionEditor({ record, serviceDate, canManage, onSave, close, onSav
   }
   return <div className="collections-editor"><EditorModal active title={canManage ? 'Gestionar cobranza' : 'Detalle de cobranza'} eyebrow={collectionConfirmed(record) ? 'PAGO CONFIRMADO' : 'PENDIENTE DE PAGO'} onClose={close} dirty={canManage && (changed || Boolean(note))} busy={busy}>
     <p><strong>{record.client}</strong><br />{record.service} · {dateLabel(serviceDate)}{record.serviceJourney && <><br />Cobranza única del servicio, desde su primera jornada vigente.</>}</p>
+    <section className="collection-owner" aria-label="Responsable de cobranza">
+      <span>Responsable de cobranza</span>
+      <strong>{record.createdBy?.name || 'Autor original no disponible'}</strong>
+      <small>{record.createdBy?.name ? 'Cargó el servicio en la agenda semanal.' : 'Este servicio no tiene registrado el nombre de quien lo cargó.'}</small>
+    </section>
     {record.collection?.confirmedAt && <p>Confirmado por {record.collection.confirmedBy?.name} · {timestamp(record.collection.confirmedAt)}</p>}
     {canManage ? <form onSubmit={save}><fieldset disabled={busy}>
       <div className="collection-fields">

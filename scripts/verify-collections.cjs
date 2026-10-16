@@ -10,6 +10,8 @@ const fixture = `import {createRoot} from 'react-dom/client';
 ${cssImports}
 ${fixtures}
 const records=[{...themeReviewHistory[0], id:'pay-1', date:'2026-10-14', amount:'15000', paymentMethod:'Efectivo'}, {...themeReviewHistory[2], id:'pay-2', date:'2026-10-15', amount:'25000', paymentMethod:'Transferencia'}, {...themeReviewHistory[0],id:'old',date:'2026-10-13',amount:'20000',paymentMethod:'Efectivo'}];
+records[0].createdBy={id:'original-author',name:'Iván Rousselot',role:'Administrador',at:'2026-10-14T12:00:00Z'};
+delete records[1].createdBy;
 records.push({...records[0],id:'cancelled',status:'Cancelado',amount:'90000'}, {...records[0],id:'cancelled-corrected',status:'Cancelado',amount:'80000',collection:{status:'pending',events:[]}});
 const params=new URLSearchParams(location.search), reader=params.get('reader')==='true';
 const user=reader?{...themeReviewUser,id:'reader',roleCode:'collections-reader',role:'Consulta cobranzas',roleId:'r-reader',permissions:{collections:true}}:themeReviewUser;
@@ -60,6 +62,8 @@ const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewp
       assert.equal(await page.locator('.collections-table tbody tr').count(), 2, 'La cobranza futura sigue disponible en el módulo')
       assert.match(await page.locator('.collections-summary article').first().innerText(), /40\.000,00/, 'Los servicios cancelados no suman al saldo pendiente')
       const modal = page.locator('.catalog-editor-modal')
+      const owner = modal.getByRole('region', { name: 'Responsable de cobranza', exact: true })
+      assert.equal(await owner.locator('strong').innerText(), 'Iván Rousselot', 'La responsabilidad corresponde al autor original del servicio')
       const geometry = await modal.boundingBox()
       assert.ok(geometry.width <= Math.min(720, width - 20), JSON.stringify(geometry))
       await page.screenshot({ path: path.join(out, `modal-${width}-${theme}-${reader}.png`), fullPage: true })
@@ -89,6 +93,7 @@ const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewp
         assert.equal(await page.locator('.collections-table tbody tr').count(), 1)
         await page.locator('.collections-table button').first().click()
         await modal.getByText('Pago confirmado', { exact: true }).last().waitFor()
+        assert.equal(await owner.locator('strong').innerText(), 'Iván Rousselot', 'Confirmar o rectificar no cambia al responsable original')
         assert.match(await modal.locator('.collection-trace').innerText(), /Datos rectificados/)
         assert.match(await modal.locator('.collection-trace').innerText(), /15\.000,00/)
       }
@@ -97,7 +102,11 @@ const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewp
       await page.clock.fastForward(3 * 60000)
       await page.getByRole('button', { name: /^Notificaciones:/ }).click()
       assert.equal(await notices.count(), reader ? 2 : 1, 'Al cambiar el día se activa automáticamente la cobranza del 15/10')
-      await page.getByRole('button', { name: 'Cerrar notificaciones', exact: true }).click()
+      await notices.last().click()
+      await modal.waitFor()
+      assert.equal(await owner.locator('strong').innerText(), 'Autor original no disponible', 'No se atribuyen servicios antiguos al usuario actual')
+      await modal.getByRole('button', { name: 'Cerrar edición', exact: true }).click()
+      await modal.waitFor({ state: 'detached' })
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Sin desborde horizontal')
       await page.screenshot({ path: path.join(out, `list-${width}-${theme}-${reader}.png`), fullPage: true })
       assert.deepEqual(errors, [])
