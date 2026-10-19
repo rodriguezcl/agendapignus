@@ -1,10 +1,13 @@
 import React, { useId } from 'react'
 import { doctaLocation } from '../domain/customers/customer-location.mjs'
+import { nobuTownLocation } from '../domain/customers/nobu-town-location.mjs'
 import { customerCoordinates, coordinateDraftError, validCoordinates } from '../domain/customers/customer-coordinates.mjs'
 import './customer-coordinates-field.css'
 
 export default function CustomerCoordinatesField({ form, setForm }) {
   const id = useId()
+  const nobu = nobuTownLocation(form)
+  if (nobu) return <section className="customer-coordinates"><strong>Ubicación en el mapa</strong><p>{nobu.label}.</p><small>Todas las cuentas del barrio comparten esta referencia.</small></section>
   const docta = doctaLocation(form)
   if (docta) return <section className="customer-coordinates"><strong>Ubicación en el mapa</strong><p>{docta.label}. La referencia de Docta se calcula a partir de la dirección y la manzana.</p></section>
   const coordinates = customerCoordinates(form)

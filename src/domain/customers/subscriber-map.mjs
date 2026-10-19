@@ -1,11 +1,14 @@
 import { doctaLocation, customerMapAddress } from './customer-location.mjs'
 import { customerCoordinates, validCoordinates } from './customer-coordinates.mjs'
+import { isNobuTown, nobuTownLocation } from './nobu-town-location.mjs'
 
 export const mapText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 export const MAP_ZONES = { docta: 'Docta', 'nobu-town': 'Nobu Town', residencial: 'Residenciales / otras zonas' }
-export const MAP_QUALITY = { coordinates: 'Coordenadas informadas', block: 'Referencia de manzana', approximate: 'Referencia aproximada', missing: 'Pendiente de ubicar' }
+export const MAP_QUALITY = { coordinates: 'Coordenadas informadas', block: 'Referencia de manzana', approximate: 'Referencia aproximada', generic: 'Ubicación genérica del barrio', missing: 'Pendiente de ubicar' }
 
 export function subscriberMapLocation(customer) {
+  const nobu = nobuTownLocation(customer)
+  if (nobu) return { coordinates: nobu.coordinates, quality: 'generic', reason: nobu.label }
   const docta = doctaLocation(customer)
   if (docta) return docta.unresolved
     ? { quality: 'missing', reason: docta.label }
@@ -28,7 +31,7 @@ export function subscriberMapRows(customers = []) {
     if (account) seenAccounts.add(account)
     if (id) seenIds.add(id)
     const context = mapText([customer.address, customer.street, customer.locality, customer.name, customer.fields?.Localidad].join(' '))
-    const zone = context.includes('docta') ? 'docta' : /nobu\s*town/.test(context) ? 'nobu-town' : 'residencial'
+    const zone = isNobuTown(customer) ? 'nobu-town' : context.includes('docta') ? 'docta' : 'residencial'
     const locality = String(customer.locality || customer.fields?.Localidad || '').trim()
     const [city, neighborhood = ''] = locality.split(/\s+-\s+(?:B[°º.]\s*|BARRIO\s+)/i)
     rows.push({ key: id || account, customer, zone, city: city || 'Sin localidad', neighborhood: neighborhood || 'Sin barrio informado', address: customerMapAddress(customer), ...subscriberMapLocation(customer) })

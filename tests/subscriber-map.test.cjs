@@ -31,8 +31,8 @@ test('filtra zona, ciudad, barrio, búsqueda sin tildes y calidad sin perder las
   const { subscriberMapRows, filterSubscriberMap } = await import('../src/domain/customers/subscriber-map.mjs')
   const rows = subscriberMapRows([subscriber('1', { name: 'María' }), subscriber('2', { locality: 'Nobu Town', fields: {} }), subscriber('3', { address: 'Manzana 28 Lote 1 Córdoba Docta' })])
   assert.equal(filterSubscriberMap(rows, { search: 'maria', city: 'Córdoba', neighborhood: 'CENTRO' }).length, 1)
-  assert.equal(filterSubscriberMap(rows, { zone: 'nobu-town', quality: 'missing' }).length, 1)
-  assert.equal(filterSubscriberMap(rows, { quality: 'located' }).length, 2)
+  assert.equal(filterSubscriberMap(rows, { zone: 'nobu-town', quality: 'generic' }).length, 1)
+  assert.equal(filterSubscriberMap(rows, { quality: 'located' }).length, 3)
   assert.equal(filterSubscriberMap(rows, { zone: 'docta' })[0].quality, 'block')
 })
 
