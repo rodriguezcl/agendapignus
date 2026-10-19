@@ -23,7 +23,7 @@ window.__user=themeReviewUser;
 installRequiredFeedback();
 createRoot(document.getElementById('root')).render(<App/>);
 `
-const built = buildSync({ stdin: { contents: `import './style.css';\n${source}\n${fixture}`, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, outdir: 'out', format: 'iife', external: ['/logo-pignus.png'], define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'false' }, loader: { '.css': 'css' }, logLevel: 'silent' })
+const built = buildSync({ stdin: { contents: `import './style.css';\n${source}\n${fixture}`, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, outdir: 'out', format: 'iife', external: ['/logo-pignus.png'], define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'false' }, loader: { '.css': 'css', '.png': 'dataurl' }, logLevel: 'silent' })
 const js = built.outputFiles.find(f => f.path.endsWith('.js')).text
 const css = built.outputFiles.find(f => f.path.endsWith('.css')).text
 const html = '<!doctype html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/review.css"></head><body><div id="root"></div><script src="/review.js"></script></body></html>'

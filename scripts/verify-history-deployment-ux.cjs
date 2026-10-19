@@ -32,7 +32,7 @@ createRoot(document.getElementById('root')).render(new URLSearchParams(location.
  ? <div className="app-shell" data-theme={auditTheme}><div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-label="Equipos de octubre"><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de octubre de 2026</h2><ConfigurationHistoryPanel history={auditHistory} type="teams" /></section></div></div>
  : <DeploymentAuditFixture />);
 `
-const built = buildSync({ stdin: { contents: source + '\n' + fixture, resolveDir: path.join(root, 'src'), loader: 'jsx' }, bundle: true, write: false, outdir: 'out', format: 'iife', define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'true', '__APP_BUILD_ID__': '"audit-old"' }, external: ['/logo-pignus.png'], loader: { '.css': 'css' }, logLevel: 'silent' })
+const built = buildSync({ stdin: { contents: source + '\n' + fixture, resolveDir: path.join(root, 'src'), loader: 'jsx' }, bundle: true, write: false, outdir: 'out', format: 'iife', define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'true', '__APP_BUILD_ID__': '"audit-old"' }, external: ['/logo-pignus.png'], loader: { '.css': 'css', '.png': 'dataurl' }, logLevel: 'silent' })
 const js = built.outputFiles.find(file => file.path.endsWith('.js')).text
 const css = built.outputFiles.find(file => file.path.endsWith('.css')).text
 const html = '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><meta charset="utf-8"><link rel="stylesheet" href="/fixture.css"></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>'

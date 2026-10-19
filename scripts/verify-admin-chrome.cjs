@@ -34,7 +34,7 @@ if (!localStorage.getItem('pignus-theme-account:admin-review')) localStorage.set
 createRoot(document.getElementById('root')).render(<App/>);
 `
 // Keep the same CSS ordering as main.jsx, including the first legacy import.
-const built = buildSync({ stdin: { contents: "import './style.css';\n" + source + '\n' + fixture, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, outdir: 'out', format: 'iife', external: ['/logo-pignus.png'], define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'false' }, loader: { '.css': 'css' }, logLevel: 'silent' })
+const built = buildSync({ stdin: { contents: "import './style.css';\n" + source + '\n' + fixture, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, outdir: 'out', format: 'iife', external: ['/logo-pignus.png'], define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'false' }, loader: { '.css': 'css', '.png': 'dataurl' }, logLevel: 'silent' })
 const css = built.outputFiles.find(file => file.path.endsWith('.css')).text
 const js = built.outputFiles.find(file => file.path.endsWith('.js')).text
 const auditRecord = { id: 'chrome-audit', at: '2026-10-13T12:00:00Z', action: 'Modificó servicio', entity: 'Servicio', entityId: 'chrome-today', user: { name: 'Administración Pignus', email: 'administracion@example.test' }, before: { time: '08:30' }, after: { time: '14:00' } }

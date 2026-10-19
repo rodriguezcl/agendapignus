@@ -89,7 +89,7 @@ createRoot(document.getElementById('root')).render(<ThemeReviewFixture/>);
 
 // Preserve main.jsx's first import before the App component's CSS dependencies;
 // reversing this order would let legacy table grids override history-layout.css.
-const built = buildSync({ stdin: { contents: "import './style.css';\n" + source + '\n' + fixture, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, outdir: 'out', format: 'iife', external: ['/logo-pignus.png', '/pignus-owl-white.svg'], define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'false' }, loader: { '.css': 'css' }, logLevel: 'silent' })
+const built = buildSync({ stdin: { contents: "import './style.css';\n" + source + '\n' + fixture, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, outdir: 'out', format: 'iife', external: ['/logo-pignus.png', '/pignus-owl-white.svg'], define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'false' }, loader: { '.css': 'css', '.png': 'dataurl' }, logLevel: 'silent' })
 const css = built.outputFiles.find(file => file.path.endsWith('.css')).text
 const js = built.outputFiles.find(file => file.path.endsWith('.js')).text
 const auditRecord = { id: 'audit-review', at: '2026-10-13T12:00:00Z', action: 'Modificó servicio', entity: 'Servicio', entityId: 'h-pending', user: { name: 'Administración Pignus', email: 'administracion@example.test' }, before: { time: '08:30', status: 'Pendiente' }, after: { time: '09:00', status: 'Pendiente' } }

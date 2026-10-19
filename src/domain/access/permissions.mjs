@@ -8,6 +8,7 @@ export const MODULE_PERMISSIONS = [
   ['collections', 'Cobranzas', 'Consultar pagos pendientes, confirmados y su historial'],
   ['history', 'Historial', 'Consultar y gestionar trabajos registrados'],
   ['accounts', 'Abonados y clientes', 'Consultar y administrar abonados y clientes'],
+  ['map', 'Mapa', 'Consultar la distribución geográfica y concentración de abonados'],
   ['employees', 'Empleados', 'Administrar técnicos y accesos'],
   ['services', 'Tipo de servicio', 'Administrar el catálogo de servicios'],
   ['vehicles', 'Vehículos', 'Administrar la flota de la empresa'],

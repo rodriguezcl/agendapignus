@@ -831,7 +831,7 @@ function readStateForUser(user) {
     employees: userCan(user, 'employees') ? state.employees : state.employees.map(({ id, firstName, lastName, name, roleId, role, status, technicalEnabled }) => ({ id, firstName, lastName, name, roleId, role, status, technicalEnabled: technicalEnabled === true })),
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? ensureVehicleControlService(state.services) : [],
     vehicles: userCan(user, 'vehicles') || userCan(user, 'weeklyVehicles') ? state.vehicles : [],
-    customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : [],
+    customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : userCan(user, 'map') ? (state.customers || []).map(require('./api/_lib/subscriber-map-access.cjs').mapCustomer) : [],
     history: userCan(user, 'history') || userCan(user, 'accounts') || userCan(user, 'collections') ? state.history : [],
     agenda: canPlan ? state.agenda : null
   }
@@ -1524,7 +1524,7 @@ function setBrowserSecurityHeaders(res) {
   res.setHeader('X-Frame-Options', 'DENY')
   res.setHeader('Referrer-Policy', 'no-referrer')
   res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()')
-  res.setHeader('Content-Security-Policy', "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src https://www.google.com; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'")
+  res.setHeader('Content-Security-Policy', "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src https://www.google.com; img-src 'self' data: https://tile.openstreetmap.org; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'")
   if (secureCookies) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
 }
 
