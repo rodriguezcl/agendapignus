@@ -14,7 +14,7 @@ export default function SubscriberMapCanvas({ rows, mode, selected, onSelect, fi
     window.L = L
     import('leaflet.heat').then(() => {
       if (disposed) return
-      const map = L.map(element.current, { center: [-31.4167, -64.1833], zoom: 11, minZoom: 3, maxZoom: 18, scrollWheelZoom: false, zoomAnimation: false })
+      const map = L.map(element.current, { center: [-31.4167, -64.1833], zoom: 11, minZoom: 3, maxZoom: 18, scrollWheelZoom: true, zoomAnimation: false })
       instance.current = map
       const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
@@ -81,7 +81,7 @@ export default function SubscriberMapCanvas({ rows, mode, selected, onSelect, fi
     if (ready && selected?.coordinates) instance.current.setView(selected.coordinates, 16, { animate: false })
   }, [selected, ready])
   return <div className="subscriber-map-canvas-wrap">
-    <div ref={element} className="subscriber-map-canvas" aria-label="Mapa de distribución de abonados. Usá las flechas y los controles de zoom para explorar." />
+    <div ref={element} className="subscriber-map-canvas" aria-label="Mapa de distribución de abonados. Usá la rueda del mouse, las flechas y los controles de zoom para explorar." />
     {error && <div role="alert" className="subscriber-map-load-error">{error}{ready && <button type="button" onClick={() => { setError(''); instance.current.baseTiles.redraw() }}>Reintentar mapa</button>}</div>}
     {!ready && !error && <div className="subscriber-map-loading" role="status">Cargando mapa…</div>}
   </div>
