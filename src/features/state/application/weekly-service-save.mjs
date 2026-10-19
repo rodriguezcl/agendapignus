@@ -1,29 +1,41 @@
 import { stateOperations } from './state-operations.mjs'
 import { rescheduledServiceFields } from '../../../domain/agenda/service-rescheduling.mjs'
 
-export const vehicleControlSwapCandidate = (task, destination, sourceDay, destinationDay) => {
+export const vehicleControlSwapCandidate = (task, destination, sourceDay, destinationDay, responsibleId = '') => {
   if (!task?.vehicleControl || sourceDay !== destinationDay) return null
-  const candidates = (destination?.tasks || []).filter(item => item.vehicleControl && item.time === task.time && item.taskId !== task.taskId)
+  const candidates = (destination?.tasks || []).filter(item => item.vehicleControl && item.time === task.time && item.taskId !== task.taskId && (!responsibleId || String(item.technicianIds?.[0]) === String(responsibleId)))
   if (candidates.length > 1) throw new Error('Hay más de un control vehicular en ese horario. Revisá el equipo de destino antes de intercambiar.')
   return candidates[0] || null
+}
+
+export function vehicleControlResponsible(team, record, requestedId = '') {
+  const ids = team?.memberIds || []
+  const selected = requestedId ? ids.find(id => String(id) === String(requestedId)) :
+    ids.find(id => String(id) === String(record?.technicianIds?.[0])) ?? (ids.length === 1 ? ids[0] : null)
+  const position = ids.findIndex(id => String(id) === String(selected))
+  const name = team?.members?.[position]
+  if (selected == null || !name) throw new Error('Seleccioná un responsable único del equipo de destino para el control vehicular.')
+  return { id: selected, name }
 }
 
 // A move has no service form draft to save. Compare each persisted projection
 // against its own server version, never against the reconciled display card.
 export function weeklyServiceMoveOperations(snapshot, command) {
   const destination = snapshot.agenda?.weekly?.[command.day]?.teams?.find(team => String(team.teamId) === String(command.team.teamId))
-  const swap = vehicleControlSwapCandidate(command.task, destination, command.sourceDay, command.day)
+  const selected = command.task.vehicleControl ? vehicleControlResponsible(command.team, snapshot.history.find(item => String(item.id) === String(command.record.id)), command.responsibleId) : null
+  const swap = vehicleControlSwapCandidate(command.task, destination, command.sourceDay, command.day, selected?.id)
   if (String(swap?.taskId || '') !== String(command.swapTaskId || '')) throw new Error('El control del equipo de destino cambió. Volvé a abrir la reasignación para revisar el intercambio.')
   const operations = singleServiceMoveOperations(snapshot, command)
   if (!swap) return operations
   const source = snapshot.agenda.weekly[command.sourceDay].teams.find(team => String(team.teamId) === String(command.sourceTeamId))
   const record = snapshot.history.find(item => String(item.id) === String(swap.historyId) || String(item.sourceTaskId || '') === String(swap.taskId))
-  const resolved = item => !item || item.technicalStatus || ['Completado', 'Cancelado', 'Reprogramado'].includes(item.status)
+  const resolved = item => !item || item.startedAt || item.completedAt || item.technicalStatus || ['Completado', 'Cancelado', 'Reprogramado'].includes(item.status)
   const originalRecord = snapshot.history.find(item => String(item.id) === String(command.record.id))
   if (resolved(record) || resolved(originalRecord)) throw new Error('Solo se pueden intercambiar controles vehiculares pendientes.')
   return [...operations, ...singleServiceMoveOperations(snapshot, {
     day: command.sourceDay, sourceDay: command.day, sourceTeamId: destination.teamId,
     team: source, task: { ...swap },
+    responsibleId: originalRecord.technicianIds?.[0],
     record: { ...record, teamId: source.teamId, team: source.label },
   })]
 }
@@ -60,13 +72,10 @@ function singleServiceMoveOperations(snapshot, command) {
   const record = { ...command.record }
   const task = { ...command.task }
   if (baseRecord.vehicleControl) {
-    const ids = command.team.memberIds || []
-    const selected = ids.find(id => String(id) === String(baseRecord.technicianIds?.[0])) || (ids.length === 1 ? ids[0] : null)
-    const position = ids.findIndex(id => String(id) === String(selected))
-    const name = command.team.members?.[position]
-    if (selected == null || !name) throw new Error('El control vehicular necesita un responsable único en el equipo de destino.')
-    record.technicianIds = task.technicianIds = [selected]
-    record.technicians = task.technicians = [name]
+    if (baseRecord.startedAt || baseRecord.completedAt || baseRecord.technicalStatus || baseRecord.status !== 'Pendiente') throw new Error('Sólo se pueden reasignar controles vehiculares pendientes y sin iniciar.')
+    const selected = vehicleControlResponsible(command.team, baseRecord, command.responsibleId)
+    record.technicianIds = task.technicianIds = [selected.id]
+    record.technicians = task.technicians = [selected.name]
   }
   const operations = weeklyServiceOperations(snapshot, { ...command, task, record, baseTask, baseRecord })
   if (command.advanceToFriday) {

@@ -1,0 +1,9 @@
+.vehicle-responsibility-swap { margin: 16px 0; padding: 12px; border: 1px solid var(--ap-border); border-radius: 8px; color: var(--ap-text); background: var(--ap-surface-alt); }
+.vehicle-responsibility-swap summary { cursor: pointer; font-weight: 600; }
+.vehicle-responsibility-swap fieldset { padding: 0; border: 0; min-width: 0; }
+.vehicle-responsibility-swap label { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin-bottom: 12px; }
+.vehicle-responsibility-swap select { width: 100%; min-width: 0; }
+.vehicle-swap-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.vehicle-swap-preview span { display: block; overflow-wrap: anywhere; margin: 6px 0; }
+.modal.weekly-move-modal .weekly-move-help { background: var(--ap-surface-alt); color: var(--ap-text); border: 1px solid var(--ap-border); }
+@media (max-width: 480px) { .vehicle-swap-pair { grid-template-columns: 1fr; gap: 0; } .vehicle-responsibility-swap button { width: 100%; } }
