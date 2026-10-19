@@ -1,4 +1,5 @@
 import { doctaMap } from './docta-map.mjs'
+import { customerCoordinates, validCoordinates } from './customer-coordinates.mjs'
 
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
 export function doctaLocation(record = {}) {
@@ -28,7 +29,9 @@ export function doctaLocation(record = {}) {
 
 export function customerLocationFields(customer) {
   const location = doctaLocation(customer)
-  if (!location) return customer.fields || {}
+  if (!location) return validCoordinates(customer.locationOverride)
+    ? { ...customer.fields, 'Ubicación de la cuenta': customer.locationOverride.join(', ') + ' — corrección manual' }
+    : customer.fields || {}
   return { ...customer.fields, 'Ubicación de la cuenta': location.unresolved ? location.label : `${location.coordinates.join(', ')} — ${location.label}` }
 }
 
@@ -60,16 +63,12 @@ export function customerMapAddress(customer = {}) {
 export function customerMapLocation(customer = {}) {
   const docta = doctaLocation(customer)
   if (docta?.unresolved) return docta
-  const raw = String(customer.fields?.['Ubicación de la cuenta'] || '').trim()
-  const match = raw.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/)
-  const imported = match ? [Number(match[1]), Number(match[2])] : null
-  const valid = imported && Math.abs(imported[0]) <= 90 && Math.abs(imported[1]) <= 180 && imported.some(value => value !== 0)
-  const coordinates = docta?.coordinates || (valid ? imported : null)
+  const coordinates = docta?.coordinates || customerCoordinates(customer)
   const address = customerMapAddress(customer)
   const query = coordinates?.join(',') || address
   if (!query || !coordinates && !/\p{L}/u.test(query)) return { unresolved: true, label: 'No hay una dirección o coordenadas válidas para mostrar el mapa.' }
   return {
-    label: docta?.label || (coordinates ? 'Ubicación informada en la cuenta.' : 'Referencia por dirección. Verificá el resultado antes de viajar.'),
+    label: docta?.label || (validCoordinates(customer.locationOverride) ? 'Ubicación corregida manualmente.' : coordinates ? 'Ubicación informada en la cuenta.' : 'Referencia por dirección. Verificá el resultado antes de viajar.'),
     address: coordinates ? null : address,
     embedUrl: `https://www.google.com/maps?q=${encodeURIComponent(query)}&z=16&output=embed`,
     url: docta?.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`

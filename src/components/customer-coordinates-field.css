@@ -1,0 +1,8 @@
+.customer-form .customer-coordinates { grid-column: 1 / -1; min-width: 0; padding: 14px; border: 1px solid var(--ap-border); border-radius: 8px; background: var(--ap-surface); color: var(--ap-text); }
+.customer-coordinates > strong { font-size: 13px; }
+.customer-coordinates p { margin: 6px 0 12px; font-size: 12px; line-height: 1.5; color: var(--ap-muted); }
+.customer-coordinates-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.customer-coordinates-inputs label { min-width: 0; }
+.customer-coordinates-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 12px; color: var(--ap-muted); }
+.customer-coordinates p.customer-coordinates-error { color: var(--ap-danger); }
+@media (max-width: 480px) { .customer-coordinates-inputs { grid-template-columns: minmax(0, 1fr); gap: 12px; } }

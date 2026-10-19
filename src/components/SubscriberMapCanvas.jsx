@@ -5,6 +5,7 @@ import { groupMapLocations, MAP_QUALITY } from '../domain/customers/subscriber-m
 
 export default function SubscriberMapCanvas({ rows, mode, selected, onSelect, fitRequest }) {
   const element = useRef(null), instance = useRef(null), layers = useRef(null), onSelectRef = useRef(onSelect)
+  const markers = useRef(new Map()), highlightedMarker = useRef(null)
   const [ready, setReady] = useState(false), [error, setError] = useState('')
   onSelectRef.current = onSelect
   useEffect(() => {
@@ -37,6 +38,7 @@ export default function SubscriberMapCanvas({ rows, mode, selected, onSelect, fi
     if (!ready) return
     const group = layers.current
     group.clearLayers()
+    markers.current.clear()
     if (mode === 'heat') {
       L.heatLayer(rows.map(row => [...row.coordinates, 1]), { radius: 25, blur: 20, maxZoom: 12, max: 5, minOpacity: 0.25, gradient: { 0.2: '#418bcc', 0.45: '#77c8cb', 0.65: '#f3cf58', 0.85: '#ef8536', 1: '#c62e39' } }).addTo(group)
     } else {
@@ -52,9 +54,25 @@ export default function SubscriberMapCanvas({ rows, mode, selected, onSelect, fi
           const quality = document.createElement('small'); quality.textContent = MAP_QUALITY[row.quality]; popup.append(quality)
         }
         marker.bindPopup(popup, { maxWidth: 300 }).addTo(group)
+        item.rows.forEach(row => markers.current.set(row.key, marker))
       }
     }
   }, [rows, mode, ready])
+  useEffect(() => {
+    const previous = highlightedMarker.current
+    if (previous?.getElement()) {
+      previous.getElement().classList.remove('is-selected')
+      previous.getElement().setAttribute('aria-pressed', 'false')
+      previous.setZIndexOffset(0)
+    }
+    const marker = mode === 'points' ? markers.current.get(selected?.key) : null
+    if (marker?.getElement()) {
+      marker.getElement().classList.add('is-selected')
+      marker.getElement().setAttribute('aria-pressed', 'true')
+      marker.setZIndexOffset(10000)
+    }
+    highlightedMarker.current = marker
+  }, [selected?.key, rows, mode, ready])
   useEffect(() => {
     if (!ready) return
     if (rows.length) instance.current.fitBounds(rows.map(row => row.coordinates), { padding: [32, 32], maxZoom: 14, animate: false })

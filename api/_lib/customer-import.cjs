@@ -18,7 +18,9 @@ function preserveCustomerTrackingFlags(currentCustomers = [], importedCustomers 
   const byAccount = new Map(currentCustomers.map(customer => [String(customer?.account || '').trim().toUpperCase(), customer]))
   return importedCustomers.map(customer => {
     const current = byId.get(String(customer?.customerId || '')) || byAccount.get(String(customer?.account || '').trim().toUpperCase())
-    return { ...customer, cctvService: Boolean(current?.cctvService) }
+    // Coordinates belong to the local record, never to the imported spreadsheet.
+    const { locationOverride, ...imported } = customer
+    return { ...imported, ...(current && Object.hasOwn(current, 'locationOverride') ? { locationOverride: current.locationOverride } : {}), cctvService: Boolean(current?.cctvService) }
   })
 }
 

@@ -1,4 +1,5 @@
 import { doctaLocation, customerMapAddress } from './customer-location.mjs'
+import { customerCoordinates, validCoordinates } from './customer-coordinates.mjs'
 
 export const mapText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 export const MAP_ZONES = { docta: 'Docta', 'nobu-town': 'Nobu Town', residencial: 'Residenciales / otras zonas' }
@@ -10,10 +11,9 @@ export function subscriberMapLocation(customer) {
     ? { quality: 'missing', reason: docta.label }
     : { coordinates: docta.coordinates, quality: docta.approximate ? 'approximate' : 'block', reason: docta.label }
   const raw = String(customer.fields?.['Ubicación de la cuenta'] || '').trim()
-  const match = raw.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/)
-  const coordinates = match?.slice(1).map(Number)
+  const coordinates = customerCoordinates(customer)
   if (coordinates && Math.abs(coordinates[0]) <= 85 && Math.abs(coordinates[1]) <= 180 && coordinates.some(value => value !== 0)) {
-    return { coordinates, quality: 'coordinates', reason: 'Coordenadas informadas en la cuenta; precisión no verificada.' }
+    return { coordinates, quality: 'coordinates', reason: validCoordinates(customer.locationOverride) ? 'Coordenadas corregidas manualmente en la ficha del abonado.' : 'Coordenadas informadas en la cuenta; precisión no verificada.' }
   }
   return { quality: 'missing', reason: raw ? 'La ubicación guardada no contiene coordenadas válidas.' : 'La dirección todavía no tiene coordenadas guardadas.' }
 }
