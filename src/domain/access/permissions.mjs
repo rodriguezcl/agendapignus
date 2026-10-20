@@ -1,6 +1,6 @@
 import { normalizeServiceName } from '../shared/normalization.mjs'
 import permissionPolicy from '../../../api/_lib/permission-catalog.cjs'
-export const { CATALOG, MODULES, BY_ID, VERSION_KEY, SCOPE_KEYS, ALIASES, isGranular, toGranularPermissions, readScope, writeScope, hasAnyWrite, dependencyReason, normalizePermissions, togglePermission } = permissionPolicy
+export const { CATALOG, MODULES, PERMISSION_GROUPS, BY_ID, NOTIFICATION_IDS, VERSION_KEY, SCOPE_KEYS, ALIASES, isGranular, toGranularPermissions, readScope, writeScope, hasAnyWrite, dependencyReason, normalizePermissions, togglePermission } = permissionPolicy
 export const canPermission = permissionPolicy.can
 
 // Single permission catalogue used by navigation and role administration.

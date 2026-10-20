@@ -8,9 +8,8 @@ function matchesRecordScope(scope, record, user, customers) {
   if (scope === 'all') return true
   if (scope === 'assigned') return user.id != null && (record.technicianIds || []).some(value => id(value) === id(user.id))
   if (scope !== 'cctv') return false
-  const customer = customers.find(item =>
-    (record.customerId && id(item.customerId) === id(record.customerId)) ||
-    (account(item.account) && account(item.account) === account(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0])))
+  const customer = (record.customerId && customers.find(item => id(item.customerId) === id(record.customerId))) ||
+    customers.find(item => account(item.account) && account(item.account) === account(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0]))
   return customer ? customer.cctvService === true : record.supervisorVisible === true
 }
 

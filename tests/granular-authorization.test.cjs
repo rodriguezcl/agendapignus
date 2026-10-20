@@ -177,6 +177,32 @@ test('role payload validation applies to migrated data independent of actor and 
   assert.throws(() => write.validateGranularRoles({ ...state, roles: [{ ...role, code: 'administrator', permissions: { __catalogV2: true, 'scope.services.read.assigned': true } }] }, null), /alcance completo/)
 })
 
+test('notification preferences never authorize underlying data access, mutations or request resolution', () => {
+  const catalog = require('../api/_lib/permission-catalog.cjs')
+  const state = fixture(), notices = user(catalog.NOTIFICATION_IDS)
+  const visible = visibleStateForUser(state, notices)
+  assert.deepEqual(visible.history, [])
+  assert.deepEqual(visible.customers, [])
+  assert.deepEqual(visible.vehicles, [])
+  assert.equal(read.serviceReadable(state.history[0], notices, state), false)
+  assert.equal(read.sanitizeService(state.history[0], notices).amount, undefined)
+  for (const [method, route] of [
+    ['PATCH', '/state'], ['POST', '/collections/manage'], ['PATCH', '/history/work'],
+    ['GET', '/vehicle-insurance/v'], ['GET', '/auth/password-reset-requests'],
+    ['POST', '/auth/password-reset-requests']
+  ]) assert.throws(() => endpoint.assertEndpointPermission(notices, method, route), error => error.statusCode === 403, route)
+
+  const collections = user(['collections.view', 'records.financial', 'notifications.collections'])
+  assert.equal(catalog.can(collections, 'notifications.collections'), true)
+  assert.equal(read.serviceReadable(state.history[0], collections, state), true)
+  assert.throws(() => endpoint.assertEndpointPermission(collections, 'PATCH', '/state'), /state.write/)
+  assert.throws(() => endpoint.assertEndpointPermission(collections, 'POST', '/collections/manage'), /collections/)
+  assert.throws(() => endpoint.assertCollectionAction(collections, state, { recordId: 'work', action: 'confirm', amount: '100', paymentMethod: 'Efectivo' }), /collections.confirm/)
+  collections.permissions['records.financial'] = false
+  assert.equal(catalog.can(collections, 'notifications.collections'), false)
+  assert.equal(read.serviceReadable(state.history[0], collections, state), false)
+})
+
 test('reservation link derives customer contact and attribution without granting general editing', () => {
   const state = fixture(), actor = user(['history.view', 'records.read', 'planning.reservation.link'])
   state.history[0] = { ...state.history[0], customerId: '', subscriberReservation: true, client: 'Reserva' }

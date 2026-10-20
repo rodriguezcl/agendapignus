@@ -5,6 +5,8 @@ import { reservationFormReady } from '../agenda/reservation-form-ready.mjs'
 import { compareReservationReminders } from '../agenda/reservation-reminder-order.mjs'
 import { reservationLocality } from '../agenda/service-locality.mjs'
 import { softguardVerificationCases } from '../customers/softguard-verification.mjs'
+import { canReadRecord } from '../access/record-scope.mjs'
+import policy from '../../../api/_lib/permission-catalog.cjs'
 
 export const DASHBOARD_PENDING_NOTICES = [
   { key: 'today', title: 'Pendientes de gestión', detail: 'Servicios de hoy que todavía requieren gestión.', tone: 'warning' },
@@ -39,24 +41,52 @@ export function dashboardExpiredInsuranceVehicles(vehicles = [], today) {
   return vehicles.filter(vehicle => Boolean(vehicle?.insuranceExpiresOn && vehicle.insuranceExpiresOn < today))
 }
 
+export const dashboardNotificationAccess = user => policy.permissionsWithAliases(user)
+
+// Recheck scopes when a session's role changes while an unsaved draft keeps
+// the previous business snapshot in memory. The server remains authoritative.
+export function visibleNotificationCustomers(customers = [], history = [], user) {
+  if (!policy.isGranular(user)) return customers
+  const scope = policy.readScope(user, 'customers')
+  if (scope === 'all') return customers
+  if (scope === 'cctv') return customers.filter(customer => customer.cctvService === true)
+  if (scope !== 'related' || user?.id == null) return []
+  const ids = new Set(), accounts = new Set()
+  const availableIds = new Set(customers.filter(customer => customer.customerId != null).map(customer => String(customer.customerId)))
+  for (const record of history) {
+    if (!(record.technicianIds || []).some(id => String(id) === String(user.id))) continue
+    if (record.customerId && availableIds.has(String(record.customerId))) { ids.add(String(record.customerId)); continue }
+    const account = record.clientAccount || String(record.client || '').trim().split(/\s+/)[0]
+    if (account) accounts.add(String(account).trim().toUpperCase())
+  }
+  return customers.filter(customer => ids.has(String(customer.customerId)) || (customer.account && accounts.has(String(customer.account).trim().toUpperCase())))
+}
+
 /**
  * A read-only snapshot of active operational notices for the notification bell.
  * The caller supplies the current calendar date/instant and existing password
  * request state: this selector performs no requests, mutation or clock reads.
  * Targets describe navigation only; resolution remains in the existing modules.
  */
-export function selectDashboardNotifications({ history = [], vehicles = [], customers = [], passwordResetRequests = [], today, now, isAdministrator = false, permissions = {} } = {}) {
+export function selectDashboardNotifications({ history = [], vehicles = [], customers = [], passwordResetRequests = [], today, now, isAdministrator = false, permissions = {}, user } = {}) {
+  const subject = isAdministrator ? { ...user, roleCode: 'administrator' } : user || { permissions }
+  const administrator = policy.roleCode(subject) === 'administrator'
+  const access = dashboardNotificationAccess(subject)
+  const can = key => access[key] === true
+  const receives = category => administrator || can(`notifications.${category}`)
+  history = history.filter(record => administrator || canReadRecord(record, subject, customers))
+  // Old in-memory commercial/contact fields must not outlive their permission.
+  if (!can('records.financial') || !can('records.contact')) history = history.map(record => ({ ...record, form: undefined, formEmail: undefined }))
+  const visibleCustomers = visibleNotificationCustomers(customers, history, subject)
   const collectionDate = record => collectionService(record, history)?.date
-  const notices = (isAdministrator || permissions.collections === true) ? collectionRecords(history).filter(record => !collectionConfirmed(record) && collectionDate(record) && collectionDate(record) <= today).map(record => ({
+  const notices = receives('collections') ? collectionRecords(history).filter(record => !collectionConfirmed(record) && collectionDate(record) && collectionDate(record) <= today).map(record => ({
     id: `collection:${record.id}`, title: 'Cobranza pendiente de pago', tone: 'warning',
     detail: `${record.client || 'Servicio'} · ${dateLabel(collectionDate(record))} · ${collectionMoney(record.amount)} · ${record.paymentMethod}.`,
     target: { type: 'collection', recordId: String(record.id) }
   })) : []
-  if (!isAdministrator && permissions.dashboard !== true) return notices
-  const can = module => isAdministrator || permissions[module] === true
   const dashboard = (section, id) => ({ type: 'dashboard', section, ...(id == null ? {} : { id: String(id) }) })
 
-  if (isAdministrator) {
+  if (administrator) {
     for (const record of history.filter(item => isAdvanceRequestActive(item, now ?? Number.NaN))) {
       notices.push({
         id: `advance:${record.id}`, title: 'Solicitud para adelantar servicio', tone: 'warning',
@@ -65,7 +95,7 @@ export function selectDashboardNotifications({ history = [], vehicles = [], cust
       })
     }
   }
-  if (isAdministrator || permissions['employees.requests.read'] === true) {
+  if (receives('passwordRequests')) {
     for (const request of passwordResetRequests) {
       notices.push({
         id: `password:${request.id}`, title: 'Solicitud de cambio de contraseña', tone: 'warning',
@@ -75,26 +105,28 @@ export function selectDashboardNotifications({ history = [], vehicles = [], cust
     }
   }
 
-  for (const vehicle of dashboardExpiredInsuranceVehicles(vehicles, today)) {
+  for (const vehicle of receives('insurance') ? dashboardExpiredInsuranceVehicles(vehicles, today) : []) {
     notices.push({
       id: `insurance:${vehicle.id}`, title: 'Seguro vehicular desactualizado', tone: 'danger',
-      detail: `${[vehicle.brand, vehicle.model].filter(Boolean).join(' ')} · ${vehicle.plate} venció el ${dateLabel(vehicle.insuranceExpiresOn)}. ${isAdministrator ? 'Actualizá la documentación del vehículo.' : 'Solicitá el nuevo PDF al área administrativa.'}`,
-      target: can('vehicles') ? { type: 'vehicle', vehicleId: String(vehicle.id), edit: isAdministrator } : dashboard('insurance', vehicle.id)
+      detail: `${[vehicle.brand, vehicle.model].filter(Boolean).join(' ')} · ${vehicle.plate} venció el ${dateLabel(vehicle.insuranceExpiresOn)}. ${can('vehicle.insurance.write') ? 'Actualizá la documentación del vehículo.' : 'Solicitá el nuevo PDF al área administrativa.'}`,
+      target: { type: 'vehicle', vehicleId: String(vehicle.id), edit: can('vehicle.insurance.write') }
     })
   }
 
-  for (const record of dashboardReservationRecords(history, today)) {
+  for (const record of receives('reservations') ? dashboardReservationRecords(history, today) : []) {
     const ready = reservationFormReady(record)
+    const locality = can('records.contact') ? ` · ${reservationLocality(record, visibleCustomers)}` : ''
     notices.push({
       id: `reservation:${record.id}`, title: 'Reserva pendiente de vincular con un PIG', tone: ready ? 'info' : 'warning',
-      detail: `${record.client || 'Reserva de abonado'} · ${reservationLocality(record, customers)} · ${dateLabel(record.date)} a las ${record.time || record.scheduledTime || 'hora a confirmar'}. Seleccioná el abonado importado antes del servicio.${ready ? ` Formulario completo disponible para crear el abonado en SoftGuard. Email del formulario: ${record.formEmail.trim()}.` : ''}`,
+      detail: `${record.client || 'Reserva de abonado'}${locality} · ${dateLabel(record.date)} a las ${record.time || record.scheduledTime || 'hora a confirmar'}. ${can('planning.reservation.link') ? 'Seleccioná el abonado importado antes del servicio.' : 'Requiere vinculación con la cuenta definitiva antes del servicio.'}${ready ? ` Formulario completo disponible para crear el abonado en SoftGuard. Email del formulario: ${record.formEmail.trim()}.` : ''}`,
       target: can('weekly') ? { type: 'reservation', recordId: String(record.id) } : dashboard('reservation', record.id)
     })
   }
 
   const pending = dashboardPendingGroups(history, today)
+  const categories = { today: 'pendingToday', confirmation: 'confirmation', rescheduling: 'rescheduling', overdue: 'overdue' }
   for (const group of DASHBOARD_PENDING_NOTICES) {
-    if (!pending[group.key].length) continue
+    if (!receives(categories[group.key]) || !pending[group.key].length) continue
     notices.push({
       id: `pending:${group.key}`, title: `${group.title}: ${pending[group.key].length} servicio(s)`,
       detail: group.detail, tone: group.tone,
@@ -102,7 +134,7 @@ export function selectDashboardNotifications({ history = [], vehicles = [], cust
     })
   }
 
-  const verification = softguardVerificationCases(customers)
+  const verification = receives('softguard') ? softguardVerificationCases(visibleCustomers) : []
   if (verification.length) notices.push({
     id: 'softguard-verification', title: `Pendiente de verificación en SoftGuard: ${verification.length} cuenta(s)`,
     detail: 'Hay cuentas PIG que coinciden con clientes CLI provenientes de una baja de servicio.', tone: 'warning',

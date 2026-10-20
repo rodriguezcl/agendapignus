@@ -23,7 +23,7 @@ window.__user=themeReviewUser;
 installRequiredFeedback();
 createRoot(document.getElementById('root')).render(<App/>);
 `
-const built = buildSync({ stdin: { contents: `import './style.css';\n${source}\n${fixture}`, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, outdir: 'out', format: 'iife', external: ['/logo-pignus.png'], define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'false' }, loader: { '.css': 'css', '.png': 'dataurl' }, logLevel: 'silent' })
+const built = buildSync({ stdin: { contents: `import './style.css';\n${source}\n${fixture}`, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, outdir: 'out', format: 'iife', external: ['/logo-pignus.png', '/pignus-owl-white.svg'], define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'false' }, loader: { '.css': 'css', '.png': 'dataurl' }, logLevel: 'silent' })
 const js = built.outputFiles.find(f => f.path.endsWith('.js')).text
 const css = built.outputFiles.find(f => f.path.endsWith('.css')).text
 const html = '<!doctype html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/review.css"></head><body><div id="root"></div><script src="/review.js"></script></body></html>'
@@ -86,7 +86,7 @@ const html = '<!doctype html><html lang="es"><head><meta charset="UTF-8"><meta n
       await page.getByRole('button', { name: 'Cerrar verificación en SoftGuard' }).click()
       await bell.click()
       await page.getByTitle(/Abrir: Pendientes de gestión/).click()
-      await page.getByRole('heading', { name: 'Historial técnico' }).waitFor()
+      await page.locator('.topbar .page-heading').getByRole('heading', { name: 'Historial', exact: true }).waitFor()
       if (width <= 640) await page.locator('.sidebar-toggle').click()
       await page.locator('.sidebar nav').getByRole('button', { name: 'Abonados y clientes', exact: true }).click()
       await page.getByRole('button', { name: 'Importar abonados', exact: true }).click()

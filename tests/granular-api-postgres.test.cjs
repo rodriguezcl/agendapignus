@@ -110,3 +110,66 @@ test('PostgreSQL granular writes preserve hidden fields, exact permissions, CAS,
     assert.deepEqual({ ...normalizedControls, history: normalizedControls.history.toSorted(byId) }, { ...controlsSaved, history: controlsSaved.history.toSorted(byId) })
   } finally { await pg.close() }
 })
+
+test('role notification preferences persist through the real PATCH path and both storage models, refreshing session permissions', async () => {
+  const { PGlite } = await import('@electric-sql/pglite')
+  const { stateOperations } = await import('../src/features/state/application/state-operations.mjs')
+  const { userForEmployee } = require('../api/_lib/core.cjs')
+  const catalog = require('../api/_lib/permission-catalog.cjs')
+  const pg = await PGlite.create(), root = path.resolve(__dirname, '..')
+  try {
+    await pg.exec('create role anon; create role authenticated;')
+    await pg.exec(fs.readFileSync(path.join(root, 'supabase/migrations/202608250001_pignus_schema.sql'), 'utf8'))
+    const sql = pgliteAdapter(pg), initial = fixture()
+    const manager = {
+      id: 'billing-manager', name: 'Gestión de cobranza', code: 'billing-manager',
+      permissions: {
+        __catalogV2: true, 'collections.view': true, 'records.financial': true,
+        'settings.view': true, 'settings.roles.read': true, 'settings.roles.permissions': true
+      }
+    }
+    initial.roles.push(manager, { id: 'admin', name: 'Administrador', code: 'administrator', permissions: {} })
+    initial.employees[0].roleId = manager.id
+    initial.employees.push({ id: 'admin', firstName: 'Admin', lastName: 'Prueba', email: 'admin@example.test', roleId: 'admin', status: 'Activo' })
+    await replaceCollections(sql, initial)
+    await pg.query("insert into pignus_preferences(key,value) values('state_revision','1') on conflict(key) do update set value='1'")
+    await pg.exec(fs.readFileSync(path.join(root, 'supabase/proposals/normalized-shadow-v1.sql'), 'utf8'))
+    const candidate = buildShadowCandidate(initial)
+    await insertShadowCandidate(pg, candidate)
+    await pg.query("update normalized_shadow.storage_control set active_model='normalized', active_revision=$1, active_fingerprint=$2 where id=1", [initial.revision, candidate.analysis.sourceFingerprint])
+
+    const filename = path.join(root, 'api/index.js'), compiled = new Module(filename, module)
+    compiled.filename = filename; compiled.paths = Module._nodeModulePaths(path.dirname(filename))
+    compiled._compile(fs.readFileSync(filename, 'utf8') + '\nmodule.exports.testSave=handleSaveState;', filename)
+    const user = userForEmployee(initial.employees[0], initial.roles)
+    const before = await readState(sql), visible = visibleStateForUser(before, user)
+    assert.equal(Object.hasOwn(user.permissions, 'notifications.collections'), false)
+    assert.equal(catalog.can(visible.sessionUser, 'notifications.collections'), true, 'A preexisting role inherits notices from effective reading permissions')
+    const proposed = structuredClone(visible)
+    proposed.roles.find(role => role.id === manager.id).permissions['notifications.collections'] = false
+    const operations = stateOperations(visible, proposed)
+    assert.equal(operations.length, 1)
+    assert.equal(operations[0].path[0], 'roles')
+    const response = {}
+    const res = { setHeader() {}, status(code) { response.status = code; return this }, json(body) { response.body = body; return body } }
+    await compiled.exports.testSave({ method: 'PATCH', body: { revision: before.revision, operations } }, res, sql, user)
+    assert.equal(response.status, 200, JSON.stringify(response.body))
+    assert.equal(response.body.state.sessionUser.permissions['notifications.collections'], false)
+    assert.equal(catalog.can(response.body.state.sessionUser, 'notifications.collections'), false)
+    assert.equal(catalog.can(response.body.state.sessionUser, 'collections.view'), true)
+    assert.equal(catalog.can(response.body.state.sessionUser, 'records.financial'), true)
+
+    const saved = await readState(sql), normalized = await readNormalizedState(pg)
+    assert.equal(saved.roles.find(role => role.id === manager.id).permissions['notifications.collections'], false)
+    assert.equal(normalized.roles.find(role => role.id === manager.id).permissions['notifications.collections'], false)
+    const byId = (left, right) => String(left.id).localeCompare(String(right.id))
+    const comparable = snapshot => ({ ...snapshot, roles: snapshot.roles.toSorted(byId), employees: snapshot.employees.toSorted(byId) })
+    assert.deepEqual(comparable(normalized), comparable(saved))
+    assert.deepEqual((await pg.query('select allowed from normalized_shadow.role_permissions where role_id=$1 and permission=$2', [manager.id, 'notifications.collections'])).rows, [{ allowed: false }])
+    const refreshed = visibleStateForUser(saved, user)
+    assert.equal(refreshed.sessionUser.permissions['notifications.collections'], false, 'Stale caller metadata is replaced by persisted permissions')
+    assert.equal(catalog.can(refreshed.sessionUser, 'notifications.collections'), false)
+    assert.equal(refreshed.history.length, visible.history.length, 'Muting a notice preserves the independent data-reading permission')
+    assert.equal(saved.revision, before.revision + 1)
+  } finally { await pg.close() }
+})

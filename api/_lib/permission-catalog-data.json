@@ -1810,6 +1810,87 @@
       "any": [],
       "note": "Lectura sensible. No existe edición ni borrado de auditoría desde este módulo.",
       "sensitive": true
+    },
+    {
+      "id": "notifications.collections",
+      "label": "Recibir avisos de cobranzas pendientes",
+      "groups": ["notifications", "collections"],
+      "all": ["collections.view", "records.financial"],
+      "any": [],
+      "note": "Requiere acceso a Cobranzas y a los importes. No permite confirmar ni modificar pagos.",
+      "sensitive": false
+    },
+    {
+      "id": "notifications.reservations",
+      "label": "Recibir avisos de reservas pendientes de vincular",
+      "groups": ["notifications", "weekly", "agenda", "history"],
+      "all": ["records.read"],
+      "any": ["weekly.view", "agenda.view", "history.view"],
+      "note": "Sólo incluye reservas visibles dentro del alcance del rol.",
+      "sensitive": false
+    },
+    {
+      "id": "notifications.pendingToday",
+      "label": "Recibir avisos de servicios pendientes de hoy",
+      "groups": ["notifications", "weekly", "agenda", "history"],
+      "all": ["records.read"],
+      "any": ["weekly.view", "agenda.view", "history.view"],
+      "note": "Sólo cuenta servicios visibles dentro del alcance del rol.",
+      "sensitive": false
+    },
+    {
+      "id": "notifications.confirmation",
+      "label": "Recibir avisos de servicios pendientes de confirmar",
+      "groups": ["notifications", "weekly", "agenda", "history"],
+      "all": ["records.read"],
+      "any": ["weekly.view", "agenda.view", "history.view"],
+      "note": "No habilita la confirmación de servicios.",
+      "sensitive": false
+    },
+    {
+      "id": "notifications.rescheduling",
+      "label": "Recibir avisos de servicios pendientes de reprogramar",
+      "groups": ["notifications", "weekly", "agenda", "history"],
+      "all": ["records.read"],
+      "any": ["weekly.view", "agenda.view", "history.view"],
+      "note": "No habilita la reprogramación de servicios.",
+      "sensitive": false
+    },
+    {
+      "id": "notifications.overdue",
+      "label": "Recibir avisos de servicios atrasados",
+      "groups": ["notifications", "weekly", "agenda", "history"],
+      "all": ["records.read"],
+      "any": ["weekly.view", "agenda.view", "history.view"],
+      "note": "Sólo incluye servicios visibles dentro del alcance del rol.",
+      "sensitive": false
+    },
+    {
+      "id": "notifications.insurance",
+      "label": "Recibir avisos de vencimiento de seguros",
+      "groups": ["notifications", "vehicles"],
+      "all": ["vehicles.view", "vehicle.insurance.read"],
+      "any": [],
+      "note": "Avisos de gestión de la flota. No amplía el acceso a vehículos desde el portal técnico.",
+      "sensitive": false
+    },
+    {
+      "id": "notifications.softguard",
+      "label": "Recibir avisos de actualización de abonados",
+      "groups": ["notifications", "accounts"],
+      "all": ["accounts.view"],
+      "any": [],
+      "note": "Permite ver el aviso de actualización de SoftGuard, sin habilitar importaciones.",
+      "sensitive": false
+    },
+    {
+      "id": "notifications.passwordRequests",
+      "label": "Recibir avisos de recuperación de acceso",
+      "groups": ["notifications", "employees", "dashboard"],
+      "all": ["employees.requests.read"],
+      "any": [],
+      "note": "No permite resolver solicitudes ni cambiar contraseñas.",
+      "sensitive": false
     }
   ]
 }

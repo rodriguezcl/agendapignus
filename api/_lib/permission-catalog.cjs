@@ -1,10 +1,13 @@
 const data = require('./permission-catalog-data.json')
 
 const MODULES = data.modules
+const PERMISSION_GROUPS = [...MODULES, ['notifications', 'Notificaciones']]
 const CATALOG = data.catalog
 const VERSION_KEY = '__catalogV2'
 const SNAPSHOT = Symbol('resolved-permissions')
 const BY_ID = Object.fromEntries(CATALOG.map(item => [item.id, item]))
+const NOTIFICATION_IDS = CATALOG.filter(item => item.id.startsWith('notifications.')).map(item => item.id)
+const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key)
 const SCOPE_KEYS = [
   'scope.services.read.assigned', 'scope.services.read.cctv',
   'scope.services.write.assigned', 'scope.services.write.cctv',
@@ -83,13 +86,22 @@ function legacySelection(subject) {
   grant('service.documents.deleteAny', !technician && !supervisor && !operator && (plan || moduleOn('history')))
   grant('settings.roles.read', moduleOn('settings'))
   grant('settings.workday.read', moduleOn('settings') && feature('weeklyHours', 'weekly'))
+  // Existing roles inherit notices from their effective reading capabilities,
+  // while a saved notification preference must remain explicit.
+  NOTIFICATION_IDS.forEach(id => {
+    if (hasOwn(source, id)) result[id] = source[id] === true
+    else delete result[id]
+  })
   return result
 }
 function dependenciesMet(item, permissions) {
   return item.all.every(key => permissions[key] === true) && (!item.any.length || item.any.some(key => permissions[key] === true))
 }
 function normalizePermissions(selection) {
-  const result = Object.fromEntries(CATALOG.map(item => [item.id, selection?.[item.id] === true]))
+  const result = Object.fromEntries(CATALOG.map(item => [
+    item.id,
+    selection?.[item.id] === true || (NOTIFICATION_IDS.includes(item.id) && !hasOwn(selection, item.id))
+  ]))
   let changed = true
   while (changed) {
     changed = false
@@ -162,6 +174,7 @@ function togglePermission(subject, key, enabled) {
   return { permissions, removed: CATALOG.filter(item => item.id !== key && before[item.id] && !permissions[item.id]).map(item => item.id), reason: '' }
 }
 const READ_ONLY_IDS = new Set([
+  ...NOTIFICATION_IDS,
   ...MODULES.map(([id]) => `${id}.view`), 'records.read', 'records.contact', 'records.financial', 'records.export', 'customer.history', 'dashboard.detail',
   'planning.copy', 'weekly.daily', 'weekly.monthlyTeams.read', 'weekly.monthlyHours.read', 'weekly.monthlyVehicles.read', 'weekly.guards.read',
   'collections.timeline', 'customers.backup', 'subscriptions.read', 'map.customer', 'employees.requests.read', 'vehicles.mileage.read',
@@ -187,4 +200,4 @@ function validateCatalog() {
 }
 validateCatalog()
 
-module.exports = { MODULES, CATALOG, BY_ID, VERSION_KEY, SCOPE_KEYS, ALIASES, isGranular, roleCode, resolvePermissions, permissionSnapshot, permissionsWithAliases, can, toGranularPermissions, readScope, writeScope, hasAnyWrite, dependenciesMet, dependencyReason, normalizePermissions, togglePermission, validateCatalog }
+module.exports = { MODULES, PERMISSION_GROUPS, CATALOG, BY_ID, NOTIFICATION_IDS, VERSION_KEY, SCOPE_KEYS, ALIASES, isGranular, roleCode, resolvePermissions, permissionSnapshot, permissionsWithAliases, can, toGranularPermissions, readScope, writeScope, hasAnyWrite, dependenciesMet, dependencyReason, normalizePermissions, togglePermission, validateCatalog }

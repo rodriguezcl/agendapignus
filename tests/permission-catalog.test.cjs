@@ -5,8 +5,12 @@ const custom = permissions => ({ roleCode: 'role-test', role: 'Prueba', permissi
 
 test('catalogue contains unique capabilities with known acyclic prerequisites', () => {
   assert.equal(policy.validateCatalog(), true)
-  assert.equal(policy.CATALOG.length, 121)
+  assert.equal(policy.CATALOG.length, 130)
   assert.equal(policy.MODULES.length, 13)
+  assert.equal(policy.PERMISSION_GROUPS.length, 14)
+  assert.equal(policy.MODULES.some(([id]) => id === 'notifications'), false)
+  assert.equal(policy.PERMISSION_GROUPS.some(([id]) => id === 'notifications'), true)
+  assert.equal(policy.BY_ID['notifications.view'], undefined)
 })
 test('checking a parent grants no child and removing it recursively clears dependants', () => {
   let user = custom({ 'technical.view': true, 'records.read': true, 'technical.start': true, 'technical.advance': true, 'technical.complete': true })
@@ -90,4 +94,92 @@ test('request snapshots are immutable without caching subsequent revocations', (
   actor.permissions['history.view'] = false
   assert.equal(policy.can(actor, 'records.read'), false)
   assert.equal(policy.can(policy.permissionSnapshot(actor), 'records.read'), false)
+})
+
+const noticePrerequisites = {
+  'weekly.view': true,
+  'records.read': true,
+  'collections.view': true,
+  'records.financial': true,
+  'vehicles.view': true,
+  'vehicle.insurance.read': true,
+  'accounts.view': true,
+  'employees.view': true,
+  'employees.requests.read': true
+}
+
+test('existing granular roles inherit only notices supported by their effective reading permissions', () => {
+  assert.equal(policy.NOTIFICATION_IDS.length, 9)
+  const role = custom(noticePrerequisites)
+  for (const id of policy.NOTIFICATION_IDS) assert.equal(policy.can(role, id), true, id)
+  const noAccess = custom(Object.fromEntries(policy.NOTIFICATION_IDS.map(id => [id, true])))
+  for (const id of policy.NOTIFICATION_IDS) assert.equal(policy.can(noAccess, id), false, id)
+  for (const id of Object.keys(noticePrerequisites)) assert.equal(policy.can(noAccess, id), false, id)
+  const malformedParents = custom({ 'records.read': true, 'employees.requests.read': true, 'vehicle.insurance.read': true })
+  for (const id of policy.NOTIFICATION_IDS) assert.equal(policy.can(malformedParents, id), false, id)
+})
+
+test('legacy notification defaults follow actual capabilities instead of role names or raw module flags', () => {
+  const operator = { name: 'Operador', permissions: { collections: true, vehicles: true, employees: true } }
+  assert.equal(policy.can(operator, 'notifications.collections'), false)
+  assert.equal(policy.can(operator, 'notifications.reservations'), true)
+  assert.equal(policy.can(operator, 'notifications.insurance'), false)
+  assert.equal(policy.can(operator, 'notifications.passwordRequests'), false)
+  const coordinator = { code: 'coordinator', permissions: { collections: true, vehicles: true, accounts: true } }
+  assert.equal(policy.can(coordinator, 'notifications.collections'), true)
+  assert.equal(policy.can(coordinator, 'notifications.insurance'), true)
+  assert.equal(policy.can(coordinator, 'notifications.softguard'), true)
+  assert.equal(policy.can(coordinator, 'notifications.pendingToday'), false)
+  coordinator.permissions['notifications.collections'] = false
+  assert.equal(policy.can(coordinator, 'notifications.collections'), false)
+  const technician = { code: 'technician', permissions: {} }
+  assert.equal(policy.can(technician, 'vehicle.insurance.read'), true)
+  for (const id of policy.NOTIFICATION_IDS) assert.equal(policy.can(technician, id), false, id)
+})
+
+test('explicit notification preferences prevail over defaults and require strict booleans', () => {
+  for (const value of [false, null, undefined, 'true', 1]) {
+    const role = custom({ ...noticePrerequisites, 'notifications.collections': value })
+    assert.equal(policy.can(role, 'notifications.collections'), false, String(value))
+    assert.equal(policy.toGranularPermissions(role)['notifications.collections'], false)
+  }
+  const administrator = { code: 'administrator', permissions: { __catalogV2: true, ...Object.fromEntries(policy.NOTIFICATION_IDS.map(id => [id, false])) } }
+  for (const id of policy.NOTIFICATION_IDS) assert.equal(policy.can(administrator, id), true, id)
+})
+
+test('new role defaults and reenabled parents never turn on explicitly disabled notifications', () => {
+  const blank = custom(Object.fromEntries(policy.CATALOG.map(item => [item.id, false])))
+  let updated = policy.togglePermission(blank, 'accounts.view', true)
+  assert.equal(updated.permissions['notifications.softguard'], false)
+  updated = policy.togglePermission(custom(updated.permissions), 'notifications.softguard', true)
+  assert.equal(updated.permissions['notifications.softguard'], true)
+  updated = policy.togglePermission(custom(updated.permissions), 'accounts.view', false)
+  assert.equal(updated.permissions['notifications.softguard'], false)
+  assert.ok(updated.removed.includes('notifications.softguard'))
+  updated = policy.togglePermission(custom(updated.permissions), 'accounts.view', true)
+  assert.equal(updated.permissions['notifications.softguard'], false)
+  assert.match(policy.dependencyReason('notifications.collections', updated.permissions), /Cobranzas/)
+})
+
+test('notification defaults normalize, migrate, snapshot and delegate consistently without write privileges', async () => {
+  const { canDelegateRole } = await import('../src/domain/access/role-delegation.mjs')
+  const { PERMISSION_GROUPS, toGranularPermissions, canPermission } = await import('../src/domain/access/permissions.mjs')
+  assert.deepEqual(PERMISSION_GROUPS, policy.PERMISSION_GROUPS)
+  const role = custom(noticePrerequisites)
+  const resolved = policy.resolvePermissions(role)
+  const migrated = toGranularPermissions(role)
+  const request = policy.permissionSnapshot(role)
+  assert.deepEqual(policy.normalizePermissions(resolved), resolved)
+  assert.deepEqual(policy.resolvePermissions(custom(migrated)), resolved)
+  assert.equal(policy.hasAnyWrite(role), false)
+  for (const id of policy.NOTIFICATION_IDS) {
+    assert.equal(canPermission(role, id), policy.can(request, id), id)
+    assert.equal(migrated[id], true, id)
+  }
+  assert.equal(canDelegateRole(role, role), true)
+  role.permissions['notifications.collections'] = false
+  assert.equal(policy.can(role, 'notifications.collections'), false)
+  assert.equal(policy.can(request, 'notifications.collections'), true, 'The earlier immutable snapshot retains its prior reading decision')
+  assert.equal(policy.can(policy.permissionSnapshot(role), 'notifications.collections'), false)
+  assert.equal(canDelegateRole(role, custom(noticePrerequisites)), false)
 })
