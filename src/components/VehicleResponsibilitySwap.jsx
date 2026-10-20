@@ -27,7 +27,7 @@ export default function VehicleResponsibilitySwap({ month, today, vehicles, hist
       <div className="vehicle-swap-pair">{[[first, setFirst, 'Primer vehículo'], [second, setSecond, 'Segundo vehículo']].map(([value, setter, label]) => <label key={label}>{label}<select value={value} onChange={event => { setter(event.target.value); setError('') }}>{vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicleLabel(vehicle)}</option>)}</select></label>)}</div>
       {first !== second && records.every(Boolean) && <p className="vehicle-swap-preview">{records.map((record, index) => <span key={record.id}><b>{vehicleLabel(vehicles.find(vehicle => String(vehicle.id) === String(record.vehicleId)))}</b>: {record.technicians?.[0] || 'Sin responsable'} → <strong>{records[1 - index].technicians?.[0] || 'Sin responsable'}</strong></span>)}</p>}
       {error && <p className="field-error" role="alert">{error}</p>}
-      <button type="button" className="primary" disabled={!friday || first === second} onClick={save}>{busy ? 'Guardando intercambio…' : 'Confirmar intercambio'}</button>
+      <button title="Confirmá el intercambio de responsables para el viernes seleccionado." type="button" className="primary" disabled={!friday || first === second} onClick={save}>{busy ? 'Guardando intercambio…' : 'Confirmar intercambio'}</button>
     </fieldset>
   </details>
 }

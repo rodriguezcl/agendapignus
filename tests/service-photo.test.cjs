@@ -1,10 +1,11 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 
 test('la interfaz permite adjuntar desde archivo o cámara y muestra la foto en todas las vistas solicitadas', () => {
-  const source = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const attachments = fs.readFileSync(path.join(__dirname, '../src/components/Attachments.jsx'), 'utf8')
   assert.match(attachments, /Agregar archivos/)
   assert.match(attachments, /multiple accept=/)

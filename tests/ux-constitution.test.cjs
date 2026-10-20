@@ -1,9 +1,10 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+const app = frontendSource()
 const constitutionStyles = fs.readFileSync(path.join(__dirname, '..', 'src', 'constitution-ui.css'), 'utf8')
 const systemState = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'ui', 'SystemState.jsx'), 'utf8')
 

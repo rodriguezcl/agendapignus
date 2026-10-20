@@ -1,11 +1,12 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
-const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+const source = frontendSource()
 const daily = source.slice(source.indexOf('function AgendaWorkspaceForm('), source.indexOf('function WeeklyPlanner('))
 
 test('editable daily view renders the pending-services dialog with all three choices', () => {
-  assert.match(daily, /return <>\{dailyLeaveModal\}<div className="module-intro"><div><p className="eyebrow">PLANIFICACIÓN DIARIA<\/p><h1>Organizá/)
+  assert.match(daily, /return <>\{dailyLeaveModal\}<div className="module-intro"><ModuleIntroduction><p className="eyebrow">PLANIFICACIÓN DIARIA<\/p><h1>Organizá/)
   assert.match(daily, /onClick=\{cancelDailyAndContinue\}><Icon name="close" size=\{16\} \/>Cancelar carga/)
   assert.match(daily, /onClick=\{saveDailyAndContinue\}><Icon name="check" size=\{16\} \/>Guardar y continuar/)
   assert.match(daily, /onClick=\{continueDailyEditing\}><Icon name="edit" size=\{16\} \/>Seguir editando/)

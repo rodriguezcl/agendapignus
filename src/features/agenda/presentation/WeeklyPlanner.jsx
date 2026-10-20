@@ -1,0 +1,1192 @@
+import { serviceScheduleConflicts, normalizeServiceEstimatedMinutes, taskOccupiedInterval } from "../../../domain/agenda/service-scheduling.mjs";
+import { taskHasContent, default2026GuardRotationFor, defaultServiceTasksForDate, isSaturday, assignGuardToEmptySaturday, defaultServiceTimesForDate, alignDefaultServiceTimes, fallbackDefaultServiceTimesForDate, mergeStoredTeamsWithDefaults, renumberVisibleWeeklyTeams, applyRemovedWeeklyTeams, applyRemovedWeeklySlots, applyRemovedWeeklyTasks, normalizeSaturdayTeams, removeUnavailableDefaultSlots, sortPlanTasksByTime, taskStatus, historyRecordForTask, blankTask, serviceTimeInMinutes, nextLiveScheduleMinute, taskForScheduleOccupancy, planningConflictMessage, stampServiceRecord, taskIsResolvedForPlanning, taskMoveScheduleState, teamLabelNumber, removedWeeklyTeamMatches, technicianTimeConflicts, weeklyTaskRemovalAliases, sortTasksByTime, serviceTrace, scheduleConflictMessage, taskOccupiedTimeLabel, scheduleConflictForTaskMessage, dayAgendaPreview, recordHolidayDecision } from "../application/agenda-model.mjs";
+import React, { useState, useMemo, useRef, useEffect } from "react";
+import { useWeeklyWeather, WeatherCredit, WeatherArt, WeeklyWeather } from "../../../components/WeeklyWeather.jsx";
+import { createServiceLocalityLookup } from "../../../domain/agenda/service-locality.mjs";
+import { normalizeRoleName } from "../../../domain/access/permissions.mjs";
+import { defaultWeeklyAnchor, weeklyVisibleDays, shiftWeeklyAnchor } from "../../../domain/agenda/weekly-anchor.mjs";
+import { prettyDate, currentLocalDate } from "../../../presentation/formatting.mjs";
+import { sortServicesAlphabetically } from "../../../domain/services/service-order.mjs";
+import { resolveServiceForTask, applicableServiceExtras, taskWithServiceEstimate, weeklyTaskMissingFields, requiresPaymentAmount, serviceEstimateForTask, normalizeInternalChecklist, formatCurrencyAmount, INSTALLATION_ZONES } from "../../services/application/service-fields.mjs";
+import { isTrainingService, trainingClientPatch, serviceCode } from "../../../domain/services/service.mjs";
+import { clearSubscriberReservationPatch, customerLinkPatch, subscriberReservationPatch } from "../application/customer-linking.mjs";
+import { createTeamId } from "../../../infrastructure/browser/identity.mjs";
+import { useNationalHolidays } from "../application/useNationalHolidays.js";
+import { holidayForDate, holidayDecisionForDate, holidayIsBlocked } from "../../../domain/agenda/holidays.mjs";
+import { appendTraceElement } from "../../../presentation/service-trace-dom.mjs";
+import { findAdvancedSaturdayGuard, advancedSaturdayGuardMessage, suppressAdvancedSaturdayAvailability } from "../../../domain/agenda/weekend-guard.mjs";
+import { reservationTarget } from "../../../domain/agenda/reservation-target.mjs";
+import { normalizeCustomerName } from "../../../domain/shared/normalization.mjs";
+import { createQuickClient } from "../../customers/application/customer-model.mjs";
+import { uploadAttachmentBatch } from "../../../components/Attachments.jsx";
+import { servicePhotoRepository } from "../../../infrastructure/repositories/service-photo-repository.mjs";
+import { canReorderService, reorderServices } from "../../../domain/agenda/reorder-services.mjs";
+import { ServiceConfirmationButton, ServiceEstimatedDurationField, ConfigurationHistoryPanel, BufferedInput, CustomerAutocomplete, BufferedTextarea, AgendaTechnicalNote, ServiceExtraFields, HolidayDecisionPanel, LunchCard, TaskStatusBadge } from "./AgendaFields.jsx";
+import { ServiceJourneys, journeyLabel } from "../../../components/ServiceJourneys.jsx";
+import Icon from "../../../components/ui/Icon.jsx";
+import { fridayAdvanceDestination } from "../../../domain/agenda/friday-advance.mjs";
+import { vehicleControlResponsible, vehicleControlSwapCandidate } from "../../state/application/weekly-service-save.mjs";
+import { planningHoursForDay, serviceGaps } from "../../../domain/agenda/service-gaps.mjs";
+import { monthlyTeamRotation, monthlyEligibleTechnicians } from "../../../domain/agenda/monthly-team-rotation.mjs";
+import { synchronizeMonthlyTeams } from "../../../domain/agenda/monthly-team-sync.mjs";
+import { synchronizeMonthlyVehicles } from "../../../domain/vehicles/monthly-vehicle-sync.mjs";
+import { appendConfigurationHistory, teamConfigurationSnapshot, vehicleConfigurationSnapshot, guardConfigurationSnapshot } from "../../../domain/configuration/configuration-history.mjs";
+import { suggestedVehicleAssignments, monthFridays, buildVehicleControlRecords, vehicleControlTask, vehicleLabel } from "../../../domain/vehicles/vehicle-controls.mjs";
+import { firstSaturdayOfYear } from "../../../domain/agenda/annual-guards.mjs";
+import { Confirm } from "../../../presentation/components/Confirm.jsx";
+import ReorderServicesModal from "../../../components/ReorderServicesModal.jsx";
+import VehicleResponsibilitySwap from "../../../components/VehicleResponsibilitySwap.jsx";
+import { swapVehicleResponsibilities } from "../../state/application/vehicle-responsibility-swap.mjs";
+import TeamTechniciansField from "../../../components/TeamTechniciansField.jsx";
+import ModuleIntroduction from "../../../components/ModuleIntroduction.jsx";
+import WeeklyServiceSearch from "../../../components/WeeklyServiceSearch.jsx";
+import { HistoryDetail } from "../../history/presentation/HistoryDetail.jsx";
+import { serviceTypesLabel } from "../../../domain/services/multi-service.mjs";
+import { ServicePhoto, ServicePhotoField } from "../../attachments/presentation/ServicePhoto.jsx";
+import ServiceCustomerMap from "../../../components/ServiceCustomerMap.jsx";
+import { Preview } from "../../../presentation/components/AgendaPreview.jsx";
+import RequiredLabel from "../../../presentation/components/forms/RequiredLabel.jsx";
+import ServiceTypesField from "../../../components/ServiceTypesField.jsx";
+import { withLunchNotice } from "../../../domain/agenda/lunch-placement.mjs";
+import ServicePreparationButton from "../../../components/ServicePreparationButton.jsx";
+
+export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGuardRef, persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, openDaily, authUser, vehicles, permissions = {} }) {
+  const minimumServiceGapConflicts = teams => serviceScheduleConflicts(teams, taskHasContent, weekly)
+
+  const [dayPreview, setDayPreview] = useState(null)
+  const weather = useWeeklyWeather()
+  const serviceLocality = useMemo(() => createServiceLocalityLookup(customers), [customers])
+  authUser = authUser || globalThis.__pignusCurrentUser || null
+  const readOnly = authUser?.roleCode === 'operator' || normalizeRoleName(authUser?.role) === 'operador'
+  vehicles = vehicles || globalThis.__pignusVehicles || []
+  setHistory = setHistory || globalThis.__pignusSetHistory
+  setCustomers = setCustomers || globalThis.__pignusSetCustomers
+  const isAdministrator = authUser?.roleCode === 'administrator'
+  const canConfigureWeekly = key => !readOnly && (isAdministrator || Boolean(permissions[key]))
+  const operationalHistory = history || globalThis.__pignusHistory || []
+  const localToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const [today, setToday] = useState(localToday)
+  const [planningClock, setPlanningClock] = useState(Date.now)
+  const [anchor, setAnchor] = useState(defaultWeeklyAnchor)
+  const weeklyAnchorFollowsCurrentRef = useRef(true)
+  const [monthlySetup, setMonthlySetup] = useState(null)
+  const [monthlyVehicleSetup, setMonthlyVehicleSetup] = useState(null)
+  const [vehicleSwapSaving, setVehicleSwapSaving] = useState(false)
+  const [annualGuardSetup, setAnnualGuardSetup] = useState(null)
+  const [techPicker, setTechPicker] = useState(null)
+  const [techFilter, setTechFilter] = useState('')
+  const [memberSelection, setMemberSelection] = useState(null)
+  const memberSelectionGuard = useRef(false)
+  const [taskEditor, setTaskEditor] = useState(null)
+  const [pastService, setPastService] = useState(null)
+  const [completedService, setCompletedService] = useState(null)
+  const [weeklyServiceSource, setWeeklyServiceSource] = useState(null)
+  const [reorder, setReorder] = useState(null)
+  const [taskEditorSaving, setTaskEditorSaving] = useState(false)
+  const [taskEditorError, setTaskEditorError] = useState('')
+  const [leaveRequest, setLeaveRequest] = useState(null)
+  const [resumeNavigation, setResumeNavigation] = useState(null)
+  const taskEditorSaveGuardRef = useRef(false)
+  const [taskMove, setTaskMove] = useState(null)
+  const [taskMoveSaving, setTaskMoveSaving] = useState(false)
+  const taskMoveSaveGuardRef = useRef(false)
+  const [taskRemoval, setTaskRemoval] = useState(null)
+  const [teamRemoval, setTeamRemoval] = useState(null)
+  const weeklyBoardRef = useRef(null)
+  const dayHasFinished = day => String(day || '') < today
+  const finishedDayMessage = day => `La jornada del ${prettyDate(day)} ya finalizó. La planificación histórica es de solo lectura y no admite servicios nuevos.`
+  const activeServices = sortServicesAlphabetically(services.filter(service => service.status === 'Activo'))
+  const serviceForWeeklyTask = task => resolveServiceForTask(task, services)
+  const selectWeeklyService = (day, teamIndex, taskIndex, selectedId) => {
+    const selected = services.find(service => String(service.id) === String(selectedId))
+    const currentTask = dayPlan(day).teams[teamIndex]?.tasks[taskIndex]
+    const nextTask = selected
+      ? { ...currentTask, ...(isTrainingService(selected) ? trainingClientPatch(currentTask.client || '') : {}), serviceId: selected.id, service: selected.name, estimatedMinutes: normalizeServiceEstimatedMinutes(selected.estimatedMinutes), estimatedMinutesCustomized: false, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask?.installationZone || '' : '' }
+      : { ...currentTask, serviceId: '', service: '', estimatedMinutes: undefined, estimatedMinutesCustomized: false, installationZone: '' }
+    updateTask(day, teamIndex, taskIndex, { ...nextTask, ...clearSubscriberReservationPatch(selected && serviceCode(selected) === 'alarm-installation' ? null : currentTask), ...applicableServiceExtras(nextTask, selected) })
+  }
+  const weeklyTechnicianName = fullName => activeTechs.find(tech => tech.name === fullName)?.firstName || String(fullName || '').split(' ')[0]
+  const monthKey = anchor.slice(0, 7)
+  const anchorYear = anchor.slice(0, 4)
+  const currentMonthKey = today.slice(0, 7)
+  const pastMonthSelected = monthKey < currentMonthKey
+  const pastMonthConfigurationMessage = 'La configuración mensual sólo está disponible para el mes vigente y los meses futuros. Los meses finalizados son de solo lectura.'
+  const monthlyTeams = weekly._monthlyTeams || {}
+  const priorVehicleAssignmentHistory = useMemo(() => Object.entries(monthlyTeams)
+    .filter(([configuredMonth, config]) => configuredMonth < monthKey && config?.vehicleAssignments?.length)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, config]) => config.vehicleAssignments), [monthlyTeams, monthKey])
+  const suggestedAnnualGuardRotation = (year, source = weekly) => {
+    const configured = source?._annualGuards?.[year]?.rotation
+    if (configured?.length) return configured.map(item => ({ ...item }))
+    if (String(year) === '2026') {
+      const preset = default2026GuardRotationFor(activeTechs)
+      if (preset.length) return preset
+    }
+    const previous = source?._annualGuards?.[String(Number(year) - 1)]?.rotation
+    return previous?.length ? previous.map(item => ({ ...item })) : []
+  }
+  const previousMonthKey = (() => { const value = new Date(`${monthKey}-01T12:00:00`); value.setMonth(value.getMonth() - 1); return value.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).slice(0, 7) })()
+  const baseTeams = monthlyTeams[monthKey]?.teams
+  const createTeam = (index, source, day) => ({ teamId: source?.teamId || createTeamId(), memberIds: source?.memberIds || [], members: source?.members || [], tasks: defaultServiceTasksForDate(day, weekly), label: source?.label || `Equipo ${index + 1}` })
+  const createDay = (day, sourceWeekly = weekly) => {
+    const sources = sourceWeekly?._monthlyTeams?.[day.slice(0, 7)]?.teams || [null, null, null]
+    if (isSaturday(day)) {
+      // El sábado no usa la plantilla mensual, pero debe conservar el ID que
+      // ya fue materializado para que el guardado pueda compararse con Historial.
+      const storedSaturday = sourceWeekly?.[day]?.teams?.[0]
+      const team = createTeam(0, storedSaturday ? { teamId: storedSaturday.teamId } : null, day)
+      return { teams: assignGuardToEmptySaturday([{ ...team, memberIds: [], members: [], tasks: defaultServiceTasksForDate(day, sourceWeekly).slice(0, 1) }], day, sourceWeekly, activeTechs) }
+    }
+    return { teams: sources.map((team, index) => createTeam(index, team, day)) }
+  }
+  const days = useMemo(() => weeklyVisibleDays(anchor), [anchor])
+  const holidayCalendar = useNationalHolidays([
+    ...days.map(day => day.slice(0, 4)),
+    taskMove?.destinationDay?.slice(0, 4) || ''
+  ])
+  const holidayStateForDay = day => {
+    const holiday = holidayForDate(holidayCalendar.records, day)
+    const decision = holidayDecisionForDate(weekly, day)
+    return { holiday, decision, blocked: holidayIsBlocked(holiday, decision) }
+  }
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const records = days.flatMap(day => dayPlan(day).teams.flatMap(team => (team.tasks || []).map(task => ({ day, task }))))
+      document.querySelectorAll('.week-task-summary').forEach((node, index) => {
+        const task = records[index]?.task
+        appendTraceElement(node, task)
+        if (task?.vehicleControl) {
+          node.classList.add('weekly-vehicle-control')
+          node.title = 'Control semanal generado desde Vehículos del mes'
+          const select = node.querySelector('.week-task-top select')
+          if (select?.options?.[0]) { select.options[0].textContent = task.service; select.disabled = true }
+        }
+      })
+      if (taskEditor) {
+        const modal = document.querySelector('.weekly-task-modal')
+        appendTraceElement(modal, taskEditor.draft)
+        const trace = modal?.querySelector(':scope > .service-trace')
+        trace?.classList.add('weekly-modal-trace')
+        if (trace) modal.querySelector('.weekly-task-form')?.before(trace)
+      }
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [weekly, days, taskEditor, operationalHistory])
+  useEffect(() => {
+    // Mantiene la fecha vigente y, mientras el usuario no navegue manualmente,
+    // adelanta la vista al lunes siguiente al finalizar el sábado operativo.
+    const refreshPlanningWindow = () => {
+      setPlanningClock(Date.now())
+      setToday(localToday())
+      if (weeklyAnchorFollowsCurrentRef.current) setAnchor(defaultWeeklyAnchor())
+    }
+    const interval = window.setInterval(refreshPlanningWindow, 60_000)
+    return () => window.clearInterval(interval)
+  }, [])
+  useEffect(() => {
+    const board = weeklyBoardRef.current
+    if (!board) return
+    board.scrollLeft = 0
+  }, [days])
+  const dayPlan = day => {
+    const defaults = createDay(day)
+    const stored = weekly[day]
+    const targetTimes = defaultServiceTimesForDate(day, weekly)
+    const storedTeams = alignDefaultServiceTimes(stored?.teams || [], day, targetTimes, fallbackDefaultServiceTimesForDate(day))
+    const plan = stored
+      ? { ...stored, teams: mergeStoredTeamsWithDefaults(defaults.teams, storedTeams) }
+      : defaults
+    const visiblePlan = { ...plan, teams: renumberVisibleWeeklyTeams(applyRemovedWeeklyTeams(applyRemovedWeeklySlots(applyRemovedWeeklyTasks(plan.teams, plan.removedTaskIds || []), plan.removedSlots || []), plan.removedTeams || [])) }
+    const normalized = isSaturday(day) ? { ...visiblePlan, teams: assignGuardToEmptySaturday(normalizeSaturdayTeams(visiblePlan.teams, day, weekly), day, weekly, activeTechs) } : visiblePlan
+    const availablePlan = { ...normalized, teams: normalized.teams.map(team => ({ ...team, tasks: removeUnavailableDefaultSlots(team.tasks || []).filter(task => taskHasContent(task) || task.manualSlot) })) }
+    return sortPlanTasksByTime(availablePlan)
+  }
+  const advancedGuardForDay = day => {
+    if (!isSaturday(day)) return null
+    const friday = new Date(`${day}T12:00:00`)
+    friday.setDate(friday.getDate() - 1)
+    const fridayKey = friday.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+    return findAdvancedSaturdayGuard({ fridayPlan: dayPlan(fridayKey), saturdayPlan: dayPlan(day) })
+  }
+  const updateDay = (day, mutate) => setWeekly(previous => {
+    const defaults = createDay(day, previous)
+    const saved = previous[day]
+    const targetTimes = defaultServiceTimesForDate(day, previous)
+    const savedTeams = alignDefaultServiceTimes(saved?.teams || [], day, targetTimes, fallbackDefaultServiceTimesForDate(day))
+    const stored = saved
+      ? { ...saved, teams: mergeStoredTeamsWithDefaults(defaults.teams, savedTeams) }
+      : defaults
+    const visibleStored = { ...stored, teams: renumberVisibleWeeklyTeams(applyRemovedWeeklyTeams(applyRemovedWeeklySlots(applyRemovedWeeklyTasks(stored.teams, stored.removedTaskIds || []), stored.removedSlots || []), stored.removedTeams || [])) }
+    const base = isSaturday(day) ? { ...visibleStored, teams: assignGuardToEmptySaturday(normalizeSaturdayTeams(visibleStored.teams, day, previous), day, previous, activeTechs) } : visibleStored
+    const next = mutate(base)
+    const normalized = isSaturday(day) ? { ...next, teams: assignGuardToEmptySaturday(normalizeSaturdayTeams(next.teams, day, previous), day, previous, activeTechs) } : next
+    return { ...previous, [day]: sortPlanTasksByTime(normalized) }
+  })
+  const openTaskEditor = (day, teamIndex, taskIndex) => {
+    setTaskEditorError('')
+    const selectedTeam = dayPlan(day).teams[teamIndex]
+    const selectedTask = selectedTeam?.tasks?.[taskIndex]
+    setWeeklyServiceSource({ day, teamIndex, taskIndex, teamId: selectedTeam?.teamId, taskId: selectedTask?.taskId })
+    if (selectedTask && ['Completado', 'Avance registrado'].includes(taskStatus(selectedTask, day, operationalHistory))) {
+      setCompletedService({ ...selectedTask, date: day, team: selectedTeam.label || `Equipo ${teamIndex + 1}`, technicians: selectedTask.technicians || selectedTeam.members, ...(historyRecordForTask(selectedTask, day, operationalHistory) || {}) })
+      return
+    }
+    if (readOnly || dayHasFinished(day)) {
+      const team = dayPlan(day).teams[teamIndex]
+      const task = team?.tasks?.[taskIndex]
+      if (task && taskHasContent(task)) setPastService({ ...task, date: day, team: team.label || `Equipo ${teamIndex + 1}`, technicians: task.technicians || team.members, ...(historyRecordForTask(task, day, operationalHistory) || {}) })
+      return
+    }
+    taskEditorSaveGuardRef.current = false
+    setTaskEditorSaving(false)
+    const teamSnapshot = dayPlan(day).teams[teamIndex]
+    const task = teamSnapshot?.tasks[taskIndex]
+    if (task) setTaskEditor({ persistedTeam: Boolean(weekly[day]?.teams?.some(team => String(team.teamId) === String(teamSnapshot.teamId))), baseRecord: historyRecordForTask(task, day, operationalHistory) || null, baseTask: weekly[day]?.teams?.flatMap(team => team.tasks || []).find(item => String(item.taskId) === String(task.taskId)) || null, day, teamIndex, taskIndex, teamId: teamSnapshot.teamId, teamSnapshot: { ...teamSnapshot, tasks: [...(teamSnapshot.tasks || [])] }, taskId: task.taskId, draft: taskWithServiceEstimate(task, serviceForWeeklyTask(task)), photoData: '', photoRemoved: false })
+  }
+  useEffect(() => {
+    if (!openRequest) return
+    const record = operationalHistory.find(item => String(item.id) === String(openRequest.id))
+    if (!record || !/^\d{4}-\d{2}-\d{2}$/.test(record.date || '')) {
+      onOpenRequestHandled()
+      setNotice('La reserva ya no está disponible. Actualizá la agenda para consultar su estado.')
+      return
+    }
+    if (anchor !== record.date) {
+      weeklyAnchorFollowsCurrentRef.current = false
+      setAnchor(record.date)
+      return
+    }
+    const target = reservationTarget(record, dayPlan(record.date))
+    onOpenRequestHandled()
+    if (!target) {
+      setNotice('No se encontró la tarjeta de esta reserva en la agenda. Actualizá la información y revisá el Historial.')
+      return
+    }
+    const key = `${record.date}/${target.teamIndex}/${target.taskIndex}`
+    const card = Array.from(weeklyBoardRef.current?.querySelectorAll('[data-weekly-search-key]') || []).find(item => item.dataset.weeklySearchKey === key)
+    card?.scrollIntoView({ block: 'center', inline: 'nearest' })
+    card?.focus({ preventScroll: true })
+    openTaskEditor(record.date, target.teamIndex, target.taskIndex)
+  }, [openRequest, anchor, weekly, history])
+
+  const updateTaskDraft = patch => !taskEditorSaveGuardRef.current && setTaskEditor(previous => previous ? { ...previous, draft: { ...previous.draft, ...patch } } : previous)
+  const selectDraftService = selectedId => {
+    const selected = services.find(service => String(service.id) === String(selectedId))
+    const currentTask = taskEditor?.draft || blankTask()
+    const nextTask = selected
+      ? { ...currentTask, ...(isTrainingService(selected) ? trainingClientPatch(currentTask.client || '') : {}), serviceId: selected.id, service: selected.name, estimatedMinutes: normalizeServiceEstimatedMinutes(selected.estimatedMinutes), estimatedMinutesCustomized: false, installationZone: serviceCode(selected) === 'alarm-installation' ? currentTask.installationZone || '' : '' }
+      : { ...currentTask, serviceId: '', service: '', estimatedMinutes: undefined, estimatedMinutesCustomized: false, installationZone: '' }
+    updateTaskDraft({ ...nextTask, ...clearSubscriberReservationPatch(selected && serviceCode(selected) === 'alarm-installation' ? null : currentTask), ...applicableServiceExtras(nextTask, selected) })
+  }
+  const commitDraftCustomerText = value => updateTaskDraft({ newCustomer: false, subscriberReservation: false, customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
+  const selectDraftCustomer = customer => updateTaskDraft(customerLinkPatch(taskEditor?.draft, customer, authUser))
+  const beginDraftNewCustomer = value => updateTaskDraft({ newCustomer: true, subscriberReservation: false, customerId: '', client: value, clientAccount: '', clientNameAtService: normalizeCustomerName(value), address: '', phone: '' })
+  const beginDraftSubscriberReservation = value => updateTaskDraft(subscriberReservationPatch(value, authUser))
+  const saveTaskEditor = async () => {
+    if (taskEditor?.photoPreparing) { setTaskEditorError('Esperá a que termine la preparación de los archivos.'); return false }
+    if (!taskEditor || taskEditorSaveGuardRef.current) return
+    taskEditorSaveGuardRef.current = true
+    setTaskEditorSaving(true)
+    const rejectSave = message => {
+      taskEditorSaveGuardRef.current = false
+      setTaskEditorSaving(false)
+      setTaskEditorError(message)
+    }
+    setTaskEditorError('')
+    const { day, teamIndex, taskIndex, teamId, teamSnapshot, taskId } = taskEditor
+    if (taskStatus(taskEditor.draft, day, operationalHistory) === 'Completado') { rejectSave('Este servicio ya fue completado. Los cambios no se guardaron. Actualizá la agenda para consultar su información.'); return false }
+    if (dayHasFinished(day)) { rejectSave(finishedDayMessage(day)); return }
+    let draft = taskEditor.draft
+    let newCustomer = null
+    const advance = advancedGuardForDay(day)
+    if (advance) {
+      setTaskEditor(null)
+      setNotice(advancedSaturdayGuardMessage(advance))
+      return
+    }
+    const missing = weeklyTaskMissingFields(draft, serviceForWeeklyTask(draft))
+    if (!draft.vehicleControl && requiresPaymentAmount(draft, serviceForWeeklyTask(draft)) && !missing.includes('monto')) missing.push('monto')
+    if (missing.length) {
+      rejectSave(`Completá ${missing.join(', ')} antes de guardar el servicio.`)
+      return
+    }
+    if (draft.newCustomer) {
+      const created = createQuickClient(draft, customers)
+      if (!created) { rejectSave('Completá nombre, dirección y contacto del cliente nuevo.'); return }
+      draft = created.task
+      newCustomer = created.customer
+    }
+    const draftStart = serviceTimeInMinutes(draft.time)
+    if (day === currentLocalDate() && !historyRecordForTask(draft, day, operationalHistory) && draftStart !== null && draftStart < nextLiveScheduleMinute()) {
+      rejectSave('Elegí un horario futuro desde el próximo cuarto de hora disponible.')
+      return
+    }
+    const editorHours = hoursForDay(day, teamId)
+    const editorInterval = taskOccupiedInterval(taskWithServiceEstimate(draft, serviceForWeeklyTask(draft)), editorHours)
+    if (editorHours && editorInterval?.serviceEnd > serviceTimeInMinutes(editorHours.max)) {
+      rejectSave(`La franja estimada termina a las ${editorInterval.serviceEndTime}, fuera del horario habilitado (${editorHours.label}).`)
+      return
+    }
+    const editedPlan = dayPlan(day)
+    const editedTeam = editedPlan.teams.find(team => teamId && String(team.teamId || '') === String(teamId)) || (!taskEditor.persistedTeam ? teamSnapshot : null)
+    if (!editedTeam) { rejectSave('El equipo fue eliminado desde otra sesión. Revisá la planificación antes de guardar.'); return }
+    const peerTasks = (editedTeam?.tasks || []).filter((task, index) => !((taskId && String(task.taskId || '') === String(taskId)) || (!taskId && index === taskIndex)))
+    const gapConflict = minimumServiceGapConflicts([{ teamId, tasks: [...peerTasks, draft].map(task => {
+      const occupancyTask = taskForScheduleOccupancy(task, day, operationalHistory)
+      return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(task)) : null
+    }).filter(Boolean) }])[0]
+    if (gapConflict) {
+      rejectSave(planningConflictMessage(day, editedTeam, teamIndex, gapConflict))
+      return
+    }
+    const tracedDraft = stampServiceRecord({ ...draft, ...applicableServiceExtras(draft, serviceForWeeklyTask(draft)) }, authUser)
+    const savedTeam = editedTeam || teamSnapshot
+    if (!savedTeam?.members?.length && !tracedDraft.vehicleControl) { rejectSave('Asigná al menos un técnico antes de guardar el servicio.'); return }
+    const previousRecord = taskEditor.baseRecord
+    const photoPatch = taskEditor.photoData && !Array.isArray(taskEditor.photoData)
+      ? { servicePhotoAttached: true, servicePhotoUrl: `/api/service-photo/${encodeURIComponent(String(previousRecord?.id || tracedDraft.historyId || `work-${tracedDraft.taskId}`))}`, servicePhotoAttachedAt: new Date().toISOString() }
+      : taskEditor.photoRemoved ? { servicePhotoAttached: false, servicePhotoUrl: '', servicePhotoAttachedAt: '' } : {}
+    const record = { ...previousRecord, ...weeklyHistoryRecord(day, savedTeam, teamIndex, { ...tracedDraft, ...photoPatch }, taskIndex), ...photoPatch, status: previousRecord?.status || 'Pendiente' }
+    if (previousRecord) record.id = previousRecord.id
+    const savedTask = { ...tracedDraft, ...photoPatch, historyId: record.id, status: record.status }
+    let serviceSaved = false
+    try {
+      await persistWeeklyService({ day, team: savedTeam, task: savedTask, record, baseRecord: previousRecord, baseTask: taskEditor.baseTask, customer: newCustomer })
+      serviceSaved = true
+      setTaskEditor(previous => previous ? { ...previous, baseRecord: record, baseTask: savedTask, persistedTeam: true } : previous)
+      if (Array.isArray(taskEditor.photoData)) await uploadAttachmentBatch('service', record.id, taskEditor.photoData)
+      else if (taskEditor.photoData) await servicePhotoRepository.upload(record.id, taskEditor.photoData)
+      else if (taskEditor.photoRemoved) await servicePhotoRepository.remove(record.id)
+      setTaskEditor(null)
+      return true
+    } catch (error) {
+      rejectSave(`${serviceSaved ? 'El servicio quedó guardado, pero faltan adjuntos. Volvé a guardar para reintentar sin duplicarlos.' : 'No se guardó el servicio.'} ${error.message || 'Comprobá la conexión e intentá nuevamente.'}`)
+    } finally {
+      taskEditorSaveGuardRef.current = false
+      setTaskEditorSaving(false)
+    }
+  }
+
+
+  const requestWeeklyLeave = action => {
+    if (readOnly) { action(); return }
+    if (taskEditorSaveGuardRef.current) return
+    const dirtyEditor = taskEditor && (
+      JSON.stringify(taskEditor.draft) !== JSON.stringify(taskEditor.initialDraft || taskWithServiceEstimate(taskEditor.baseTask || taskEditor.teamSnapshot.tasks[taskEditor.taskIndex], serviceForWeeklyTask(taskEditor.draft))) ||
+      (!taskEditor.baseRecord && taskHasContent(taskEditor.draft)) || taskEditor.photoData || taskEditor.photoRemoved
+    )
+    if (dirtyEditor) { setLeaveRequest({ action }); return }
+    for (const day of Object.keys(weekly).filter(key => /^\d{4}-\d{2}-\d{2}$/.test(key)).sort()) {
+      const plan = dayPlan(day)
+      for (let teamIndex = 0; teamIndex < plan.teams.length; teamIndex++) {
+        const taskIndex = plan.teams[teamIndex].tasks.findIndex(task => taskHasContent(task) && !task.vehicleControl &&
+          String(task.createdBy?.id || '') === String(authUser?.id || '') && authUser?.id &&
+          !historyRecordForTask(task, day, operationalHistory))
+        if (taskIndex >= 0 && !dayHasFinished(day)) {
+          openTaskEditor(day, teamIndex, taskIndex)
+          setLeaveRequest({ action })
+          return
+        }
+      }
+    }
+    action()
+  }
+  useEffect(() => {
+    if (navigationGuardRef) navigationGuardRef.current = requestWeeklyLeave
+    if (navigationGuardRef?.current) navigationGuardRef.current.hasDraft = () => Boolean(taskEditor && (
+      JSON.stringify(taskEditor.draft) !== JSON.stringify(taskEditor.initialDraft || taskWithServiceEstimate(taskEditor.baseTask || taskEditor.teamSnapshot.tasks[taskEditor.taskIndex], serviceForWeeklyTask(taskEditor.draft))) ||
+      (!taskEditor.baseRecord && taskHasContent(taskEditor.draft)) || taskEditor.photoData || taskEditor.photoRemoved
+    ))
+    return () => { if (navigationGuardRef) navigationGuardRef.current = null }
+  })
+  useEffect(() => {
+    if (!resumeNavigation) return
+    setResumeNavigation(null)
+    requestWeeklyLeave(resumeNavigation.action)
+  }, [resumeNavigation])
+  const saveAndLeave = async () => {
+    const request = leaveRequest
+    setLeaveRequest(null)
+    if (await saveTaskEditor()) setResumeNavigation(request)
+  }
+  const discardAndLeave = () => {
+    if (!leaveRequest || taskEditorSaveGuardRef.current) return
+    const { action } = leaveRequest
+    // Only abandon the editor's local draft. Never delete a persisted service,
+    // its history, or changes received from another session.
+    setLeaveRequest(null)
+    setTaskEditor(null)
+    action()
+  }
+
+  const weeklyModalActions = ({ day, teamIndex, taskIndex, teamId, taskId }, readOnly = false) => {
+    const plan = dayPlan(day)
+    if (teamId) teamIndex = plan.teams.findIndex(team => String(team.teamId) === String(teamId))
+    const team = plan.teams[teamIndex]
+    if (taskId) taskIndex = team?.tasks?.findIndex(task => String(task.taskId) === String(taskId)) ?? -1
+    const persistedTask = team?.tasks?.[taskIndex]
+    if (!persistedTask) return null
+    const task = !readOnly && taskEditor ? taskEditor.draft : persistedTask
+    const record = historyRecordForTask(persistedTask, day, operationalHistory)
+    const dirty = !readOnly && taskEditor && (
+      JSON.stringify(taskEditor.draft) !== JSON.stringify(taskWithServiceEstimate(taskEditor.baseTask || taskEditor.teamSnapshot.tasks[taskEditor.taskIndex], serviceForWeeklyTask(taskEditor.draft))) ||
+      taskEditor.photoData || taskEditor.photoRemoved
+    )
+    const leaveFor = action => {
+      const proceed = () => { setTaskEditor(null); setCompletedService(null); setPastService(null); action() }
+      if (readOnly) proceed()
+      else requestWeeklyLeave(proceed)
+    }
+    return <div className="weekly-service-modal-actions" role="group" aria-label="Acciones del servicio">
+      {!readOnly && day >= today && canReorderService({ ...persistedTask, ...record }) && <button title="Reordená este servicio intercambiando su horario con otro del equipo." type="button" className="secondary" disabled={taskEditorSaving} onClick={() => leaveFor(() => setReorder({ day, teamId: team.teamId, sourceId: persistedTask.taskId, baseline: structuredClone(team.tasks), tasks: team.tasks.filter(item => canReorderService({ ...item, ...historyRecordForTask(item, day, operationalHistory) })).map(item => taskWithServiceEstimate(item, serviceForWeeklyTask(item))) }))}>Reordenar servicios</button>}
+      {!readOnly && <ServiceConfirmationButton task={task} day={day} history={operationalHistory} onDraftChange={updateTaskDraft} disabled={taskEditorSaving} />}
+      {!readOnly && <ServiceJourneys record={record} toolbar disabled={Boolean(dirty || taskEditorSaving)} />}
+      {!readOnly && isSaturday(day) && !persistedTask.vehicleControl && taskHasContent(persistedTask) && !taskIsResolvedForPlanning(persistedTask, day, operationalHistory) && <button title="Trasladá este servicio al viernes anterior entre las 16 y las 20, conservando el técnico y los datos." type="button" className="secondary" disabled={taskEditorSaving} onClick={() => leaveFor(() => openFridayAdvance(day, teamIndex, taskIndex))}>Adelantar al viernes</button>}
+      {!readOnly && (persistedTask.customerId || persistedTask.client || persistedTask.service) && !taskIsResolvedForPlanning(persistedTask, day, operationalHistory) && <button title="Elegí otro equipo o fecha para trasladar este servicio." type="button" className="secondary" disabled={taskEditorSaving} onClick={event => { event.stopPropagation(); leaveFor(() => openWeeklyTaskMove({ stopPropagation() {} }, day, teamIndex, taskIndex, team.teamId, persistedTask.taskId)) }}><span aria-hidden="true">⇄</span>Reasignar equipo o fecha</button>}
+      {(!persistedTask.vehicleControl || isAdministrator) && <button title={persistedTask.vehicleControl ? 'Solicitá omitir este control vehicular semanal; el técnico no tendrá que realizarlo.' : 'Solicitá eliminar este servicio de la agenda; revisá el cliente antes de confirmar.'} type="button" className="secondary weekly-service-delete" disabled={taskEditorSaving} onClick={() => leaveFor(() => setTaskRemoval({ day, teamId: team.teamId, teamIndex, taskIndex, taskId: persistedTask.taskId, historyId: persistedTask.historyId, time: persistedTask.time || persistedTask.scheduledTime || '', wasPlaceholder: !taskHasContent(persistedTask), journey: Boolean(persistedTask.serviceJourney || record?.serviceJourney), vehicleControl: Boolean(persistedTask.vehicleControl), label: team.label || `Equipo ${teamIndex + 1}` }))}><Icon name="trash" size={16} />{persistedTask.vehicleControl ? 'Omitir control vehicular' : 'Eliminar servicio'}</button>}
+    </div>
+  }
+  const openWeeklyTaskMove = (event, day, teamIndex, taskIndex, teamId, taskId) => {
+    event.stopPropagation()
+    const plan = dayPlan(day)
+    if (teamId) teamIndex = plan.teams.findIndex(team => String(team.teamId) === String(teamId))
+    const sourceTeam = plan.teams[teamIndex]
+    if (taskId) taskIndex = sourceTeam?.tasks?.findIndex(task => String(task.taskId) === String(taskId)) ?? -1
+    const task = sourceTeam?.tasks?.[taskIndex]
+    if (!task) return
+    const firstDestination = plan.teams.findIndex((_, index) => index !== teamIndex)
+    taskMoveSaveGuardRef.current = false
+    setTaskMoveSaving(false)
+    setTaskMove({
+      day,
+      destinationDay: day,
+      sourceTeamIndex: teamIndex,
+      sourceTeamId: sourceTeam.teamId,
+      taskIndex,
+      taskId: task.taskId,
+      historyId: task.historyId,
+      destinationTeamIndex: firstDestination >= 0 ? firstDestination : teamIndex,
+      time: task.time || task.scheduledTime || '',
+      estimatedMinutes: serviceEstimateForTask(task, serviceForWeeklyTask(task))
+    })
+  }
+  const openFridayAdvance = (day, teamIndex, taskIndex) => {
+    const team = dayPlan(day).teams[teamIndex]
+    const task = team?.tasks?.[taskIndex]
+    if (!task || taskIsResolvedForPlanning(task, day, operationalHistory)) return
+    try {
+      const preliminary = fridayAdvanceDestination(day, team, {}, today)
+      const destination = fridayAdvanceDestination(day, team, dayPlan(preliminary.day), today)
+      taskMoveSaveGuardRef.current = false
+      setTaskMoveSaving(false)
+      setTaskMove({ day, destinationDay: destination.day, sourceTeamIndex: teamIndex, sourceTeamId: team.teamId,
+        taskIndex, taskId: task.taskId, historyId: task.historyId, destinationTeamIndex: destination.index,
+        time: '16:00', estimatedMinutes: serviceEstimateForTask(task, serviceForWeeklyTask(task)), advanceToFriday: true })
+    } catch (error) { setNotice(error.message) }
+  }
+  const weeklyMoveDestinationPlan = move => {
+    const plan = dayPlan(move.destinationDay)
+    if (!move.advanceToFriday) return plan
+    const source = dayPlan(move.day).teams.find(team => String(team.teamId) === String(move.sourceTeamId))
+    return fridayAdvanceDestination(move.day, source, plan, today).plan
+  }
+  const selectWeeklyTaskMoveDate = destinationDay => {
+    const destinationPlan = /^\d{4}-\d{2}-\d{2}$/.test(destinationDay) ? dayPlan(destinationDay) : { teams: [] }
+    setTaskMove(previous => {
+      if (!previous) return previous
+      const firstDestination = destinationPlan.teams.findIndex((team, index) => destinationDay !== previous.day || (
+        String(team.teamId || '') !== String(previous.sourceTeamId || '') && index !== previous.sourceTeamIndex
+      ))
+      return { ...previous, destinationDay, destinationTeamIndex: firstDestination >= 0 ? firstDestination : 0, responsibleId: '' }
+    })
+  }
+  const confirmWeeklyTaskMove = async () => {
+    if (!taskMove || taskMoveSaveGuardRef.current) return
+    const { day, destinationDay, sourceTeamIndex, sourceTeamId, taskIndex, taskId, historyId, destinationTeamIndex } = taskMove
+    const sourcePlan = dayPlan(day)
+    let resolvedSourceIndex = sourcePlan.teams.findIndex(team => sourceTeamId && String(team.teamId || '') === String(sourceTeamId))
+    if (resolvedSourceIndex < 0) resolvedSourceIndex = sourceTeamIndex
+    const sourceTeam = sourcePlan.teams[resolvedSourceIndex]
+    const originalTask = (sourceTeam?.tasks || []).find(task => taskId && String(task.taskId || '') === String(taskId)) || sourceTeam?.tasks?.[taskIndex]
+    const durationCustomized = originalTask && (originalTask.estimatedMinutesCustomized === true || Number(taskMove.estimatedMinutes) !== Number(serviceEstimateForTask(originalTask, serviceForWeeklyTask(originalTask))))
+    const movedTask = originalTask && stampServiceRecord({
+      ...originalTask,
+      time: taskMove.time,
+      estimatedMinutes: originalTask.vehicleControl ? 15 : taskMove.estimatedMinutes,
+      estimatedMinutesCustomized: originalTask.vehicleControl ? false : durationCustomized
+    }, authUser)
+    let destinationPlan
+    try { destinationPlan = weeklyMoveDestinationPlan(taskMove) }
+    catch (error) { setNotice(error.message); return }
+    const destinationTeam = taskMove.advanceToFriday
+      ? destinationPlan.teams.find(team => team.memberIds?.length === 1 && String(team.memberIds[0]) === String(sourceTeam?.memberIds?.[0]))
+      : destinationPlan.teams[destinationTeamIndex]
+    if (taskMove.advanceToFriday && taskMove.time < '16:00') { setNotice('La guardia adelantada comienza a partir de las 16:00.'); return }
+    if (!movedTask || !destinationTeam) {
+      setNotice('No se encontró el servicio o el equipo de destino. Recargá la planificación e intentá nuevamente.')
+      return
+    }
+    if (movedTask.vehicleControl) {
+      try {
+        const responsible = vehicleControlResponsible(destinationTeam, movedTask, taskMove.responsibleId)
+        movedTask.technicianIds = [responsible.id]; movedTask.technicians = [responsible.name]
+      } catch (error) { setNotice(error.message); return }
+    }
+    if (destinationDay === day && String(destinationTeam.teamId || '') === String(sourceTeam?.teamId || '') && (!movedTask.vehicleControl || String(movedTask.technicianIds?.[0]) === String(originalTask.technicianIds?.[0]))) {
+      setNotice('Elegí otro equipo o una fecha diferente para reasignar el servicio.')
+      return
+    }
+    if (destinationDay < today) { setNotice('Elegí la fecha de hoy o una fecha futura.'); return }
+    const destinationHours = hoursForDay(destinationDay, destinationTeam.teamId)
+    if (!destinationHours) { setNotice('Los domingos no están habilitados para programar servicios.'); return }
+    const destinationHoliday = holidayStateForDay(destinationDay)
+    if (holidayCalendar.loading) { setNotice('Esperá mientras se verifica el calendario de feriados.'); return }
+    if (holidayCalendar.error) { setNotice('No se pudo verificar el calendario de feriados. Reintentá antes de mover el servicio.'); return }
+    if (destinationHoliday.blocked) { setNotice(destinationHoliday.decision?.status === 'closed' ? 'La fecha de destino fue definida como día no operativo.' : 'Primero definí si el feriado de destino será laboral o no operativo.'); return }
+    const destinationAdvance = advancedGuardForDay(destinationDay)
+    if (destinationAdvance) { setNotice(advancedSaturdayGuardMessage(destinationAdvance)); return }
+    const schedule = taskMoveScheduleState(destinationDay, movedTask, weekly, destinationTeam.teamId)
+    if (!schedule.valid) { setNotice(schedule.message); return }
+    if (!destinationTeam.members?.length && !movedTask.vehicleControl) { setNotice('El equipo de destino no tiene técnicos asignados.'); return }
+    const matchesTask = task => (taskId && String(task.taskId || '') === String(taskId)) || (historyId && String(task.historyId || '') === String(historyId))
+    const destinationTasks = (destinationTeam.tasks || []).filter(task => !matchesTask(task) && !(
+      task.time === movedTask.time && !String(task.client || '').trim() && !String(task.service || '').trim()
+    ))
+    let swapTask = null
+    try { swapTask = vehicleControlSwapCandidate(movedTask, destinationTeam, day, destinationDay, movedTask.vehicleControl ? movedTask.technicianIds?.[0] : '') }
+    catch (error) { setNotice(error.message); return }
+    const destinationConflict = minimumServiceGapConflicts([{ ...destinationTeam, tasks: [...destinationTasks.filter(task => task !== swapTask), movedTask].map(task => {
+      const occupancyTask = taskForScheduleOccupancy(task, destinationDay, operationalHistory)
+      return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(task)) : null
+    }).filter(Boolean) }])[0]
+    if (destinationConflict) { setNotice(planningConflictMessage(destinationDay, destinationTeam, destinationTeamIndex, destinationConflict)); return }
+    const baseRecord = historyRecordForTask(movedTask, day, operationalHistory) || null
+    const baseTask = weekly?.[day]?.teams?.flatMap(team => team.tasks || []).find(matchesTask) || null
+    const destinationRecordData = weeklyHistoryRecord(destinationDay, destinationTeam, destinationTeamIndex, movedTask, destinationTasks.length)
+    const changedDate = destinationDay !== day
+    const record = stampServiceRecord({
+      ...baseRecord,
+      ...destinationRecordData,
+      id: baseRecord?.id || destinationRecordData.id,
+      status: changedDate ? 'Pendiente' : (baseRecord?.status || movedTask.status || 'Pendiente'),
+      scheduledDate: '',
+      ...(changedDate ? { rescheduledFrom: day, reprogrammedAt: new Date().toISOString() } : {})
+    }, authUser)
+    const savedTask = { ...movedTask, historyId: record.id, status: record.status }
+    taskMoveSaveGuardRef.current = true
+    setTaskMoveSaving(true)
+    try {
+      await persistWeeklyService({
+        day: destinationDay,
+        team: destinationTeam,
+        task: savedTask,
+        record,
+        baseRecord,
+        baseTask,
+        sourceDay: day,
+        advanceToFriday: Boolean(taskMove.advanceToFriday),
+        swapTaskId: swapTask?.taskId || '',
+        responsibleId: movedTask.vehicleControl ? movedTask.technicianIds?.[0] : '',
+        sourceTeamId: sourceTeam.teamId
+      })
+      setTaskMove(null)
+      if (changedDate) setAnchor(destinationDay)
+      setNotice(changedDate
+        ? `El servicio fue reprogramado para el ${prettyDate(destinationDay)} en ${destinationTeam.label || `Equipo ${destinationTeamIndex + 1}`}.`
+        : `El servicio fue reasignado a ${destinationTeam.label || `Equipo ${destinationTeamIndex + 1}`} y se conservó toda su información.`)
+    } catch (error) {
+      setNotice(`No se pudo reasignar el servicio. ${error.message || 'Comprobá la conexión e intentá nuevamente.'}`)
+    } finally {
+      taskMoveSaveGuardRef.current = false
+      setTaskMoveSaving(false)
+    }
+  }
+  const updateTeam = (day, teamIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, ...patch } : team) }))
+  const toggleWeeklyTech = async (day, teamIndex, technician) => {
+    if (memberSelectionGuard.current) return
+    const advance = advancedGuardForDay(day)
+    if (advance) {
+      setTechPicker(null)
+      setNotice(advancedSaturdayGuardMessage(advance))
+      return
+    }
+    technician = typeof technician === 'string' ? activeTechs.find(item => item.name === technician) : technician
+    if (!technician) return
+    const plan = dayPlan(day)
+    const actualIndex = isSaturday(day) ? 0 : teamIndex
+    const target = plan.teams[actualIndex]
+    if (!target) { setNotice('El equipo cambió o fue eliminado. Recargá la planificación antes de reintentar.'); return }
+    const selected = (target.memberIds || []).some(id => String(id) === String(technician.id))
+    let memberIds = [...(target.memberIds || [])]
+    let members = [...(target.members || [])]
+    if (isSaturday(day)) {
+      // Un sábado admite una sola persona: elegir otro nombre crea una
+      // excepción puntual sin modificar la rotación anual.
+      if (selected) return
+      memberIds = [technician.id]
+      members = [technician.name]
+    } else if (selected) {
+      memberIds = memberIds.filter(id => String(id) !== String(technician.id))
+      members = members.filter(name => name !== technician.name)
+    } else {
+      memberIds.push(technician.id)
+      members.push(technician.name)
+    }
+    memberSelectionGuard.current = true
+    setMemberSelection({ day, teamId: target.teamId, memberIds, members })
+    try {
+      // Let the optimistic checkbox paint before preparing the save command.
+      await new Promise(resolve => window.setTimeout(resolve, 0))
+      await persistWeeklyService({
+        operation: 'team-members',
+        day,
+        teamId: target.teamId,
+        teamIndex: actualIndex,
+        baseMemberIds: target.memberIds || [],
+        baseMembers: target.members || [],
+        materializeTeam: !(weekly[day]?.teams || []).some((team, index) => team.teamId
+          ? String(team.teamId) === String(target.teamId)
+          : team.label ? teamLabelNumber(team) === teamLabelNumber(target) : index === actualIndex),
+        memberIds,
+        members,
+        guardOverride: isSaturday(day) ? true : undefined,
+        fallbackPlan: plan
+      })
+      setNotice('La asignación de técnicos se guardó correctamente.')
+    } catch (error) {
+      setNotice(`No se guardó la asignación de técnicos. ${error.message || 'Recargá la planificación e intentá nuevamente.'}`)
+    } finally {
+      memberSelectionGuard.current = false
+      setMemberSelection(null)
+    }
+  }
+  const updateTask = (day, teamIndex, taskIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index !== teamIndex ? team : { ...team, tasks: team.tasks.map((task, index) => index === taskIndex ? stampServiceRecord({ ...task, ...patch }, authUser) : task) }) }))
+  const addTeam = day => {
+    if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
+    if (isSaturday(day)) { setNotice('Los sábados trabaja un solo técnico, por lo que la agenda admite únicamente un equipo.'); return }
+    updateDay(day, plan => {
+      const team = createTeam(plan.teams.length, null, day)
+      return {
+        ...plan,
+        removedTeams: (plan.removedTeams || []).filter(marker => !removedWeeklyTeamMatches(marker, team, plan.teams.length)),
+        teams: [...plan.teams, team]
+      }
+    })
+  }
+  const removeWeeklyTeam = async (day, teamIndex) => {
+    const removedTeam = dayPlan(day).teams[teamIndex]
+    if (!removedTeam) return
+    if ((removedTeam.tasks || []).some(task => task.vehicleControl) && !isAdministrator) {
+      setTeamRemoval(null)
+      setNotice('Sólo el rol Administrador puede eliminar un equipo que contiene un control vehicular.')
+      return
+    }
+    try {
+      await persistWeeklyService({ operation: 'team-remove', day, teamId: removedTeam.teamId, teamIndex, fallbackPlan: dayPlan(day) })
+      setTeamRemoval(null)
+      setTechPicker(null)
+      setNotice('El equipo y su asignación fueron eliminados; sus controles vehiculares pendientes, si los había, fueron omitidos.')
+    } catch (error) {
+      setTeamRemoval(null)
+      setNotice(`No se eliminó el equipo. ${error.message || 'Revisá la versión actual e intentá nuevamente.'}`)
+    }
+  }
+  const hoursForDay = (day, teamId) => planningHoursForDay(day, weekly, teamId)
+  const conflictsForDay = day => {
+    return technicianTimeConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).map(task => taskForScheduleOccupancy(task, day, operationalHistory)).filter(Boolean) })), activeTechs)
+  }
+  const gapConflictsForDay = day => minimumServiceGapConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).map(task => {
+    const occupancyTask = taskForScheduleOccupancy(task, day, operationalHistory)
+    return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(task)) : null
+  }).filter(Boolean) })))
+  const conflictForWeeklyTask = (day, teamIndex, taskIndex, overrideTask = null) => {
+    const team = dayPlan(day).teams[teamIndex]
+    if (!team) return null
+    const target = overrideTask || team.tasks?.[taskIndex]
+    if (!target || taskIsResolvedForPlanning(target, day, operationalHistory)) return null
+    const tasks = (team.tasks || []).map((task, index) => {
+      const candidate = index === taskIndex && overrideTask ? overrideTask : task
+      const occupancyTask = taskForScheduleOccupancy(candidate, day, operationalHistory)
+      return occupancyTask ? { ...taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(candidate)), _scheduleTaskIndex: index } : null
+    }).filter(Boolean)
+    if (overrideTask && taskIndex >= (team.tasks || []).length) {
+      const occupancyTask = taskForScheduleOccupancy(overrideTask, day, operationalHistory)
+      if (occupancyTask) tasks.push({ ...taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(overrideTask)), _scheduleTaskIndex: taskIndex })
+    }
+    return minimumServiceGapConflicts([{ ...team, tasks }]).find(conflict => conflict.firstTask._scheduleTaskIndex === taskIndex || conflict.secondTask._scheduleTaskIndex === taskIndex) || null
+  }
+  const commitWeeklyCustomerText = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, { newCustomer: false, subscriberReservation: false, customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
+  const selectWeeklyCustomerResult = (day, teamIndex, taskIndex, customer) => updateTask(day, teamIndex, taskIndex, customerLinkPatch(dayPlan(day).teams[teamIndex]?.tasks?.[taskIndex], customer, authUser))
+  const beginWeeklyNewCustomer = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, { newCustomer: true, subscriberReservation: false, customerId: '', client: value, clientAccount: '', clientNameAtService: normalizeCustomerName(value), address: '', phone: '' })
+  const beginWeeklySubscriberReservation = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, subscriberReservationPatch(value, authUser))
+  const addTask = (day, teamIndex, startTime = '') => {
+    if (dayHasFinished(day)) { setNotice(finishedDayMessage(day)); return }
+    const holidayState = holidayStateForDay(day)
+    if (holidayState.blocked) {
+      setNotice(holidayState.decision?.status === 'closed' ? 'La fecha fue definida como día no operativo.' : 'Primero definí si el feriado será laboral o no operativo.')
+      return
+    }
+    const advance = advancedGuardForDay(day)
+    if (advance) {
+      setNotice(advancedSaturdayGuardMessage(advance))
+      return
+    }
+    const task = taskWithServiceEstimate({ ...blankTask(), time: startTime }, null)
+    const teamSnapshot = dayPlan(day).teams[teamIndex]
+    if (!teamSnapshot) { setNotice('El equipo ya no está disponible. Revisá la planificación.'); return }
+    const available = serviceGaps(teamSnapshot.tasks.map(item => taskWithServiceEstimate({ ...item, ...historyRecordForTask(item, day, operationalHistory), date: day }, serviceForWeeklyTask(item))), { ...hoursForDay(day, teamSnapshot.teamId), fullAvailability: true, day, now: new Date() })
+    if (!startTime || !available.some(gap => gap.start === startTime)) { setNotice('La disponibilidad cambió. Elegí una franja horaria disponible para agregar el servicio.'); return }
+    const taskIndex = teamSnapshot.tasks.length
+    // New services live only in the editor until the explicit save succeeds.
+    // Opening or abandoning this form must not enqueue an empty task for autosave.
+    taskEditorSaveGuardRef.current = false
+    setTaskEditorSaving(false)
+    setTaskEditorError('')
+    setTaskEditor({ day, teamIndex, taskIndex, teamId: teamSnapshot.teamId, teamSnapshot: structuredClone(teamSnapshot), persistedTeam: Boolean(weekly[day]?.teams?.some(team => String(team.teamId) === String(teamSnapshot.teamId))), taskId: task.taskId, baseTask: null, baseRecord: null, initialDraft: structuredClone(task), draft: task, photoData: '', photoRemoved: false })
+  }
+  const removeWeeklyTask = async ({ day, teamId, teamIndex, taskId, historyId, taskIndex, time, wasPlaceholder }) => {
+    const selectedTeam = dayPlan(day).teams.find((team, index) => (teamId && String(team.teamId || '') === String(teamId)) || index === teamIndex)
+    const selectedTask = selectedTeam?.tasks?.find((task, index) => (taskId && String(task.taskId || '') === String(taskId)) || (historyId && String(task.historyId || '') === String(historyId)) || index === taskIndex)
+    if (selectedTask?.vehicleControl && !isAdministrator) { setNotice('Sólo el rol Administrador puede omitir un control vehicular.'); setTaskRemoval(null); return }
+    try {
+      await persistWeeklyService({ operation: 'task-remove', day, teamId, teamIndex, taskId, historyId, taskIndex, time, wasPlaceholder, fallbackPlan: dayPlan(day) })
+      setTaskRemoval(null)
+      setNotice(selectedTask?.vehicleControl ? 'El control vehicular fue omitido para esta semana y ya no se mostrará al técnico.' : 'El servicio fue eliminado de la planificación semanal.')
+    } catch (error) {
+      setTaskRemoval(null)
+      setNotice(`No se eliminó el servicio. ${error.message || 'Revisá la versión actual e intentá nuevamente.'}`)
+    }
+  }
+  const suggestedMonthlyTeams = () => {
+    const rotation = monthlyTeamRotation(monthlyEligibleTechnicians(activeTechs), monthKey, '2026-01', vehicles.length || 3)
+    if (rotation.length) return rotation.map((members, index) => ({ teamId: createTeamId(), label: `Equipo ${index + 1}`, memberIds: members.map(tech => tech.id), members: members.map(tech => tech.name) }))
+    return (monthlyTeams[previousMonthKey]?.teams || [null, null, null]).map((team, index) => ({ teamId: team?.teamId || createTeamId(), label: team?.label || `Equipo ${index + 1}`, memberIds: team?.memberIds || [], members: team?.members || [] }))
+  }
+  const openMonthlySetup = () => {
+    if (!canConfigureWeekly('weeklyTeams')) { setNotice('No tenés permiso para definir los equipos mensuales.'); return }
+    if (pastMonthSelected) { setNotice(pastMonthConfigurationMessage); return }
+    setMonthlySetup({ month: monthKey, teams: baseTeams ? baseTeams.map(team => ({ teamId: team.teamId || createTeamId(), label: team.label, memberIds: team.memberIds || [], members: team.members || [] })) : suggestedMonthlyTeams() })
+  }
+  const updateMonthlyTeam = (index, memberIds) => { const selected = activeTechs.filter(tech => memberIds.some(id => String(id) === String(tech.id))); setMonthlySetup(previous => ({ ...previous, teams: previous.teams.map((team, teamIndex) => teamIndex === index ? { ...team, memberIds: selected.map(tech => tech.id), members: selected.map(tech => tech.name) } : team) })) }
+  const addMonthlyTeam = () => setMonthlySetup(previous => ({ ...previous, teams: [...previous.teams, { teamId: createTeamId(), label: `Equipo ${previous.teams.length + 1}`, memberIds: [], members: [] }] }))
+  const saveMonthlySetup = async () => {
+    const eligibleIds = new Set(monthlyEligibleTechnicians(activeTechs).map(tech => String(tech.id)))
+    const assignedIds = monthlySetup.teams.flatMap(team => (team.memberIds || []).map(String))
+    if (assignedIds.some(id => !eligibleIds.has(id))) { setNotice('Los equipos mensuales solo pueden incluir empleados activos con rol Técnico.'); return }
+    if (new Set(assignedIds).size !== assignedIds.length) { setNotice('Cada técnico debe integrar un único equipo mensual.'); return }
+    if (vehicles.length && !canConfigureWeekly('weeklyVehicles')) { setNotice('Para sincronizar equipos y vehículos necesitás también el permiso Vehículos del mes.'); return }
+    const month = monthlySetup.month
+    const teams = structuredClone(monthlySetup.teams)
+    try {
+      await persistWeeklyConfiguration(snapshot => {
+        const current = snapshot.agenda?.weekly?._monthlyTeams?.[month] || {}
+        const signature = value => JSON.stringify((value || []).map(team => (team.memberIds || []).map(String).sort()))
+        const changed = signature(current.teams) !== signature(teams)
+        let next = synchronizeMonthlyTeams(snapshot, { month, teams, fromDate: today })
+        if (vehicles.length) next = synchronizeMonthlyVehicles(next, { month, teams, vehicles, technicians: activeTechs, fromDate: today, holidays: holidayCalendar.records })
+        const config = next.agenda.weekly._monthlyTeams?.[month] || {}
+        let configurationHistory = appendConfigurationHistory(current.configurationHistory, {
+          type: 'teams', period: month, before: teamConfigurationSnapshot(current.teams), after: teamConfigurationSnapshot(teams), user: authUser
+        })
+        if (changed && vehicles.length) configurationHistory = appendConfigurationHistory(configurationHistory, {
+          type: 'vehicles', period: month, before: vehicleConfigurationSnapshot(current.vehicleAssignments, vehicles, activeTechs), after: vehicleConfigurationSnapshot(config.vehicleAssignments, vehicles, activeTechs), user: authUser
+        })
+        next.agenda.weekly._monthlyTeams = { ...next.agenda.weekly._monthlyTeams, [month]: { ...config, teams, configurationHistory } }
+        return next
+      })
+      setMonthlySetup(null)
+      setNotice('Equipos guardados. Los responsables vehiculares se sincronizaron con la rotación mensual; se conservaron controles realizados y reemplazos por fecha.')
+    } catch (error) { setNotice(`No se guardaron los equipos. ${error.message || 'Revisá la configuración e intentá nuevamente.'}`) }
+  }
+  const openMonthlyVehicleSetup = () => {
+    if (!canConfigureWeekly('weeklyVehicles')) { setNotice('No tenés permiso para asignar los vehículos mensuales.'); return }
+    if (pastMonthSelected) { setNotice(pastMonthConfigurationMessage); return }
+    if (!vehicles.length) { setNotice('Primero cargá los vehículos de la flota en el módulo Vehículos.'); return }
+    const teams = monthlyTeams[monthKey]?.teams || suggestedMonthlyTeams()
+    const saved = monthlyTeams[monthKey]?.vehicleAssignments
+    const savedMatchesFleet = saved?.length === vehicles.length && vehicles.every(vehicle => saved.some(item => String(item.vehicleId) === String(vehicle.id)))
+    setMonthlyVehicleSetup({ month: monthKey, assignments: savedMatchesFleet ? saved.map(item => ({ ...item })) : suggestedVehicleAssignments(vehicles, teams, { month: monthKey, assignmentHistory: priorVehicleAssignmentHistory }) })
+  }
+  const updateMonthlyVehicleAssignment = (vehicleId, technicianId) => setMonthlyVehicleSetup(previous => ({
+    ...previous,
+    assignments: previous.assignments.map(item => String(item.vehicleId) === String(vehicleId) ? { ...item, technicianId } : item)
+  }))
+  const updateVehicleControlOverride = (vehicleId, friday, technicianId) => setMonthlyVehicleSetup(previous => ({
+    ...previous,
+    assignments: previous.assignments.map(item => {
+      if (String(item.vehicleId) !== String(vehicleId)) return item
+      const weeklyOverrides = { ...(item.weeklyOverrides || {}) }
+      if (!technicianId || String(technicianId) === String(item.technicianId)) delete weeklyOverrides[friday]
+      else weeklyOverrides[friday] = technicianId
+      return { ...item, weeklyOverrides }
+    })
+  }))
+  const saveMonthlyVehicleSetup = async () => {
+    const assignments = monthlyVehicleSetup?.assignments || []
+    const teams = monthlyTeams[monthlyVehicleSetup?.month]?.teams || suggestedMonthlyTeams()
+    if (assignments.length !== vehicles.length || vehicles.some(vehicle => !assignments.some(item => String(item.vehicleId) === String(vehicle.id) && item.technicianId))) { setNotice('Asigná un técnico responsable a cada vehículo.'); return }
+    if (activeTechs.length >= vehicles.length && new Set(assignments.map(item => String(item.technicianId))).size !== assignments.length) { setNotice('Cada vehículo debe tener un técnico responsable diferente.'); return }
+    const duplicatedOverride = monthFridays(monthlyVehicleSetup.month).filter(friday => friday >= today).find(friday => {
+      const technicians = assignments.map(item => String(item.weeklyOverrides?.[friday] || item.technicianId || '')).filter(Boolean)
+      return activeTechs.length >= vehicles.length && new Set(technicians).size !== technicians.length
+    })
+    if (duplicatedOverride) { setNotice(`El ${prettyDate(duplicatedOverride)} un técnico quedó asignado a más de un control a las 15:45. Elegí responsables diferentes.`); return }
+    const soloTechnicianIds = teams.filter(team => (team.memberIds || []).length === 1).map(team => String(team.memberIds[0]))
+    const fordKa = vehicles.find(vehicle => String(vehicle.brand || '').toLowerCase().includes('ford') && /(^|\s)ka($|\s)/i.test(String(vehicle.model || '')))
+    const fordAssignment = fordKa && assignments.find(item => String(item.vehicleId) === String(fordKa.id))
+    if (fordKa && soloTechnicianIds.length && !soloTechnicianIds.includes(String(fordAssignment?.technicianId || ''))) { setNotice('El Ford Ka debe quedar asignado a uno de los técnicos que trabaja solo durante el mes.'); return }
+    const assignmentSnapshot = vehicleConfigurationSnapshot(assignments, vehicles, activeTechs)
+    const persistedAssignments = assignments.map(assignment => {
+      const snapshot = assignmentSnapshot.find(item => String(item.vehicleId) === String(assignment.vehicleId))
+      return { ...assignment, vehicle: snapshot?.vehicle || '', technician: snapshot?.technician || '' }
+    })
+    const records = buildVehicleControlRecords({ month: monthlyVehicleSetup.month, assignments: persistedAssignments, vehicles, technicians: activeTechs, teams, fromDate: today, holidays: holidayCalendar.records, holidayOverrides: weekly._holidayOverrides || {} })
+      .filter(record => !weeklyTaskRemovalAliases(vehicleControlTask(record)).some(alias => (weekly?.[record.date]?.removedTaskIds || []).includes(alias)))
+    const updateHistory = previous => {
+      const preserved = previous.filter(record => !(record.vehicleControl && record.monthlyVehicleAssignment === monthlyVehicleSetup.month && !record.technicalStatus))
+      const preservedIds = new Set(preserved.map(record => String(record.id)))
+      return [...preserved, ...records.filter(record => !preservedIds.has(String(record.id)))]
+    }
+    const updateWeekly = previous => {
+      let next = { ...previous }
+      Object.entries(next).forEach(([day, plan]) => {
+        if (day.startsWith('_') || !plan?.teams) return
+        next[day] = {
+          ...plan,
+          teams: plan.teams.map(team => ({
+            ...team,
+            tasks: (team.tasks || []).filter(task => !(task.vehicleControl && (
+              task.monthlyVehicleAssignment === monthlyVehicleSetup.month ||
+              (!task.monthlyVehicleAssignment && day.startsWith(`${monthlyVehicleSetup.month}-`))
+            )))
+          }))
+        }
+      })
+      records.forEach(record => {
+        const plan = next[record.date] || createDay(record.date, next)
+        let teamIndex = plan.teams.findIndex(team => (team.memberIds || []).some(id => String(id) === String(record.technicianIds[0])))
+        if (teamIndex < 0) teamIndex = 0
+        next[record.date] = {
+          ...plan,
+          teams: plan.teams.map((team, index) => index === teamIndex
+            ? { ...team, tasks: sortTasksByTime([...(team.tasks || []).filter(task => String(task.historyId || '') !== String(record.id)), vehicleControlTask(record)]) }
+            : team)
+        }
+      })
+      return {
+        ...next,
+        _monthlyTeams: {
+          ...(next._monthlyTeams || {}),
+          [monthlyVehicleSetup.month]: (() => {
+            const current = next._monthlyTeams?.[monthlyVehicleSetup.month] || {}
+            const configurationHistory = appendConfigurationHistory(current.configurationHistory, {
+              type: 'vehicles',
+              period: monthlyVehicleSetup.month,
+              before: vehicleConfigurationSnapshot(current.vehicleAssignments, vehicles, activeTechs),
+              after: assignmentSnapshot,
+              user: authUser
+            })
+            return { ...current, teams, vehicleAssignments: persistedAssignments, configurationHistory }
+          })()
+        }
+      }
+    }
+    try {
+      await persistWeeklyConfiguration(snapshot => ({
+        ...snapshot,
+        history: updateHistory(snapshot.history || []),
+        agenda: { ...snapshot.agenda, weekly: updateWeekly(snapshot.agenda?.weekly || {}) }
+      }))
+      setMonthlyVehicleSetup(null)
+      setNotice('Se guardaron los responsables y se generaron los controles de los viernes a las 15:45 hs.')
+    } catch (error) {
+      setNotice(`No se guardaron los responsables. ${error.message || 'Revisá la versión actual e intentá nuevamente.'}`)
+    }
+  }
+  const annualGuardDraft = year => ({ year: String(year), rotation: /^\d{4}$/.test(String(year)) ? suggestedAnnualGuardRotation(String(year)) : [] })
+  const openAnnualGuardSetup = () => {
+    if (!canConfigureWeekly('weeklyGuards')) { setNotice('No tenés permiso para definir las guardias anuales.'); return }
+    setAnnualGuardSetup(annualGuardDraft(anchorYear))
+  }
+  const changeAnnualGuardYear = year => setAnnualGuardSetup(annualGuardDraft(year))
+  const updateAnnualGuardTechnician = (index, technicianId) => {
+    const technician = activeTechs.find(item => String(item.id) === String(technicianId))
+    if (!technician) return
+    setAnnualGuardSetup(previous => ({ ...previous, rotation: previous.rotation.map((item, itemIndex) => itemIndex === index ? { technicianId: technician.id, name: technician.name } : item) }))
+  }
+  const addAnnualGuardTechnician = () => {
+    const available = activeTechs.find(tech => !annualGuardSetup.rotation.some(item => String(item.technicianId) === String(tech.id))) || activeTechs[0]
+    if (!available) return
+    setAnnualGuardSetup(previous => ({ ...previous, rotation: [...previous.rotation, { technicianId: available.id, name: available.name }] }))
+  }
+  const moveAnnualGuardTechnician = (index, direction) => setAnnualGuardSetup(previous => {
+    const destination = index + direction
+    if (destination < 0 || destination >= previous.rotation.length) return previous
+    const rotation = [...previous.rotation]
+    ;[rotation[index], rotation[destination]] = [rotation[destination], rotation[index]]
+    return { ...previous, rotation }
+  })
+  const removeAnnualGuardTechnician = index => setAnnualGuardSetup(previous => ({ ...previous, rotation: previous.rotation.filter((_, itemIndex) => itemIndex !== index) }))
+  const saveAnnualGuardSetup = () => {
+    const rotation = annualGuardSetup?.rotation || []
+    const duplicated = new Set(rotation.map(item => String(item.technicianId || item.name))).size !== rotation.length
+    if (!/^\d{4}$/.test(annualGuardSetup?.year || '') || !rotation.length || duplicated) return
+    const year = annualGuardSetup.year
+    setWeekly(previous => {
+      const current = previous._annualGuards?.[year] || {}
+      const configurationHistory = appendConfigurationHistory(current.configurationHistory, {
+        type: 'guards',
+        period: year,
+        before: guardConfigurationSnapshot(current.rotation),
+        after: guardConfigurationSnapshot(rotation),
+        user: authUser
+      })
+      return {
+        ...previous,
+        _annualGuards: {
+          ...(previous._annualGuards || {}),
+          [year]: { ...current, startDate: firstSaturdayOfYear(year), rotation, configurationHistory }
+        }
+      }
+    })
+    setAnnualGuardSetup(null)
+    setNotice(`El cronograma de guardias de ${year} fue guardado y se repetirá automáticamente cada sábado.`)
+  }
+  useEffect(() => {
+    // Al comenzar un mes el administrador confirma primero los equipos y luego
+    // los dos turnos que se usarán como horarios predeterminados.
+    if (!isAdministrator) return
+    if (pastMonthSelected) {
+      setMonthlySetup(null)
+      setMonthlyVehicleSetup(null)
+      return
+    }
+    const config = monthlyTeams[monthKey]
+    const expectedTeamCount = Math.min(activeTechs.length, vehicles.length || 3)
+    if ((!config?.teams?.length || config.teams.length !== expectedTeamCount) && monthlySetup?.month !== monthKey) {
+      setMonthlySetup({ month: monthKey, teams: suggestedMonthlyTeams() })
+      return
+    }
+    const assignmentsMatchFleet = config?.vehicleAssignments?.length === vehicles.length && vehicles.every(vehicle => config.vehicleAssignments.some(item => String(item.vehicleId) === String(vehicle.id)))
+    if (config?.teams?.length && vehicles.length && !assignmentsMatchFleet && !monthlySetup && monthlyVehicleSetup?.month !== monthKey) {
+      setMonthlyVehicleSetup({ month: monthKey, assignments: suggestedVehicleAssignments(vehicles, config.teams, { month: monthKey, assignmentHistory: priorVehicleAssignmentHistory }) })
+    }
+  }, [isAdministrator, monthKey, pastMonthSelected, monthlyTeams[monthKey], monthlySetup, monthlyVehicleSetup, vehicles, activeTechs.length, priorVehicleAssignmentHistory])
+  const openDay = day => {
+    if (readOnly) return
+    if (dayHasFinished(day)) { openDaily(day, []); return }
+    const hours = hoursForDay(day)
+    if (!hours) { setNotice('Los domingos no están habilitados para programar servicios.'); return }
+    const holidayState = holidayStateForDay(day)
+    if (holidayState.blocked) { setNotice(holidayState.decision?.status === 'closed' ? 'La fecha fue definida como día no operativo.' : 'Primero definí si el feriado será laboral o no operativo.'); return }
+    const advance = advancedGuardForDay(day)
+    if (advance) { setNotice(advancedSaturdayGuardMessage(advance)); return }
+    const invalidTime = dayPlan(day).teams.flatMap(team => team.tasks).find(task => !taskIsResolvedForPlanning(task, day, operationalHistory) && task.time && (task.time < hours.min || task.time > hours.max))
+    if (invalidTime) { setNotice(`Hay horarios fuera del rango permitido para este día (${hours.label}).`); return }
+    const taskOutsideHours = dayPlan(day).teams.flatMap(team => (team.tasks || []).map(task => ({ task, hours: hoursForDay(day, team.teamId) }))).find(({ task, hours }) => {
+      if (!taskHasContent(task) || taskIsResolvedForPlanning(task, day, operationalHistory)) return false
+      const interval = taskOccupiedInterval(taskWithServiceEstimate(task, serviceForWeeklyTask(task)), hours)
+      return interval && interval.serviceEnd > serviceTimeInMinutes(hours.max)
+    })
+    if (taskOutsideHours) { const { task, hours } = taskOutsideHours; const interval = taskOccupiedInterval(taskWithServiceEstimate(task, serviceForWeeklyTask(task)), hours); setNotice(`Hay una franja que termina a las ${interval.serviceEndTime}, fuera del horario habilitado (${hours.label}).`); return }
+    const scheduledTasks = dayPlan(day).teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, teamIndex, taskIndex }))).filter(({ task }) => !taskIsResolvedForPlanning(task, day, operationalHistory) && [task.service, task.client, task.address, task.detail, task.phone, task.paymentMethod, task.amount, task.monthlyFee, task.form].some(value => String(value || '').trim()))
+    const incompleteTask = scheduledTasks.find(({ task }) => !task.vehicleControl && (!task.time || !task.service || (!task.customerId && !task.subscriberReservation && !(isTrainingService(serviceForWeeklyTask(task)) && String(task.client || '').trim())) || !task.address || (!task.phone && !isTrainingService(serviceForWeeklyTask(task))) || !task.detail || (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) || requiresPaymentAmount(task, serviceForWeeklyTask(task))))
+    if (incompleteTask) {
+      const { task, teamIndex, taskIndex } = incompleteTask
+      const missing = [['hora', task.time], ['tipo de servicio', task.service], ['cliente', task.client], ['dirección', task.address], ['contacto', isTrainingService(serviceForWeeklyTask(task)) || task.phone], ['detalle', task.detail]].filter(([, value]) => !String(value || '').trim()).map(([label]) => label)
+      if (serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && !task.installationZone) missing.push('ubicación de la instalación')
+      if (requiresPaymentAmount(task, serviceForWeeklyTask(task))) missing.push('monto')
+      setNotice(`Completá los campos obligatorios de Equipo ${teamIndex + 1}, tarjeta ${taskIndex + 1}: ${missing.join(', ')}.`)
+      return
+    }
+    const gapConflicts = gapConflictsForDay(day)
+    if (gapConflicts.length) { const conflict = gapConflicts[0]; setNotice(planningConflictMessage(day, dayPlan(day).teams[conflict.teamIndex], conflict.teamIndex, conflict)); return }
+    const conflicts = conflictsForDay(day)
+    if (conflicts.length) { setNotice(`Conflicto de asignación: ${conflicts.map(item => `${item.name} a las ${item.time} (equipos ${item.teams.join(' y ')})`).join('; ')}.`); return }
+    const teams = dayPlan(day).teams.map(({ teamId, memberIds, members, tasks }) => ({ teamId, memberIds, members, tasks }))
+    openDaily(day, teams)
+  }
+  const weeklyHistoryRecord = (day, team, teamIndex, task, taskIndex) => ({
+    awaitingConfirmation: task.awaitingConfirmation === true,
+    id: task.historyId || `work-${task.taskId || `${day}-${teamIndex}-${taskIndex}`}`,
+    sourceTaskId: task.taskId,
+    date: day,
+    time: task.time,
+    scheduledTime: task.time,
+    estimatedMinutes: serviceEstimateForTask(task, serviceForWeeklyTask(task)),
+    estimatedMinutesCustomized: Boolean(task.estimatedMinutesCustomized),
+    team: team.label || `Equipo ${teamIndex + 1}`,
+    teamId: team.teamId,
+    technicianIds: task.vehicleControl && task.technicianIds?.length ? task.technicianIds : team.memberIds || [],
+    technicians: task.vehicleControl && task.technicians?.length ? task.technicians : team.members || [],
+    serviceTypes: task.serviceTypes,
+    serviceId: serviceForWeeklyTask(task)?.id || task.serviceId,
+    service: serviceForWeeklyTask(task)?.name || task.service,
+    client: task.client,
+    customerId: task.customerId || '',
+    clientAccount: task.clientAccount || '',
+    clientNameAtService: task.clientNameAtService || String(task.client || '').replace(/^[^\s]+\s+/, ''),
+    detail: task.detail,
+    internalNote: task.internalNote || '',
+    internalChecklist: normalizeInternalChecklist(task.internalChecklist),
+    ...applicableServiceExtras(task, serviceForWeeklyTask(task)),
+    address: task.address,
+    phone: task.phone,
+    installationZone: task.installationZone || '',
+    servicePhotoAttached: Boolean(task.servicePhotoAttached),
+    servicePhotoUrl: task.servicePhotoUrl || '',
+    servicePhotoAttachedAt: task.servicePhotoAttachedAt || '',
+    ...serviceTrace(task)
+  })
+  const displayDate = day => prettyDate(day).replace(/ de (\p{L})/u, (_, letter) => ` de ${letter.toUpperCase()}`)
+  return <>
+    {techPicker && <button title="Cerrá el selector de técnicos y volvé a la agenda." className="picker-backdrop" aria-label="Cerrar selector de técnicos" onClick={() => setTechPicker(null)} />}
+    {teamRemoval && <Confirm title="Quitar equipo" detail={`¿Querés quitar ${teamRemoval.label} de la planificación del ${prettyDate(teamRemoval.day)}? Se quitará el equipo y su asignación de técnicos de ese día. Si sólo tiene controles vehiculares pendientes, un administrador también los omitirá porque esos vehículos no se utilizarán. Otros servicios o controles completados impiden eliminarlo.`} destructive action={() => removeWeeklyTeam(teamRemoval.day, teamRemoval.teamIndex)} close={() => setTeamRemoval(null)} />}
+    {taskRemoval && <Confirm title={taskRemoval.vehicleControl ? 'Omitir control vehicular' : 'Eliminar servicio'} detail={taskRemoval.vehicleControl ? `¿Querés omitir este control para el ${prettyDate(taskRemoval.day)}? El técnico no tendrá que realizarlo y no se volverá a generar al guardar la configuración mensual.` : `¿Querés eliminar el Servicio ${taskRemoval.taskIndex + 1} de ${taskRemoval.label} para el ${prettyDate(taskRemoval.day)}?${taskRemoval.journey ? ' Si la jornada está pendiente, quedará cancelada. Se conservarán su historial y las otras jornadas.' : taskRemoval.historyId ? ' También se quitará el registro pendiente vinculado.' : ''}`} destructive action={() => removeWeeklyTask(taskRemoval)} close={() => setTaskRemoval(null)} />}
+    {reorder && <ReorderServicesModal {...reorder} onClose={() => setReorder(null)} onSave={async changes => {
+      if (readOnly || reorder.day < localToday()) throw new Error('La jornada ya finalizó o no tenés permiso para editarla.')
+      if (holidayCalendar.loading || holidayCalendar.error || holidayStateForDay(reorder.day).blocked || advancedGuardForDay(reorder.day)) throw new Error('La jornada no está habilitada para cambios.')
+      await persistWeeklyConfiguration(snapshot => reorderServices(snapshot, { ...reorder, changes, stamp: value => stampServiceRecord(value, authUser), validate: (team, latestHistory) => {
+        const currentTime = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date())
+        for (const change of changes) {
+          const task = team.tasks.find(item => item.taskId === change.taskId)
+          const schedule = taskMoveScheduleState(reorder.day, taskWithServiceEstimate(task, serviceForWeeklyTask(task)), weekly, team.teamId)
+          if (!schedule.valid) throw new Error(schedule.message)
+          if (reorder.day === localToday() && change.time < currentTime) throw new Error('El nuevo horario ya pasó. Elegí una hora actual o futura.')
+        }
+        if (changes[0].time >= changes[1].time) throw new Error('El segundo servicio debe comenzar después del primero.')
+        const conflict = minimumServiceGapConflicts([{ ...team, tasks: team.tasks.map(task => { const occupied = taskForScheduleOccupancy(task, reorder.day, latestHistory); return occupied ? taskWithServiceEstimate(occupied, serviceForWeeklyTask(task)) : null }).filter(Boolean) }])[0]
+        if (conflict) throw new Error(scheduleConflictMessage(conflict))
+      } }))
+    }} />}
+    {taskMove && (() => {
+      const sourcePlan = dayPlan(taskMove.day)
+      const sourceTeam = sourcePlan.teams.find(team => taskMove.sourceTeamId && String(team.teamId || '') === String(taskMove.sourceTeamId)) || sourcePlan.teams[taskMove.sourceTeamIndex]
+      const validDestinationDay = /^\d{4}-\d{2}-\d{2}$/.test(taskMove.destinationDay || '')
+      let destinationPlan = { teams: [] }
+      try { if (validDestinationDay) destinationPlan = weeklyMoveDestinationPlan(taskMove) } catch { /* Submit explains changes to the source guard. */ }
+      const movingControl = sourceTeam?.tasks?.find(task => task.taskId === taskMove.taskId)
+      const destinationOptions = destinationPlan.teams.map((team, index) => ({ team, index })).filter(({ team, index }) => movingControl?.vehicleControl || taskMove.destinationDay !== taskMove.day || (String(team.teamId || '') !== String(sourceTeam?.teamId || '') && index !== taskMove.sourceTeamIndex))
+      const selectedDestination = taskMove.advanceToFriday
+        ? destinationOptions.find(({ team }) => team.memberIds?.length === 1 && String(team.memberIds[0]) === String(sourceTeam?.memberIds?.[0]))
+        : destinationOptions.find(({ index }) => index === taskMove.destinationTeamIndex)
+      let controlResponsible = null
+      try { if (movingControl?.vehicleControl) controlResponsible = vehicleControlResponsible(selectedDestination?.team, movingControl, taskMove.responsibleId) } catch { /* Explicit choice is required for a crew. */ }
+      const moveDraft = movingControl ? { ...movingControl, time: taskMove.time, estimatedMinutes: movingControl.vehicleControl ? 15 : taskMove.estimatedMinutes, estimatedMinutesCustomized: movingControl.vehicleControl ? false : movingControl.estimatedMinutesCustomized === true || Number(taskMove.estimatedMinutes) !== Number(serviceEstimateForTask(movingControl, serviceForWeeklyTask(movingControl))) } : null
+      if (moveDraft?.vehicleControl && controlResponsible) { moveDraft.technicianIds = [controlResponsible.id]; moveDraft.technicians = [controlResponsible.name] }
+      const moveSchedule = taskMoveScheduleState(taskMove.destinationDay, moveDraft, weekly, selectedDestination?.team?.teamId)
+      let swapPreview = null
+      try { swapPreview = vehicleControlSwapCandidate(moveDraft, selectedDestination?.team, taskMove.day, taskMove.destinationDay, controlResponsible?.id) } catch { /* The submit handler explains ambiguous controls. */ }
+      const sameMovingTask = task => (taskMove.taskId && String(task.taskId || '') === String(taskMove.taskId)) || (taskMove.historyId && String(task.historyId || '') === String(taskMove.historyId))
+      const moveConflict = moveDraft && selectedDestination ? minimumServiceGapConflicts([{ ...selectedDestination.team, tasks: [...(selectedDestination.team.tasks || []).filter(task => !sameMovingTask(task) && task !== swapPreview), moveDraft].map(task => {
+        const occupancyTask = taskForScheduleOccupancy(task, taskMove.destinationDay, operationalHistory)
+        return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(task)) : null
+      }).filter(Boolean) }])[0] : null
+      const destinationIsSunday = validDestinationDay && !hoursForDay(taskMove.destinationDay)
+      const sameDayWithoutAlternative = taskMove.destinationDay === taskMove.day && !destinationOptions.length
+      return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => { if (!taskMoveSaving) setTaskMove(null) }}><section className="modal task-move-modal weekly-move-modal" role="dialog" aria-modal="true" aria-labelledby="weekly-move-title" onMouseDown={event => event.stopPropagation()}><button title="Cerrá esta ventana y volvé a la pantalla anterior." className="modal-close" disabled={taskMoveSaving} onClick={() => { if (!taskMoveSaving) setTaskMove(null) }}><Icon name="close" /></button><p className="eyebrow">REASIGNAR SERVICIO</p><h2 id="weekly-move-title">{taskMove.advanceToFriday ? 'Adelantar al viernes' : 'Cambiar equipo, horario o fecha'}</h2>{taskMove.advanceToFriday && <p>Se conservará el técnico del sábado y se creará su equipo individual si hace falta. Elegí una franja entre las 16:00 y las 20:00. Los demás servicios del sábado se conservarán.</p>}<p>Podés ajustar el destino, la hora y el tiempo estimado antes de confirmar. Agenda semanal, Agenda del día e Historial se actualizarán en una única operación.</p><label>Origen<input value={`${prettyDate(taskMove.day)} · ${sourceTeam?.label || `Equipo ${taskMove.sourceTeamIndex + 1}`}`} readOnly /></label><label>Nueva fecha<input type="date" min={today} required disabled={taskMove.advanceToFriday} value={taskMove.destinationDay} onChange={event => selectWeeklyTaskMoveDate(event.target.value)} /></label><label>Equipo de destino<select value={selectedDestination ? selectedDestination.index : ''} disabled={taskMove.advanceToFriday || !validDestinationDay || destinationIsSunday || !destinationOptions.length} onChange={event => setTaskMove(previous => ({ ...previous, destinationTeamIndex: Number(event.target.value), responsibleId: '' }))}><option value="" disabled>Seleccionar equipo</option>{destinationOptions.map(({ team, index }) => <option key={team.teamId || index} value={index}>{team.label || `Equipo ${index + 1}`} · {team.members?.join(' / ') || 'Sin técnicos'}</option>)}</select></label>{movingControl?.vehicleControl && <label>Responsable del control<select required value={controlResponsible?.id || ''} disabled={!selectedDestination || taskMoveSaving} onChange={event => setTaskMove(previous => ({ ...previous, responsibleId: event.target.value }))}><option value="" disabled>Seleccionar técnico</option>{(selectedDestination?.team.memberIds || []).map((id, index) => <option key={id} value={id}>{selectedDestination.team.members[index]}</option>)}</select><small>El control se asigna únicamente a esta persona.</small></label>}<label>Hora de inicio<input type="time" required min={taskMove.advanceToFriday ? '16:00' : moveSchedule.hours?.min} max={moveSchedule.hours?.max} value={taskMove.time || ''} onChange={event => setTaskMove(previous => ({ ...previous, time: event.target.value }))} /></label>{movingControl?.vehicleControl ? <label>Tiempo estimado<input value="15 minutos" readOnly /></label> : <ServiceEstimatedDurationField className="task-move-duration" value={taskMove.estimatedMinutes} onChange={estimatedMinutes => setTaskMove(previous => ({ ...previous, estimatedMinutes }))} />}{moveSchedule.interval && <p className="task-occupied-range task-move-range">Franja estimada: {moveSchedule.interval.startTime}–{moveSchedule.interval.serviceEndTime}</p>}{destinationIsSunday && <p className="field-error">Los domingos no están habilitados para programar servicios.</p>}{!destinationIsSunday && moveSchedule.message && <p className="field-error task-move-schedule-error" role="alert">{moveSchedule.message}</p>}{moveConflict && <p className="field-error task-move-schedule-error" role="alert">No se puede reasignar porque {scheduleConflictMessage(moveConflict)}.</p>}{sameDayWithoutAlternative && <p className="weekly-move-help">Este día no tiene otro equipo. Elegí una fecha diferente para reprogramar el servicio.</p>}{swapPreview && <p className="weekly-move-help" role="status">Se intercambiarán los controles: {movingControl.client} pasará a {selectedDestination.team.label} ({controlResponsible?.name}) y {swapPreview.client} pasará a {sourceTeam.label} ({movingControl.technicians?.[0]}). Solo para esta fecha.</p>}<div className="modal-actions"><button title="Cancelá esta operación sin aplicar los cambios del formulario." className="secondary" disabled={taskMoveSaving} onClick={() => setTaskMove(null)}><Icon name="close" size={16} />Cancelar</button><button title="Guardá el traslado al equipo, fecha y horario elegidos; si corresponde, intercambiá los controles indicados." className="primary" disabled={taskMoveSaving || (movingControl?.vehicleControl && !controlResponsible) || !validDestinationDay || destinationIsSunday || !selectedDestination || holidayCalendar.loading || !moveSchedule.valid || Boolean(moveConflict) || (taskMove.advanceToFriday && taskMove.time < '16:00')} onClick={confirmWeeklyTaskMove}><span aria-hidden="true">⇄</span>{taskMoveSaving ? 'Guardando…' : swapPreview ? 'Intercambiar controles' : taskMove.destinationDay === taskMove.day ? 'Reasignar servicio' : 'Reprogramar servicio'}</button></div></section></div>
+    })()}
+    {monthlyVehicleSetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal monthly-vehicles-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-vehicles-title"><button title="Cerrá esta ventana y volvé a la pantalla anterior." className="modal-close" disabled={vehicleSwapSaving} onClick={() => setMonthlyVehicleSetup(null)}><Icon name="close" /></button><p className="eyebrow">RESPONSABLES DE FLOTA</p><h2 id="monthly-vehicles-title">Vehículos de {new Date(`${monthlyVehicleSetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Asigná el responsable predeterminado de cada vehículo. Cada viernes se creará un control de 15 minutos a las 15:45 para cargar la foto interior y el kilometraje. Si surge una contingencia, podés elegir un reemplazo sólo para ese viernes sin modificar el resto del mes.</p><VehicleResponsibilitySwap month={monthlyVehicleSetup.month} today={today} vehicles={vehicles} history={history} disabled={JSON.stringify(monthlyVehicleSetup.assignments) !== JSON.stringify(monthlyTeams[monthlyVehicleSetup.month]?.vehicleAssignments || [])} onBusyChange={setVehicleSwapSaving} onSave={async command => {
+      if (!canConfigureWeekly('weeklyVehicles')) throw new Error('No tenés permiso para cambiar responsables vehiculares.')
+      await persistWeeklyConfiguration(snapshot => swapVehicleResponsibilities(snapshot, { ...command, today: currentLocalDate(), user: authUser }))
+      setMonthlyVehicleSetup(null)
+      setNotice('Responsables intercambiados sólo para el viernes elegido. Se conservó la asignación mensual.')
+    }} /><div className="monthly-vehicle-list">{vehicles.map(vehicle => { const assignment = monthlyVehicleSetup.assignments.find(item => String(item.vehicleId) === String(vehicle.id)); const futureFridays = monthFridays(monthlyVehicleSetup.month).filter(friday => friday >= today); return <div className="monthly-vehicle-assignment" key={vehicle.id}><label><span><b>{vehicleLabel(vehicle)}</b><small>Kilometraje actual: {Number(vehicle.mileage || 0).toLocaleString('es-AR')} km</small></span><select value={assignment?.technicianId || ''} onChange={event => updateMonthlyVehicleAssignment(vehicle.id, event.target.value)}><option value="">Seleccionar responsable</option>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></label>{futureFridays.length > 0 && assignment?.technicianId && <details className="vehicle-control-overrides"><summary>Reemplazos por contingencia</summary>{futureFridays.map(friday => <label key={friday}><span><b>{prettyDate(friday)}</b><small>{assignment.weeklyOverrides?.[friday] ? 'Reemplazo excepcional' : 'Responsable mensual'}</small></span><select value={assignment.weeklyOverrides?.[friday] || assignment.technicianId} onChange={event => updateVehicleControlOverride(vehicle.id, friday, event.target.value)}>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></label>)}</details>}</div> })}</div><ConfigurationHistoryPanel history={monthlyTeams[monthlyVehicleSetup.month]?.configurationHistory} type="vehicles" /><div className="modal-actions"><button title="Cancelá esta operación sin aplicar los cambios del formulario." className="secondary" disabled={vehicleSwapSaving} onClick={() => setMonthlyVehicleSetup(null)}><Icon name="close" size={16} />Cancelar</button><button title="Guardá los responsables mensuales de vehículos y sus reemplazos excepcionales." className="primary" disabled={vehicleSwapSaving} onClick={saveMonthlyVehicleSetup}><Icon name="check" size={16} />Guardar responsables</button></div></section></div>}
+{monthlySetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-modal="true"><button title="Cerrá esta ventana y volvé a la pantalla anterior." className="modal-close" onClick={() => setMonthlySetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de {new Date(`${monthlySetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Con cinco técnicos activos, el sistema propone dos duplas y una salida individual, rotando mensualmente todas las combinaciones. Solo participan empleados con rol Técnico; los perfiles con función técnica adicional se asignan puntualmente. Podés modificar la sugerencia antes de guardarla. Se actualizan los equipos pendientes desde hoy que conservan la dotación mensual. Se mantienen las excepciones diarias, las guardias y los equipos con trabajos iniciados o cerrados.</p><div className="monthly-team-list">{monthlySetup.teams.map((team, index) => <TeamTechniciansField key={team.teamId || index} label={team.label || `Equipo ${index + 1}`} technicians={monthlyEligibleTechnicians(activeTechs)} memberIds={team.memberIds || []} onChange={memberIds => updateMonthlyTeam(index, memberIds)} />)}</div><button title="Agregá un equipo a la configuración mensual." className="secondary monthly-add-team" onClick={addMonthlyTeam}><Icon name="plus" size={15} />Agregar equipo</button><ConfigurationHistoryPanel history={monthlyTeams[monthlySetup.month]?.configurationHistory} type="teams" /><div className="modal-actions"><button title="Cancelá esta operación sin aplicar los cambios del formulario." className="secondary" onClick={() => setMonthlySetup(null)}><Icon name="close" size={16} />Cancelar</button><button title="Guardá la distribución de equipos y técnicos del mes seleccionado." className="primary" onClick={saveMonthlySetup}><Icon name="check" size={16} />Guardar equipos del mes</button></div></section></div>}
+    {annualGuardSetup && (() => {
+      const duplicated = new Set(annualGuardSetup.rotation.map(item => String(item.technicianId || item.name))).size !== annualGuardSetup.rotation.length
+      const validYear = /^\d{4}$/.test(annualGuardSetup.year)
+      return <div className="modal-backdrop monthly-backdrop"><section className="modal annual-guards-modal" role="dialog" aria-modal="true" aria-labelledby="annual-guards-title"><button title="Cerrá esta ventana y volvé a la pantalla anterior." className="modal-close" onClick={() => setAnnualGuardSetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN ANUAL</p><h2 id="annual-guards-title">Guardias de fin de semana</h2><p>Definí el orden de rotación. El primer técnico cubrirá el primer sábado del año y luego el ciclo se repetirá durante todos los sábados.</p><label className="annual-guard-year">Año<input type="number" min="2026" max="2100" value={annualGuardSetup.year} onChange={event => changeAnnualGuardYear(event.target.value)} /></label><div className="annual-guard-list">{annualGuardSetup.rotation.map((guard, index) => {
+        const legacyGuard = guard.name && !activeTechs.some(tech => String(tech.id) === String(guard.technicianId))
+        return <div className="annual-guard-row" key={`${guard.technicianId || guard.name}-${index}`}><span>{index + 1}</span><select aria-label={`Técnico ${index + 1} de la rotación`} value={guard.technicianId || ''} onChange={event => updateAnnualGuardTechnician(index, event.target.value)}>{legacyGuard && <option value={guard.technicianId || ''}>{guard.name} (no activo)</option>}{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select><button type="button" className="secondary" title="Mové a este técnico una posición hacia arriba en el orden de rotación de guardias." aria-label={`Subir a ${guard.name}`} disabled={index === 0} onClick={() => moveAnnualGuardTechnician(index, -1)}>↑</button><button type="button" className="secondary" title="Mové a este técnico una posición hacia abajo en el orden de rotación de guardias." aria-label={`Bajar a ${guard.name}`} disabled={index === annualGuardSetup.rotation.length - 1} onClick={() => moveAnnualGuardTechnician(index, 1)}>↓</button><button type="button" className="icon-btn delete" title="Quitá a este técnico de la rotación de guardias; no elimina su perfil." aria-label={`Quitar a ${guard.name}`} onClick={() => removeAnnualGuardTechnician(index)}><Icon name="trash" size={15} /></button></div>
+      })}</div><button title="Incorporá un técnico al orden de rotación de guardias." type="button" className="secondary annual-guard-add" disabled={!activeTechs.length || !validYear} onClick={addAnnualGuardTechnician}><Icon name="plus" size={15} />Agregar técnico</button>{!validYear && <p className="field-error">Ingresá un año válido.</p>}{duplicated && <p className="field-error">Cada técnico puede aparecer una sola vez en la rotación.</p>}{validYear && !annualGuardSetup.rotation.length && <p className="field-error">Agregá al menos un técnico para generar el cronograma.</p>}<p className="annual-guard-help">Los cambios manuales realizados en un sábado específico se conservan como excepción.</p><ConfigurationHistoryPanel history={weekly._annualGuards?.[annualGuardSetup.year]?.configurationHistory} type="guards" /><div className="modal-actions"><button title="Cancelá esta operación sin aplicar los cambios del formulario." className="secondary" onClick={() => setAnnualGuardSetup(null)}><Icon name="close" size={16} />Cancelar</button><button title="Guardá el orden y la configuración de las guardias del año seleccionado." className="primary" disabled={!validYear || !annualGuardSetup.rotation.length || duplicated} onClick={saveAnnualGuardSetup}><Icon name="check" size={16} />Guardar guardias del año</button></div></section></div>
+    })()}
+<div className="module-intro weekly-intro"><ModuleIntroduction><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1><p className="weekly-description-mobile">{readOnly ? 'Consulta de solo lectura. Podés explorar las semanas y abrir el detalle de los servicios.' : 'Guardá cada servicio desde su formulario. Los cambios confirmados se comparten con todos los usuarios.'}</p></ModuleIntroduction><div className="weekly-actions"><WeeklyServiceSearch anchor={anchor} weekly={weekly} history={history} getPlan={dayPlan} navigate={day => { weeklyAnchorFollowsCurrentRef.current = false; setAnchor(day) }} boardRef={weeklyBoardRef} openService={openTaskEditor} />{canConfigureWeekly('weeklyTeams') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : 'Configurá la distribución mensual de equipos y técnicos.'} onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button>}{canConfigureWeekly('weeklyVehicles') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : 'Asigná responsables de vehículos y reemplazos para los controles semanales del mes.'} onClick={openMonthlyVehicleSetup}><Icon name="vehicle" size={16} />Vehículos del mes</button>}{canConfigureWeekly('weeklyGuards') && <button title="Configurá la rotación de técnicos para las guardias del año." className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button>}<label className="week-selector">Mostrar desde<input type="date" value={anchor} onChange={event => { if (!event.target.value) return; weeklyAnchorFollowsCurrentRef.current = false; setAnchor(event.target.value) }} /></label></div></div>
+    {completedService && <HistoryDetail customers={customers} record={completedService} close={() => setCompletedService(null)} actions={!readOnly && weeklyServiceSource && weeklyModalActions(weeklyServiceSource, true)} />}
+    {pastService && <div className="modal-layer"><section className="modal detail-modal history-detail past-service-detail" role="dialog" aria-modal="true" aria-label="Servicio · solo lectura"><button title="Cerrá esta ventana y volvé a la pantalla anterior." type="button" className="close-modal" aria-label="Cerrar" onClick={() => setPastService(null)}><Icon name="close" /></button><p className="eyebrow">{prettyDate(pastService.date)} · SOLO LECTURA</p><h2>{pastService.client || pastService.service}</h2>{!readOnly && weeklyServiceSource && weeklyModalActions(weeklyServiceSource, true)}{[
+      ['Resumen del servicio', [
+        ['Servicio', serviceTypesLabel(pastService)], ['Estado', pastService.technicalStatus || pastService.status],
+        ['Hora', pastService.time || pastService.scheduledTime], ['Tiempo estimado', pastService.estimatedMinutes ? `${pastService.estimatedMinutes} minutos` : ''],
+        ['Equipo', pastService.team], ['Técnicos asignados', pastService.technicians?.join(' / ')]
+      ]],
+      ['Ubicación y contacto', [
+        ['Dirección', pastService.address], ['Contacto', pastService.phone], ['Ubicación de la instalación', pastService.installationZone]
+      ]],
+      ['Pago y documentación', [
+        ['Forma de pago', pastService.paymentMethod], ['Monto', formatCurrencyAmount(pastService.amount)], ['Abono mensual', formatCurrencyAmount(pastService.monthlyFee)], ['Meses congelados', pastService.freezeMonthlyFee ? `${pastService.frozenMonths} meses` : 'No'], ['Formulario', pastService.form], ['Email del formulario', pastService.formEmail]
+      ]],
+      ['Observaciones e información interna', [
+        ['Detalle / observaciones', pastService.detail], ['Informe técnico', pastService.technicalObservation], ['Nota interna', pastService.internalNote]
+      ]]
+    ].map(([title, fields]) => <section className="past-detail-section" key={title}><h3>{title}</h3><dl className="past-detail-fields">{fields.map(([label, value]) => <div key={label} className={['Detalle / observaciones', 'Informe técnico', 'Nota interna'].includes(label) ? 'past-field-wide' : ['Dirección', 'Técnicos asignados'].includes(label) ? 'past-field-double' : ''}><dt>{label}</dt><dd className={['Monto', 'Abono mensual'].includes(label) ? 'past-field-money' : ''}>{value === '' || value == null ? <span className="past-field-empty">Sin información</span> : String(value)}</dd></div>)}</dl></section>)}{pastService.internalChecklist?.length > 0 && <section className="past-detail-section"><h3>Checklist</h3>{pastService.internalChecklist.map((item, index) => <p key={item.id || index}>{item.completed ? '✓' : '○'} {item.text}</p>)}</section>}<ServicePhoto record={pastService} className="history-service-photo" /><ServiceCustomerMap record={pastService} customers={customers} /><div className="modal-actions"><button title="Cerrá esta ventana y volvé a la pantalla anterior." type="button" className="secondary" onClick={() => setPastService(null)}><Icon name="close" size={16} />Cerrar</button></div></section></div>}
+    {dayPreview && <Preview title={`Agenda del ${prettyDate(dayPreview.day)}`} text={dayPreview.text} close={() => setDayPreview(null)} />}
+    {taskEditor && (() => {
+      const { day, teamIndex, taskIndex } = taskEditor
+      const task = taskEditor.draft
+      const hours = hoursForDay(day)
+      const taskConflict = conflictForWeeklyTask(day, teamIndex, taskIndex, task)
+      if (!task || !hours) return null
+      return <><div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => { if (!taskEditorSaving) requestWeeklyLeave(() => setTaskEditor(null)) }}><section key={`${day}-${taskEditor.taskId}-${teamIndex}-${taskIndex}`} className="modal weekly-task-modal" role="dialog" aria-modal="true" aria-label={`Servicio ${taskIndex + 1}`} onMouseDown={event => event.stopPropagation()}><button type="button" className="modal-close" aria-label="Cerrar edición del servicio" title="Cerrá la edición del servicio; si hay cambios sin guardar, podrás guardarlos o descartarlos." onClick={() => { if (!taskEditorSaving) requestWeeklyLeave(() => setTaskEditor(null)) }}><Icon name="close" size={18} /></button><p className="eyebrow">AGENDA SEMANAL · {prettyDate(day)}</p><h2>{task.vehicleControl ? 'Control semanal de vehículo' : `Servicio ${taskIndex + 1}`}</h2><p className="weekly-modal-team">{taskEditor.teamSnapshot?.label || `Equipo ${teamIndex + 1}`} · {taskEditor.teamSnapshot?.members?.join(' / ') || 'Sin técnicos asignados'}</p>{weeklyModalActions(taskEditor)}<div className="weekly-task-form"><div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><BufferedInput aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onCommit={value => updateTaskDraft({ time: value })} /></label><ServiceTypesField task={task} services={services} disabled={task.vehicleControl} onChange={patch => updateTaskDraft(patch)} /></div>{task.vehicleControl ? <label className="vehicle-control-fixed-duration"><span><RequiredLabel>Tiempo estimado</RequiredLabel></span><input value="15 minutos" readOnly /></label> : <ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTaskDraft({ estimatedMinutes, estimatedMinutesCustomized: true })} />}{task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForWeeklyTask(task)), hoursForDay(day, taskEditor?.teamId))}</small>}{taskConflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={16} /><span>{scheduleConflictForTaskMessage(taskConflict, taskIndex)}</span></p>}{task.vehicleControl ? <div className="vehicle-control-planning-fields"><label>Vehículo<input value={task.client || vehicleLabel(task)} readOnly /></label><label><RequiredLabel>Técnico a cargo</RequiredLabel><select value={task.technicianIds?.[0] || ''} onChange={event => { const technician = activeTechs.find(item => String(item.id) === event.target.value); updateTaskDraft({ technicianIds: technician ? [technician.id] : [], technicians: technician ? [technician.name] : [] }) }}><option value="">Seleccionar técnico</option>{activeTechs.map(technician => <option key={technician.id} value={technician.id}>{technician.name}</option>)}</select></label><p>Podés reemplazar al responsable para este control ante una contingencia. La asignación mensual predeterminada no se modifica.</p></div> : <>{serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input aria-required="true" type="radio" name={`weekly-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTaskDraft({ installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
+{isTrainingService(serviceForWeeklyTask(task)) ? <label className="weekly-customer-search"><RequiredLabel>Nombre de la capacitación</RequiredLabel><BufferedInput aria-required="true" placeholder="CAPACITACIÓN CERCO ELÉCTRICO" value={task.client} onCommit={value => updateTaskDraft(trainingClientPatch(value))} /></label> : <CustomerAutocomplete awaitingConfirmation={task.awaitingConfirmation === true} className="weekly-customer-search" value={task.client} customerId={task.customerId} customers={customers} subscriberReservation={task.subscriberReservation} onTextCommit={commitDraftCustomerText} onCustomerSelect={selectDraftCustomer} onAddCustomer={beginDraftNewCustomer} onReserveSubscriber={serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' ? beginDraftSubscriberReservation : undefined} />}
+<label><RequiredLabel>Dirección</RequiredLabel><BufferedInput aria-required="true" readOnly={!task.newCustomer && !task.subscriberReservation && !isTrainingService(serviceForWeeklyTask(task))} title={task.newCustomer || task.subscriberReservation || isTrainingService(serviceForWeeklyTask(task)) ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.address} onCommit={value => updateTaskDraft({ address: value })} /></label><label>{isTrainingService(serviceForWeeklyTask(task)) ? 'Contacto (opcional)' : <RequiredLabel>Contacto</RequiredLabel>}<BufferedInput aria-required={!isTrainingService(serviceForWeeklyTask(task))} readOnly={!task.newCustomer && !task.subscriberReservation && !isTrainingService(serviceForWeeklyTask(task))} title={task.newCustomer || task.subscriberReservation || isTrainingService(serviceForWeeklyTask(task)) ? '' : 'Este dato se modifica desde Abonados y clientes'} value={task.phone} onCommit={value => updateTaskDraft({ phone: value })} /></label><p className="weekly-customer-data-note">{isTrainingService(serviceForWeeklyTask(task)) ? 'Ingresá el nombre y la dirección de la capacitación. El contacto es opcional y no se creará un CLI.' : task.subscriberReservation ? 'Estos datos son provisorios y no crean un CLI. Vinculá el PIG importado cuando esté disponible.' : task.newCustomer ? 'Completá dirección y contacto para crear el cliente CLI al guardar.' : 'Dirección y contacto se administran desde el módulo Abonados y clientes.'}</p><label><RequiredLabel>Detalle</RequiredLabel><BufferedTextarea aria-required="true" value={task.detail} onCommit={value => updateTaskDraft({ detail: value })} /></label><ServiceCustomerMap record={task} customers={customers} /><AgendaTechnicalNote record={historyRecordForTask(task, day, operationalHistory) || taskEditor.baseRecord} /><ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} buffered onChange={updateTaskDraft} /><ServicePhotoField record={task} photoData={taskEditor.photoData} onPreparing={photoPreparing => setTaskEditor(previous => previous ? { ...previous, photoPreparing } : previous)} removed={taskEditor.photoRemoved} disabled={taskEditorSaving} onChange={({ photoData, removed }) => setTaskEditor(previous => ({ ...previous, photoData, photoRemoved: removed }))} /></>}</div>{taskEditorError && <p className="field-error" role="alert">{taskEditorError}</p>}<div className="modal-actions"><button title="Cerrá la edición del servicio; si hay cambios sin guardar, podrás guardarlos o descartarlos." className="secondary" disabled={taskEditorSaving} onClick={() => { if (!taskEditorSaving) requestWeeklyLeave(() => setTaskEditor(null)) }}><Icon name="close" size={16} />Cancelar</button><button title="Validá y guardá los datos de este servicio para compartirlos con los demás usuarios." className="primary" disabled={taskEditorSaving} onClick={saveTaskEditor} aria-disabled={taskEditor.photoPreparing}><Icon name="check" size={16} />{taskEditorSaving ? 'Guardando…' : 'Guardar servicio'}</button></div></section></div>{leaveRequest && <div className="modal-layer" style={{ zIndex: 10000 }}><section className="modal unsaved-service-modal" role="alertdialog" aria-modal="true" aria-label="Servicio sin guardar"><h2>Servicio sin guardar</h2><p>El servicio que estabas cargando tiene cambios sin guardar. Podés guardar y continuar, seguir editando o cancelar la carga de esta edición. Cancelar la carga no elimina un servicio ya guardado.</p><div className="modal-actions"><button title="Volvé al formulario para seguir editando sin descartar los cambios." type="button" className="secondary" onClick={() => setLeaveRequest(null)}><Icon name="edit" size={16} />Seguir editando</button><button type="button" className="danger-button" onClick={discardAndLeave} title="Descartá los cambios sin guardar de esta edición y continuá; no elimina un servicio ya guardado."><Icon name="close" size={16} />Cancelar carga</button><button type="button" className="primary" onClick={saveAndLeave} title="Guardá los cambios del servicio antes de continuar con la acción solicitada."><Icon name="check" size={16} />Guardar y continuar</button></div></section></div>}</>
+    })()}
+    <nav className="weekly-date-navigation" aria-label="Navegar jornadas de la agenda">
+      <button type="button" className="secondary" aria-label="Jornada anterior" title="Retroceder una jornada, omitiendo domingos" onClick={() => { weeklyAnchorFollowsCurrentRef.current = false; setAnchor(value => shiftWeeklyAnchor(value, -1)) }}>← <span>Anterior</span></button>
+      <button type="button" className="secondary" title="Volvé a la jornada actual de la agenda semanal." onClick={() => { weeklyAnchorFollowsCurrentRef.current = true; setAnchor(defaultWeeklyAnchor()) }}>Hoy</button>
+      <button type="button" className="secondary" aria-label="Jornada siguiente" title="Avanzar una jornada, omitiendo domingos" onClick={() => { weeklyAnchorFollowsCurrentRef.current = false; setAnchor(value => shiftWeeklyAnchor(value, 1)) }}><span>Siguiente</span> →</button>
+    </nav>
+    <WeatherCredit />
+    <div className="weekly-board" ref={weeklyBoardRef}>
+      {days.map(day => {
+        const storedPlan = dayPlan(day)
+        const advancedGuard = advancedGuardForDay(day)
+        const holidayState = holidayStateForDay(day)
+        const calendarUnavailable = holidayCalendar.loading || Boolean(holidayCalendar.error)
+        const plan = calendarUnavailable || holidayState.blocked ? { ...storedPlan, teams: [] } : suppressAdvancedSaturdayAvailability(storedPlan, advancedGuard)
+        const hours = hoursForDay(day)
+        const conflicts = conflictsForDay(day)
+        const gapConflicts = gapConflictsForDay(day)
+        const finishedDay = dayHasFinished(day)
+        return <section className={`week-day ${!hours || holidayState.decision?.status === 'closed' ? 'closed-day' : ''} ${finishedDay ? 'finished-day' : ''}`} data-day={day} key={day}>
+          <header className={`weekly-weather-header weather-${day >= today ? weather.days.find(item => item.date === day)?.kind || "none" : "none"}`}><WeatherArt kind={day >= today ? weather.days.find(item => item.date === day)?.kind || "none" : "none"} /><div><b>{displayDate(day)}{day === today && <span className="weekly-today">Hoy</span>}</b><WeeklyWeather day={day} today={today} weather={weather} />{finishedDay && <small>Solo lectura</small>}</div><button type="button" className="weekly-day-preview-trigger" aria-label={`Vista previa de ${prettyDate(day)}`} title="Ver vista previa de la agenda del día" onClick={() => setDayPreview({ day, text: dayAgendaPreview(day, dayPlan(day).teams.map(team => ({ ...team, tasks: team.tasks.map(task => ({ ...task, ...historyRecordForTask(task, day, operationalHistory) })) })), services, operationalHistory) })} /></header>
+          {!hours ? <p className="closed-day-note">Domingo · sin programación</p> : <>
+            {calendarUnavailable ? <div className={`weekly-calendar-state ${holidayCalendar.error ? 'error' : ''}`}>{holidayCalendar.error ? 'No se pudo verificar el calendario de feriados.' : 'Verificando feriados nacionales…'}</div> : holidayState.holiday && <HolidayDecisionPanel compact holiday={holidayState.holiday} decision={holidayState.decision} canDecide={authUser?.roleCode === 'administrator'} onDecision={status => recordHolidayDecision(setWeekly, setNotice, day, holidayState.holiday, status, { weekly, history: operationalHistory, setHistory, holidays: holidayCalendar.records })} />}
+            {!holidayState.blocked && advancedGuard && <p className={`weekly-guard-advanced ${advancedGuard.hasSaturdayConflict ? 'has-conflict' : ''}`}><Icon name={advancedGuard.hasSaturdayConflict ? 'alert' : 'check'} size={16} /><span>{advancedSaturdayGuardMessage(advancedGuard)}</span></p>}
+            {conflicts.length > 0 && <p className="weekly-conflict">Conflicto: {conflicts.map(item => `${item.name} ${item.time}`).join(', ')}</p>}
+            {gapConflicts.length > 0 && <p className="weekly-conflict">{planningConflictMessage(day, plan.teams[gapConflicts[0].teamIndex], gapConflicts[0].teamIndex, gapConflicts[0])}</p>}
+            <fieldset className="week-teams weekly-day-fields" disabled={finishedDay || readOnly}>{plan.teams.map((team, teamIndex) => {
+              if (memberSelection?.day === day && String(memberSelection.teamId) === String(team.teamId)) team = { ...team, memberIds: memberSelection.memberIds, members: memberSelection.members }
+              const pickerKey = `${day}-${teamIndex}`
+              const teamHours = hoursForDay(day, team.teamId)
+              const gaps = withLunchNotice(team.tasks, serviceGaps(team.tasks.map(task => taskWithServiceEstimate({ ...task, ...historyRecordForTask(task, day, operationalHistory), date: day }, serviceForWeeklyTask(task))), { ...teamHours, fullAvailability: true, day, now: planningClock }), teamHours)
+              return <article className="week-team" key={team.teamId || teamIndex}>
+                <div className="week-team-header"><div className="week-team-identity"><strong>{team.label || `Equipo ${teamIndex + 1}`}</strong><span title={team.members?.join(' · ') || 'Sin técnicos'}>{team.members?.length ? team.members.map(weeklyTechnicianName).join(' · ') : 'Sin técnicos'}</span></div>{!readOnly && <div className="weekly-team-actions">{plan.teams.length > 1 && <button className="weekly-remove-team" disabled={Boolean(memberSelection)} title="Solicitá quitar este equipo y su asignación del día; revisá los servicios asociados antes de confirmar." aria-label={`Quitar ${team.label || `Equipo ${teamIndex + 1}`}`} onClick={() => setTeamRemoval({ day, teamIndex, label: team.label || `Equipo ${teamIndex + 1}` })}><Icon name="trash" size={15} /></button>}<div className="weekly-technicians-picker"><button className="secondary small weekly-add-tech-button" title="Elegí los técnicos que integrarán este equipo en la fecha seleccionada." aria-label="Agregar técnicos" onClick={() => { setTechPicker(techPicker === pickerKey ? null : pickerKey); setTechFilter('') }}><Icon name="users" size={16} /><span aria-hidden="true">+</span></button>{techPicker === pickerKey && <div className="tech-popover weekly-tech-popover" aria-busy={Boolean(memberSelection)}><div className="weekly-tech-popover-title"><div><strong>Asignar técnicos</strong><small>{team.label || `Equipo ${teamIndex + 1}`}</small></div><span>{team.members?.length || 0} seleccionados</span></div><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={event => setTechFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(techFilter.toLowerCase())).map(tech => <label key={tech.id} title={tech.name}><input type="checkbox" disabled={Boolean(memberSelection)} checked={(team.memberIds || []).some(id => String(id) === String(tech.id))} onChange={() => toggleWeeklyTech(day, teamIndex, tech.name)} />{tech.firstName || tech.name.split(' ')[0]}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div>{memberSelection && <p role="status" aria-live="polite">Guardando selección…</p>}</div>}</div></div>}</div>
+                {team.tasks.map((task, taskIndex) => <React.Fragment key={task.taskId || taskIndex}>{gaps.filter(gap => gap.beforeIndex === taskIndex).map(gap => gap.kind === 'lunch' ? <LunchCard key="lunch" hours={gap.hours} /> : <div className="weekly-time-gap" key={gap.start}><strong>Disponibilidad horaria desde las {gap.start} hs hasta las {gap.end} hs</strong>{!readOnly && !advancedGuard && <button title="Creá un servicio en esta franja horaria disponible del equipo." type="button" className="secondary" onClick={() => addTask(day, teamIndex, gap.start)}><Icon name="plus" size={16} />Agregar servicio</button>}</div>)}<div className={`week-task week-task-summary ${!task.client ? 'available-slot' : ''}`} data-weekly-search={task.client || ''} data-weekly-search-key={`${day}/${teamIndex}/${taskIndex}`} role="button" tabIndex={0} onClick={() => openTaskEditor(day, teamIndex, taskIndex)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openTaskEditor(day, teamIndex, taskIndex) } }}>
+                  <div className="week-task-title"><span className="week-task-heading"><ServicePreparationButton record={historyRecordForTask(task, day, operationalHistory) || task} disabled={readOnly} persist={persistWeeklyService} onNotice={setNotice} /><span>Servicio {taskIndex + 1}</span><TaskStatusBadge task={task} date={day} history={operationalHistory} statusOnly /></span><small className="week-task-hour">{task.time || '--:--'} Hs</small></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>{serviceLocality(task) && <span className="week-task-locality">{serviceLocality(task)}</span>}{task.awaitingConfirmation === true && <span className="service-confirmation-label">(A CONFIRMAR)</span>}
+                  <TaskStatusBadge task={task} date={day} history={operationalHistory} weekly />
+                  {journeyLabel(historyRecordForTask(task, day, operationalHistory), operationalHistory) && <small className="journey-label">{journeyLabel(historyRecordForTask(task, day, operationalHistory), operationalHistory)}</small>}
+                  {!task.vehicleControl && <ServicePhoto record={historyRecordForTask(task, day, operationalHistory) || task} className="weekly-service-photo" />}
+                  {task.vehicleControl ? <div className="vehicle-control-summary"><span><b>Duración:</b> 15 minutos · {taskOccupiedInterval(task)?.startTime}–{taskOccupiedInterval(task)?.serviceEndTime}</span><span><b>Técnico responsable:</b> {task.technicians?.[0] || 'Sin asignar'}</span><small>Abrí la tarjeta para cambiar excepcionalmente el técnico de este control.</small></div> : <>
+                  <div className="week-task-top"><label><RequiredLabel>Hora</RequiredLabel><input aria-required="true" type="time" min={hours.min} max={hours.max} value={task.time} onChange={event => updateTask(day, teamIndex, taskIndex, { time: event.target.value })} /></label><ServiceTypesField task={task} services={services} onChange={patch => updateTask(day, teamIndex, taskIndex, patch)} /></div>
+                  <ServiceEstimatedDurationField value={serviceEstimateForTask(task, serviceForWeeklyTask(task))} onChange={estimatedMinutes => updateTask(day, teamIndex, taskIndex, { estimatedMinutes, estimatedMinutesCustomized: true })} />
+                  {task.time && <small className="task-occupied-range">Franja estimada: {taskOccupiedTimeLabel(taskWithServiceEstimate(task, serviceForWeeklyTask(task)), teamHours)}</small>}
+                  {(() => { const conflict = conflictForWeeklyTask(day, teamIndex, taskIndex); return conflict && <p className="task-schedule-alert" role="alert"><Icon name="alert" size={15} /><span>{scheduleConflictForTaskMessage(conflict, taskIndex)}</span></p> })()}
+                  <CustomerAutocomplete value={task.client} customerId={task.customerId} customers={customers} subscriberReservation={task.subscriberReservation} onTextCommit={value => commitWeeklyCustomerText(day, teamIndex, taskIndex, value)} onCustomerSelect={customer => selectWeeklyCustomerResult(day, teamIndex, taskIndex, customer)} onAddCustomer={value => beginWeeklyNewCustomer(day, teamIndex, taskIndex, value)} onReserveSubscriber={serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' ? value => beginWeeklySubscriberReservation(day, teamIndex, taskIndex, value) : undefined} />
+                  <label><RequiredLabel>Dirección</RequiredLabel><input aria-required="true" value={task.address} onChange={event => updateTask(day, teamIndex, taskIndex, { address: event.target.value })} /></label>
+                  <label><RequiredLabel>Contacto</RequiredLabel><input aria-required="true" value={task.phone} onChange={event => updateTask(day, teamIndex, taskIndex, { phone: event.target.value })} /></label>
+                  {serviceCode(serviceForWeeklyTask(task)) === 'alarm-installation' && <fieldset className="installation-zone weekly-installation-zone"><legend><RequiredLabel>Ubicación de la instalación</RequiredLabel></legend>{INSTALLATION_ZONES.map(([value, label]) => <label key={value}><input aria-required="true" type="radio" name={`weekly-card-zone-${day}-${teamIndex}-${taskIndex}`} checked={task.installationZone === value} onChange={() => { const nextTask = { ...task, installationZone: value }; updateTask(day, teamIndex, taskIndex, { installationZone: value, ...applicableServiceExtras(nextTask, serviceForWeeklyTask(task)) }) }} />{label}</label>)}</fieldset>}
+                  <label><RequiredLabel>Detalle</RequiredLabel><BufferedTextarea aria-required="true" value={task.detail} onCommit={value => updateTask(day, teamIndex, taskIndex, { detail: value })} /></label>
+                  <ServiceExtraFields className="weekly-extra-fields" task={task} service={serviceForWeeklyTask(task)} buffered onChange={patch => updateTask(day, teamIndex, taskIndex, patch)} />
+                  </>}
+                </div></React.Fragment>)}
+                {gaps.filter(gap => gap.beforeIndex === team.tasks.length).map(gap => gap.kind === 'lunch' ? <LunchCard key="lunch" hours={gap.hours} /> : <div className="weekly-time-gap" key={gap.start}><strong>Disponibilidad horaria desde las {gap.start} hs hasta las {gap.end} hs</strong>{!readOnly && !advancedGuard && <button title="Creá un servicio en esta franja horaria disponible del equipo." type="button" className="secondary" onClick={() => addTask(day, teamIndex, gap.start)}><Icon name="plus" size={16} />Agregar servicio</button>}</div>)}
+              </article>
+            })}</fieldset>
+            {!readOnly && !isSaturday(day) && <button title="Agregá otro equipo a la agenda para asignarle técnicos y servicios." className="weekly-add-team" onClick={() => addTeam(day)}><Icon name="plus" size={16} />Agregar otro equipo</button>}
+          </>}
+        </section>
+      })}
+    </div>
+  </>
+}

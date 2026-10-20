@@ -28,7 +28,7 @@ export default function CustomerCoordinatesField({ form, setForm }) {
     </div>
     {error && <p className="customer-coordinates-error" id={`${id}-error`} role="alert">{error}</p>}
     <div className="customer-coordinates-footer"><small>{manual ? 'Corrección manual' : coordinates ? 'Coordenadas importadas' : 'Sin coordenadas registradas'}</small>
-      {manual && <button type="button" className="secondary" onClick={restore}>Restablecer ubicación importada</button>}
+      {manual && <button title="Descartá la corrección y recuperá la ubicación de la importación." type="button" className="secondary" onClick={restore}>Restablecer ubicación importada</button>}
     </div>
   </section>
 }

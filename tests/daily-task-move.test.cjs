@@ -1,8 +1,9 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const app = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+const app = frontendSource()
 
 test('daily reassignment offers a date and persists through the atomic weekly operation', () => {
   const block = app.slice(app.indexOf('  const moveDayPlan ='), app.indexOf('  const dailyCustomerField ='))

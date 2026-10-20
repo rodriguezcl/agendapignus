@@ -1,7 +1,8 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
-const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+const source = frontendSource()
 const { agendaServiceProgress: progress } = require('./helpers/load-app.cjs')(['agendaServiceProgress'])
 const startedAt = '2026-09-18T14:32:00.000Z'
 

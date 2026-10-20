@@ -1,0 +1,852 @@
+[
+  {
+    "name": "Dashboard",
+    "order": 0,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "Employees",
+    "order": 88,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "Settings",
+    "order": 176,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "Collections",
+    "order": 431,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "SubscriberMap",
+    "order": 502,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "ServiceTypes",
+    "order": 5822,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "HelpCenter",
+    "order": 5915,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "TechnicianHelpCenter",
+    "order": 6022,
+    "file": "src/features/technicians/presentation/TechnicianPortal.jsx"
+  },
+  {
+    "name": "nextLiveScheduleMinute",
+    "order": 12730,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "noticeTone",
+    "order": 13213,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "servicePhotoUrl",
+    "order": 13642,
+    "file": "src/features/attachments/application/service-photo.mjs"
+  },
+  {
+    "name": "ServicePhoto",
+    "order": 13830,
+    "file": "src/features/attachments/presentation/ServicePhoto.jsx"
+  },
+  {
+    "name": "ServicePhotoField",
+    "order": 14466,
+    "file": "src/features/attachments/presentation/ServicePhoto.jsx"
+  },
+  {
+    "name": "ServicePhotoManager",
+    "order": 15496,
+    "file": "src/features/attachments/presentation/ServicePhoto.jsx"
+  },
+  {
+    "name": "TechnicianPortalErrorBoundary",
+    "order": 16748,
+    "file": "src/presentation/components/TechnicianPortalErrorBoundary.jsx"
+  },
+  {
+    "name": "useNationalHolidays",
+    "order": 17919,
+    "file": "src/features/agenda/application/useNationalHolidays.js"
+  },
+  {
+    "name": "HolidayDecisionPanel",
+    "order": 19495,
+    "file": "src/features/agenda/presentation/AgendaFields.jsx"
+  },
+  {
+    "name": "recordHolidayDecision",
+    "order": 22343,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "copyTextToClipboard",
+    "order": 24137,
+    "file": "src/infrastructure/browser/clipboard.mjs"
+  },
+  {
+    "name": "INSTALLATION_ZONES",
+    "order": 24904,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "createTaskId",
+    "order": 25262,
+    "file": "src/infrastructure/browser/identity.mjs"
+  },
+  {
+    "name": "createTeamId",
+    "order": 25386,
+    "file": "src/infrastructure/browser/identity.mjs"
+  },
+  {
+    "name": "createInternalChecklistItem",
+    "order": 25510,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "normalizeInternalChecklist",
+    "order": 25605,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "blankTask",
+    "order": 25831,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "taskTimeInMinutes",
+    "order": 26143,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "sortTasksByTime",
+    "order": 26501,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "sortPlanTasksByTime",
+    "order": 26848,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "isSaturday",
+    "order": 26993,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "isSunday",
+    "order": 27081,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "default2026GuardRotationFor",
+    "order": 27167,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "guardForDateWithDefaults",
+    "order": 27594,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "assignGuardToEmptySaturday",
+    "order": 27998,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "advancedGuardForSaturdayDate",
+    "order": 28756,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "taskHasContent",
+    "order": 29235,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "serviceTimeInMinutes",
+    "order": 29545,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "removeUnavailableDefaultSlots",
+    "order": 29812,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "conflictTaskIndex",
+    "order": 29919,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "conflictTaskName",
+    "order": 30055,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "conflictIntervalDescription",
+    "order": 30339,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "scheduleConflictMessage",
+    "order": 30790,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "scheduleConflictForTaskMessage",
+    "order": 31105,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "planningTeamDescription",
+    "order": 32607,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "planningConflictMessage",
+    "order": 32985,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "DEFAULT_SERVICE_TIME_CHANGE_DATE",
+    "order": 33246,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "fallbackDefaultServiceTimesForDate",
+    "order": 33300,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "validDefaultServiceTimes",
+    "order": 33452,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "monthlyDefaultTimePeriods",
+    "order": 33627,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "defaultServiceTimesForDate",
+    "order": 34238,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "defaultServiceTasksForDate",
+    "order": 34613,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "alignDefaultServiceTimes",
+    "order": 34657,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "normalizedTaskValue",
+    "order": 35954,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "taskOccurrenceIdentity",
+    "order": 36042,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "taskIdentityAliases",
+    "order": 36467,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "historyRecordForTask",
+    "order": 36909,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "taskStatus",
+    "order": 37866,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "taskIsResolvedForPlanning",
+    "order": 38103,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "taskForScheduleOccupancy",
+    "order": 38357,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "statusClassName",
+    "order": 39217,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "agendaServiceProgress",
+    "order": 39315,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "AgendaTechnicalNote",
+    "order": 39934,
+    "file": "src/features/agenda/presentation/AgendaFields.jsx"
+  },
+  {
+    "name": "TaskStatusBadge",
+    "order": 40511,
+    "file": "src/features/agenda/presentation/AgendaFields.jsx"
+  },
+  {
+    "name": "serviceActor",
+    "order": 42755,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "serviceTrace",
+    "order": 42996,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "stampServiceRecord",
+    "order": 43473,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "traceDate",
+    "order": 43708,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "traceLines",
+    "order": 44501,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "appendTraceElement",
+    "order": 44804,
+    "file": "src/presentation/service-trace-dom.mjs"
+  },
+  {
+    "name": "normalizeSaturdayTeams",
+    "order": 45439,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "sortHistoryByDateAndTime",
+    "order": 46577,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "historyAccount",
+    "order": 46803,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "recordBelongsToCustomer",
+    "order": 46955,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "serviceHistoryForCustomer",
+    "order": 47392,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "technicalReporter",
+    "order": 47556,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "teamLabelNumber",
+    "order": 47912,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "mergeTeamTasks",
+    "order": 48001,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "mergeStoredTeamsWithDefaults",
+    "order": 48906,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "removedWeeklySlotMatches",
+    "order": 50478,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "applyRemovedWeeklySlots",
+    "order": 50913,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "weeklyTaskRemovalAliases",
+    "order": 51780,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "applyRemovedWeeklyTasks",
+    "order": 51932,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "removedWeeklyTeamMatches",
+    "order": 52263,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "applyRemovedWeeklyTeams",
+    "order": 52752,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "renumberVisibleWeeklyTeams",
+    "order": 52989,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "dailyPlanWithMonthlyTeams",
+    "order": 53179,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "moveRecordInWeeklyAgenda",
+    "order": 54170,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "blankCustomer",
+    "order": 60888,
+    "file": "src/features/customers/application/customer-model.mjs"
+  },
+  {
+    "name": "readLocalValue",
+    "order": 61315,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "writeLocalValue",
+    "order": 61449,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "OPERATIONAL_STORAGE_KEYS",
+    "order": 61615,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "clearOperationalStorage",
+    "order": 61778,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "normalizeAccountKey",
+    "order": 62205,
+    "file": "src/features/customers/application/customer-model.mjs"
+  },
+  {
+    "name": "createCustomerId",
+    "order": 62303,
+    "file": "src/infrastructure/browser/identity.mjs"
+  },
+  {
+    "name": "customerKind",
+    "order": 62435,
+    "file": "src/features/customers/application/customer-model.mjs"
+  },
+  {
+    "name": "customerKindLabel",
+    "order": 62594,
+    "file": "src/features/customers/application/customer-model.mjs"
+  },
+  {
+    "name": "nextCustomerCode",
+    "order": 62696,
+    "file": "src/features/customers/application/customer-model.mjs"
+  },
+  {
+    "name": "createQuickClient",
+    "order": 63086,
+    "file": "src/features/customers/application/customer-model.mjs"
+  },
+  {
+    "name": "subscriberReservationPatch",
+    "order": 63836,
+    "file": "src/features/agenda/application/customer-linking.mjs"
+  },
+  {
+    "name": "clearSubscriberReservationPatch",
+    "order": 64200,
+    "file": "src/features/agenda/application/customer-linking.mjs"
+  },
+  {
+    "name": "customerLinkPatch",
+    "order": 64506,
+    "file": "src/features/agenda/application/customer-linking.mjs"
+  },
+  {
+    "name": "CustomerAutocomplete",
+    "order": 65254,
+    "file": "src/features/agenda/presentation/AgendaFields.jsx"
+  },
+  {
+    "name": "resolveServiceForTask",
+    "order": 71345,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "serviceEstimateForTask",
+    "order": 71577,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "taskWithServiceEstimate",
+    "order": 71856,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "dayAgendaPreview",
+    "order": 71978,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "LunchCard",
+    "order": 73942,
+    "file": "src/features/agenda/presentation/AgendaFields.jsx"
+  },
+  {
+    "name": "taskOccupiedTimeLabel",
+    "order": 74313,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "taskMoveScheduleState",
+    "order": 74493,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "ServiceEstimatedDurationField",
+    "order": 75282,
+    "file": "src/features/agenda/presentation/AgendaFields.jsx"
+  },
+  {
+    "name": "PAYMENT_SERVICE_NAMES",
+    "order": 76356,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "FORM_OPTIONS",
+    "order": 76609,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "PAYMENT_OPTIONS",
+    "order": 76683,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "technicianVisibleServiceExtras",
+    "order": 76787,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "normalizeCurrencyAmount",
+    "order": 77270,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "formatCurrencyAmount",
+    "order": 77749,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "normalizeFormValue",
+    "order": 78165,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "serviceExtraAvailability",
+    "order": 78419,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "applicableServiceExtras",
+    "order": 78974,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "invalidFormEmail",
+    "order": 80016,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "requiresPaymentAmount",
+    "order": 80198,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "weeklyTaskMissingFields",
+    "order": 80522,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "serviceColorClass",
+    "order": 82589,
+    "file": "src/features/services/application/service-fields.mjs"
+  },
+  {
+    "name": "prettyReportDateTime",
+    "order": 83336,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "showAgendaValidationModal",
+    "order": 83730,
+    "file": "src/features/agenda/presentation/agenda-dialogs.mjs"
+  },
+  {
+    "name": "showMissingTechniciansModal",
+    "order": 85252,
+    "file": "src/features/agenda/presentation/agenda-dialogs.mjs"
+  },
+  {
+    "name": "technicianTimeConflicts",
+    "order": 90472,
+    "file": "src/features/agenda/application/agenda-model.mjs"
+  },
+  {
+    "name": "Login",
+    "order": 91979,
+    "file": "src/features/auth/presentation/Login.jsx"
+  },
+  {
+    "name": "showAdvanceRequestConfirmation",
+    "order": 96120,
+    "file": "src/features/technicians/presentation/TechnicianPortal.jsx"
+  },
+  {
+    "name": "App",
+    "order": 98781,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "Agenda",
+    "order": 193461,
+    "file": "src/features/agenda/presentation/DailyAgenda.jsx"
+  },
+  {
+    "name": "AgendaLayout",
+    "order": 196282,
+    "file": "src/features/agenda/presentation/DailyAgenda.jsx"
+  },
+  {
+    "name": "historicalAgendaTeams",
+    "order": 196816,
+    "file": "src/features/agenda/presentation/DailyAgenda.jsx"
+  },
+  {
+    "name": "HistoricalDailyAgenda",
+    "order": 198143,
+    "file": "src/features/agenda/presentation/DailyAgenda.jsx"
+  },
+  {
+    "name": "HistoricalServiceFields",
+    "order": 199628,
+    "file": "src/features/agenda/presentation/DailyAgenda.jsx"
+  },
+  {
+    "name": "AgendaWorkspace",
+    "order": 201838,
+    "file": "src/features/agenda/presentation/DailyAgenda.jsx"
+  },
+  {
+    "name": "DailyCustomerField",
+    "order": 202499,
+    "file": "src/features/agenda/presentation/DailyAgenda.jsx"
+  },
+  {
+    "name": "BufferedTextarea",
+    "order": 203313,
+    "file": "src/features/agenda/presentation/AgendaFields.jsx"
+  },
+  {
+    "name": "InternalPreparationFields",
+    "order": 204551,
+    "file": "src/features/agenda/presentation/AgendaFields.jsx"
+  },
+  {
+    "name": "ServiceExtraFields",
+    "order": 207742,
+    "file": "src/features/agenda/presentation/AgendaFields.jsx"
+  },
+  {
+    "name": "CurrencyInput",
+    "order": 211801,
+    "file": "src/features/agenda/presentation/AgendaFields.jsx"
+  },
+  {
+    "name": "BufferedInput",
+    "order": 213265,
+    "file": "src/features/agenda/presentation/AgendaFields.jsx"
+  },
+  {
+    "name": "configurationSnapshotLines",
+    "order": 214491,
+    "file": "src/features/agenda/presentation/AgendaFields.jsx"
+  },
+  {
+    "name": "ConfigurationHistoryPanel",
+    "order": 214911,
+    "file": "src/features/agenda/presentation/AgendaFields.jsx"
+  },
+  {
+    "name": "AgendaWorkspaceForm",
+    "order": 215919,
+    "file": "src/features/agenda/presentation/DailyAgenda.jsx"
+  },
+  {
+    "name": "WeeklyPlanner",
+    "order": 288649,
+    "file": "src/features/agenda/presentation/WeeklyPlanner.jsx"
+  },
+  {
+    "name": "NotificationActionDialog",
+    "order": 408890,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "PasswordResetReminder",
+    "order": 410179,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "ServiceAdvanceRequestsReminder",
+    "order": 411331,
+    "file": "src/App.jsx"
+  },
+  {
+    "name": "AuditPage",
+    "order": 415704,
+    "file": "src/features/audit/presentation/AuditPage.jsx"
+  },
+  {
+    "name": "PersonalTechnicalServices",
+    "order": 422855,
+    "file": "src/features/technicians/presentation/TechnicianPortal.jsx"
+  },
+  {
+    "name": "loadPersonalTechnicalState",
+    "order": 423317,
+    "file": "src/features/technicians/presentation/TechnicianPortal.jsx"
+  },
+  {
+    "name": "TechnicianPortal",
+    "order": 423754,
+    "file": "src/features/technicians/presentation/TechnicianPortal.jsx"
+  },
+  {
+    "name": "History",
+    "order": 459682,
+    "file": "src/features/history/presentation/History.jsx"
+  },
+  {
+    "name": "HistoryReadOnly",
+    "order": 460706,
+    "file": "src/features/history/presentation/History.jsx"
+  },
+  {
+    "name": "HistoryBulkView",
+    "order": 464343,
+    "file": "src/features/history/presentation/History.jsx"
+  },
+  {
+    "name": "HistoryManagement",
+    "order": 484131,
+    "file": "src/features/history/presentation/History.jsx"
+  },
+  {
+    "name": "HistoryManagementDetail",
+    "order": 484564,
+    "file": "src/features/history/presentation/HistoryManagementDetail.jsx"
+  },
+  {
+    "name": "HistoryDetail",
+    "order": 514160,
+    "file": "src/features/history/presentation/HistoryDetail.jsx"
+  },
+  {
+    "name": "Accounts",
+    "order": 517577,
+    "file": "src/features/customers/presentation/Accounts.jsx"
+  },
+  {
+    "name": "CustomerForm",
+    "order": 527489,
+    "file": "src/features/customers/presentation/Accounts.jsx"
+  },
+  {
+    "name": "blankVehicle",
+    "order": 530703,
+    "file": "src/features/vehicles/presentation/Vehicles.jsx"
+  },
+  {
+    "name": "readFileAsDataUrl",
+    "order": 530919,
+    "file": "src/features/vehicles/presentation/Vehicles.jsx"
+  },
+  {
+    "name": "insuranceExpired",
+    "order": 531184,
+    "file": "src/features/vehicles/presentation/Vehicles.jsx"
+  },
+  {
+    "name": "Vehicles",
+    "order": 531326,
+    "file": "src/features/vehicles/presentation/Vehicles.jsx"
+  },
+  {
+    "name": "ImportModal",
+    "order": 542635,
+    "file": "src/features/customers/presentation/Accounts.jsx"
+  },
+  {
+    "name": "CustomerServiceHistory",
+    "order": 546036,
+    "file": "src/features/customers/presentation/CustomerServiceHistory.jsx"
+  },
+  {
+    "name": "CustomerDetail",
+    "order": 548711,
+    "file": "src/features/customers/presentation/CustomerDetail.jsx"
+  },
+  {
+    "name": "Preview",
+    "order": 550750,
+    "file": "src/presentation/components/AgendaPreview.jsx"
+  },
+  {
+    "name": "ServiceConfirmationButton",
+    "order": 551725,
+    "file": "src/features/agenda/presentation/AgendaFields.jsx"
+  },
+  {
+    "name": "Confirm",
+    "order": 553744,
+    "file": "src/presentation/components/Confirm.jsx"
+  }
+]

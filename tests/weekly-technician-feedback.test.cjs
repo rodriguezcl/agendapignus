@@ -1,9 +1,10 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
-const source = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+const source = frontendSource()
 function harness(saturday = false) {
   const day = '2026-09-28'
   const team = { teamId: 'team-2', memberIds: ['a'], members: ['A'], tasks: [] }

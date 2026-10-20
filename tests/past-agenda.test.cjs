@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -36,7 +37,7 @@ test('la reparación de reprogramaciones no modifica agendas históricas por cam
 })
 
 test('la agenda semanal bloquea días finalizados, amortigua Detalle y eleva errores de modales', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(source, /const dayHasFinished = day => String\(day \|\| ''\) < today/)
   assert.match(source, /<fieldset className="week-teams weekly-day-fields" disabled=\{finishedDay \|\| readOnly\}>/)
@@ -45,7 +46,7 @@ test('la agenda semanal bloquea días finalizados, amortigua Detalle y eleva err
 })
 
 test('agenda diaria e historial mantienen la misma lógica operativa y visual', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(source, /const pastDayBlocked = String\(date \|\| ''\) < currentLocalDate\(\)/)
   assert.match(source, /if \(pastDayBlocked\) \{[\s\S]*?Consultá o corregí sus servicios desde Historial/)

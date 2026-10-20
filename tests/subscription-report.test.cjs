@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { subscriptionHeaders, subscriptionColumns } = require('../api/_lib/subscription-report.cjs')
@@ -43,7 +44,7 @@ test('Docta y Nobu no aplican abono ni meses congelados sin modificar el histór
 })
 
 test('el formulario limita abono y congelamiento a instalaciones residenciales', () => {
-  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.ok(source.includes('freezeMonthlyFee: residentialAlarm'))
   assert.ok(source.includes("(key === 'amount' || key === 'monthlyFee') && !enabled"))
 })

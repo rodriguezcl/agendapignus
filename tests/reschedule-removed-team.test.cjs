@@ -1,12 +1,13 @@
+const { frontendSource, functionSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
-const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+const source = frontendSource()
 
 test('automatic reschedule repair does not recreate a removed monthly team', () => {
   const helpers = source.slice(source.indexOf('const removedWeeklyTeamMatches ='), source.indexOf('const renumberVisibleWeeklyTeams ='))
-  const move = source.slice(source.indexOf('const moveRecordInWeeklyAgenda ='), source.indexOf('const blankEmployee'))
+  const move = functionSource('moveRecordInWeeklyAgenda')
   let id = 0
   const repair = vm.runInNewContext(`${helpers}\n${move}\nmoveRecordInWeeklyAgenda`, {
     isSaturday: () => false, createTeamId: () => `team-${++id}`,

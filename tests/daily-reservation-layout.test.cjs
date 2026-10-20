@@ -1,9 +1,10 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const app = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+const app = frontendSource()
 const css = fs.readFileSync(path.join(__dirname, '../src/ui-polish.css'), 'utf8')
 
 test('la foto respeta las columnas del formulario y el ancho completo en móvil', () => {

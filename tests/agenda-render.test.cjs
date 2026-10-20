@@ -5,15 +5,12 @@ const path = require('node:path')
 const Module = require('node:module')
 const React = require('react')
 const { renderToString, renderToStaticMarkup } = require('react-dom/server')
-const { buildSync } = require('esbuild')
+const { frontendSource } = require('./helpers/frontend-source.cjs')
+const loadApp = require('./helpers/load-app.cjs')
 
 test('daily and weekly components render through their actual prop forwarding chain', () => {
-  const root = path.resolve(__dirname, '..')
-  const source = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8')
-  const bundle = buildSync({ stdin: { contents: `${source}\nexport { Agenda, WeeklyPlanner, ServiceConfirmationButton, ServiceJourneys, ServiceJourneysContext, JourneyHistory, TechnicianPortal };`, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent' })
-  const compiled = new Module(path.join(root, 'test-render.cjs'), module)
-  compiled.paths = module.paths
-  compiled._compile(bundle.outputFiles[0].text, path.join(root, 'test-render.cjs'))
+  const source = frontendSource()
+  const compiled = { exports: loadApp(['Agenda', 'WeeklyPlanner', 'ServiceConfirmationButton', 'ServiceJourneys', 'ServiceJourneysContext', 'JourneyHistory', 'TechnicianPortal']) }
   const noop = () => {}
   const props = { date: '2026-01-05', teams: [], weekly: {}, customers: [], services: [], activeTechs: [], history: [], vehicles: [], permissions: {}, databaseReady: true, authUser: null,
     setDate: noop, setTeams: noop, setWeekly: noop, setHistory: noop, setCustomers: noop, setNotice: noop, updateTask: noop, openDaily: noop, persistAgendaRecords: async () => {}, persistWeeklyService: async () => {} }
@@ -66,7 +63,7 @@ test('daily and weekly components render through their actual prop forwarding ch
 })
 
 test('la agenda distingue servicios sin persistir y confirma su alta en historial', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const source = frontendSource()
 
   assert.match(source, /record \? \(record\.status \|\| record\.technicalStatus \|\| 'Pendiente'\) : 'Sin guardar'/)
   assert.match(source, /Guardá la agenda para habilitarlo al técnico\./)
@@ -74,7 +71,7 @@ test('la agenda distingue servicios sin persistir y confirma su alta en historia
 })
 
 test('la vista previa permite copiar la agenda con la misma acción del botón exterior', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const source = frontendSource()
 
   assert.match(source, /const copyAgenda = \(\) => \{[\s\S]*?navigator\.clipboard\?\.writeText\(message\)[\s\S]*?return clearAgenda\(\)/)
   assert.match(source, /<button\b[^>]*className="primary" onClick=\{copyAgenda\}><Icon name="copy" \/>Copiar agenda<\/button>/)
@@ -83,7 +80,7 @@ test('la vista previa permite copiar la agenda con la misma acción del botón e
 })
 
 test('la agenda diaria conserva la dotación semanal vigente al recuperar servicios históricos', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const source = frontendSource()
   const loader = source.slice(source.indexOf('const loadAgendaForDate'), source.indexOf('const activeServices', source.indexOf('const loadAgendaForDate')))
 
   assert.match(loader, /const plannedTeamKeys = new Set\(byTeam\.keys\(\)\)/)

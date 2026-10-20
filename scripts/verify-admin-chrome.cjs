@@ -5,9 +5,11 @@ const path = require('node:path')
 const assert = require('node:assert/strict')
 const { buildSync } = require('esbuild')
 const { chromium } = require('playwright')
+const inspectModalGeometry = require('./lib/modal-geometry.cjs')
 
 const root = path.resolve(__dirname, '..')
-const output = path.join(root, 'tmp/visual-qa/admin-chrome')
+const production = process.env.CHROME_PRODUCTION === '1'
+const output = path.join(root, `tmp/visual-qa/admin-chrome${production ? '-production' : ''}`)
 fs.mkdirSync(output, { recursive: true })
 const fixtureSource = fs.readFileSync(path.join(__dirname, 'verify-admin-theme.cjs'), 'utf8')
 const fixtureStart = fixtureSource.indexOf('const themeReviewUser =')
@@ -16,9 +18,7 @@ assert(fixtureStart > 0 && fixtureEnd > fixtureStart, 'Shared visual fixture con
 const fixtureData = fixtureSource.slice(fixtureStart, fixtureEnd)
 const cssImports = [...fs.readFileSync(path.join(root, 'src/main.jsx'), 'utf8').matchAll(/import\s+['"]([^'"]+\.css)['"]/g)].map(match => `import '${match[1]}';`).join('\n')
 const source = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8')
-const fixture = `
-import { createRoot } from 'react-dom/client';
-${cssImports}
+const seedScript = `
 ${fixtureData}
 themeReviewHistory.push(
   {...themeReviewHistory[1],id:'chrome-today',date:'2026-10-13',time:'14:00',scheduledTime:'14:00',client:'CLIENTE PENDIENTE DE HOY'},
@@ -31,17 +31,49 @@ for (const record of themeReviewHistory.filter(record => record.id.startsWith('c
 window.__themeSeed = {revision:1,roles:themeReviewRoles,employees:themeReviewEmployees,services:themeReviewServices,customers:themeReviewCustomers,vehicles:themeReviewVehicles,history:themeReviewHistory,agenda:{date:'2026-10-13',teams:themeReviewTeams,weekly:themeReviewWeekly}};
 window.__themeUser = themeReviewUser;
 if (!localStorage.getItem('pignus-theme-account:admin-review')) localStorage.setItem('pignus-theme-account:admin-review','light');
+`
+const fixture = `
+import { createRoot } from 'react-dom/client';
+${cssImports}
+${seedScript}
 createRoot(document.getElementById('root')).render(<App/>);
 `
 // Keep the same CSS ordering as main.jsx, including the first legacy import.
-const built = buildSync({ stdin: { contents: "import './style.css';\n" + source + '\n' + fixture, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, outdir: 'out', format: 'iife', external: ['/logo-pignus.png'], define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'false' }, loader: { '.css': 'css', '.png': 'dataurl' }, logLevel: 'silent' })
+const built = buildSync({ stdin: { contents: "import './style.css';\n" + source + '\n' + fixture, loader: 'jsx', resolveDir: path.join(root, 'src') }, jsx: 'automatic', bundle: true, write: false, outdir: 'out', format: 'iife', external: ['/logo-pignus.png', '/pignus-owl-white.svg'], define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'false' }, loader: { '.css': 'css', '.png': 'dataurl' }, logLevel: 'silent' })
 const css = built.outputFiles.find(file => file.path.endsWith('.css')).text
 const js = built.outputFiles.find(file => file.path.endsWith('.js')).text
 const auditRecord = { id: 'chrome-audit', at: '2026-10-13T12:00:00Z', action: 'Modificó servicio', entity: 'Servicio', entityId: 'chrome-today', user: { name: 'Administración Pignus', email: 'administracion@example.test' }, before: { time: '08:30' }, after: { time: '14:00' } }
-const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/review.css"></head><body><div id="root"></div><script src="/review.js"></script></body></html>'
+const html = production
+  ? fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8').replace('</head>', `<script>${seedScript}</script></head>`)
+  : '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/review.css"></head><body><div id="root"></div><script src="/review.js"></script></body></html>'
 const widths = (process.env.CHROME_WIDTHS || '1440,768,390').split(',').map(Number)
 const checkNotifications = process.env.CHROME_NOTIFICATIONS !== '0'
 const results = []
+
+async function measureMenuSnapshotWork(page) {
+  await page.evaluate(() => {
+    const original = JSON.stringify
+    window.__snapshotMeasurement = { calls: 0, characters: 0, restore: () => { JSON.stringify = original } }
+    JSON.stringify = function (value, ...options) {
+      const result = original.call(this, value, ...options)
+      if (value?.agenda && Array.isArray(value.history) && Array.isArray(value.customers) && Array.isArray(value.employees)) {
+        window.__snapshotMeasurement.calls++
+        window.__snapshotMeasurement.characters += result.length
+      }
+      return result
+    }
+  })
+  try {
+    // An even number preserves the original expanded/collapsed state.
+    for (let i = 0; i < 10; i++) await page.locator('.sidebar-toggle').click()
+    return await page.evaluate(() => {
+      const { calls, characters } = window.__snapshotMeasurement
+      return { interactions: 10, fullStateSerializations: calls, serializedCharacters: characters }
+    })
+  } finally {
+    await page.evaluate(() => { window.__snapshotMeasurement.restore(); delete window.__snapshotMeasurement })
+  }
+}
 
 async function ready(page) {
   await page.locator('.app-shell .sidebar-toggle').waitFor()
@@ -101,10 +133,79 @@ async function notifications(page, width, theme) {
   assert.equal(await panel.count(), 0)
   await page.getByText('CLIENTE PENDIENTE DE HOY', { exact: false }).first().waitFor()
   await toggle.click()
-  await panel.getByRole('button', { name: /Ver menú principal/ }).click()
-  await page.waitForFunction(() => document.querySelector('.sidebar nav [aria-current="page"]')?.getAttribute('aria-label') === 'Menú principal')
+  await page.keyboard.press('Escape')
+  await navigate(page, 'Menú principal', width)
   assert.equal(await panel.count(), 0)
   assert.equal(await page.locator('.notification-badge').textContent(), '2')
+}
+
+async function inspectTechnicalReportDisclosure(page) {
+  const reports = page.locator('.weekly-board .agenda-report-disclosure')
+  const first = reports.first()
+  await first.waitFor()
+  for (const report of await reports.all()) {
+    assert.equal(await report.locator('summary .report-show:visible').count(), 1, 'A closed technical report must show one opening label')
+    assert.equal(await report.locator('summary .report-hide:visible').count(), 0, 'A closed technical report must hide its closing label')
+  }
+  await first.locator('summary').click()
+  assert.equal(await first.evaluate(node => node.open), true)
+  assert.equal(await first.locator('summary .report-show:visible').count(), 0, 'An open technical report must hide its opening label')
+  assert.equal(await first.locator('summary .report-hide:visible').count(), 1, 'An open technical report must show one closing label')
+  await first.locator('summary').click()
+  assert.equal(await first.evaluate(node => node.open), false)
+  assert.equal(await first.locator('summary .report-show:visible').count(), 1)
+  assert.equal(await first.locator('summary .report-hide:visible').count(), 0)
+}
+
+async function inspectDeferredScreens(page, width) {
+  const screens = [
+    ['Agenda semanal', '.weekly-board'],
+    ['Historial', '.history-row'],
+    ['Abonados y clientes', '.account-row'],
+    ['Empleados', '.employee-row'],
+    ['Tipo de servicio', '.service-row'],
+    ['Vehículos', '.vehicle-row'],
+    ['Configuración', '.roles-card']
+  ]
+  const controls = async label => {
+    const surfaces = await page.locator('.content input:not([type="checkbox"]):not([type="radio"]), .content select, .content textarea, .modal input:not([type="checkbox"]):not([type="radio"]), .modal select').evaluateAll(nodes =>
+      nodes.filter(node => node.getClientRects().length).map(node => ({ name: node.className || node.tagName, color: getComputedStyle(node).backgroundColor })))
+    for (const surface of surfaces) {
+      const rgba = surface.color.match(/[\d.]+/g)?.map(Number) || []
+      if (rgba.length === 4 && rgba[3] === 0) continue
+      const rgb = rgba.slice(0, 3)
+      assert(Math.max(...rgb) < 95 && Math.max(...rgb) - Math.min(...rgb) < 12, `${label}: late CSS changed a dark form surface: ${surface.name} ${surface.color}`)
+    }
+  }
+  for (let index = 0; index < screens.length; index++) {
+    const [label, selector] = screens[index]
+    await navigate(page, label, width)
+    await page.locator(selector).first().waitFor()
+    // Weekly is deliberately first: its shared styles must work on a cold load
+    // without visiting the daily agenda or history first.
+    if (label === 'Agenda semanal') await inspectTechnicalReportDisclosure(page)
+    await controls(label)
+    await capture(page, `module-${index}-dark-${width}`, 'dark')
+    if (label === 'Agenda semanal') {
+      await page.getByRole('button', { name: 'Equipos del mes', exact: true }).click()
+      const dialog = page.locator('.monthly-teams-modal').first()
+      await dialog.waitFor()
+      await controls('Equipos del mes')
+      await capture(page, `monthly-dialog-dark-${width}`, 'dark')
+      await dialog.locator('.modal-close').click()
+      await dialog.waitFor({ state: 'hidden' })
+      await page.locator('.week-day').nth(1).getByRole('button', { name: 'Agregar servicio', exact: true }).first().click()
+      const serviceDialog = page.locator('.weekly-task-modal').first()
+      await serviceDialog.waitFor()
+      await controls('Nuevo servicio')
+      await inspectModalGeometry(page, 'Nuevo servicio')
+      await capture(page, `service-dialog-dark-${width}`, 'dark')
+      await serviceDialog.locator('.close-modal,.modal-close').first().click()
+      await serviceDialog.waitFor({ state: 'hidden' })
+    }
+  }
+  await navigate(page, 'Menú principal', width)
+  await ready(page)
 }
 
 ;(async () => {
@@ -121,6 +222,13 @@ async function notifications(page, width, theme) {
         const request = route.request(), url = new URL(request.url())
         if (url.hostname !== 'admin-chrome.test') return route.abort()
         if (url.pathname === '/review') return route.fulfill({ contentType: 'text/html', body: html })
+        if (production && (url.pathname.startsWith('/assets/') || url.pathname === '/version.json')) {
+          const file = path.resolve(root, 'dist', '.' + url.pathname)
+          const directory = path.resolve(root, 'dist') + path.sep
+          if (!file.startsWith(directory) || !fs.existsSync(file)) return route.abort()
+          const type = file.endsWith('.css') ? 'text/css' : file.endsWith('.js') ? 'application/javascript' : 'application/json'
+          return route.fulfill({ contentType: type, body: fs.readFileSync(file) })
+        }
         if (url.pathname === '/review.css') return route.fulfill({ contentType: 'text/css', body: css })
         if (url.pathname === '/review.js') return route.fulfill({ contentType: 'application/javascript', body: js })
         if (url.pathname === '/logo-pignus.png') return route.fulfill({ contentType: 'image/png', body: fs.readFileSync(path.join(root, 'public/logo-pignus.png')) })
@@ -140,6 +248,7 @@ async function notifications(page, width, theme) {
       })
       await page.goto('http://admin-chrome.test/review')
       await ready(page)
+      const snapshotWork = width > 640 ? await measureMenuSnapshotWork(page) : null
       await capture(page, `expanded-light-${width}`, 'light')
       if (width > 640) {
         const expanded = await page.locator('.sidebar').boundingBox()
@@ -175,6 +284,7 @@ async function notifications(page, width, theme) {
       await page.reload()
       await ready(page)
       assert.equal(await page.locator('.app-shell').getAttribute('data-theme'), 'dark', 'Theme must persist across reload')
+      if (production) await inspectDeferredScreens(page, width)
       const fullscreen = page.getByRole('button', { name: 'Entrar en pantalla completa', exact: true })
       await fullscreen.click()
       await page.getByRole('button', { name: 'Salir de pantalla completa', exact: true }).waitFor()
@@ -188,7 +298,7 @@ async function notifications(page, width, theme) {
       assert.deepEqual(writes, [], 'Navigation and chrome must not write business data')
       assert.deepEqual(errors, [], 'No uncaught browser errors')
       console.log(`Real App chrome passed at ${width}px: sidebar, navigation, persistence, theme, fullscreen${checkNotifications ? ', notifications' : ''}.`)
-      results.push({ width, notifications: checkNotifications, errors, writes })
+      results.push({ width, notifications: checkNotifications, snapshotWork, errors, writes })
       await page.unrouteAll({ behavior: 'ignoreErrors' })
       await context.close()
     }

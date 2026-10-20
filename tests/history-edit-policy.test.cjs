@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -5,7 +6,7 @@ const vm = require('node:vm')
 const { synchronizeAgendaHistoryRecord } = require('../api/_lib/history-record-operation.cjs')
 
 test('registered customer contact comes from its profile and synchronizes both agendas', () => {
-  const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const line = source.split(/\r?\n/).find(line => line.includes('const patch = { ...draft,'))
   const record = { id: 'h', status: 'Requiere revisión', customerId: 'old', technicianIds: ['t'] }
   const draft = { customerId: 'new', address: 'Manual', phone: '456', estimatedMinutes: 120 }

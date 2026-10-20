@@ -4,8 +4,9 @@
 
 La aplicación sigue una Clean Architecture pragmática: las reglas operativas no
 dependen de React, del navegador ni del transporte HTTP. Las dependencias apuntan
-hacia el dominio y `App.jsx` funciona como raíz de composición durante la migración
-incremental de las pantallas históricas.
+hacia el dominio y `App.jsx` funciona como raíz de composición: sesión, estado
+compartido, coordinación de guardados y navegación. Las pantallas se cargan por
+módulo con `React.lazy` y límites de `Suspense` que conservan la navegación.
 
 ## Estructura
 
@@ -23,7 +24,17 @@ src/
 │   ├── technicians/                # Consultas del portal técnico
 │   └── vehicles/                   # Controles y asignaciones vehiculares
 ├── features/                       # Módulos verticales orientados a casos de uso
-│   └── services/presentation/      # Pantalla del catálogo de servicios
+│   ├── agenda/                    # Planificación diaria/semanal y modelos de agenda
+│   ├── auth/                      # Ingreso y ciclo de sesión
+│   ├── customers/                 # Cuentas, ficha e historial del cliente
+│   ├── dashboard/                 # Indicadores y reportes
+│   ├── employees/                 # Empleados y formulario de edición
+│   ├── history/                   # Consulta, gestión y detalle del historial
+│   ├── services/                  # Catálogo y campos de servicios
+│   ├── settings/                  # Configuración
+│   ├── state/application/         # Comandos, borradores y concurrencia
+│   ├── technicians/               # Portal técnico
+│   └── vehicles/                  # Vehículos
 ├── infrastructure/                 # Adaptadores externos
 │   ├── browser/                    # Descargas del navegador
 │   ├── http/                       # Transporte, timeouts y envíos técnicos
@@ -32,7 +43,7 @@ src/
 ├── presentation/                   # Componentes visuales compartidos
 │   └── components/forms/
 ├── components/ui/                  # Primitivas visuales existentes
-├── App.jsx                         # Raíz de composición y pantallas por migrar
+├── App.jsx                         # Composición, sesión y estado compartido
 └── *.mjs                           # Puertos temporales de compatibilidad
 ```
 
@@ -60,6 +71,10 @@ domain ──X──> React, DOM, fetch, infrastructure
 - `presentation` contiene componentes reutilizables sin decisiones de negocio.
 - `infrastructure` encapsula HTTP, navegador, archivos y servicios externos.
 - Los repositorios traducen respuestas HTTP a datos o errores con `status`.
+- Las pantallas no importan `App.jsx`. Los helpers compartidos se importan desde
+  módulos independientes de dominio, aplicación o presentación.
+- Los estilos específicos se importan desde su pantalla para acompañar la carga
+  diferida. Las capas globales de compatibilidad conservan su orden de cascada.
 - Los archivos raíz que reexportan módulos son compatibilidad temporal; no deben
   recibir lógica nueva.
 
@@ -70,8 +85,10 @@ domain ──X──> React, DOM, fetch, infrastructure
 3. `serviceCatalogRepository` envía una operación HTTP de un solo registro.
 4. `service-catalog-operation.cjs` controla concurrencia sobre ese registro y
    decide si una baja referenciada debe convertirse en desactivación.
-5. El servidor normaliza las referencias relacionadas dentro de una transacción,
-   incrementa la revisión y devuelve solamente el catálogo actualizado.
+5. El servidor prepara y valida las referencias relacionadas antes de tomar el
+   bloqueo de revisión. Después revalida la base y confirma los cambios dentro
+   de una transacción; si la revisión cambió, libera la transacción y prepara
+   nuevamente. Un conflicto sobre el mismo registro sigue devolviendo `409`.
 6. Durante la transición, la interfaz recarga el estado remoto para reflejar las
    referencias normalizadas; esa lectura global se dividirá en una etapa posterior.
 
@@ -92,9 +109,34 @@ La migración es incremental para conservar el comportamiento productivo:
 Todo módulo nuevo debe ingresar directamente en esta estructura; no debe agregar
 reglas de negocio ni llamadas HTTP a `App.jsx`.
 
+## Persistencia y reglas compartidas
+
+- PostgreSQL guarda diferencias por registro en los catálogos y el historial.
+  `customerId` conserva la identidad cuando cambia la cuenta; los intercambios
+  de cuentas o correos se resuelven dentro de la misma transacción.
+- SQLite actualiza filas con UPSERT y conserva su `rowid`; los registros que no
+  cambiaron no se reescriben.
+- `api/_lib/access-policy.cjs`, `service-completion.cjs`,
+  `employee-credentials.cjs` y `report-formatting.cjs` comparten políticas puras
+  entre el servidor local y Vercel. El transporte y las consultas siguen en sus
+  respectivos adaptadores.
+- `prepared-catalog-write.cjs` coordina preparación, revalidación y confirmación
+  de servicios y vehículos. La caché sólo recuerda estados ya confirmados.
+- `export-state.cjs` consulta el catálogo y el historial completado del período,
+  respetando el selector de almacenamiento y la restricción por técnico.
+- La compatibilidad entre el modelo legado y el normalizado sigue activa. No se
+  elimina un modelo ni una regla por su antigüedad: el retiro requiere verificar
+  consumidores, datos existentes y reversión.
+
 ## Verificación
 
 - `npm test`: reglas de negocio, API, seguridad y fronteras arquitectónicas.
 - `npm run build`: integración real de imports, JSX y empaquetado de producción.
+- `npm run analyze:build`: tamaño de la carga inicial, incluyendo sus dependencias
+  compartidas y CSS, a partir del manifiesto generado por Vite.
 - `tests/clean-architecture.test.cjs`: impide que el dominio dependa de React o
   infraestructura y prueba el caso de uso extraído del catálogo.
+- `tests/refactor-boundaries.test.cjs`: impide nuevas implementaciones inaccesibles
+  después de un retorno y dependencias desde las pantallas hacia `App.jsx`.
+- El Quality Gate UX inspecciona el grafo alcanzable desde `main.jsx`, incluidas
+  las pantallas diferidas; no depende de que su código permanezca en `App.jsx`.

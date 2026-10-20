@@ -20,8 +20,8 @@ test('el alta de empleado no transporta agenda ni pierde cambios de otras sesion
 test('alta y edición usan el modal y el éxito ocurre después de la respuesta del servidor', () => {
   const React = require('react'), { renderToString } = require('react-dom/server')
   const root = path.resolve(__dirname, '..')
-  const source = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8')
-  const bundle = require('esbuild').buildSync({ stdin: { contents: `${source}\nexport { EmployeeForm };`, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent' })
+  const source = fs.readFileSync(path.join(root, 'src/features/employees/presentation/Employees.jsx'), 'utf8')
+  const bundle = require('esbuild').buildSync({ stdin: { contents: `${source}\nexport { EmployeeForm };`, loader: 'jsx', resolveDir: path.join(root, 'src/features/employees/presentation') }, bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent' })
   const compiled = new Module(path.join(root, 'employee-render.cjs'), module)
   compiled.paths = module.paths
   compiled._compile(bundle.outputFiles[0].text, path.join(root, 'employee-render.cjs'))

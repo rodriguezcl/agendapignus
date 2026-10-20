@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState } from 'react'
+import React, { useContext, useState } from 'react'
 
-export const FrozenMonthsContext = createContext([4, 6])
+import { FrozenMonthsContext } from '../presentation/contexts/agenda-contexts.js'
+export { FrozenMonthsContext } from '../presentation/contexts/agenda-contexts.js'
 export function FrozenMonthsFields({ task, onChange }) {
   const options = useContext(FrozenMonthsContext)
   const value = Number(task.frozenMonths || 0)

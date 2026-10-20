@@ -1,9 +1,10 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 test('ficha de cliente limita su altura y permite desplazamiento interno en escritorio y móvil', () => {
-  const source = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const component = source.split('function CustomerDetail(')[1].split('function Preview(')[0]
   assert.match(component, /customer-detail-layer/)
   assert.match(component, /customer-detail-modal/)

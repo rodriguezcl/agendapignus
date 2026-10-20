@@ -1,8 +1,9 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
-const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+const source = frontendSource()
 const start = source.indexOf('      const records = agendaTeams.flatMap')
 const code = source.slice(start, source.indexOf('      if (!records.length)', start))
 

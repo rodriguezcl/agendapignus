@@ -1,8 +1,9 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
-const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+const source = frontendSource()
 const start = source.indexOf('  const requestWeeklyLeave =')
 const body = source.slice(start, source.indexOf('  useEffect(', start))
 test('discard closes the local draft and continues without saving or deleting records', () => {

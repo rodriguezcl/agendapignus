@@ -9,14 +9,14 @@ const { buildSync } = require('esbuild')
 
 test('supervisor abre detalle con mapa sin perder lectura restringida; admite clientes ausentes', () => {
   const root = path.resolve(__dirname, '..')
-  let source = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8')
+  let source = fs.readFileSync(path.join(root, 'src/features/history/presentation/History.jsx'), 'utf8')
   const start = source.indexOf('function HistoryReadOnly(')
-  const end = source.indexOf('\nfunction ', start + 1)
+  const end = source.indexOf('\nexport function ', start + 1)
   const component = source.slice(start, end)
   // Seed the state that clicking Ver detalle sets, keeping the real prop chain.
   assert.ok(component.includes("const [detail, setDetail] = useState(null)"))
   source = source.slice(0, start) + component.replace('const [detail, setDetail] = useState(null)', 'const [detail, setDetail] = useState(history[0] || null)') + source.slice(end)
-  const bundle = buildSync({ stdin: { contents: source + '\nexport { History };', loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent' })
+  const bundle = buildSync({ stdin: { contents: source, loader: 'jsx', resolveDir: path.join(root, 'src/features/history/presentation') }, bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent' })
   const compiled = new Module(path.join(root, 'test-supervisor-render.cjs'), module)
   compiled.paths = module.paths
   compiled._compile(bundle.outputFiles[0].text, compiled.filename || path.join(root, 'test-supervisor-render.cjs'))

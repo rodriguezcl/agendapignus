@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -5,7 +6,7 @@ const path = require('node:path')
 const root = path.join(__dirname, '..')
 
 test('equipos mensuales usa desplegable múltiple, no listado Ctrl, y conserva actualización existente', () => {
-  const source = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const modal = source.split('{monthlySetup &&')[1].split('Guardar equipos del mes')[0]
   assert.match(modal, /<TeamTechniciansField/)
   assert.match(modal, /technicians=\{monthlyEligibleTechnicians\(activeTechs\)\}/)

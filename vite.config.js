@@ -28,6 +28,7 @@ const developmentSecurityHeaders = {
 
 export default defineConfig({
   plugins: [react(), versionManifest],
+  build: { manifest: true },
   define: { __APP_BUILD_ID__: JSON.stringify(buildId) },
   server: { host: '127.0.0.1', headers: developmentSecurityHeaders, proxy: { '/api': 'http://127.0.0.1:3001' } },
   preview: { host: '127.0.0.1', headers: securityHeaders, proxy: { '/api': 'http://127.0.0.1:3001' } },

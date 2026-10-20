@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -17,7 +18,7 @@ test('lee las credenciales después de que Face ID termina de completar el formu
 })
 
 test('el login es compatible con autocompletado nativo y evita solicitudes duplicadas', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const login = source.slice(source.indexOf('function Login('), source.indexOf('export default function App()'))
   assert.match(login, /submissionInProgressRef\.current/)
   assert.match(login, /readSettledLoginCredentials\(form\)/)

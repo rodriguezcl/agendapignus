@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { applyStateOperations } = require('../api/_lib/state-operations.cjs')
@@ -66,7 +67,7 @@ test('missing source or ambiguous replacement cannot silently move a control', a
 })
 
 test('vehicle moves use captured server snapshots without mixing pending edits', () => {
-  const source = require('node:fs').readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /lastServerSnapshotRef\.current = structuredClone\(data\)/)
   assert.match(source, /const moveSnapshot = isolatedMove \? lastServerSnapshotRef\.current : null/)
   assert.match(source, /if \(serialized !== lastPersistedSnapshotRef.current\) throw new Error\('Guardá los cambios pendientes/)

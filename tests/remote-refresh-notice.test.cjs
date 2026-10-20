@@ -1,10 +1,11 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 
-const source = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+const source = frontendSource()
 const end = source.indexOf('const refreshWhenVisible =')
 const start = source.lastIndexOf('const refreshRemoteState = async () => {', end)
 assert.ok(start >= 0 && end > start)

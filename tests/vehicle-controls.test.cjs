@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
@@ -210,7 +211,7 @@ test('el servidor no permite omitir un control cancelándolo o reprogramándolo'
 test('el portal técnico deshabilita el control anticipado y muestra cuándo se habilita', () => {
   const fs = require('node:fs')
   const path = require('node:path')
-  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const source = frontendSource()
   const styles = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui-polish.css'), 'utf8')
   assert.match(source, /const earlyVehicleControl = record\.vehicleControl && !vehicleControlIsOpen\(record, clock\)/)
   assert.match(source, /disabled=\{earlyVehicleControl \|\| !canComplete \|\| Boolean\(attachmentsPreparing\[record.id\]\)\}/)
@@ -221,7 +222,7 @@ test('el portal técnico deshabilita el control anticipado y muestra cuándo se 
 test('el control vehicular es autónomo y no muestra dirección, contacto ni avisos de desbloqueo', () => {
   const fs = require('node:fs')
   const path = require('node:path')
-  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /const unlocked = record\.vehicleControl \|\| view === 'history'/)
   assert.match(source, /\{record\.vehicleControl \? null : unlocked \? <>/)
   assert.match(source, /\{unlocked && !done && <>/)
@@ -241,7 +242,7 @@ test('el control vehicular es autónomo y no muestra dirección, contacto ni avi
 test('el administrador puede omitir un control semanal sin que se regenere ni llegue al técnico', () => {
   const fs = require('node:fs')
   const path = require('node:path')
-  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const source = frontendSource()
 
   assert.match(source, /selectedTask\?\.vehicleControl && !isAdministrator/)
   assert.match(source, /\(!persistedTask\.vehicleControl \|\| isAdministrator\) && <button\b[^>]*className="secondary weekly-service-delete"/)
@@ -260,8 +261,8 @@ test('la captura vehicular usa cámara en vivo sin galería', () => {
 test('el portal técnico evita selectores incompatibles y muestra una recuperación ante errores', () => {
   const fs = require('node:fs')
   const path = require('node:path')
-  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
-  const portal = source.slice(source.indexOf('function TechnicianPortal('), source.indexOf('function DashboardStatusView('))
+  const source = frontendSource()
+  const portal = source.slice(source.indexOf('function TechnicianPortal('), source.indexOf('function History('))
   assert.doesNotMatch(portal, /:scope/)
   assert.match(source, /class TechnicianPortalErrorBoundary extends React\.Component/)
   assert.match(source, /No pudimos mostrar tus servicios/)

@@ -57,10 +57,10 @@ export default function Collections({ history, canManage, onSave, openRequest, o
         <td data-label="Monto"><strong>{collectionMoney(record.amount)}</strong></td>
         <td data-label="Forma de pago">{record.paymentMethod}</td>
         <td data-label="Estado del pago"><span className={`collection-status ${collectionConfirmed(record) ? 'confirmed' : ''}`}>{collectionConfirmed(record) ? 'Confirmado' : 'Pendiente de pago'}</span>{record.collection?.confirmedAt && <small>{timestamp(record.collection.confirmedAt)}</small>}</td>
-        <td data-label="Acciones"><button type="button" className="secondary" aria-label={`${canManage ? 'Gestionar' : 'Ver'} cobranza de ${record.client}`} onClick={() => setSelection(record)}><Icon name={canManage ? 'edit' : 'eye'} />{canManage ? 'Gestionar' : 'Ver detalle'}</button></td>
+        <td data-label="Acciones"><button title="Abrí el detalle del pago y las acciones de cobranza disponibles." type="button" className="secondary" aria-label={`${canManage ? 'Gestionar' : 'Ver'} cobranza de ${record.client}`} onClick={() => setSelection(record)}><Icon name={canManage ? 'edit' : 'eye'} />{canManage ? 'Gestionar' : 'Ver detalle'}</button></td>
       </tr>)}</tbody>
     </table>{!filtered.length && <p className="empty-state">No hay cobranzas que coincidan con estos filtros.</p>}</div>
-    {pages > 1 && <nav className="collections-pagination" aria-label="Paginación de cobranzas"><button className="secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Anterior</button><span>{currentPage} de {pages}</span><button className="secondary" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Siguiente</button></nav>}
+    {pages > 1 && <nav className="collections-pagination" aria-label="Paginación de cobranzas"><button title="Consultá la página anterior de cobranzas." className="secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Anterior</button><span>{currentPage} de {pages}</span><button title="Consultá la siguiente página de cobranzas." className="secondary" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Siguiente</button></nav>}
     {selection && <CollectionEditor key={selection.id} record={selection} serviceDate={schedule(selection).date} canManage={canManage} onSave={onSave} close={() => setSelection(null)} onSaved={message => { setSelection(null); setNotice(message) }} />}
   </div>
 }
@@ -105,7 +105,7 @@ function CollectionEditor({ record, serviceDate, canManage, onSave, close, onSav
       <label>Observación (opcional)<textarea maxLength={1000} rows={2} value={note} onChange={event => setNote(event.target.value)} placeholder="Por ejemplo: transfirió en lugar de pagar en efectivo" /></label>
       <p className="collections-help">{collectionConfirmed(record) ? 'La rectificación conserva el pago confirmado y registra los valores anteriores.' : 'Guardar una corrección mantiene el pago pendiente. Confirmá sólo después de verificar que se recibió el dinero.'}</p>
       {error && <p className="collection-error" role="alert">{error}</p>}
-      <div className="collection-actions"><button className="secondary" type="submit" value="correct" disabled={!changed || busy}>Guardar corrección</button>{!collectionConfirmed(record) && <button className="primary" type="submit" value="confirm" disabled={busy || !COLLECTION_PAYMENT_METHODS.includes(method)}><Icon name="check" />{busy ? 'Guardando…' : 'Confirmar pago'}</button>}</div>
+      <div className="collection-actions"><button title="Guardá la corrección del importe, medio de pago y observaciones." className="secondary" type="submit" value="correct" disabled={!changed || busy}>Guardar corrección</button>{!collectionConfirmed(record) && <button title="Confirmá el pago recibido y registrá la cobranza." className="primary" type="submit" value="confirm" disabled={busy || !COLLECTION_PAYMENT_METHODS.includes(method)}><Icon name="check" />{busy ? 'Guardando…' : 'Confirmar pago'}</button>}</div>
     </fieldset></form> : <p>{terms(record)}</p>}
     <section className="collection-trace" aria-label="Historial de la cobranza"><h3>Historial de la cobranza</h3>
       <p>Datos iniciales: {terms(record.collection?.original || record)}</p>

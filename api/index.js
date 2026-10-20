@@ -200,13 +200,15 @@ async function requireSession(req, res, sql = database()) {
 }
 
 async function ensureServicePhotoSchema(sql) {
-  await sql`create table if not exists pignus_service_photos (
-    record_id text primary key references pignus_work_history(id) on delete cascade,
-    mime_type text not null, photo_data bytea not null, created_at timestamptz not null default now(),
-    uploaded_by_id text, uploaded_by_name text
-  )`
-  await sql`alter table pignus_service_photos enable row level security`
-  await sql`revoke all on table pignus_service_photos from anon, authenticated`
+  return require('./_lib/schema-readiness.cjs').ensureCommittedSchema(sql, 'service-photos', async transaction => {
+    await transaction`create table if not exists pignus_service_photos (
+      record_id text primary key references pignus_work_history(id) on delete cascade,
+      mime_type text not null, photo_data bytea not null, created_at timestamptz not null default now(),
+      uploaded_by_id text, uploaded_by_name text
+    )`
+    await transaction`alter table pignus_service_photos enable row level security`
+    await transaction`revoke all on table pignus_service_photos from anon, authenticated`
+  })
 }
 
 async function handleServicePhoto(req, res, sql, user, recordId) {
@@ -244,9 +246,11 @@ async function handleServicePhoto(req, res, sql, user, recordId) {
 const sessionIdleTimeoutFor = user => user?.roleCode === 'technician' ? TECHNICIAN_SESSION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS
 
 async function ensureVehicleInsuranceSchema(sql) {
-  await sql`create table if not exists pignus_vehicle_insurance_documents (vehicle_id text primary key, file_name text not null, pdf_data bytea not null, uploaded_at timestamptz not null default now())`
-  await sql`alter table pignus_vehicle_insurance_documents enable row level security`
-  await sql`revoke all on table pignus_vehicle_insurance_documents from anon, authenticated`
+  return require('./_lib/schema-readiness.cjs').ensureCommittedSchema(sql, 'vehicle-insurance', async transaction => {
+    await transaction`create table if not exists pignus_vehicle_insurance_documents (vehicle_id text primary key, file_name text not null, pdf_data bytea not null, uploaded_at timestamptz not null default now())`
+    await transaction`alter table pignus_vehicle_insurance_documents enable row level security`
+    await transaction`revoke all on table pignus_vehicle_insurance_documents from anon, authenticated`
+  })
 }
 
 async function handleVehicleInsurance(req, res, sql, user, vehicleId) {
@@ -556,26 +560,21 @@ async function handleServiceCatalog(req, res, sql, user, requestOperation) {
   if (!userCan(user, 'services')) return send(res, 403, { error: 'No tenés permiso para administrar tipos de servicio.' })
   const incoming = requestBody(req)
   try {
-    const result = await sql.begin(async transaction => {
-      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
-      const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
-      const currentRevision = Number(revisionRows[0]?.value || 0)
-      const current = await readState(transaction)
-      const operation = applyServiceCatalogOperation(current, { ...incoming, ...requestOperation })
-      let next = normalizeStateForSave({ ...current, services: operation.services }, current)
-      next.employees = secureEmployees(next.employees, current.employees)
-      validateState(next, current)
-      if (!statePersistenceChanged(current, next)) return { revision: currentRevision, services: current.services, ...operation }
-      const entries = [
-        ...auditChanges(current.services, next.services, 'id', 'Tipo de servicio', user),
-        ...auditChanges(current.history, next.history, 'id', 'Servicio / historial', user)
-      ]
-      if (JSON.stringify(current.agenda) !== JSON.stringify(next.agenda)) entries.push(auditEntry(user, 'Modificó', 'Agenda técnica', 'agenda-actual', current.agenda, next.agenda))
-      const revision = currentRevision + 1
-      await persistStateCollections(transaction, current, next, revision)
-      await appendAudit(transaction, entries)
-      const persistedService = operation.service ? next.services.find(service => String(service.id) === String(operation.service.id)) || operation.service : null
-      return { revision, services: next.services, service: persistedService, outcome: operation.outcome }
+    const result = await require('./_lib/prepared-catalog-write.cjs').executePreparedCatalogWrite(sql, {
+      snapshots: saveSnapshots, persist: persistStateCollections, audit: appendAudit,
+      prepare: current => {
+        const operation = applyServiceCatalogOperation(current, { ...incoming, ...requestOperation })
+        const next = normalizeStateForSave({ ...current, services: operation.services }, current)
+        next.employees = secureEmployees(next.employees, current.employees)
+        validateState(next, current)
+        const entries = [
+          ...auditChanges(current.services, next.services, 'id', 'Tipo de servicio', user),
+          ...auditChanges(current.history, next.history, 'id', 'Servicio / historial', user)
+        ]
+        if (JSON.stringify(current.agenda) !== JSON.stringify(next.agenda)) entries.push(auditEntry(user, 'Modificó', 'Agenda técnica', 'agenda-actual', current.agenda, next.agenda))
+        const persistedService = operation.service ? next.services.find(service => String(service.id) === String(operation.service.id)) || operation.service : null
+        return { next, entries, response: { services: next.services, service: persistedService, outcome: operation.outcome } }
+      }
     })
     return send(res, 200, result)
   } catch (error) {
@@ -597,21 +596,19 @@ async function handleVehicles(req, res, sql, user, requestOperation) {
   if (!userCan(user, 'vehicles')) return send(res, 403, { error: 'No tenés permiso para administrar vehículos.' })
   const incoming = requestBody(req)
   try {
-    const result = await sql.begin(async transaction => {
-      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
-      const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
-      const currentRevision = Number(revisionRows[0]?.value || 0)
-      const current = await readState(transaction)
-      const operation = applyVehicleOperation(current, { ...incoming, ...requestOperation })
-      let next = normalizeStateForSave({ ...current, vehicles: operation.vehicles }, current)
-      next.employees = secureEmployees(next.employees, current.employees)
-      validateState(next, current)
-      if (!statePersistenceChanged(current, next)) return { revision: currentRevision, vehicles: current.vehicles, ...operation }
-      const revision = currentRevision + 1
-      await persistStateCollections(transaction, current, next, revision)
-      await appendAudit(transaction, auditChanges(current.vehicles, next.vehicles, 'id', 'Vehículo', user))
-      const persistedVehicle = operation.vehicle ? next.vehicles.find(vehicle => String(vehicle.id) === String(operation.vehicle.id)) || operation.vehicle : null
-      return { revision, vehicles: next.vehicles, vehicle: persistedVehicle, outcome: operation.outcome }
+    const result = await require('./_lib/prepared-catalog-write.cjs').executePreparedCatalogWrite(sql, {
+      snapshots: saveSnapshots, persist: persistStateCollections, audit: appendAudit,
+      prepare: current => {
+        const operation = applyVehicleOperation(current, { ...incoming, ...requestOperation })
+        const next = normalizeStateForSave({ ...current, vehicles: operation.vehicles }, current)
+        next.employees = secureEmployees(next.employees, current.employees)
+        validateState(next, current)
+        const persistedVehicle = operation.vehicle ? next.vehicles.find(vehicle => String(vehicle.id) === String(operation.vehicle.id)) || operation.vehicle : null
+        return {
+          next, entries: auditChanges(current.vehicles, next.vehicles, 'id', 'Vehículo', user),
+          response: { vehicles: next.vehicles, vehicle: persistedVehicle, outcome: operation.outcome }
+        }
+      }
     })
     return send(res, 200, result)
   } catch (error) {
@@ -633,8 +630,7 @@ async function handleExport(req, res, sql, user) {
   const category = String(req.query.category || 'residencial')
   const format = String(req.query.format || 'excel')
   const isRetirement = category === 'retirements'
-  const applicationState = await readState(sql)
-  const state = { services: applicationState.services || [], history: applicationState.history || [] }
+  const state = await require('./_lib/export-state.cjs').readApplicationExportState(sql, { month, technicianId: user.roleCode === 'technician' ? user.id : null })
   const alarmService = state.services.find(service => service.code === 'alarm-installation')
   const records = state.history.filter(record => {
     if (record.status !== 'Completado') return false

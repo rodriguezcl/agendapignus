@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useId, useRef, useState } from 'react'
+import React, { useContext, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from './ui/Icon.jsx'
 import ReschedulingHistory from './ReschedulingHistory.jsx'
@@ -9,7 +9,8 @@ import './service-journeys.css'
 import { journeyLabel } from '../domain/agenda/journey-progress.mjs'
 export { journeyLabel, journeyReportType } from '../domain/agenda/journey-progress.mjs'
 
-export const ServiceJourneysContext = createContext(null)
+import { ServiceJourneysContext } from '../presentation/contexts/agenda-contexts.js'
+export { ServiceJourneysContext } from '../presentation/contexts/agenda-contexts.js'
 
 export function JourneyIdentityField({ record, customer = false, children }) {
   const context = useContext(ServiceJourneysContext)

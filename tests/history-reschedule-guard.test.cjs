@@ -1,8 +1,9 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
-const app = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+const app = frontendSource()
 const source = app.slice(app.indexOf('function HistoryManagementDetail'), app.indexOf('function HistoryDetail('))
 
 test('actual readiness validation accepts valid hours including 14:00 and rejects incomplete inputs', async () => {

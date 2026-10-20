@@ -1,10 +1,10 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
-const vm = require('node:vm')
 
 test('daily training name shares the customer grid position and buffered editing', () => {
-  const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const field = source.slice(source.indexOf('const dailyCustomerField ='), source.indexOf('const gapsForDailyTeam ='))
   assert.match(field, /\? <label className="daily-field-customer">/)
   assert.match(field, /<BufferedInput/)
@@ -13,12 +13,10 @@ test('daily training name shares the customer grid position and buffered editing
 })
 
 test('Capacitación permits a descriptive name without a customer or contact', async () => {
-  const { isTrainingService, trainingClientPatch, serviceCode } = await import('../src/domain/services/service.mjs')
+  const { isTrainingService, trainingClientPatch } = await import('../src/domain/services/service.mjs')
   assert.equal(isTrainingService({ name: ' CAPACITACIÓN ' }), true)
   assert.equal(isTrainingService({ name: 'Instalación de cámaras' }), false)
-  const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
-  const body = source.slice(source.indexOf('const weeklyTaskMissingFields ='), source.indexOf('const weeklyTaskReadyToSave ='))
-  const missing = vm.runInNewContext(body + '\nweeklyTaskMissingFields', { isTrainingService, serviceCode, requiresPaymentAmount: () => false, invalidFormEmail: () => false })
+  const { weeklyTaskMissingFields: missing } = await import('../src/features/services/application/service-fields.mjs')
   const task = { ...trainingClientPatch('CAPACITACIÓN CERCO ELÉCTRICO'), time: '14:00', service: 'Capacitación', address: 'Sala de capacitación', detail: 'Práctica de instalación', phone: '' }
   assert.equal(missing(task, { name: 'Capacitación' }).length, 0)
   assert.ok(missing({ ...task, client: '' }, { name: 'Capacitación' }).includes('cliente'))

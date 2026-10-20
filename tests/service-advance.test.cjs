@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -97,7 +98,7 @@ test('terminar 11:52 permite adelantar a 11:57 sin mover la cita siguiente', asy
 
 test('la interfaz ofrece el flujo administrativo y alinea Formulario en móviles', () => {
   const root = path.resolve(__dirname, '..')
-  const app = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8')
+  const app = frontendSource()
   const styles = fs.readFileSync(path.join(root, 'src/ui-polish.css'), 'utf8')
   const api = fs.readFileSync(path.join(root, 'api/index.js'), 'utf8')
 

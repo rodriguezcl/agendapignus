@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -30,7 +31,7 @@ test('every JSX button has an explicit descriptive title, including icon-only co
 })
 
 test('imperative buttons receive descriptions and sidebar does not replace them with labels', () => {
-  const source = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const creations = [...source.matchAll(/const (\w+) = (?:menuOpen \? )?document\.createElement\('button'\)/g)]
   // Photo buttons moved to the shared React attachment component.
   assert.ok(creations.length > 0, 'The imperative-button scan must not be empty')
@@ -45,7 +46,7 @@ test('imperative buttons receive descriptions and sidebar does not replace them 
 })
 
 test('confirmation explains technician visibility and retains disabled guidance', () => {
-  const source = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const confirmation = source.slice(source.indexOf('function ServiceConfirmationButton('), source.indexOf('function Confirm('))
   assert.match(confirmation, /queda oculto al técnico hasta confirmarlo/)
   assert.match(confirmation, /Confirmá el servicio para habilitarlo al técnico/)

@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -90,7 +91,7 @@ test('conserva servicios reales de cualquier equipo pero elimina todos los equip
 })
 
 test('Agenda semanal y Agenda del día bloquean vías alternativas de carga', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /const advancedGuard = useMemo\(\(\) => advancedGuardForSaturdayDate\(date, weekly, teams\)/)
   assert.match(source, /if \(advancedGuard\) \{\s*setNotice\(advancedSaturdayGuardMessage\(advancedGuard\)\)\s*return/)
   assert.match(source, /Agenda del sábado bloqueada/)
@@ -99,7 +100,7 @@ test('Agenda semanal y Agenda del día bloquean vías alternativas de carga', ()
 })
 
 test('Agenda del día bloquea domingos antes de recuperar, sincronizar o guardar servicios', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /const isSunday = date => Boolean\(date\).*getDay\(\) === 0/)
   assert.match(source, /if \(advancedGuard \|\| sundayBlocked \|\| holidayBlocked \|\| holidayCalendarUnavailable\) return/)
   assert.match(source, /const loadAgendaForDate[\s\S]*?if \(isSunday\(nextDate\)\)[\s\S]*?Los domingos son días no operativos/)

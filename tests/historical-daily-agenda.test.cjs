@@ -1,10 +1,11 @@
+const { frontendSource, functionSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
 const { parse } = require('@babel/parser')
 const traverse = require('@babel/traverse').default
-const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+const source = frontendSource()
 const code = source.slice(source.indexOf('function historicalAgendaTeams('), source.indexOf('function HistoricalDailyAgenda('))
 const recover = vm.runInNewContext(code + '\nhistoricalAgendaTeams', {
   applyRemovedWeeklyTeams: teams => teams,
@@ -55,8 +56,9 @@ test('la consulta está separada del editor y no expone acciones de escritura', 
 })
 
 test('el banner abre una vista previa de cualquier día sin cambiar la agenda ni abrir el editor', () => {
+  const planner = functionSource('WeeklyPlanner')
   let trigger
-  traverse(parse(source, { sourceType: 'module', plugins: ['jsx'] }), {
+  traverse(parse(planner, { sourceType: 'module', plugins: ['jsx'] }), {
     JSXOpeningElement({ node }) {
       if (node.name.name === 'button' && node.attributes.some(attribute => attribute.name?.name === 'className' && attribute.value?.value === 'weekly-day-preview-trigger')) trigger = node
     }
@@ -68,7 +70,7 @@ test('el banner abre una vista previa de cualquier día sin cambiar la agenda ni
     const plan = { teams: [{ teamId: 'a', tasks: [{ taskId: 't', detail: 'borrador' }] }] }
     const before = JSON.stringify(plan)
     let preview
-    const onClick = vm.runInNewContext(source.slice(callback.start, callback.end), {
+    const onClick = vm.runInNewContext(planner.slice(callback.start, callback.end), {
       day, services: [], operationalHistory: [], dayPlan: () => plan,
       historyRecordForTask: () => ({ detail: 'guardado', status: 'Completado' }),
       setDayPreview: value => { preview = value },

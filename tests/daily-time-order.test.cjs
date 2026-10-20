@@ -1,8 +1,9 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
-const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+const source = frontendSource()
 
 test('los refrescos y confirmaciones de guardado conservan el orden sin modificar la respuesta remota', async () => {
   const { preserveLocalDraft } = await import('../src/features/state/application/save-activity.mjs')

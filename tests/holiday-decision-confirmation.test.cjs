@@ -1,8 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { readFileSync } = require('node:fs')
-const source = readFileSync(require('node:path').join(__dirname, '../src/App.jsx'), 'utf8')
-const panel = source.slice(source.indexOf('function HolidayDecisionPanel('), source.indexOf('function recordHolidayDecision('))
+const { functionSource } = require('./helpers/frontend-source.cjs')
+const panel = functionSource('HolidayDecisionPanel')
 
 test('holiday choices open confirmation instead of applying immediately', () => {
   assert.match(panel, /onClick=\{\(\) => setPendingStatus\('working'\)\}/)

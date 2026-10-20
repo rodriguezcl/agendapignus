@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { userCan, userForEmployee, visibleStateForUser } = require('../api/_lib/core.cjs')
@@ -5,7 +6,7 @@ const { userCan, userForEmployee, visibleStateForUser } = require('../api/_lib/c
 const supervisor = { id: 'supervisor-1', roleCode: 'supervisor', role: 'Supervisor', permissions: { dashboard: true, historyManage: true, accounts: true } }
 
 test('el tema de Supervisor es local y no dispara escrituras ni bloquea la actualización', () => {
-  const app = require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/App.jsx'), 'utf8')
+  const app = frontendSource()
   assert.doesNotMatch(app, /preferences:.*\{ theme \}/)
   assert.match(app, /writeLocalValue\(`pignus-theme-account:\$\{themeAccountKey\}`, value\)/)
   assert.match(app, /readLocalValue\(`pignus-theme-account:\$\{themeAccountKey\}`, 'light'\)/)
@@ -18,7 +19,7 @@ test('el tema de Supervisor es local y no dispara escrituras ni bloquea la actua
 test('Supervisor abre Historial desde el primer render, incluso con navegación previa a estadísticas', async () => {
   const fs = require('node:fs')
   const path = require('node:path')
-  const app = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+  const app = frontendSource()
   assert.match(app, /const module = isOperator \? 'weekly' : isSupervisor && requestedModule !== 'accounts' \? 'history' : requestedModule/)
   const { resolvedRolePermissions } = await import('../src/domain/access/permissions.mjs')
   const permissions = resolvedRolePermissions({ name: 'Supervisor', permissions: { dashboard: true, historyManage: true } })

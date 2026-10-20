@@ -1,8 +1,9 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
-const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+const source = frontendSource()
 test('read-only amounts reuse currency formatting and preserve empty values', () => {
   const start = source.indexOf('const normalizeCurrencyAmount =')
   const code = source.slice(start, source.indexOf('const normalizeFormValue =', start))

@@ -5,7 +5,7 @@ const root = path.join(__dirname, '..')
 const read = file => fs.readFileSync(path.join(root, file), 'utf8')
 
 function evaluateUxQuality() {
-  const app = read('src/App.jsx')
+  const app = [...require('./lib/frontend-sources.cjs').frontendSources().values()].join('\n')
   const css = read('src/constitution-ui.css')
   const systemState = read('src/components/ui/SystemState.jsx')
   const sources = `${app}\n${css}\n${systemState}`

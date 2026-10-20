@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -16,7 +17,7 @@ const roles = [
 const employee = { id: 'e1', firstName: 'Ana', lastName: 'Técnica', name: 'Ana Técnica', email: 'ana@example.com', roleId: '3', role: 'Técnico', status: 'Activo' }
 
 test('declara los hooks usados por la alerta de recuperación de contraseña', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const hook = fs.readFileSync(path.resolve(__dirname, '../src/features/auth/application/usePasswordResetRequests.js'), 'utf8')
   assert.match(hook, /import \{[^}]*useCallback[^}]*useEffect[^}]*useRef[^}]*useState[^}]*\} from 'react'/)
   assert.match(source, /usePasswordResetRequests\(/)
@@ -36,7 +37,7 @@ test('todos los roles muestran una recuperación en lugar de una pantalla blanca
 })
 
 test('cada correo conserva una sola sesión y la sesión desplazada lo explica', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
   const serverSource = fs.readFileSync(path.resolve(__dirname, '../server.cjs'), 'utf8')
   assert.match(apiSource, /delete from pignus_sessions where employee_id/)
@@ -50,7 +51,7 @@ test('cada correo conserva una sola sesión y la sesión desplazada lo explica',
 })
 
 test('el acceso explica las credenciales sin mencionar módulos restringidos', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /Usá el correo y la contraseña definidos por el administrador\./)
   assert.doesNotMatch(source, /Usá el correo y la contraseña definidos en el módulo Empleados\./)
 })
@@ -67,7 +68,7 @@ test('normaliza el tiempo estimado de los tipos de servicio existentes', () => {
 
 test('el ABM permite administrar y mostrar el tiempo estimado', () => {
   const source = [
-    fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8'),
+    frontendSource(),
     fs.readFileSync(path.resolve(__dirname, '../src/features/services/presentation/ServiceTypes.jsx'), 'utf8')
   ].join('\n')
   assert.match(source, /<RequiredLabel>Tiempo estimado<\/RequiredLabel>/)
@@ -84,7 +85,7 @@ test('el tiempo estimado queda compacto y alineado con los demás campos', () =>
 })
 
 test('las agendas distinguen el tiempo predeterminado de un ajuste manual', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
   assert.match(source, /estimatedMinutesCustomized: false/)
   assert.match(source, /estimatedMinutesCustomized: true/)
@@ -182,7 +183,7 @@ test('el acceso cancela solicitudes bloqueadas y permite reintentar', async () =
 })
 
 test('el acceso reutiliza el estado del login y recupera por F5 con una verificación liviana', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const api = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
   const server = fs.readFileSync(path.resolve(__dirname, '../server.cjs'), 'utf8')
   assert.match(source, /onLogin\(data\.user, data\.state\)/)
@@ -197,7 +198,7 @@ test('el acceso reutiliza el estado del login y recupera por F5 con una verifica
 })
 
 test('cerrar sesión no borra datos compartidos en ninguno de los servidores y avisa sólo por edición local', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const api = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
   const server = fs.readFileSync(path.resolve(__dirname, '../server.cjs'), 'utf8')
   const cloudLogout = api.slice(api.indexOf('async function handleLogout('), api.indexOf('async function handleSaveState('))
@@ -209,7 +210,7 @@ test('cerrar sesión no borra datos compartidos en ninguno de los servidores y a
 })
 
 test('cerrar sesión fuerza el guardado del último cambio aunque siga dentro del debounce', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const logout = source.slice(source.indexOf('const logout = async'), source.indexOf('const requestLogout'))
   assert.match(logout, /await stateSaveQueue\.current\.catch\(\(\) => \{\}\)/)
   assert.match(logout, /const hadPendingStateSave = pendingStateSaves\.current > 0 \|\| Boolean\(stateSaveTimerRef\.current\)/)
@@ -222,16 +223,16 @@ test('cerrar sesión fuerza el guardado del último cambio aunque siga dentro de
 })
 
 test('una sesión nueva no hereda avisos de guardado de la sesión anterior', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
 
   assert.match(source, /setAuthUser\(null\); setDatabaseReady\(false\); setDatabaseError\(''\); setStateRevision\(null\); setModule\('dashboard'\); setNotice\(''\)/)
   assert.match(source, /onLogin=\{\(user, initialState\) => \{ setSessionEndedMessage\(''\); setNotice\(''\); initialRemoteStateRef\.current/)
 })
 
 test('la agenda técnica usa una descripción neutral sin la palabra únicamente', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
-  const portal = source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function DashboardStatusView'))
+  const portal = source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function History('))
   const helpSection = help.slice(help.indexOf("title: 'Servicios asignados'"), help.indexOf("title: 'Marcar un servicio como completado'"))
   assert.match(portal, /Consultá los servicios pendientes de hoy y mañana/)
   assert.doesNotMatch(portal, /únicamente/i)
@@ -334,7 +335,7 @@ test('el control vehicular permite enviar foto y kilometraje sin observación', 
 })
 
 test('la confirmación espera el guardado y el servidor admite reintentos idempotentes', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
   const conflictSource = fs.readFileSync(path.resolve(__dirname, '../src/features/state/application/state-save-conflict.mjs'), 'utf8')
   assert.match(source, /await action\(\)/)
@@ -371,11 +372,11 @@ test('el historial ordena por fecha y hora sin agrupar por estado', async () => 
 })
 
 test('el historial muestra la hora asignada como una columna propia', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(source, /<span>Hora<\/span>/)
   assert.match(source, /Hora asignada:/)
-  assert.match(source, /sort\(sortOperationalHistory\)/)
+  assert.match(source, /filterHistoryRecords\(searchIndex/)
   assert.match(styles, /\.history-bulk \.history-time/)
   assert.match(styles, /\.history-bulk \.role-chip \{[\s\S]*display: inline-block;[\s\S]*width: fit-content;/)
 })
@@ -386,7 +387,7 @@ test('el botón Editar datos conserva el icono y el texto dentro de su marco', (
 })
 
 test('el técnico usa el mismo menú móvil desplegable que los demás roles', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
   assert.match(source, /sidebar technician-sidebar/)
   assert.match(source, /technician-mobile-menu/)
@@ -396,7 +397,7 @@ test('el técnico usa el mismo menú móvil desplegable que los demás roles', (
 })
 
 test('el control para compactar la barra lateral no se activa en smartphones', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/weekly-enhancements.css'), 'utf8')
   assert.match(source, /matchMedia\?\.\('\(min-width: 641px\)'\)/)
   assert.match(source, /desktopSidebar && sidebarCollapsed \? 'sidebar-collapsed' : ''/)
@@ -437,7 +438,7 @@ test('el menú principal acumula instalaciones de alarma de Docta desde enero ha
     matches: record => record.id === 'today' || record.id === 'future' || record.id === 'pending'
   }), 1)
 
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/features/dashboard/presentation/Dashboard.jsx'), 'utf8')
   assert.match(source, /Desde el 1 de enero hasta hoy · \{currentYear\}/)
   assert.match(source, /Instalaciones en Docta/)
   assert.match(source, /Instalaciones en Nobu Town/)
@@ -503,7 +504,7 @@ test('los controles nativos permanecen contenidos dentro de todos los modales', 
 })
 
 test('los campos obligatorios usan un único indicador junto a la etiqueta', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const requiredLabel = fs.readFileSync(path.resolve(__dirname, '../src/presentation/components/forms/RequiredLabel.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   const legacyStyles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
@@ -530,7 +531,7 @@ test('la evolución anual reserva espacio para valores y separa la leyenda', () 
 })
 
 test('configura formulario, forma de pago y monto según el servicio', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /PAYMENT_OPTIONS = \['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'A confirmar', 'No aplica'\]/)
   assert.match(source, /form: alarmInstallation \|\| ownershipChange/)
   assert.match(source, /!\['A confirmar', 'No aplica'\]\.includes\(paymentMethod\)/)
@@ -561,7 +562,7 @@ test('el técnico y la agenda compartida reciben únicamente efectivo y formular
   assert.equal(visible.form, 'Incompleto (Abonado completa a mano)')
   assert.equal('monthlyFee' in visible, false)
 
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const preview = source.slice(source.indexOf('const previewDetails = task =>'), source.indexOf('const taskMessage = task =>'))
   assert.match(preview, /technicianVisibleServiceExtras\(extras\)/)
   assert.doesNotMatch(preview, /Abono mensual|monthlyFee/)
@@ -573,7 +574,7 @@ test('el técnico y la agenda compartida reciben únicamente efectivo y formular
 })
 
 test('permite copiar un servicio individual de la agenda diaria', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(source, /const copyTextToClipboard = async text =>/)
   assert.match(source, /const individualTaskMessage = \(task, team, teamIndex\) =>/)
@@ -586,7 +587,7 @@ test('permite copiar un servicio individual de la agenda diaria', () => {
 })
 
 test('ordena los campos y centra las acciones de cada servicio diario', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(source, /className="daily-field-time"/)
   assert.match(source, /className="daily-field-service"/)
@@ -602,7 +603,7 @@ test('ordena los campos y centra las acciones de cada servicio diario', () => {
 })
 
 test('la agenda diaria renderiza sus acciones inmediatamente y separa hora de servicio', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(source, /className="secondary save-agenda-button" onClick=\{saveAgenda\}/)
   assert.doesNotMatch(source, /actionGroup\.querySelector\('\.save-agenda-button'\)\?\.remove\(\)/)
@@ -613,7 +614,7 @@ test('la agenda diaria renderiza sus acciones inmediatamente y separa hora de se
 })
 
 test('la agenda diaria respeta espacios quitados y no copia servicios vacíos', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /const visibleWeeklyTeams = renumberVisibleWeeklyTeams\(applyRemovedWeeklyTeams\(applyRemovedWeeklySlots\(applyRemovedWeeklyTasks\(weeklyDay\?\.teams \|\| \[\], weeklyDay\?\.removedTaskIds \|\| \[\]\), weeklyDay\?\.removedSlots \|\| \[\]\), weeklyDay\?\.removedTeams \|\| \[\]\)\)/)
   assert.match(source, /const agendaTeamsWithRealServices = \(agendaTeams = teams\) => agendaTeams\.map\(team => \(\{[\s\S]*?tasks: \(team\.tasks \|\| \[\]\)\.filter\(task => taskHasContent\(task\) && !taskIsResolvedForPlanning\(task, date, history\)\)/)
   assert.match(source, /const messageSections = teams\.flatMap\(\(team, index\) => \{/)
@@ -622,7 +623,7 @@ test('la agenda diaria respeta espacios quitados y no copia servicios vacíos', 
 })
 
 test('eliminar un servicio semanal deja una baja persistente y limpia su copia diaria', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const removal = fs.readFileSync(path.resolve(__dirname, '../src/features/state/application/weekly-task-removal.mjs'), 'utf8')
 
   assert.match(source, /const applyRemovedWeeklyTasks = \(teams = \[\], removedTaskIds = \[\]\) =>/)
@@ -635,7 +636,7 @@ test('eliminar un servicio semanal deja una baja persistente y limpia su copia d
 })
 
 test('eliminar un control vencido desde Historial usa la misma baja atómica', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const repository = fs.readFileSync(path.resolve(__dirname, '../src/infrastructure/repositories/history-record-repository.mjs'), 'utf8')
   const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
   assert.match(source, /const persistHistoryRecordRemoval = async record =>/)
@@ -648,14 +649,14 @@ test('eliminar un control vencido desde Historial usa la misma baja atómica', (
 })
 
 test('los controles vehiculares conservan un único responsable coherente entre nombre e identificador', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /const taskHasResponsible = record\.vehicleControl && assignedTask\?\.technicianIds\?\.length/)
   assert.match(source, /const technicianIds = taskHasResponsible \? assignedTask\.technicianIds/)
   assert.match(source, /assignedById\.length \? assignedById : assignedByName/)
 })
 
 test('la gestión múltiple del historial se confirma de forma atómica en el servidor', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const repository = fs.readFileSync(path.resolve(__dirname, '../src/infrastructure/repositories/history-record-repository.mjs'), 'utf8')
   const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
   assert.match(source, /await persistHistoryRecord\(updates\)/)
@@ -763,7 +764,7 @@ test('el repositorio normalizado reconstruye el estado en una sola consulta', ()
 })
 
 test('eliminar un equipo semanal deja una excepción persistente y limpia agenda e historial', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const removal = fs.readFileSync(path.resolve(__dirname, '../src/features/state/application/weekly-team-removal.mjs'), 'utf8')
 
   assert.match(source, /const applyRemovedWeeklyTeams = \(teams = \[\], removedTeams = \[\]\) =>/)
@@ -775,7 +776,7 @@ test('eliminar un equipo semanal deja una excepción persistente y limpia agenda
 })
 
 test('los equipos visibles se renumeran consecutivamente después de una baja', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const removal = fs.readFileSync(path.resolve(__dirname, '../src/features/state/application/weekly-team-removal.mjs'), 'utf8')
 
   assert.match(source, /const renumberVisibleWeeklyTeams = \(teams = \[\]\) => teams\.map\(\(team, teamIndex\) =>/)
@@ -784,7 +785,7 @@ test('los equipos visibles se renumeran consecutivamente después de una baja', 
 })
 
 test('un equipo nuevo no es absorbido ni ocultado por el equipo mensual eliminado', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
 
   assert.match(source, /if \(targetIndex < 0 && !storedId && storedNumber\) targetIndex = merged\.findIndex/)
   assert.match(source, /if \(markerTeamId\) return Boolean\(teamId && markerTeamId === teamId\)/)
@@ -792,7 +793,7 @@ test('un equipo nuevo no es absorbido ni ocultado por el equipo mensual eliminad
 })
 
 test('las agendas diaria y semanal renderizan directamente el estado de cada servicio', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const polishStyles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   const weeklyStyles = fs.readFileSync(path.resolve(__dirname, '../src/weekly-enhancements.css'), 'utf8')
   assert.match(source, /function TaskStatusBadge\(\{ task, date, history, weekly = false, statusOnly = false \}\)/)
@@ -804,7 +805,7 @@ test('las agendas diaria y semanal renderizan directamente el estado de cada ser
 })
 
 test('los servicios cerrados no ofrecen guardado y una finalización anticipada puede liberar agenda hoy', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /const taskIsResolvedForPlanning = \(task, date, history\) => \{[\s\S]*?\['Completado', 'Avance registrado'\]\.includes\(status\) \|\| serviceSlotReleased\(historyRecordForTask\(task, date, history\) \|\| task, date\)/)
   assert.match(source, /const showSaveAgenda = hasPendingAgendaServices \|\| !hasResolvedAgendaServices/)
   assert.match(source, /\{showSaveAgenda && <button\b[^>]*type="button" className="secondary save-agenda-button"/)
@@ -814,7 +815,7 @@ test('los servicios cerrados no ofrecen guardado y una finalización anticipada 
 })
 
 test('una reprogramación al sábado conserva el equipo estable y adopta la guardia del día', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const move = source.slice(source.indexOf('const moveRecordInWeeklyAgenda'), source.indexOf('const blankEmployee'))
 
   assert.match(move, /activeTechs = \[\]/)
@@ -827,7 +828,7 @@ test('una reprogramación al sábado conserva el equipo estable y adopta la guar
 })
 
 test('los conflictos de agenda identifican fecha, integrantes y servicios afectados', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /const planningTeamDescription = \(team, teamIndex\) =>/)
   assert.match(source, /El equipo conformado por \$\{memberList\}/)
   assert.match(source, /const planningConflictMessage = \(date, team, teamIndex, conflict\) =>[\s\S]*?del \$\{prettyDate\(date\)[\s\S]*?tiene un conflicto de horarios/)
@@ -838,7 +839,7 @@ test('los conflictos de agenda identifican fecha, integrantes y servicios afecta
 })
 
 test('la agenda semanal muestra el tipo de servicio junto al estado y la diaria muestra solo el estado', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const polishStyles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   const weeklyStyles = fs.readFileSync(path.resolve(__dirname, '../src/weekly-enhancements.css'), 'utf8')
   assert.match(source, /className=\{`role-chip agenda-service-chip \$\{serviceColorClass\(type.name\)\}`\}/)
@@ -852,7 +853,7 @@ test('la agenda semanal muestra el tipo de servicio junto al estado y la diaria 
 })
 
 test('la agenda diaria mantiene visibles los nombres de los técnicos del equipo', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(source, /className="daily-team-identity"/)
   assert.match(source, /className="daily-team-member-names"[\s\S]*?team\.members\.map\(name =>[\s\S]*?\.join\(' · '\)/)
@@ -861,7 +862,7 @@ test('la agenda diaria mantiene visibles los nombres de los técnicos del equipo
 })
 
 test('los horarios predeterminados cambian desde septiembre sin alterar servicios cargados', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /DEFAULT_SERVICE_TIME_CHANGE_DATE = '2026-09-01'/)
   assert.match(source, /fallbackDefaultServiceTimesForDate = date =>[\s\S]*?\? \['09:00', '14:00'\][\s\S]*?: \['08:30', '13:00'\]/)
   assert.match(source, /monthlyDefaultTimePeriods\(weekly\?\._monthlyTeams\?\.\[month\], month\)/)
@@ -872,7 +873,7 @@ test('los horarios predeterminados cambian desde septiembre sin alterar servicio
 })
 
 test('cada equipo reserva una hora mínima y oculta turnos vacíos incompatibles', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
   const scheduling = fs.readFileSync(path.resolve(__dirname, '../src/domain/agenda/service-scheduling.mjs'), 'utf8')
   assert.match(scheduling, /MINIMUM_SERVICE_RESERVATION_MINUTES = 60/)
@@ -886,14 +887,14 @@ test('cada equipo reserva una hora mínima y oculta turnos vacíos incompatibles
 })
 
 test('jornada laboral reemplaza los horarios mensuales en configuración', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.doesNotMatch(source, /Horarios del mes|monthly-times-modal/)
-  assert.match(source, /canConfigureWorkday=\{isAdministrator\}/)
-  assert.match(source, /<WorkdaySettings/)
+  assert.match(source, /canConfigureWorkday=\{isAdministrator \|\| Boolean\(modulePermissions.weeklyHours\)\}/)
+  assert.match(fs.readFileSync(path.resolve(__dirname, '../src/features/settings/presentation/Settings.jsx'), 'utf8'), /<WorkdaySettings/)
 })
 
 test('los meses finalizados no solicitan ni permiten configuraciones mensuales', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /const pastMonthSelected = monthKey < currentMonthKey/)
   assert.match(source, /if \(pastMonthSelected\) \{[\s\S]*?setMonthlySetup\(null\)[\s\S]*?setMonthlyVehicleSetup\(null\)[\s\S]*?return/)
   assert.match(source, /disabled=\{pastMonthSelected\}[\s\S]*?Equipos del mes/)
@@ -901,9 +902,9 @@ test('los meses finalizados no solicitan ni permiten configuraciones mensuales',
 })
 
 test('equipos del mes escala la rotación según técnicos y vehículos', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
-  assert.match(source, /import \{ monthlyTeamRotation, monthlyEligibleTechnicians \} from '\.\/domain\/agenda\/monthly-team-rotation\.mjs'/)
+  assert.match(source, /import \{ monthlyTeamRotation, monthlyEligibleTechnicians \} from ["'][^"']*\/domain\/agenda\/monthly-team-rotation\.mjs["']/)
   assert.match(source, /const rotation = monthlyTeamRotation\(monthlyEligibleTechnicians\(activeTechs\), monthKey, '2026-01', vehicles\.length \|\| 3\)/)
   assert.match(source, /const expectedTeamCount = Math\.min\(activeTechs\.length, vehicles\.length \|\| 3\)/)
   assert.match(source, /assignmentsMatchFleet/)
@@ -912,7 +913,7 @@ test('equipos del mes escala la rotación según técnicos y vehículos', () => 
 })
 
 test('el administrador configura una rotación anual editable para las guardias de los sábados', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/weekly-enhancements.css'), 'utf8')
   assert.match(source, /Guardias del año/)
   assert.match(source, /Guardar guardias del año/)
@@ -924,14 +925,14 @@ test('el administrador configura una rotación anual editable para las guardias 
 })
 
 test('la agenda semanal confirma cada servicio desde el modal sin guardar la columna', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /const saveTaskEditor = async/)
   assert.match(source, /await persistWeeklyService/)
   assert.doesNotMatch(source, /const saveWeeklyDay|dayNeedsSave\(day\)|weekly-save-day/)
 })
 
 test('la agenda semanal reasigna un servicio por equipo o fecha con guardado puntual', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const operations = fs.readFileSync(path.resolve(__dirname, '../src/features/state/application/weekly-service-save.mjs'), 'utf8')
   const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
   assert.match(source, /Cambiar equipo, horario o fecha/)
@@ -948,7 +949,7 @@ test('la agenda semanal reasigna un servicio por equipo o fecha con guardado pun
 })
 
 test('el sábado conserva el identificador del equipo después de guardar', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /const storedSaturday = sourceWeekly\?\.\[day\]\?\.teams\?\.\[0\]/)
   assert.match(source, /createTeam\(0, storedSaturday \? \{ teamId: storedSaturday\.teamId \} : null, day\)/)
 })
@@ -993,7 +994,7 @@ test('resuelve el rol y limita el estado visible del técnico', () => {
 })
 
 test('la nota y el checklist internos se conservan para administración y no aparecen en el portal técnico', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
   const localServer = fs.readFileSync(path.resolve(__dirname, '../server.cjs'), 'utf8')
   const record = { id: 'service-a', technicianIds: ['e1'], internalNote: 'No pedir al proveedor', internalChecklist: [{ id: 'c1', text: 'Reservar sensor', completed: true }] }
@@ -1007,7 +1008,7 @@ test('la nota y el checklist internos se conservan para administración y no apa
   assert.match(source, />Crear checklist</)
   assert.match(source, /internalNote: task\.internalNote \|\| ''/)
   assert.match(source, /internalChecklist: normalizeInternalChecklist\(task\.internalChecklist\)/)
-  assert.doesNotMatch(source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function DashboardStatusView')), /internalNote|internalChecklist|Nota interna|Checklist de preparación/)
+  assert.doesNotMatch(source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function History(')), /internalNote|internalChecklist|Nota interna|Checklist de preparación/)
   assert.match(apiSource, /record: technicianSafeRecord\(updated\)/)
   assert.match(localServer, /history:[\s\S]*?\.map\(record => technicianSafeRecord\(/)
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
@@ -1027,9 +1028,9 @@ test('el editor semanal aprovecha un ancho mayor sólo en pantallas de escritori
 })
 
 test('el técnico dispone del módulo Vehículos como tabla de solo lectura y puede descargar seguros', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
-  const technicianPortal = source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function DashboardStatusView'))
+  const technicianPortal = source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function History('))
   assert.match(technicianPortal, /data-view="vehicles"[\s\S]*?<span>Vehículos<\/span>/)
   assert.match(technicianPortal, /data-view="help"[\s\S]*?<span>Centro de ayuda<\/span>/)
   assert.match(technicianPortal, /<TechnicianHelpCenter onNavigate=\{setView\} \/>/)
@@ -1061,7 +1062,7 @@ test('el técnico recibe contexto histórico sólo de clientes con trabajos vige
 })
 
 test('vincula abonados con su historial y conserva autoría de las observaciones técnicas', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const apiSource = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(source, /serviceHistoryForCustomer/)
@@ -1176,7 +1177,7 @@ test('vehículos del mes recibe la flota sin habilitar el módulo completo de ve
 })
 
 test('vehículos del mes espera la confirmación atómica antes de informar el guardado', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const save = source.slice(source.indexOf('const saveMonthlyVehicleSetup'), source.indexOf('const annualGuardDraft'))
 
   assert.match(source, /const persistWeeklyConfiguration = buildNext => persistStateCommand/)
@@ -1232,7 +1233,7 @@ test('un planificador puede actualizar la ficha pendiente vinculada a la agenda 
 })
 
 test('la interfaz ofrece equipos semanales editables, permisos por función e importación confirmada y reversible', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const weeklyToggle = source.slice(source.indexOf('const toggleWeeklyTech'), source.indexOf('const updateTask', source.indexOf('const toggleWeeklyTech')))
   assert.match(weeklyToggle, /activeTechs\.find\(item => item\.name === technician\)/)
   assert.doesNotMatch(weeklyToggle, /destinationTeam|movedTask/)
@@ -1247,7 +1248,7 @@ test('la interfaz ofrece equipos semanales editables, permisos por función e im
 
 test('el ABM de vehículos integra estado, permisos, seguro privado y campos requeridos', () => {
   const source = [
-    fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8'),
+    frontendSource(),
     fs.readFileSync(path.resolve(__dirname, '../src/domain/access/permissions.mjs'), 'utf8')
   ].join('\n')
   const api = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
@@ -1292,8 +1293,8 @@ test('normaliza el control semanal como servicio de sistema de 15 minutos', () =
   assert.equal(control?.system, true)
 })
 
-test('las agendas comparten las ubicaciones de instalación y distinguen reservas PIG de clientes CLI', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+test('las agendas comparten las ubicaciones de instalación y distinguen reservas PIG de clientes CLI', async () => {
+  const source = frontendSource()
   const api = fs.readFileSync(path.resolve(__dirname, '../api/index.js'), 'utf8')
   const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
   assert.match(source, /\['residencial', 'Residencial con monitoreo'\]/)
@@ -1310,18 +1311,21 @@ test('las agendas comparten las ubicaciones de instalación y distinguen reserva
   assert.match(source, /const subscriberReservationPatch/)
   assert.match(source, /const customerLinkPatch/)
   assert.match(source, /Reserva · PIG pendiente/)
-  assert.match(source, /function SubscriberReservationReminders/)
+  assert.match(source, /selectDashboardNotifications\(/)
+  const { selectDashboardNotifications } = await import('../src/domain/dashboard/dashboard-notifications.mjs')
+  const notifications = selectDashboardNotifications({ history: [{ id: 'pending-pig', subscriberReservation: true, date: '2026-10-20', status: 'Pendiente' }], today: '2026-10-20', isAdministrator: true })
+  assert.ok(notifications.some(notification => notification.id === 'reservation:pending-pig'))
   assert.match(source, /subscriberReservation \? customers.filter\(customer => customerKind\(customer\) === 'subscriber'\) : customers/)
   assert.match(source, /subscriberReservation=\{record.subscriberReservation\}/)
   assert.match(source, /kind: 'client'/)
-  assert.match(source, /zoneOf\(record\) !== 'no-monitoreada'/)
+  assert.match(fs.readFileSync(path.resolve(__dirname, '../src/features/dashboard/presentation/Dashboard.jsx'), 'utf8'), /zoneOf\(record\) !== 'no-monitoreada'/)
   assert.match(api, /!record\.subscriberReservation && installationCategory !== 'no-monitoreada'/)
   assert.match(api, /allowEarlyCompletion: user\.roleCode === 'administrator'/)
   assert.match(help, /La reserva ocupa el turno sin crear un CLI/)
 })
 
 test('hidrata la fecha diaria junto con sus tarjetas para no atribuir servicios futuros a hoy', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const hydration = source.slice(source.indexOf('const applyRemoteState ='), source.indexOf('const refreshRemoteState =', source.indexOf('const applyRemoteState =')))
 
   assert.match(hydration, /const persistedAgendaDate = \/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\//)

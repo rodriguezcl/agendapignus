@@ -2,15 +2,11 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const Module = require('node:module')
-const { buildSync } = require('esbuild')
 const root = path.resolve(__dirname, '..')
-const source = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8')
-const bundle = buildSync({ stdin: { contents: source + '\nexport { dailyPlanWithMonthlyTeams, applyRemovedWeeklyTeams, applyRemovedWeeklySlots, applyRemovedWeeklyTasks };', loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent' })
-const compiled = new Module(path.join(root, 'test-daily-plan.cjs'), module)
-compiled.paths = module.paths
-compiled._compile(bundle.outputFiles[0].text, path.join(root, 'test-daily-plan.cjs'))
-const { dailyPlanWithMonthlyTeams, applyRemovedWeeklyTeams, applyRemovedWeeklySlots, applyRemovedWeeklyTasks } = compiled.exports
+const source = fs.readFileSync(path.join(root, 'src/features/agenda/presentation/DailyAgenda.jsx'), 'utf8')
+const { dailyPlanWithMonthlyTeams, applyRemovedWeeklyTeams, applyRemovedWeeklySlots, applyRemovedWeeklyTasks } = require('./helpers/load-app.cjs')([
+  'dailyPlanWithMonthlyTeams', 'applyRemovedWeeklyTeams', 'applyRemovedWeeklySlots', 'applyRemovedWeeklyTasks'
+])
 const day = '2026-09-21'
 const monthly = ['Rodrigo', 'Mariano', 'Leonardo'].map((name, index) => ({ teamId: `team-${index + 1}`, label: `Equipo ${index + 1}`, memberIds: [name], members: [name] }))
 const fixture = () => ({ _monthlyTeams: { '2026-09': { teams: structuredClone(monthly) } }, [day]: { teams: [{ teamId: 'team-1', label: 'Equipo 1', memberIds: ['Pascual'], members: ['Pascual'], tasks: [] }] } })

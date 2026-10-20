@@ -8,14 +8,15 @@ test('only PIG reservations with complete form and nonempty email are ready', as
   assert.equal(ready(undefined), false)
 })
 
-test('dashboard shows a future reservation as soon as its saved form and email are ready', () => {
-  const React = require('react')
-  const { renderToStaticMarkup } = require('react-dom/server')
-  const { SubscriberReservationReminders } = require('./helpers/load-app.cjs')(['SubscriberReservationReminders'])
+test('dashboard notifies a future reservation as soon as its saved form and email are ready', async () => {
+  const { selectDashboardNotifications } = await import('../src/domain/dashboard/dashboard-notifications.mjs')
   const record = { id: 'reservation', subscriberReservation: true, date: '2099-10-14', time: '08:30', client: 'Reserva futura', status: 'Pendiente', form: 'Completo', formEmail: 'cliente@example.com' }
-  const render = patch => renderToStaticMarkup(React.createElement(SubscriberReservationReminders, { history: [{ ...record, ...patch }] }))
-  assert.match(render({}), /Formulario completo disponible para crear el abonado en SoftGuard/)
-  assert.match(render({}), /cliente@example.com/)
-  for (const patch of [{ form: '' }, { formEmail: '' }, { subscriberReservation: false }, { status: 'Cancelado' }, { status: 'Completado' }]) assert.equal(render(patch), '')
-  assert.match(render({ date: '2020-01-01', form: '', formEmail: '' }), /Reserva pendiente de vincular con un PIG/)
+  const notification = patch => selectDashboardNotifications({
+    history: [{ ...record, ...patch }], today: '2026-10-20', isAdministrator: true
+  }).find(notice => notice.id === 'reservation:reservation')
+  assert.match(notification({}).detail, /Formulario completo disponible para crear el abonado en SoftGuard/)
+  assert.match(notification({}).detail, /cliente@example.com/)
+  for (const patch of [{ form: '' }, { formEmail: '' }, { subscriberReservation: false }, { status: 'Cancelado' }, { status: 'Completado' }]) assert.equal(notification(patch), undefined)
+  assert.match(notification({ date: '2020-01-01', form: '', formEmail: '' }).title, /Reserva pendiente de vincular con un PIG/)
+  assert.deepEqual(notification({}).target, { type: 'reservation', recordId: 'reservation' })
 })

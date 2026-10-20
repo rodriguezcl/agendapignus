@@ -46,6 +46,7 @@ Para publicar la aplicación y migrar los datos actuales, seguir
 MANTENIMIENTO
 -------------
 
-El archivo `App.jsx` conserva componentes históricos durante la transición.
-Al modificar una funcionalidad, extraer su módulo a `src/features/` y dejar
-comentadas las reglas de negocio, validaciones y efectos de persistencia.
+Las pantallas se organizan en `src/features/` y se cargan al abrir cada módulo.
+`App.jsx` coordina sesión, navegación y guardados compartidos. Mantener las reglas
+de negocio fuera de esa raíz y verificar las garantías de persistencia al cambiarlas.
+Después de compilar, `npm run analyze:build` mide la carga inicial real.

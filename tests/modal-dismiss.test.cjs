@@ -1,9 +1,10 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const source = fs.readFileSync(path.resolve(__dirname, '../src/App.jsx'), 'utf8')
+const source = frontendSource()
 
 test('todos los modales se cierran desde el fondo o con Escape', () => {
   assert.match(source, /document\.querySelectorAll\('\.modal-layer, \.modal-backdrop'\)/)

@@ -1,9 +1,10 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
 const { transformSync } = require('esbuild')
-const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+const source = frontendSource()
 
 for (const name of ['BufferedInput', 'BufferedTextarea']) {
   test(`${name}: typing stays local, blur commits the latest text once`, () => {

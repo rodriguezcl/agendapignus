@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -9,7 +10,7 @@ async function harness() {
   const { createSaveActivity, operationScopes } = await import('../src/features/state/application/save-activity.mjs')
   const { stateOperations } = await import('../src/features/state/application/state-operations.mjs')
   const { alignOperationBaselines } = await import('../src/features/state/application/operation-baselines.mjs')
-  const source = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const code = source.slice(source.indexOf('  const persistStateCommand ='), source.indexOf('  const persistWeeklyService ='))
   const ref = current => ({ current })
   const snapshot = { history: [{ id: 'a' }, { id: 'b' }], agenda: {} }

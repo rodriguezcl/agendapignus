@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -25,7 +26,7 @@ test('daily confirmation uses the same responsive size rules as other daily acti
 })
 
 test('history confirmation belongs to the bottom action group, not the heading notice', () => {
-  const source = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const modal = source.slice(source.indexOf('function HistoryManagementDetail('), source.indexOf('function HistoryDetail('))
   const notice = modal.slice(modal.indexOf('className="history-confirmation-actions"'), modal.indexOf('{record.subscriberReservation &&'))
   assert.match(notice, /\(A CONFIRMAR\)/)

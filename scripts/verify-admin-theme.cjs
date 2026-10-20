@@ -10,7 +10,27 @@ const inspectModalGeometry = require('./lib/modal-geometry.cjs')
 const root = path.resolve(__dirname, '..')
 const output = path.join(root, 'tmp/visual-qa/theme-review')
 fs.mkdirSync(output, { recursive: true })
-const source = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8')
+const appCssImports = [...fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8').matchAll(/import\s+['"]([^'"]+\.css)['"]/g)].map(match => `import '${match[1]}';`).join('\n')
+const source = `
+import React, { useState } from 'react';
+import Dashboard from './features/dashboard/presentation/Dashboard.jsx';
+import Employees from './features/employees/presentation/Employees.jsx';
+import Settings from './features/settings/presentation/Settings.jsx';
+import ServiceTypes from './features/services/presentation/ServiceTypes.jsx';
+import { WeeklyPlanner } from './features/agenda/presentation/WeeklyPlanner.jsx';
+import { History } from './features/history/presentation/History.jsx';
+import { Accounts } from './features/customers/presentation/Accounts.jsx';
+import { Vehicles } from './features/vehicles/presentation/Vehicles.jsx';
+import { TechnicianPortal } from './features/technicians/presentation/TechnicianPortal.jsx';
+import { Login } from './features/auth/presentation/Login.jsx';
+import { AuditPage } from './features/audit/presentation/AuditPage.jsx';
+import { Confirm } from './presentation/components/Confirm.jsx';
+import { FrozenMonthsSettings } from './components/FrozenMonths.jsx';
+import { HelpShell } from './HelpCenter.jsx';
+import Icon from './components/ui/Icon.jsx';
+import RefreshButton from './components/ui/RefreshButton.jsx';
+${appCssImports}
+`
 const cssImports = [...fs.readFileSync(path.join(root, 'src/main.jsx'), 'utf8').matchAll(/import\s+['"]([^'"]+\.css)['"]/g)].map(match => `import '${match[1]}';`).join('\n')
 
 const fixture = `
@@ -89,7 +109,7 @@ createRoot(document.getElementById('root')).render(<ThemeReviewFixture/>);
 
 // Preserve main.jsx's first import before the App component's CSS dependencies;
 // reversing this order would let legacy table grids override history-layout.css.
-const built = buildSync({ stdin: { contents: "import './style.css';\n" + source + '\n' + fixture, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, outdir: 'out', format: 'iife', external: ['/logo-pignus.png', '/pignus-owl-white.svg'], define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'false' }, loader: { '.css': 'css', '.png': 'dataurl' }, logLevel: 'silent' })
+const built = buildSync({ stdin: { contents: "import './style.css';\n" + source + '\n' + fixture, loader: 'jsx', resolveDir: path.join(root, 'src') }, jsx: 'automatic', bundle: true, write: false, outdir: 'out', format: 'iife', external: ['/logo-pignus.png', '/pignus-owl-white.svg'], define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.PROD': 'false' }, loader: { '.css': 'css', '.png': 'dataurl' }, logLevel: 'silent' })
 const css = built.outputFiles.find(file => file.path.endsWith('.css')).text
 const js = built.outputFiles.find(file => file.path.endsWith('.js')).text
 const auditRecord = { id: 'audit-review', at: '2026-10-13T12:00:00Z', action: 'Modificó servicio', entity: 'Servicio', entityId: 'h-pending', user: { name: 'Administración Pignus', email: 'administracion@example.test' }, before: { time: '08:30', status: 'Pendiente' }, after: { time: '09:00', status: 'Pendiente' } }

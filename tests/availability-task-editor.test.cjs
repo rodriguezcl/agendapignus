@@ -1,8 +1,9 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
-const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+const source = frontendSource()
 const start = source.indexOf("  const addTask = (day, teamIndex, startTime = '')")
 const code = source.slice(start, source.indexOf('  const removeWeeklyTask', start))
 for (const persisted of [true, false]) {

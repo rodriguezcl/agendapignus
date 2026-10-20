@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -185,7 +186,7 @@ test('no absorbe errores que no sean conflictos de revisión', async () => {
 })
 
 test('la interfaz bloquea doble guardado y descarta instantáneas encoladas obsoletas', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const source = frontendSource()
   const api = fs.readFileSync(path.join(__dirname, '..', 'api', 'index.js'), 'utf8')
 
   assert.match(source, /const stateSaveGenerationRef = useRef\(0\)/)

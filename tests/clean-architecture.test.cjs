@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -43,7 +44,7 @@ test('el catálogo persiste por operaciones de registro y no mediante el estado 
 })
 
 test('el ABM de vehículos persiste por repositorio sin enviar el estado global', () => {
-  const app = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8')
+  const app = frontendSource()
   const repository = fs.readFileSync(path.join(root, 'src/infrastructure/repositories/vehicle-repository.mjs'), 'utf8')
   assert.match(app, /vehicleRepository\.(create|update|remove)/)
   for (const method of ["'POST'", "'PUT'", "'DELETE'"]) assert.match(repository, new RegExp(method))

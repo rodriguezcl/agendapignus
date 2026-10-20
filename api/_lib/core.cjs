@@ -1,3 +1,7 @@
+const { serviceIsCompleted, assertServiceCanBeCompleted, normalizeHistoryCompletionTimes } = require('./service-completion.cjs')
+const { userCan, assertVehicleControlOmissionAuthorized } = require('./access-policy.cjs')
+const { publicEmployee, auditSafe, hashPassword, verifyPassword } = require('./employee-credentials.cjs')
+const { reportDate, compareReportRecords, professionalExcelHtml } = require('./report-formatting.cjs')
 const crypto = require('node:crypto')
 const { isOperator, operatorState } = require('./operator-access.cjs')
 const { validateChangedAgendaSchedules } = require('./scheduling-validation.cjs')
@@ -28,31 +32,6 @@ function legacyServiceCode(service = {}) {
 const normalizeServiceEstimatedMinutes = value => {
   const minutes = Number(value)
   return Number.isInteger(minutes) && minutes >= 15 && minutes <= 720 ? minutes : 60
-}
-
-const FEATURE_PERMISSION_PARENTS = {
-  collectionsManage: 'collections',
-  weeklyTeams: 'weekly',
-  weeklyHours: 'weekly',
-  weeklyVehicles: 'weekly',
-  weeklyGuards: 'weekly',
-  historyManage: 'history',
-  accountsEdit: 'accounts',
-  accountsDelete: 'accounts',
-  accountsImport: 'accounts'
-}
-
-function userCan(user, permission) {
-  if (isOperator(user)) return permission === 'weekly'
-  if (user?.roleCode === 'administrator') return true
-  if (user?.roleCode === 'supervisor' || normalizedRoleName(user?.role) === 'supervisor') return permission === 'history' || permission === 'accounts'
-  const parent = FEATURE_PERMISSION_PARENTS[permission]
-  if (parent && user?.permissions?.[parent] !== true) return false
-  if (typeof user?.permissions?.[permission] === 'boolean') return user.permissions[permission]
-  // Los permisos granulares son opt-in para cualquier rol no administrativo.
-  // Un rol creado antes de esta versión no debe heredar por accidente acciones
-  // de escritura o configuración sólo por poder visualizar el módulo padre.
-  return false
 }
 
 function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], agenda = {}) {
@@ -114,64 +93,9 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
   return result
 }
 
-function assertVehicleControlOmissionAuthorized(incoming, current, user) {
-  if (user?.roleCode === 'administrator') return
-  const deny = () => {
-    const error = new Error('Solamente un administrador puede omitir o eliminar un control vehicular.')
-    error.statusCode = 403
-    throw error
-  }
-  const currentWeekly = current?.agenda?.weekly || {}
-  const incomingWeekly = incoming?.agenda?.weekly || {}
-  for (const [day, currentPlan] of Object.entries(currentWeekly)) {
-    if (day.startsWith('_')) continue
-    const controlTeams = (currentPlan?.teams || []).filter(team => (team.tasks || []).some(task => task?.vehicleControl))
-    const controls = controlTeams.flatMap(team => team.tasks || []).filter(task => task?.vehicleControl)
-    if (!controls.length) continue
-    const previousRemoved = new Set((currentPlan?.removedTaskIds || []).map(String))
-    const newlyRemoved = (incomingWeekly?.[day]?.removedTaskIds || []).map(String).filter(id => !previousRemoved.has(id))
-    if (controls.some(task => {
-      const aliases = [task.taskId && `task:${task.taskId}`, task.historyId && `history:${task.historyId}`].filter(Boolean)
-      return aliases.some(alias => newlyRemoved.includes(alias))
-    })) deny()
-    const previousRemovedTeams = new Set((currentPlan?.removedTeams || []).map(marker => String(marker.id || '')))
-    const newlyRemovedTeams = (incomingWeekly?.[day]?.removedTeams || []).filter(marker => !previousRemovedTeams.has(String(marker.id || '')))
-    if (controlTeams.some(team => newlyRemovedTeams.some(marker =>
-      String(marker.teamId || '') === String(team.teamId || '') || String(marker.id || '') === `team:${team.teamId}`
-    ))) deny()
-  }
-  if (userCan(user, 'historyManage')) {
-    const incomingHistoryIds = new Set((incoming?.history || []).map(record => String(record.id)))
-    if ((current?.history || []).some(record => record?.vehicleControl && !incomingHistoryIds.has(String(record.id)))) deny()
-  }
-}
-
-function publicEmployee(employee = {}) {
-  const { password, passwordHash, ...safe } = employee
-  return safe
-}
-
 function technicianVehicle(vehicle = {}) {
   const { id, brand, model, year, plate, insuranceFileName } = vehicle
   return { id, brand, model, year, plate, insuranceFileName }
-}
-
-function auditSafe(record) {
-  if (!record) return null
-  const { password, passwordHash, ...safe } = record
-  return safe
-}
-
-function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
-  return `${salt}:${crypto.scryptSync(String(password), salt, 64).toString('hex')}`
-}
-
-function verifyPassword(password, storedHash) {
-  if (!storedHash?.includes(':')) return false
-  const [salt, hash] = storedHash.split(':')
-  const calculated = crypto.scryptSync(String(password), salt, 64)
-  const stored = Buffer.from(hash, 'hex')
-  return stored.length === calculated.length && crypto.timingSafeEqual(stored, calculated)
 }
 
 function userForEmployee(employee, roles) {
@@ -345,43 +269,6 @@ function authorizeIncomingState(incoming, current, user) {
 function customerKind(customer) {
   if (customer.kind === 'subscriber' || customer.kind === 'client') return customer.kind
   return String(customer.account || '').toUpperCase().startsWith('PIG-') ? 'subscriber' : 'client'
-}
-
-const serviceIsCompleted = record => record?.status === 'Completado' || record?.technicalStatus === 'Completado'
-
-function assertServiceCanBeCompleted(record, now = new Date().toISOString()) {
-  const instant = new Date(now)
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(instant).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
-  const today = `${parts.year}-${parts.month}-${parts.day}`
-  const serviceDate = String(record?.date || '')
-  if (serviceDate > today) { const error = new Error('No se puede completar un servicio antes de su fecha y hora programadas.'); error.statusCode = 409; throw error }
-  if (serviceDate !== today) return
-  const match = String(record?.time || record?.scheduledTime || '').match(/^(\d{1,2}):(\d{2})$/)
-  if (!match) return
-  const scheduled = Number(match[1]) * 60 + Number(match[2])
-  const current = Number(parts.hour) * 60 + Number(parts.minute)
-  if (scheduled > current) { const error = new Error('No se puede completar un servicio antes de su fecha y hora programadas.'); error.statusCode = 409; throw error }
-}
-
-function normalizeHistoryCompletionTimes(history = [], previousHistory = [], now = new Date().toISOString(), { allowEarlyCompletion = false } = {}) {
-  const previousById = new Map((previousHistory || []).map(record => [String(record.id), record]))
-  return (history || []).map(record => {
-    const previous = previousById.get(String(record.id))
-    const wasCompleted = serviceIsCompleted(previous)
-    const isCompleted = serviceIsCompleted(record)
-    if (!isCompleted) {
-      if (!wasCompleted && !record.completedAt) return record
-      const { completedAt: _discardedCompletedAt, ...withoutCompletion } = record
-      return withoutCompletion
-    }
-    if (!previous || !wasCompleted) {
-      if (!allowEarlyCompletion) assertServiceCanBeCompleted(record, now)
-      return { ...record, completedAt: now }
-    }
-    if (previous.completedAt) return { ...record, completedAt: previous.completedAt }
-    const { completedAt: _discardedLegacyCompletion, ...legacyRecord } = record
-    return legacyRecord
-  })
 }
 
 function normalizeStateForSave(state, current, { allowEarlyCompletion = false } = {}) {
@@ -641,24 +528,6 @@ function auditChanges(previousRecords, nextRecords, key, entity, user) {
   }
   for (const [id, record] of previous) if (!incoming.has(id)) entries.push(create('Eliminó', id, record, null))
   return entries
-}
-
-function reportDate(value) {
-  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  return match ? `${match[3]}/${match[2]}/${match[1]}` : String(value || '')
-}
-
-function compareReportRecords(left, right) {
-  return String(left.date || '').localeCompare(String(right.date || '')) || String(left.time || left.scheduledTime || '').localeCompare(String(right.time || right.scheduledTime || '')) || String(left.client || '').localeCompare(String(right.client || ''), 'es', { sensitivity: 'base' })
-}
-
-const escapeHtml = value => String(value || '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]))
-
-function professionalExcelHtml({ title, description, month, headers, rows, widths }) {
-  const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
-  const generatedAt = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
-  const body = rows.map((row, rowIndex) => `<tr class="${rowIndex % 2 ? 'alternate' : ''}">${row.map((value, columnIndex) => { const header = headers[columnIndex]; const rendered = header === 'Fecha' ? reportDate(value) : value; return `<td class="${header === 'Contacto' ? 'text-value contact' : header === 'Fecha' ? 'date-value' : 'text-value'}">${escapeHtml(rendered) || '&nbsp;'}</td>` }).join('')}</tr>`).join('')
-  return `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>@page{size:landscape;margin:.45in}body{font-family:Aptos,Calibri,Arial,sans-serif;color:#173626;background:#fff;margin:0}.report{border-collapse:collapse;width:100%;table-layout:fixed}.brand td{height:26px;padding:8px 12px;background:#123122;color:#d8a016;font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase}.title td{padding:16px 12px 4px;background:#123122;color:#fff;font-size:24px;font-weight:700}.description td{padding:2px 12px 16px;background:#123122;color:#d5e2d9;font-size:11px}.meta td{padding:11px 12px;background:#f4ecd3;color:#405748;font-size:11px;border-bottom:2px solid #c99311}.meta b{color:#173626}.spacer td{height:10px}.headers th{padding:10px 9px;background:#c99311;color:#fff;font-size:11px;font-weight:700;text-align:left;border-bottom:2px solid #8d6505}.report tbody td{padding:9px;border-bottom:1px solid #d9e4da;vertical-align:top;font-size:10px;white-space:normal}.report tbody tr.alternate td{background:#f5f8f5}.date-value{white-space:nowrap!important;text-align:center;mso-number-format:"dd/mm/yyyy"}.contact{white-space:nowrap!important;mso-number-format:"\\@"}.footer td{padding:13px 12px;color:#6b7d70;font-size:9px;border-top:2px solid #c99311}.count{font-size:15px;font-weight:700;color:#173626}.confidential{float:right;font-weight:700;color:#6b5220}</style></head><body><table class="report"><colgroup>${widths.map(width => `<col style="width:${width}">`).join('')}</colgroup><thead><tr class="brand"><td colspan="${headers.length}">PIGNUS · Gestión operativa</td></tr><tr class="title"><td colspan="${headers.length}">${escapeHtml(title)}</td></tr><tr class="description"><td colspan="${headers.length}">${escapeHtml(description)}</td></tr><tr class="meta"><td colspan="${headers.length}"><b>Período:</b> ${escapeHtml(monthLabel)} &nbsp;·&nbsp; <b>Total:</b> <span class="count">${rows.length}</span> &nbsp;·&nbsp; <b>Generado:</b> ${escapeHtml(generatedAt)}</td></tr><tr class="spacer"><td colspan="${headers.length}"></td></tr><tr class="headers">${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${body || `<tr><td colspan="${headers.length}">No existen registros para el período seleccionado.</td></tr>`}</tbody><tfoot><tr class="footer"><td colspan="${headers.length}">Agenda técnica PIGNUS <span class="confidential">Documento de uso interno</span></td></tr></tfoot></table></body></html>`
 }
 
 module.exports = { assertNoAccidentalHistoryWipe, assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, deduplicateScheduledTasks, hashPassword, legacyRoleCode, normalizedServiceName, normalizeHistoryCompletionTimes, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml, publicEmployee, reportDate, secureEmployees, statePersistenceChanged, technicianSafeRecord, userCan, userForEmployee, validateState, verifyPassword, visibleStateForUser }

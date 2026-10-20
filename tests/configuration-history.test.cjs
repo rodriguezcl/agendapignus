@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -40,7 +41,7 @@ test('las capturas conservan nombres aunque luego cambie la dotación o la flota
 })
 
 test('los tres configuradores muestran su historial específico y registran cada guardado', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const source = frontendSource()
   const styles = fs.readFileSync(path.join(__dirname, '..', 'src', 'weekly-enhancements.css'), 'utf8')
   assert.match(source, /type: 'teams'[\s\S]*?teamConfigurationSnapshot/)
   assert.match(source, /type: 'vehicles'[\s\S]*?vehicleConfigurationSnapshot/)

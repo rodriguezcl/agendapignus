@@ -1,4 +1,6 @@
 const postgres = require('postgres')
+const { randomUUID } = require('node:crypto')
+const { recordChanges } = require('./record-changes.cjs')
 
 let client
 
@@ -116,37 +118,54 @@ async function readExportState(sql) {
 }
 
 async function replaceCollections(sql, state, previous = null) {
-  const changed = key => !previous || JSON.stringify(previous[key]) !== JSON.stringify(state[key])
-  if (changed('roles')) {
-  await sql`delete from pignus_roles`
-  if (state.roles.length) await sql`insert into pignus_roles ${sql(state.roles.map(record => ({ id: String(record.id), data: sql.json(record) })))}`
+  const changed = key => !previous || (previous[key] !== state[key] && JSON.stringify(previous[key]) !== JSON.stringify(state[key]))
+  // Callers run this synchronization inside the revision-locked transaction.
+  // A missing baseline still means a full replacement (initialization/import).
+  // With a baseline, preserve physical rows, timestamps and attached metadata.
+  const rolesDelta = recordChanges(previous?.roles, state.roles)
+  if (!previous) await sql`delete from pignus_roles`
+  if (rolesDelta.removed.length) await sql`delete from pignus_roles where id in ${sql(rolesDelta.removed)}`
+  if (rolesDelta.changed.length) await sql`insert into pignus_roles ${sql(rolesDelta.changed.map(record => ({ id: String(record.id), data: sql.json(record) })))} on conflict (id) do update set data = excluded.data`
+
+  const employeesDelta = recordChanges(previous?.employees, state.employees)
+  if (!previous) await sql`delete from pignus_employees`
+  if (employeesDelta.removed.length) await sql`delete from pignus_employees where id in ${sql(employeesDelta.removed)}`
+  if (employeesDelta.changed.length) {
+    const email = record => String(record.email).trim().toLowerCase()
+    const before = new Map((previous?.employees || []).map(record => [String(record.id), record]))
+    const renamed = employeesDelta.changed.filter(record => before.has(String(record.id)) && email(before.get(String(record.id))) !== email(record)).map(record => String(record.id))
+    // Release unique values before the batch UPSERT so swaps and reuse after a
+    // rename work without deleting employees or their credentials.
+    if (renamed.length) await sql`update pignus_employees set email = ${`__pignus_${randomUUID()}__`} || id where id in ${sql(renamed)}`
+    await sql`insert into pignus_employees ${sql(employeesDelta.changed.map(record => ({ id: String(record.id), email: email(record), data: sql.json(record) })))} on conflict (id) do update set email = excluded.email, data = excluded.data`
   }
 
-  if (changed('employees')) {
-  await sql`delete from pignus_employees`
-  if (state.employees.length) await sql`insert into pignus_employees ${sql(state.employees.map(record => ({ id: String(record.id), email: String(record.email).trim().toLowerCase(), data: sql.json(record) })))}`
-  }
-
-  if (changed('services')) {
-  await sql`delete from pignus_services`
-  if (state.services.length) await sql`insert into pignus_services ${sql(state.services.map(record => ({ id: String(record.id), data: sql.json(record) })))}`
-  }
+  const servicesDelta = recordChanges(previous?.services, state.services)
+  if (!previous) await sql`delete from pignus_services`
+  if (servicesDelta.removed.length) await sql`delete from pignus_services where id in ${sql(servicesDelta.removed)}`
+  if (servicesDelta.changed.length) await sql`insert into pignus_services ${sql(servicesDelta.changed.map(record => ({ id: String(record.id), data: sql.json(record) })))} on conflict (id) do update set data = excluded.data`
 
   if (changed('vehicles')) await sql`insert into pignus_preferences (key, value, updated_at) values ('vehicles', ${JSON.stringify(state.vehicles || [])}, now()) on conflict (key) do update set value = excluded.value, updated_at = now()`
 
-  if (changed('customers')) {
-  await sql`delete from pignus_customers`
-  if (state.customers.length) await sql`insert into pignus_customers ${sql(state.customers.map(record => ({ account: String(record.account), customer_id: String(record.customerId), data: sql.json(record) })))}`
+  const customersDelta = recordChanges(previous?.customers, state.customers, 'customerId')
+  if (!previous) await sql`delete from pignus_customers`
+  if (customersDelta.removed.length) await sql`delete from pignus_customers where customer_id in ${sql(customersDelta.removed)}`
+  if (customersDelta.changed.length) {
+    const before = new Map((previous?.customers || []).map(record => [String(record.customerId), record]))
+    const renamed = customersDelta.changed.filter(record => before.has(String(record.customerId)) && String(before.get(String(record.customerId)).account) !== String(record.account)).map(record => String(record.customerId))
+    // customerId is stable across subscription/account conversions. Keeping
+    // that row also preserves its original creation order during account swaps.
+    if (renamed.length) await sql`update pignus_customers set account = ${`__pignus_${randomUUID()}__`} || customer_id where customer_id in ${sql(renamed)}`
+    await sql`insert into pignus_customers ${sql(customersDelta.changed.map(record => ({ account: String(record.account), customer_id: String(record.customerId), data: sql.json(record) })))} on conflict (customer_id) do update set account = excluded.account, data = excluded.data`
   }
 
-  const { recordChanges } = require('./record-changes.cjs')
   // With a baseline, only explicit removed IDs can produce DELETEs. All
   // remaining records keep their physical rows and concurrent metadata.
   if (!previous) await sql`delete from pignus_work_history`
   const historyDelta = recordChanges(previous?.history, state.history)
   if (historyDelta.removed.length) await sql`delete from pignus_work_history where id in ${sql(historyDelta.removed)}`
   if (historyDelta.changed.length) await sql`insert into pignus_work_history ${sql(historyDelta.changed.map(record => ({ id: String(record.id), work_date: record.date || null, status: record.status || 'Pendiente', service_id: record.serviceId == null ? null : String(record.serviceId), customer_id: record.customerId == null ? null : String(record.customerId), data: sql.json(record) })))} on conflict (id) do update set work_date = excluded.work_date, status = excluded.status, service_id = excluded.service_id, customer_id = excluded.customer_id, data = excluded.data`
-  if (!previous || historyDelta.removed.length || changed('vehicles')) {
+  if (!previous || historyDelta.removed.length) {
   await sql`create table if not exists pignus_vehicle_control_photos (record_id text primary key, vehicle_id text not null, mime_type text not null, photo_data bytea not null, created_at timestamptz not null default now())`
   await sql`alter table pignus_vehicle_control_photos enable row level security`
   await sql`revoke all on table pignus_vehicle_control_photos from anon, authenticated`
@@ -160,10 +179,10 @@ async function replaceCollections(sql, state, previous = null) {
   await sql`revoke all on table pignus_vehicle_insurance_documents from anon, authenticated`
   }
 
-  if (changed('reviews')) {
-  await sql`delete from pignus_reviews`
-  if (state.reviews.length) await sql`insert into pignus_reviews ${sql(state.reviews.map(record => ({ id: String(record.id), data: sql.json(record) })))}`
-  }
+  const reviewsDelta = recordChanges(previous?.reviews, state.reviews)
+  if (!previous) await sql`delete from pignus_reviews`
+  if (reviewsDelta.removed.length) await sql`delete from pignus_reviews where id in ${sql(reviewsDelta.removed)}`
+  if (reviewsDelta.changed.length) await sql`insert into pignus_reviews ${sql(reviewsDelta.changed.map(record => ({ id: String(record.id), data: sql.json(record) })))} on conflict (id) do update set data = excluded.data`
 
   if (changed('agenda')) await sql`insert into pignus_agendas (id, data, updated_at) values ('current', ${sql.json(state.agenda || {})}, now()) on conflict (id) do update set data = excluded.data, updated_at = now()`
   if (changed('preferences')) await sql`insert into pignus_preferences (key, value, updated_at) values ('theme', ${state.preferences?.theme || 'light'}, now()) on conflict (key) do update set value = excluded.value, updated_at = now()`

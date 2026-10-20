@@ -1,7 +1,8 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
-const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+const source = frontendSource()
 
 test('locked service cards do not render directions, phone or start actions', () => {
   assert.match(source, /const serviceUnlocked = !card.classList.contains\('locked'\)/)

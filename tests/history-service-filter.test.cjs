@@ -1,12 +1,13 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const app = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+const app = frontendSource()
 
 test('el filtro de servicio usa coincidencia exacta y se combina con los otros filtros', () => {
-  const line = app.split('\n').find(line => line.includes('const matchingRecords = history.filter'))
-  for (const expression of ['serviceTypesFor(record).some(type => normalizeSearchText(type.name) === serviceFilter)', 'fromDate', 'toDate', 'statusFilter', 'normalizedSearch']) assert.ok(line.includes(expression))
+  const line = app.split('\n').find(line => line.includes('const matchingRecords = useMemo'))
+  for (const expression of ['filterHistoryRecords(searchIndex', 'serviceFilter', 'fromDate', 'toDate', 'statusFilter', 'search']) assert.ok(line.includes(expression))
 })
 
 test('el filtro enumera servicios históricos y restablece selección, página y limpieza', () => {

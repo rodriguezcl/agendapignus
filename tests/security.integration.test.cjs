@@ -13,6 +13,7 @@ const port = 32109
 const origin = `http://127.0.0.1:${port}`
 let temporaryDirectory
 let serverProcess
+let serverErrorOutput = ''
 
 test('Corrección de categoría: conserva el completado y restituye el abonado con auditoría', async () => {
   const fixture = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
@@ -167,7 +168,11 @@ async function login(email) {
 }
 
 async function api(pathname, cookie, options = {}) {
-  return fetch(`${origin}${pathname}`, { ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}), ...(options.headers || {}) } })
+  try {
+    return await fetch(`${origin}${pathname}`, { ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}), ...(options.headers || {}) } })
+  } catch (error) {
+    throw new Error(`La API de pruebas falló en ${pathname}.\n${serverErrorOutput}`, { cause: error })
+  }
 }
 
 async function state(cookie) {
@@ -217,6 +222,8 @@ test.beforeEach(async () => {
   fs.mkdirSync(publicDirectory)
   fs.writeFileSync(path.join(publicDirectory, 'index.html'), '<!doctype html><html><body><div id="root"></div></body></html>')
   serverProcess = spawn(process.execPath, ['server.cjs'], { cwd: root, env: { ...process.env, PIGNUS_PORT: String(port), PIGNUS_HOST: '127.0.0.1', PIGNUS_DATA_DIR: temporaryDirectory, PIGNUS_PUBLIC_DIR: publicDirectory }, stdio: ['ignore', 'pipe', 'pipe'] })
+  serverErrorOutput = ''
+  serverProcess.stderr.on('data', chunk => { serverErrorOutput = (serverErrorOutput + chunk).slice(-8000) })
   await waitForServer()
   // La reconstrucción inicial agrupa técnicos por equipos mensuales. Restauramos
   // un segundo registro sin asignación para probar el filtro de exportación sin

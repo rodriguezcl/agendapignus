@@ -1,5 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const { userCan, authorizeIncomingState, visibleStateForUser } = require('../api/_lib/core.cjs')
 const { operatorRouteAllowed } = require('../api/_lib/operator-access.cjs')
 const { canPerformTechnicalServices } = require('../api/_lib/technical-capability.cjs')
@@ -38,10 +39,12 @@ test('la Agenda semanal del Operador no ofrece acciones de modificación ni otro
   const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
   const React = require('react'), { renderToString } = require('react-dom/server')
   const root = path.resolve(__dirname, '..')
-  const source = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8')
+  const source = frontendSource()
+  const componentFile = path.join(root, 'src/features/agenda/presentation/WeeklyPlanner.jsx')
+  const componentSource = fs.readFileSync(componentFile, 'utf8')
   // Supply a loaded holiday calendar so the actual team/action markup renders.
-  const readySource = source.replace('function useNationalHolidays(years)', 'function unusedNationalHolidays(years)')
-  const bundle = require('esbuild').buildSync({ stdin: { contents: `${readySource}\nfunction useNationalHolidays() { return { records: [], loading: false, error: '' } }\nexport { WeeklyPlanner };`, loader: 'jsx', resolveDir: path.join(root, 'src') }, bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent' })
+  const readySource = componentSource.replace(/import \{ useNationalHolidays \} from [^\n]+\n/, '')
+  const bundle = require('esbuild').buildSync({ stdin: { contents: `${readySource}\nfunction useNationalHolidays() { return { records: [], loading: false, error: '' } }`, loader: 'jsx', resolveDir: path.dirname(componentFile) }, bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent' })
   const compiled = new Module(path.join(root, 'operator-render.cjs'), module)
   compiled.paths = module.paths
   compiled._compile(bundle.outputFiles[0].text, path.join(root, 'operator-render.cjs'))

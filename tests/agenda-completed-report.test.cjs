@@ -1,8 +1,9 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const source = fs.readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8')
+const source = frontendSource()
 
 test('weekly completed service opens the read-only detail before the editing path', () => {
   const start = source.indexOf('const openTaskEditor =')

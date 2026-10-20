@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
@@ -92,7 +93,7 @@ test('un feriado queda bloqueado hasta la decisión administrativa', async () =>
 test('Agenda del día no sincroniza ni guarda un feriado no operativo', () => {
   const fs = require('node:fs')
   const path = require('node:path')
-  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /if \(advancedGuard \|\| sundayBlocked \|\| holidayBlocked \|\| holidayCalendarUnavailable\) return/)
   assert.match(source, /const registerHistory[\s\S]*?if \(holidayBlocked\)[\s\S]*?return false/)
   assert.match(source, /Agenda del feriado bloqueada/)

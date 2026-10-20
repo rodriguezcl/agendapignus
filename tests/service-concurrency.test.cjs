@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -16,7 +17,7 @@ test('la huella de un servicio es estable ante el orden de las propiedades', asy
 })
 
 test('el historial conserva el borrador y explica los cambios concurrentes sin usar una alerta roja', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.jsx'), 'utf8')
+  const source = frontendSource()
   const styles = [
     fs.readFileSync(path.join(__dirname, '..', 'src', 'ui-polish.css'), 'utf8'),
     fs.readFileSync(path.join(__dirname, '..', 'src', 'constitution-ui.css'), 'utf8')

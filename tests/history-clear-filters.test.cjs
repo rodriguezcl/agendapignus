@@ -1,10 +1,11 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
 const { parse } = require('@babel/parser')
 const traverse = require('@babel/traverse').default
-const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+const source = frontendSource()
 
 test('clear resets all history filters, selection, page and native fields', () => {
   const calls = {}

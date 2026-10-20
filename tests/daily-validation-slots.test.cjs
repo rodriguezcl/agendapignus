@@ -1,9 +1,10 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
 test('ignora controles y espacios vacíos, y conserva la numeración visual', () => {
-  const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const start = source.indexOf('  const validateAgenda = (agendaTeams = teams, onlyTaskId = null)')
   const code = source.slice(start, source.indexOf('  const clearAgenda', start))
   let errors = []

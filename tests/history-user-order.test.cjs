@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -10,7 +11,7 @@ test('historial de usuario usa el mismo criterio operativo que administración',
     { id: 'early', date: '2026-09-17', time: '08:30', status: 'Pendiente' }
   ]
   assert.deepEqual(records.sort(sortOperationalHistory).map(record => record.id), ['early', 'late', 'vehicle'])
-  const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
-  const readOnly = source.slice(source.indexOf('function HistoryReadOnly('), source.indexOf('function HistoryView('))
-  assert.match(readOnly, /sort\(supervisorView \? sortHistoryByDateAndTime : sortOperationalHistory\)/)
+  const source = frontendSource()
+  const readOnly = source.slice(source.indexOf('function HistoryReadOnly('), source.indexOf('function HistoryBulkView('))
+  assert.match(readOnly, /compare: supervisorView \? sortHistoryByDateAndTime : sortOperationalHistory/)
 })

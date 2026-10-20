@@ -1,7 +1,8 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
-const source = fs.readFileSync(require('node:path').join(__dirname, '../src/App.jsx'), 'utf8')
+const source = frontendSource()
 
 test('weekly cards keep service identity and reports without management shortcuts', () => {
   const start = source.indexOf('<div className="week-task-title">')

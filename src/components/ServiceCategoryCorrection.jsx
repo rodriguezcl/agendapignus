@@ -28,7 +28,7 @@ export default function ServiceCategoryCorrection({ record, services, onSave, cl
         <label>Motivo de la corrección<textarea required maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} placeholder="Por ejemplo: mudanza; el abonado mantiene el servicio." /></label>
       </fieldset>
       {error && <p className="field-error" role="alert">{error}</p>}
-      <div className="modal-actions"><button type="button" className="secondary" disabled={busy} onClick={requestClose}>Cancelar</button><button type="submit" className="primary" disabled={busy || !changed || !ids.length || !reason.trim()}>{busy ? 'Guardando…' : 'Guardar corrección'}</button></div>
+      <div className="modal-actions"><button title="Cerrá la corrección de categoría sin guardar." type="button" className="secondary" disabled={busy} onClick={requestClose}>Cancelar</button><button title="Guardá la categoría seleccionada y el motivo de la corrección." type="submit" className="primary" disabled={busy || !changed || !ids.length || !reason.trim()}>{busy ? 'Guardando…' : 'Guardar corrección'}</button></div>
     </form>}
   </EditorModal>
 }

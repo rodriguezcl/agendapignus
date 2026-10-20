@@ -39,7 +39,7 @@ test('residenciales y período vacío se pueden consultar sin descargar', () => 
   assert.match(render('all', []), /No hay instalaciones completadas/)
 })
 test('dashboard abre el modal desde todas las categorías con el mismo listado y período del indicador', () => {
-  const source = require('node:fs').readFileSync(path.join(__dirname, '../src/App.jsx'), 'utf8').split('function DashboardStatusView(')[1]
+  const source = require('node:fs').readFileSync(path.join(__dirname, '../src/features/dashboard/presentation/Dashboard.jsx'), 'utf8').split('function DashboardStatusView(')[1]
   assert.match(source, /setLocationDetail\('all'\)/)
   assert.match(source, /setLocationDetail\(key\)/)
   assert.match(source, /LocationInstallationsModal records=\{alarms\}/)

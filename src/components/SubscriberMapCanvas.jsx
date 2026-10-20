@@ -82,7 +82,7 @@ export default function SubscriberMapCanvas({ rows, mode, selected, onSelect, fi
   }, [selected, ready])
   return <div className="subscriber-map-canvas-wrap">
     <div ref={element} className="subscriber-map-canvas" aria-label="Mapa de distribución de abonados. Usá la rueda del mouse, las flechas y los controles de zoom para explorar." />
-    {error && <div role="alert" className="subscriber-map-load-error">{error}{ready && <button type="button" onClick={() => { setError(''); instance.current.baseTiles.redraw() }}>Reintentar mapa</button>}</div>}
+    {error && <div role="alert" className="subscriber-map-load-error">{error}{ready && <button title="Volvé a cargar las imágenes del mapa." type="button" onClick={() => { setError(''); instance.current.baseTiles.redraw() }}>Reintentar mapa</button>}</div>}
     {!ready && !error && <div className="subscriber-map-loading" role="status">Cargando mapa…</div>}
   </div>
 }

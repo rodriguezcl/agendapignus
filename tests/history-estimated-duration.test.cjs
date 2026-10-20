@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -23,7 +24,7 @@ test('availability uses the saved edited duration', async () => {
 })
 
 test('history displays duration and exposes the shared duration editor while controls remain fixed', () => {
-  const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   const detail = source.slice(source.indexOf('function HistoryManagementDetail'), source.indexOf('function HistoryDetail('))
   assert.match(detail, /<b>Tiempo estimado<\/b>/)
   assert.match(detail, /durationLabel\(serviceEstimateForTask\(record/)

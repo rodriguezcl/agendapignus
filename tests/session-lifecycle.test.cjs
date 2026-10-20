@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -14,9 +15,9 @@ test('la sesión técnica dura 24 horas y usuario, administrador y supervisor du
   }
   const hook = read('src/features/auth/application/useSessionLifecycle.js')
   assert.match(hook, /SESSION_IDLE_TIMEOUT_MS = 60 \* 60 \* 1000/)
-  assert.match(read('src/App.jsx'), /después de 1 hora sin actividad/)
+  assert.match(frontendSource(), /después de 1 hora sin actividad/)
   assert.match(hook, /TECHNICIAN_SESSION_IDLE_TIMEOUT_MS = 24 \* 60 \* 60 \* 1000/)
-  assert.match(read('src/App.jsx'), /idleTimeoutMs: authUser\?\.roleCode === 'technician' \? TECHNICIAN_SESSION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS/)
+  assert.match(frontendSource(), /idleTimeoutMs: authUser\?\.roleCode === 'technician' \? TECHNICIAN_SESSION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS/)
 })
 
 test('la actividad humana renueva la sesión y las comprobaciones automáticas no lo hacen', () => {
@@ -31,7 +32,7 @@ test('la actividad humana renueva la sesión y las comprobaciones automáticas n
 })
 
 test('la verificación liviana expulsa la sesión desplazada sin descargar el estado', () => {
-  const app = read('src/App.jsx')
+  const app = frontendSource()
   const hook = read('src/features/auth/application/useSessionLifecycle.js')
   assert.match(app, /useSessionLifecycle\(\{/)
   assert.match(hook, /SESSION_STATUS_INTERVAL_MS = 5 \* 1000/)

@@ -1,3 +1,4 @@
+const { frontendSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -37,7 +38,7 @@ test('monthly meeting uses duration; vehicle controls and ordinary services reta
 })
 
 test('theme is account-scoped locally and omitted preferences do not mutate shared state', async () => {
-  const source = fs.readFileSync(require.resolve('../src/App.jsx'), 'utf8')
+  const source = frontendSource()
   assert.match(source, /pignus-theme-account:\$\{themeAccountKey\}/)
   assert.doesNotMatch(source, /preferences: isSupervisor|setTheme\(data.preferences.theme\)/)
   const { stateOperations } = await import('../src/features/state/application/state-operations.mjs')
