@@ -9,6 +9,7 @@ const { migrateLegacyEstimatedMinutes } = require('./legacy-estimated-minutes.cj
 const { ensureVehicleControlService } = require('./vehicle-control-service.cjs')
 const { synchronizeVehicleControlAssignments } = require('./vehicle-control-assignment.cjs')
 const { assertNoPastWeeklyServiceAdditions } = require('./past-agenda.cjs')
+const { projectLegacyCollectionReceipts, restoreLegacyCollectionReceipts } = require('./legacy-collection-receipts.cjs')
 
 const normalizedText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 const normalizedRoleName = normalizedText
@@ -156,7 +157,7 @@ function visibleTechnicianStateForUser(state, user) {
 
 function projectStateForUser(state, user) {
   if (require('./permission-catalog.cjs').isGranular(user)) return require('./granular-read-policy.cjs').granularVisibleState(state, user)
-  if (isOperator(user)) return operatorState(state)
+  if (isOperator(user)) return projectLegacyCollectionReceipts(operatorState(state), user)
   if (user.roleCode === 'technician') {
     const journeyHistory = state.history
     state = { ...state, history: state.history.filter(record => record.awaitingConfirmation !== true) }
@@ -204,8 +205,8 @@ function projectStateForUser(state, user) {
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? ensureVehicleControlService(state.services) : [],
     vehicles: userCan(user, 'vehicles') || userCan(user, 'weeklyVehicles') ? state.vehicles || [] : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : userCan(user, 'map') ? (state.customers || []).map(require('./subscriber-map-access.cjs').mapCustomer) : [],
-    history: userCan(user, 'history') || userCan(user, 'accounts') || userCan(user, 'collections') ? state.history : [],
-    agenda: canPlan ? state.agenda : null,
+    history: userCan(user, 'history') || userCan(user, 'accounts') || userCan(user, 'collections') ? projectLegacyCollectionReceipts(state.history, user) : [],
+    agenda: canPlan ? projectLegacyCollectionReceipts(state.agenda, user) : null,
     preferences: state.preferences
   }
 }
@@ -220,6 +221,7 @@ function persistentStateInput(state) {
 function authorizeIncomingState(incoming, current, user) {
   incoming = persistentStateInput(incoming)
   if (require('./permission-catalog.cjs').isGranular(user)) return require('./granular-write-policy.cjs').authorizeGranularState(incoming, current, user)
+  incoming = restoreLegacyCollectionReceipts(incoming, current, user)
   if (isOperator(user)) throw Object.assign(new Error('Operador tiene acceso de solo lectura.'), { statusCode: 403 })
   const administrator = user.roleCode === 'administrator'
   const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')

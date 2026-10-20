@@ -72,7 +72,7 @@ test('catálogo permite editar duración sin crear, borrar ni cambiar estado', (
 })
 
 test('cobranza separa confirmar, importe, medio de pago y trazabilidad', () => {
-  const props = { record, serviceDate: record.date, canManage: true, onSave: noop, close: noop, onSaved: noop }
+  const props = { record, currentRecord: record, effectiveRecord: record, customers: [], serviceDate: record.date, canManage: true, onSave: noop, close: noop, onSaved: noop }
   const user = userWith('collections.view', 'records.financial', 'collections.confirm')
   const confirm = render('src/components/Collections.jsx', 'CollectionEditor', props, user, 'export { CollectionEditor };')
   assert.match(confirm, /Confirmar pago/)

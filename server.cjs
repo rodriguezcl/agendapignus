@@ -1984,17 +1984,25 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     if ((!isGranular(user) && user.roleCode === 'technician') || !userCan(user, 'collectionsManage')) return send(res, 403, { error: 'No tenés permiso para gestionar cobranzas.' })
-    return readJson(req, 500_000).then(async input => {
-      const { manageCollection } = await import('./src/domain/collections/collections.mjs')
+    return readJson(req, 4_100_000).then(async input => {
+      const collectionDomain = await import('./src/domain/collections/collections.mjs')
+      const { manageCollection, collectionBase } = collectionDomain
+      const { prepareCollectionReceiptSync } = require('./api/_lib/collection-receipts.cjs')
+      const store = require('./api/_lib/collection-receipt-store.cjs').sqliteCollectionReceiptStore(db)
+      store.ensure()
       db.exec('BEGIN IMMEDIATE')
       try {
         const current = readState()
         endpointPolicy.assertCollectionAction(user, current, input)
-        const correction = manageCollection(current, input, user)
+        const command = endpointPolicy.collectionInput(current, input, user, collectionBase)
+        const now = new Date().toISOString()
+        const receipt = prepareCollectionReceiptSync(current, command, user, store, now, collectionDomain)
+        const correction = manageCollection(current, command, user, now, receipt)
         require('./api/_lib/completed-service-policy.cjs').assertCompletedServices(correction.state, current, { collectionCorrectionIds: correction.recordIds })
+        if (receipt.file) store.put(correction.before.id, receipt.file)
         for (const record of correction.state.history.filter(item => correction.recordIds.includes(String(item.id)))) db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(record), String(record.id))
         if (JSON.stringify(current.agenda) !== JSON.stringify(correction.state.agenda)) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(correction.state.agenda), 'current')
-        writeAudit(user, input.action === 'confirm' ? 'Confirmó pago' : 'Rectificó cobranza', 'Servicio / historial', String(correction.before.id), correction.before, correction.after)
+        writeAudit(user, input.action === 'confirm' ? 'Confirmó pago' : input.action === 'receipt' ? 'Actualizó comprobante de pago' : 'Rectificó cobranza', 'Servicio / historial', String(correction.before.id), correction.before, correction.after)
         const revision = currentStateRevision() + 1
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
         db.exec('COMMIT')
@@ -2004,6 +2012,16 @@ const server = http.createServer((req, res) => {
         throw error
       }
     }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo guardar la cobranza.' }))
+  }
+  const receiptRoute = /^\/api\/collections\/([^/]+)\/receipts\/([^/]+)$/.exec(url.pathname)
+  if (receiptRoute) {
+    const user = requireSession(req, res)
+    if (!user) return
+    return require('./api/_lib/collection-receipts.cjs').handleCollectionReceipt({
+      req, res, user, state: readState(),
+      recordId: decodeURIComponent(receiptRoute[1]), receiptId: decodeURIComponent(receiptRoute[2]),
+      store: require('./api/_lib/collection-receipt-store.cjs').sqliteCollectionReceiptStore(db)
+    }).catch(error => send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo consultar el comprobante.' }))
   }
   if (req.method === 'POST' && url.pathname === '/api/customers/subscription-correction') {
     const user = requireSession(req, res)

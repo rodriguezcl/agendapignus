@@ -77,10 +77,14 @@ function sanitizeService(record, user, state) {
   if (!permissions.can(user, 'service.documents.read')) {
     result = omitFields(result, DOCUMENT_FIELDS)
   }
+  if (!permissions.can(user, 'collections.view') && result.collection) {
+    result.collection = omitFields(result.collection, new Set(['receipt', 'receipts']))
+  }
   if (!permissions.can(user, 'collections.timeline') && result.collection) {
     result.collection = { ...result.collection }
     delete result.collection.events
     delete result.collection.original
+    delete result.collection.receipts
   }
   if (!any(user, ['weekly.view', 'agenda.view', 'history.view'])) {
     delete result.internalNote

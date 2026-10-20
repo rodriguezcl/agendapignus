@@ -56,6 +56,27 @@ supabase/            # Esquema y migraciones PostgreSQL
 server.cjs           # Adaptador de ejecución local
 ```
 
+## Comprobantes de cobranzas
+
+`src/domain/collections/collections.mjs` exige respaldo verificado para confirmar
+pagos distintos de efectivo. La evidencia se prepara en el servidor con
+`api/_lib/collection-receipts.cjs`; las banderas o metadatos enviados por el
+navegador no acreditan que exista un archivo.
+
+`collection-receipt-store.cjs` guarda los bytes en la tabla de adjuntos con
+`scope = collection`, vinculados al registro dueño de la cobranza. La inserción
+del archivo, el cambio del pago y su auditoría comparten una transacción. En
+SQLite no se ejecutan operaciones asíncronas dentro de `BEGIN IMMEDIATE`.
+El estado operativo contiene sólo metadatos y conserva las versiones previas;
+los archivos no pueden eliminarse ni sobrescribirse desde los endpoints comunes
+de adjuntos técnicos.
+
+La descarga exige acceso a Cobranzas, datos financieros y alcance sobre el dueño
+y la jornada efectiva. Las versiones anteriores requieren además trazabilidad.
+La carga o sustitución utiliza el permiso para confirmar pagos. Adjuntar respaldo
+a un pago histórico conserva su confirmación original; cambiar su medio por otro
+distinto de efectivo exige un archivo nuevo.
+
 ## Regla de dependencias
 
 ```text

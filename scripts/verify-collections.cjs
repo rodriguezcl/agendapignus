@@ -24,11 +24,13 @@ const css = bundle.outputFiles.find(file => file.path.endsWith('.css')).text.rep
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/qa.css"></head><body><div id="root"></div><script src="/qa.js"></script></body></html>'
 ;(async () => {
   const { manageCollection } = await import('../src/domain/collections/collections.mjs')
+  const { prepareCollectionReceipt } = require('../api/_lib/collection-receipts.cjs')
   const browser = await chromium.launch({ channel: 'msedge', headless: true }), results = []
   try {
     for (const [width, theme, reader] of [[1440, 'light', false], [390, 'dark', false], [390, 'light', true]]) {
       const context = await browser.newContext({ viewport: { width, height: 900 }, timezoneId: 'America/Argentina/Buenos_Aires', reducedMotion: 'reduce' })
-      const page = await context.newPage(), errors = [], commands = []
+      const page = await context.newPage(), errors = [], commands = [], receipts = new Map()
+      const receiptStore = { get: async (recordId, receiptId) => receipts.get(`${recordId}:${receiptId}`) || null, put: async (recordId, file) => { receipts.set(`${recordId}:${file.id}`, file) } }
       page.on('pageerror', error => errors.push(error.message)); page.setDefaultTimeout(10000)
       await page.clock.install({ time: new Date('2026-10-14T23:58:00-03:00') })
       await page.route('**/*', async route => {
@@ -44,10 +46,15 @@ const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewp
         if (url.pathname === '/api/collections/manage') {
           const input = route.request().postDataJSON(); commands.push(input)
           if (fail) return route.fulfill({ status: 503, json: { error: 'Fallo simulado: intentá nuevamente.' } })
-          const result = manageCollection(state, input, user)
-          result.state.revision = state.revision + 1
-          await page.evaluate(next => { window.__seed = next }, result.state)
-          return route.fulfill({ json: { ok: true, revision: result.state.revision, state: result.state } })
+          try {
+            const now = '2026-10-14T23:58:00-03:00'
+            const prepared = await prepareCollectionReceipt(state, input, user, receiptStore, now)
+            const result = manageCollection(state, input, user, now, prepared)
+            if (prepared.file) await receiptStore.put(input.recordId, prepared.file)
+            result.state.revision = state.revision + 1
+            await page.evaluate(next => { window.__seed = next }, result.state)
+            return route.fulfill({ json: { ok: true, revision: result.state.revision, state: result.state } })
+          } catch (error) { return route.fulfill({ status: error.statusCode || 400, json: { error: error.message } }) }
         }
         return route.fulfill({ json: { requests: [], holidays: [], days: [], records: [] } })
       })
@@ -97,9 +104,13 @@ const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewp
         await modal.waitFor({ state: 'detached' })
         assert.equal(await page.evaluate(() => window.__seed.history[0].collection.status), 'pending')
         await page.locator('.collections-table button').first().click()
+        assert(await modal.getByRole('button', { name: 'Confirmar pago', exact: true }).isDisabled(), 'La transferencia requiere un comprobante antes de confirmar')
+        await modal.locator('.collection-receipt-input').setInputFiles({ name: 'transferencia-sintetica.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n') })
+        await modal.locator('.collection-receipt-draft').waitFor()
         await modal.getByRole('button', { name: 'Confirmar pago', exact: true }).click()
         await modal.waitFor({ state: 'detached' })
         assert.equal(await page.evaluate(() => window.__seed.history[0].collection.status), 'confirmed')
+        assert.ok(await page.evaluate(() => window.__seed.history[0].collection.receipt?.id), 'El pago confirmado conserva la referencia a su comprobante')
         assert.equal(await page.evaluate(() => window.__seed.history[0].collection.events.length), 2)
         await page.getByRole('button', { name: /^Notificaciones:/ }).click()
         assert.equal(await notices.count(), 0, 'La confirmación resuelve el aviso y la cobranza futura aún no notifica')

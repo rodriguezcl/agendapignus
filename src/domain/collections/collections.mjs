@@ -59,12 +59,15 @@ export function collectionBase(record) {
 
 const fail = (message, statusCode = 400) => { throw Object.assign(new Error(message), { statusCode }) }
 
-export function manageCollection(state, input, user, now = new Date().toISOString()) {
+// Receipt evidence is supplied separately by the server after validating the
+// upload or reading the stored file. Client-provided metadata is never evidence.
+export function manageCollection(state, input, user, now = new Date().toISOString(), { receipt = null, receiptUploaded = false } = {}) {
   const before = state.history?.find(record => String(record.id) === String(input?.recordId))
   if (!before || !hasCollection(before, state.history)) fail('La cobranza ya no está disponible. Actualizá el listado.', 404)
   if (serviceRecordFingerprint(collectionBase(before)) !== serviceRecordFingerprint(input.base)) fail('La cobranza cambió en otra sesión. Cerrá la ficha, actualizá y revisá los datos antes de guardar.', 409)
-  if (!['correct', 'confirm'].includes(input.action)) fail('La acción de cobranza no es válida.')
+  if (!['correct', 'confirm', 'receipt'].includes(input.action)) fail('La acción de cobranza no es válida.')
   if (input.action === 'confirm' && collectionConfirmed(before)) fail('Este pago ya fue confirmado.', 409)
+  if (input.action === 'receipt' && !collectionConfirmed(before)) fail('El respaldo histórico corresponde a una cobranza confirmada.')
   const raw = String(input.amount ?? '').trim().replace(',', '.')
   if (!/^\d+(\.\d{1,2})?$/.test(raw) || Number(raw) <= 0 || Number(raw) > 999999999.99) fail('Ingresá un monto mayor a cero, sin separadores de miles y con hasta dos decimales.')
   if (!COLLECTION_PAYMENT_METHODS.includes(input.paymentMethod)) fail('Seleccioná la forma de pago efectiva.')
@@ -73,18 +76,28 @@ export function manageCollection(state, input, user, now = new Date().toISOStrin
   const amount = String(Number(raw))
   const previous = { amount: String(before.amount), paymentMethod: before.paymentMethod, status: collectionConfirmed(before) ? 'confirmed' : 'pending' }
   const next = { amount, paymentMethod: input.paymentMethod, status: input.action === 'confirm' ? 'confirmed' : previous.status }
+  if (input.action === 'confirm' && next.paymentMethod !== 'Efectivo' && !receipt) fail('Adjuntá el comprobante del pago para confirmar esta cobranza.')
+  if (input.action === 'correct' && collectionConfirmed(before) && next.paymentMethod !== previous.paymentMethod && next.paymentMethod !== 'Efectivo' && !receiptUploaded) fail('Adjuntá un nuevo comprobante que respalde el cambio de medio de pago.')
+  if (input.action === 'receipt') {
+    if (!receiptUploaded || !receipt) fail('Seleccioná el comprobante que querés adjuntar.')
+    if (Number(previous.amount) !== Number(amount) || previous.paymentMethod !== next.paymentMethod) fail('Para cambiar el importe o el medio de pago, usá la rectificación de cobranza.')
+  }
+  if (receiptUploaded && !receipt) fail('El comprobante no pudo verificarse.')
   if (input.action === 'correct' && Number(previous.amount) === Number(amount) && previous.paymentMethod === next.paymentMethod) fail('No hay cambios en el monto ni en la forma de pago.')
   const actor = { id: String(user.id), name: user.name }
+  const receiptChange = receiptUploaded ? { receiptBefore: before.collection?.receipt?.id || null, receiptAfter: receipt.id } : {}
+  const receipts = receiptUploaded ? [...new Map([...(before.collection?.receipts || []), before.collection?.receipt, receipt].filter(Boolean).map(file => [file.id, file])).values()] : undefined
   const collection = {
     ...before.collection,
     status: next.status,
     original: before.collection?.original || { ...previous, date: before.date, client: before.client },
-    events: [...(before.collection?.events || []), { action: input.action, at: now, actor, before: previous, after: next, note }],
+    events: [...(before.collection?.events || []), { action: input.action, at: now, actor, before: previous, after: next, note, ...receiptChange }],
+    ...(receiptUploaded ? { receipt, receipts } : {}),
     ...(input.action === 'confirm' ? { confirmedAt: now, confirmedBy: actor } : {})
   }
-  const patch = { amount, paymentMethod: next.paymentMethod }
+  const patch = input.action === 'receipt' ? {} : { amount, paymentMethod: next.paymentMethod }
   const after = { ...before, ...patch, collection }
-  const related = state.history.filter(record => record === before || (before.serviceJourney && record.serviceJourney?.id === before.serviceJourney.id))
+  const related = state.history.filter(record => record === before || (input.action !== 'receipt' && before.serviceJourney && record.serviceJourney?.id === before.serviceJourney.id))
   const recordIds = new Set(related.map(record => String(record.id)))
   const taskIds = new Set(related.map(record => String(record.sourceTaskId || '')).filter(Boolean))
   const sync = value => {

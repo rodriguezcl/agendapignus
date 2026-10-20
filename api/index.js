@@ -1051,7 +1051,11 @@ async function handleCollectionManagement(req, res, sql, user) {
   if ((!isGranular(user) && user.roleCode === 'technician') || !userCan(user, 'collectionsManage')) return send(res, 403, { error: 'No tenés permiso para gestionar cobranzas.' })
   try {
     const input = requestBody(req)
-    const { manageCollection } = await import('../src/domain/collections/collections.mjs')
+    if (Buffer.byteLength(typeof req.body === 'string' ? req.body : JSON.stringify(input), 'utf8') > 4_100_000) throw Object.assign(new Error('La solicitud supera el tamaño permitido. Seleccioná un comprobante de menor tamaño.'), { statusCode: 413 })
+    const { manageCollection, collectionBase } = await import('../src/domain/collections/collections.mjs')
+    const { prepareCollectionReceipt } = require('./_lib/collection-receipts.cjs')
+    const { postgresCollectionReceiptStore } = require('./_lib/collection-receipt-store.cjs')
+    await postgresCollectionReceiptStore(sql).ensure()
     const result = await sql.begin(async transaction => {
       await transaction`set local lock_timeout = '5s'`
       await transaction`set local statement_timeout = '25s'`
@@ -1059,10 +1063,15 @@ async function handleCollectionManagement(req, res, sql, user) {
       const locked = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const current = await readState(transaction)
       endpointPolicy.assertCollectionAction(user, current, input)
-      const correction = manageCollection(current, input, user)
+      const command = endpointPolicy.collectionInput(current, input, user, collectionBase)
+      const store = postgresCollectionReceiptStore(transaction)
+      const now = new Date().toISOString()
+      const receipt = await prepareCollectionReceipt(current, command, user, store, now)
+      const correction = manageCollection(current, command, user, now, receipt)
+      if (receipt.file) await store.put(correction.before.id, receipt.file)
       const revision = Number(locked[0]?.value || 0) + 1
       await persistStateCollections(transaction, current, correction.state, revision, undefined, { collectionCorrectionIds: correction.recordIds })
-      await appendAudit(transaction, [auditEntry(user, input.action === 'confirm' ? 'Confirmó pago' : 'Rectificó cobranza', 'Servicio / historial', String(correction.before.id), correction.before, correction.after)])
+      await appendAudit(transaction, [auditEntry(user, input.action === 'confirm' ? 'Confirmó pago' : input.action === 'receipt' ? 'Actualizó comprobante de pago' : 'Rectificó cobranza', 'Servicio / historial', String(correction.before.id), correction.before, correction.after)])
       return { revision, state: correction.state }
     })
     return send(res, 200, { ok: true, revision: result.revision, state: visibleStateForUser({ ...result.state, revision: result.revision }, user) })
@@ -1177,6 +1186,16 @@ module.exports = async function handler(req, res) {
     if (!session) return
     try { endpointPolicy.assertEndpointPermission(session.user, req.method, route) } catch (error) { return send(res, error.statusCode || 403, { error: error.message, code: error.code, permission: error.permission }) }
     if (isOperator(session.user) && !operatorRouteAllowed(req.method, route)) return send(res, 403, { error: 'Operador sólo puede consultar la Agenda semanal.' })
+    const receiptRoute = /^\/collections\/([^/]+)\/receipts\/([^/]+)$/.exec(route)
+    if (receiptRoute) {
+      try {
+        return await require('./_lib/collection-receipts.cjs').handleCollectionReceipt({
+          req, res, user: session.user, state: await readState(sql),
+          recordId: decodeURIComponent(receiptRoute[1]), receiptId: decodeURIComponent(receiptRoute[2]),
+          store: require('./_lib/collection-receipt-store.cjs').postgresCollectionReceiptStore(sql)
+        })
+      } catch (error) { return send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo consultar el comprobante.' }) }
+    }
     if (route.startsWith('/attachments/')) {
       const parts = route.split('/').slice(2).map(decodeURIComponent)
       if (parts.length < 2 || parts.length > 3) return send(res, 400, { error: 'Ruta de adjuntos inválida.' })

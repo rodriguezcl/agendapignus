@@ -964,7 +964,7 @@
         "records.financial"
       ],
       "any": [],
-      "note": "No permite confirmar dos veces; conserva la cobranza compartida entre jornadas.",
+      "note": "Permite adjuntar y reemplazar comprobantes, también de pagos anteriores. Los medios distintos de efectivo requieren respaldo para confirmar. No permite confirmar dos veces; conserva la cobranza compartida entre jornadas.",
       "sensitive": false
     },
     {

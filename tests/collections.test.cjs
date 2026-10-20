@@ -3,7 +3,13 @@ const assert = require('node:assert/strict')
 const { assertCompletedServices } = require('../api/_lib/completed-service-policy.cjs')
 const { removeHistoryRecord } = require('../api/_lib/history-record-removal.cjs')
 const { userCan, visibleStateForUser, technicianSafeRecord } = require('../api/_lib/core.cjs')
-const domain = import('../src/domain/collections/collections.mjs')
+// These ledger-policy cases use server-verified receipt evidence. Upload,
+// existence, access and atomic persistence are exercised in collection-receipts.
+const verifiedReceipt = { id: 'receipt-ledger-000001', name: 'Comprobante.pdf', mime: 'application/pdf', bytes: 12, digest: 'a'.repeat(64), createdAt: '2026-10-14T15:00:00Z', uploadedBy: 'admin' }
+const domain = import('../src/domain/collections/collections.mjs').then(module => ({
+  ...module,
+  manageCollection: (state, input, user, now) => module.manageCollection(state, input, user, now, { receipt: verifiedReceipt, receiptUploaded: input.action === 'confirm' })
+}))
 const actor = { id: 'admin', name: 'Administración' }
 function fixture() {
   const record = { id: 'payment', sourceTaskId: 't', teamId: 'team', estimatedMinutes: 60, date: '2026-10-14', time: '09:00', client: 'CLI-1 Cliente', customerId: 'c', serviceId: 's', service: 'Service técnico', status: 'Completado', amount: '10000', paymentMethod: 'Efectivo', technicianIds: ['tech'], technicians: ['Técnico'], detail: 'Trabajo realizado' }

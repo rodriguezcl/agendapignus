@@ -1,6 +1,7 @@
 const catalog = require('./permission-catalog.cjs')
 const read = require('./granular-read-policy.cjs')
 const write = require('./granular-write-policy.cjs')
+const { projectLegacyCollectionReceipts, restoreLegacyCollectionReceipts } = require('./legacy-collection-receipts.cjs')
 const id = value => String(value ?? '')
 
 function assertEndpointPermission(user, method, route) {
@@ -26,6 +27,11 @@ function assertEndpointPermission(user, method, route) {
   if (route === '/history/bulk') return require('history.bulk')
   if (route.startsWith('/history/')) return method === 'DELETE' ? require('history.delete') : write.requireAny(user, ['history.edit', 'history.complete', 'history.reopen', 'history.cancel', 'planning.reschedule', 'planning.confirm', 'planning.reservation.link', 'planning.notes', 'planning.checklist'])
   if (route === '/collections/manage') return write.requireAny(user, ['collections.confirm', 'collections.amount', 'collections.method'])
+  if (/^\/collections\/[^/]+\/receipts\/[^/]+$/.test(route)) {
+    if (method !== 'GET') return write.fail('collections.confirm', 'Los comprobantes guardados se conservan en el historial.')
+    require('collections.view')
+    return require('records.financial')
+  }
   if (route === '/customers/subscription-correction') return require('subscriptions.correct')
   if (route === '/customers/import') return require(method === 'GET' ? 'customers.backup' : method === 'DELETE' ? 'customers.undo' : 'customers.import')
   if (route === '/audit' || route.startsWith('/audit/')) return require(route === '/audit' ? 'audit.view' : 'audit.detail')
@@ -67,9 +73,17 @@ function assertCollectionAction(user, state, input) {
   if (!catalog.isGranular(user)) return
   const record = (state.history || []).find(row => id(row.id) === id(input.recordId))
   assertServiceAccess(user, record, state, { write: true })
-  if (input.action === 'confirm') write.requirePermission(user, 'collections.confirm')
+  if (input.action === 'confirm' || input.action === 'receipt' || input.receipt != null) write.requirePermission(user, 'collections.confirm')
   if (Number(input.amount) !== Number(record?.amount)) write.requirePermission(user, 'collections.amount')
   if (input.paymentMethod !== record?.paymentMethod) write.requirePermission(user, 'collections.method')
+}
+function collectionInput(state, input, user, baseFor) {
+  if (!catalog.isGranular(user)) return input
+  const record = (state.history || []).find(row => id(row.id) === id(input.recordId))
+  assertServiceAccess(user, record, state, { write: true })
+  const visible = read.sanitizeService(record, user, state)
+  if (!record || !write.same(baseFor(visible), input.base)) throw Object.assign(new Error('La cobranza cambió en otra sesión. Cerrá la ficha, actualizá y revisá los datos antes de guardar.'), { statusCode: 409 })
+  return { ...input, base: baseFor(record) }
 }
 function assertLegacyPhoto(user, record, state, method, uploadedBy) {
   if (!catalog.isGranular(user)) return
@@ -79,10 +93,10 @@ function assertLegacyPhoto(user, record, state, method, uploadedBy) {
 }
 
 function serviceResponse(record, user) {
-  return catalog.isGranular(user) ? read.sanitizeService(record, user) : record
+  return catalog.isGranular(user) ? read.sanitizeService(record, user) : projectLegacyCollectionReceipts(record, user)
 }
 function recordBaseMatches(current, base, user) {
-  if (!catalog.isGranular(user)) return JSON.stringify(current) === JSON.stringify(base)
+  if (!catalog.isGranular(user)) return JSON.stringify(projectLegacyCollectionReceipts(current, user)) === JSON.stringify(projectLegacyCollectionReceipts(base, user))
   const normalize = value => {
     if (Array.isArray(value)) return value.map(normalize)
     if (!value || typeof value !== 'object') return value
@@ -91,7 +105,7 @@ function recordBaseMatches(current, base, user) {
   return JSON.stringify(normalize(read.sanitizeService(current, user))) === JSON.stringify(normalize(base))
 }
 function restoreServiceProposal(current, proposed, user, state) {
-  if (!catalog.isGranular(user)) return proposed
+  if (!catalog.isGranular(user)) return restoreLegacyCollectionReceipts(proposed, current, user)
   const restored = write.restoreHidden(proposed, current, read.sanitizeService(current, user))
   return state ? write.prepareServiceProposal(current, restored, user, state) : restored
 }
@@ -123,4 +137,4 @@ function subscriptionInput(state, input, user, baseFor) {
   if (!visible || !write.same(baseFor(visible), input.base)) throw Object.assign(new Error('Los datos de la instalación cambiaron en otra sesión. Volvé a abrir el detalle.'), { statusCode: 409 })
   return { ...input, base: baseFor(record) }
 }
-module.exports = { assertEndpointPermission, assertServiceAccess, assertTechnicalAction, assertCollectionAction, assertLegacyPhoto, serviceResponse, recordBaseMatches, restoreServiceProposal, catalogInput, assertImportScope, subscriptionInput }
+module.exports = { assertEndpointPermission, assertServiceAccess, assertTechnicalAction, assertCollectionAction, collectionInput, assertLegacyPhoto, serviceResponse, recordBaseMatches, restoreServiceProposal, catalogInput, assertImportScope, subscriptionInput }

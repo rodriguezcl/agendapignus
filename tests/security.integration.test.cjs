@@ -67,11 +67,15 @@ test('Cobranzas: permisos, confirmación concurrente, auditoría y persistencia 
   const weekly = await login('qa-weekly@pignus.test')
   const initial = (await state(reader)).history.find(item => item.id === record.id)
   assert.ok(initial, 'El permiso Cobranzas permite consultar sin Historial ni Dashboard')
-  const input = { recordId: record.id, base: collectionBase(initial), action: 'confirm', amount: '9500.50', paymentMethod: 'Transferencia', note: 'Acreditación verificada' }
+  const receipt = { id: crypto.randomUUID(), name: 'comprobante.pdf', data: `data:application/pdf;base64,${Buffer.from('%PDF-1.4\nComprobante QA\n%%EOF').toString('base64')}` }
+  const input = { recordId: record.id, base: collectionBase(initial), action: 'confirm', amount: '9500.50', paymentMethod: 'Transferencia', note: 'Acreditación verificada', receipt }
   for (const cookie of [reader, tech, weekly, null]) {
     const denied = await api('/api/collections/manage', cookie, { method: 'POST', body: JSON.stringify(input) })
     assert.equal(denied.status, cookie ? 403 : 401)
   }
+  const missingReceipt = await api('/api/collections/manage', manager, { method: 'POST', body: JSON.stringify({ ...input, receipt: undefined }) })
+  assert.equal(missingReceipt.status, 400)
+  assert.equal((await state(reader)).history.find(item => item.id === record.id).collection, undefined)
   const responses = await Promise.all([manager, admin].map(cookie => api('/api/collections/manage', cookie, { method: 'POST', body: JSON.stringify(input) })))
   assert.deepEqual(responses.map(response => response.status).sort(), [200, 409])
   const saved = (await state(reader)).history.find(item => item.id === record.id)
@@ -81,7 +85,17 @@ test('Cobranzas: permisos, confirmación concurrente, auditoría y persistencia 
   assert.equal(saved.paymentMethod, 'Transferencia')
   assert.equal(saved.collection.events.length, 1)
   assert.equal(saved.collection.original.amount, '10000')
-  const rectified = await api('/api/collections/manage', manager, { method: 'POST', body: JSON.stringify({ ...input, base: collectionBase(saved), action: 'correct', amount: '9700' }) })
+  assert.equal(saved.collection.receipt.id, receipt.id)
+  assert.equal(saved.collection.receipt.data, undefined)
+  const receiptPath = `/api/collections/${record.id}/receipts/${receipt.id}`
+  const downloaded = await api(receiptPath, reader)
+  assert.equal(downloaded.status, 200)
+  assert.equal(await downloaded.text(), '%PDF-1.4\nComprobante QA\n%%EOF')
+  assert.equal((await api(receiptPath, tech)).status, 403)
+  assert.equal((await api(receiptPath, weekly)).status, 403)
+  assert.equal((await api(receiptPath, null)).status, 401)
+  assert.equal((await api(receiptPath, manager, { method: 'DELETE' })).status, 405)
+  const rectified = await api('/api/collections/manage', manager, { method: 'POST', body: JSON.stringify({ ...input, receipt: undefined, base: collectionBase(saved), action: 'correct', amount: '9700' }) })
   assert.equal(rectified.status, 200, await rectified.clone().text())
   const final = (await state(admin)).history.find(item => item.id === record.id)
   assert.equal(final.collection.events.length, 2)
