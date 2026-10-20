@@ -22,6 +22,7 @@ test('discard closes the local draft and continues without saving or deleting re
 })
 function harness(overrides = {}) {
   const requests = [], opened = []
+  overrides = { memberSelectionsRef: { current: {} }, ...overrides }
   const context = { readOnly: false, taskEditorSaveGuardRef: { current: false }, taskEditor: null, weekly: {}, authUser: { id: 'me' }, operationalHistory: [], taskHasContent: task => Boolean(task.client), taskWithServiceEstimate: task => task, serviceForWeeklyTask: () => null, historyRecordForTask: task => task.saved, dayHasFinished: () => false, dayPlan: day => context.weekly[day], setLeaveRequest: request => requests.push(request), openTaskEditor: (...args) => opened.push(args), ...overrides }
   return { requests, opened, run: vm.runInNewContext(body + '\nrequestWeeklyLeave', context) }
 }
@@ -31,6 +32,18 @@ test('clean navigation continues and empty cards do not block', () => {
   h.run(() => { continued = true })
   assert.equal(continued, true)
   assert.equal(h.requests.length, 0)
+})
+test('pending technician selections guard navigation until the queue is confirmed', () => {
+  const selections = { current: { team: { phase: 'acknowledged' } } }
+  const notices = []
+  const h = harness({ memberSelectionsRef: selections, setNotice: notice => notices.push(notice) })
+  let continued = false
+  h.run(() => { continued = true })
+  assert.equal(continued, false)
+  assert.match(notices[0], /guardando las asignaciones/)
+  selections.current = {}
+  h.run(() => { continued = true })
+  assert.equal(continued, true)
 })
 test('own unsaved service is opened and the requested action is deferred', () => {
   const h = harness({ weekly: { '2026-09-17': { teams: [{ tasks: [{ client: 'Capacitación', createdBy: { id: 'me' } }] }] } } })

@@ -70,7 +70,7 @@ test('a specialized shadow failure rolls back its legacy counterpart', async () 
   } finally { await pg.close() }
 })
 
-test('audit batches keep constant round trips, exact payloads, retention and replay safety', async () => {
+for (const shadowPrepared of [false, true]) test(`audit batches keep exact payloads, retention and replay safety (prepared=${shadowPrepared})`, async () => {
   const pg = await database()
   try {
     const statements = []
@@ -81,33 +81,33 @@ test('audit batches keep constant round trips, exact payloads, retention and rep
       user: { id: 'e', name: 'Admin' }, action: 'Modificó', entity: 'Servicio', entityId: String(i),
       before: null, after: { detail: 'Texto con comillas: \"prueba\"' }
     }))
-    await appendOperationalAudit(sql, events)
-    assert.equal(statements.length, 6, 'two inserts, two retention queries and two readiness queries')
+    await appendOperationalAudit(sql, events, { shadowPrepared })
+    assert.equal(statements.length, shadowPrepared ? 2 : 6, 'known schema batches both inserts and both trims')
     const legacy = (await pg.query('select data from pignus_audit_log order by occurred_at')).rows.map(row => row.data)
     const shadow = (await pg.query('select original_payload from normalized_shadow.audit_events order by occurred_at')).rows.map(row => row.original_payload)
     assert.deepEqual(legacy, events.slice(-100))
     assert.deepEqual(shadow, legacy)
     statements.length = 0
-    await appendOperationalAudit(sql, events)
-    assert.equal(statements.length, 6)
+    await appendOperationalAudit(sql, events, { shadowPrepared })
+    assert.equal(statements.length, shadowPrepared ? 2 : 6)
     assert.equal((await pg.query('select count(*)::int as n from pignus_audit_log')).rows[0].n, 100)
     statements.length = 0
-    await appendOperationalAudit(sql, [])
+    await appendOperationalAudit(sql, [], { shadowPrepared })
     assert.equal(statements.length, 0)
     const duplicate = { ...events.at(-1), after: { updated: true } }
-    await appendOperationalAudit(sql, [events.at(-1), duplicate])
+    await appendOperationalAudit(sql, [events.at(-1), duplicate], { shadowPrepared })
     assert.deepEqual((await pg.query('select original_payload from normalized_shadow.audit_events order by occurred_at desc limit 1')).rows[0].original_payload, duplicate)
     assert.deepEqual((await pg.query('select data from pignus_audit_log order by occurred_at desc limit 1')).rows[0].data, events.at(-1))
   } finally { await pg.close() }
 })
 
-test('audit batch failure rolls back all legacy and normalized events', async () => {
+for (const shadowPrepared of [false, true]) test(`audit batch failure rolls back all events (prepared=${shadowPrepared})`, async () => {
   const pg = await database()
   try {
     await pg.exec("alter table normalized_shadow.audit_events add constraint reject_test_action check (action <> 'reject')")
     const event = { id: '22222222-2222-4222-8222-222222222222', at: '2026-09-22T12:00:00Z', action: 'reject', entity: 'Servicio' }
     await pg.exec('begin')
-    await assert.rejects(appendOperationalAudit(pg, [event]))
+    await assert.rejects(appendOperationalAudit(pg, [event], { shadowPrepared }))
     await pg.exec('rollback')
     assert.equal((await pg.query('select count(*)::int as n from pignus_audit_log')).rows[0].n, 0)
     assert.equal((await pg.query('select count(*)::int as n from normalized_shadow.audit_events')).rows[0].n, 0)

@@ -1,4 +1,5 @@
 const { readApplicationState, preparedSnapshots, storageMode } = require('./storage-router.cjs')
+const { rememberNormalizedCredentials } = require('./normalized-credential-snapshot.cjs')
 
 // Process-local acceleration, never a source of truth. Every hit checks BOTH
 // database revisions and the active model in a single fresh SQL snapshot.
@@ -27,6 +28,7 @@ function createSaveSnapshotCache({ readFresh = readApplicationState } = {}) {
           const credentials = typeof meta.credentials === 'string' ? JSON.parse(meta.credentials) : meta.credentials
           for (const employee of state.employees || []) if (Object.hasOwn(credentials, String(employee.id))) employee.passwordHash = credentials[String(employee.id)]
           preparedSnapshots.add(state)
+          rememberNormalizedCredentials(state)
           return state
         }
       }

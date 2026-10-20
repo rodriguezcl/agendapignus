@@ -1,11 +1,27 @@
 export function operationScopes(operations) {
   const scopes = new Set()
+  const membershipFields = new Set(['memberIds', 'members', 'monthlyStaffingOverride', 'guardOverride'])
+  const teamScope = (kind, day, teamId) => `${kind}:${JSON.stringify([day || '*', String(teamId)])}`
   for (const op of operations) {
     const path = op.path || []
-    if (path[0] === 'history') scopes.add(`history:${path[1]?.id}`)
+    if (path[0] === 'history') {
+      scopes.add(`history:${path[1]?.id}`)
+      for (const record of [op.before, op.after]) {
+        if (record?.teamId) scopes.add(teamScope('team-service', record.date, record.teamId))
+      }
+    }
     else if (path[0] === 'agenda') {
       const task = path.find(segment => segment?.key === 'taskId')
-      if (task) scopes.add(`task:${task.id}`)
+      const team = path.find(segment => segment?.key === 'teamId')
+      const day = path[1] === 'weekly' ? path[2] : '*'
+      if (path[1] === 'weekly' && !/^\d{4}-\d{2}-\d{2}$/.test(day)) return ['*']
+      const membershipPath = path[1] === 'weekly' ? path.length === 6 && path[3] === 'teams' : path[1] === 'teams' && path.length === 4
+      if (task) {
+        scopes.add(`task:${task.id}`)
+        if (team) scopes.add(teamScope('team-service', day, team.id))
+      } else if (team && membershipPath && membershipFields.has(path.at(-1)) && path.at(-2) === team) {
+        scopes.add(teamScope('team-members', day, team.id))
+      }
       else return ['*'] // team/configuration/date changes affect multiple services
     } else return ['*']
     for (const value of [op.before, op.after]) {
@@ -16,12 +32,25 @@ export function operationScopes(operations) {
   return [...scopes]
 }
 
+function scopesConflict(left, right) {
+  const team = value => {
+    const match = /^(team-members|team-service):(\[.*\])$/.exec(value)
+    if (!match) return null
+    const [day, id] = JSON.parse(match[2])
+    return { kind: match[1], day, id }
+  }
+  const a = team(left), b = team(right)
+  if (a && b) return (a.kind === 'team-members' || b.kind === 'team-members') &&
+    a.id === b.id && (a.day === b.day || a.day === '*' || b.day === '*')
+  return left === right
+}
+
 export function createSaveActivity() {
   const active = new Map()
   return {
     acquire(scopes = ['*']) {
       for (const held of active.values()) {
-        if (held.includes('*') || scopes.includes('*') || scopes.some(key => held.includes(key))) {
+        if (held.includes('*') || scopes.includes('*') || scopes.some(key => held.some(other => scopesConflict(key, other)))) {
           throw new Error('Este servicio o su planificación ya se está guardando. Esperá su confirmación.')
         }
       }

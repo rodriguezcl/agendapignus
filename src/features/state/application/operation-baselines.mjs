@@ -2,6 +2,7 @@ const canonical = value => Array.isArray(value) ? value.map(canonical) : value &
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value
 const equal = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b))
 const overlaps = (a, b) => a.slice(0, Math.min(a.length, b.length)).every((part, index) => equal(part, b[index]))
+const withoutPreparation = ({ servicePreparation, ...record }) => record
 
 function lookup(state, path) {
   let value = state
@@ -35,6 +36,18 @@ export function alignOperationBaselines(operations, display, server) {
     const shown = lookup(display, path)
     const stored = lookup(server, path)
     if (!shown.found || !stored.found || !equal(operation.before, shown.value)) return operation
-    return { ...operation, before: structuredClone(stored.value) }
+    const before = structuredClone(stored.value)
+    // Readiness is a field-only intention. Display enrichment (customer labels,
+    // duration defaults) must not turn it into a full record edit or disable
+    // the server's bounded click pipeline. The unchanged displayed baseline
+    // above is still required, so an unsaved/stale record cannot be rebased.
+    const preparationOnly = path[0] === 'history' && operation.exists &&
+      operation.before && operation.after &&
+      typeof operation.after.servicePreparation?.ready === 'boolean' &&
+      equal(withoutPreparation(operation.before), withoutPreparation(operation.after))
+    return {
+      ...operation, before,
+      ...(preparationOnly ? { after: { ...before, servicePreparation: structuredClone(operation.after.servicePreparation) } } : {})
+    }
   })
 }

@@ -49,8 +49,9 @@ import RequiredLabel from "../../../presentation/components/forms/RequiredLabel.
 import ServiceTypesField from "../../../components/ServiceTypesField.jsx";
 import { withLunchNotice } from "../../../domain/agenda/lunch-placement.mjs";
 import ServicePreparationButton from "../../../components/ServicePreparationButton.jsx";
+import { acknowledgedInteraction, afterInteractionPaint, interactionIsConfirmed, membershipMatches, weeklyTeamInteractionKey } from "../../../presentation/pending-interaction.mjs";
 
-export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGuardRef, persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, openDaily, authUser, vehicles, permissions = {} }) {
+export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGuardRef, persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, openDaily, authUser, vehicles, permissions = {}, confirmedRevision }) {
   const minimumServiceGapConflicts = teams => serviceScheduleConflicts(teams, taskHasContent, weekly)
 
   const [dayPreview, setDayPreview] = useState(null)
@@ -75,8 +76,45 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
   const [annualGuardSetup, setAnnualGuardSetup] = useState(null)
   const [techPicker, setTechPicker] = useState(null)
   const [techFilter, setTechFilter] = useState('')
-  const [memberSelection, setMemberSelection] = useState(null)
-  const memberSelectionGuard = useRef(false)
+  const [memberSelections, setMemberSelectionState] = useState({})
+  const memberSelectionsRef = useRef({})
+  const setMemberSelections = update => {
+    const next = update(memberSelectionsRef.current)
+    memberSelectionsRef.current = next
+    setMemberSelectionState(next)
+  }
+  useEffect(() => {
+    for (const [key, preview] of Object.entries(memberSelections)) {
+      if (memberSelectionsRef.current[key] !== preview) continue
+      const teams = weekly[preview.day]?.teams || []
+      const team = preview.teamId ? teams.find(item => String(item.teamId) === String(preview.teamId)) : teams[preview.teamIndex]
+      const sent = { memberIds: preview.sentMemberIds, members: preview.sentMembers }
+      if (!interactionIsConfirmed(preview, confirmedRevision, membershipMatches(team, sent))) continue
+      if (!membershipMatches(team, preview) && membershipMatches(team, sent)) {
+        // The server acknowledged the previous selection. Send only the latest
+        // local intention, with that newly confirmed membership as its baseline.
+        persistMemberSelection(preview.day, preview.teamIndex, team, preview, dayPlan(preview.day))
+        continue
+      }
+      setMemberSelections(previous => {
+        const next = { ...previous }
+        delete next[key]
+        return next
+      })
+      setNotice(membershipMatches(team, preview)
+        ? 'La asignación de técnicos se guardó correctamente.'
+        : 'El equipo cambió mientras se guardaba. Se muestra la asignación confirmada; revisala antes de volver a modificarla.')
+    }
+  }, [memberSelections, weekly, confirmedRevision])
+  useEffect(() => {
+    const guard = event => {
+      if (!Object.keys(memberSelectionsRef.current).length) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', guard)
+    return () => window.removeEventListener('beforeunload', guard)
+  }, [])
   const [taskEditor, setTaskEditor] = useState(null)
   const [pastService, setPastService] = useState(null)
   const [completedService, setCompletedService] = useState(null)
@@ -95,7 +133,7 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
   const weeklyBoardRef = useRef(null)
   const dayHasFinished = day => String(day || '') < today
   const finishedDayMessage = day => `La jornada del ${prettyDate(day)} ya finalizó. La planificación histórica es de solo lectura y no admite servicios nuevos.`
-  const activeServices = sortServicesAlphabetically(services.filter(service => service.status === 'Activo'))
+  const activeServices = useMemo(() => sortServicesAlphabetically(services.filter(service => service.status === 'Activo')), [services])
   const serviceForWeeklyTask = task => resolveServiceForTask(task, services)
   const selectWeeklyService = (day, teamIndex, taskIndex, selectedId) => {
     const selected = services.find(service => String(service.id) === String(selectedId))
@@ -189,7 +227,11 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
     if (!board) return
     board.scrollLeft = 0
   }, [days])
+  // Local feedback (picker, pending checks, modal typing) does not change the
+  // confirmed plans. Reuse their normalization and generated placeholder IDs.
+  const dayPlanCache = useMemo(() => new Map(), [weekly, activeTechs])
   const dayPlan = day => {
+    if (dayPlanCache.has(day)) return dayPlanCache.get(day)
     const defaults = createDay(day)
     const stored = weekly[day]
     const targetTimes = defaultServiceTimesForDate(day, weekly)
@@ -200,7 +242,9 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
     const visiblePlan = { ...plan, teams: renumberVisibleWeeklyTeams(applyRemovedWeeklyTeams(applyRemovedWeeklySlots(applyRemovedWeeklyTasks(plan.teams, plan.removedTaskIds || []), plan.removedSlots || []), plan.removedTeams || [])) }
     const normalized = isSaturday(day) ? { ...visiblePlan, teams: assignGuardToEmptySaturday(normalizeSaturdayTeams(visiblePlan.teams, day, weekly), day, weekly, activeTechs) } : visiblePlan
     const availablePlan = { ...normalized, teams: normalized.teams.map(team => ({ ...team, tasks: removeUnavailableDefaultSlots(team.tasks || []).filter(task => taskHasContent(task) || task.manualSlot) })) }
-    return sortPlanTasksByTime(availablePlan)
+    const result = sortPlanTasksByTime(availablePlan)
+    dayPlanCache.set(day, result)
+    return result
   }
   const advancedGuardForDay = day => {
     if (!isSaturday(day)) return null
@@ -371,6 +415,10 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
 
   const requestWeeklyLeave = action => {
     if (readOnly) { action(); return }
+    if (Object.keys(memberSelectionsRef.current).length) {
+      setNotice('Se están guardando las asignaciones de técnicos. Esperá la confirmación antes de salir de la agenda.')
+      return
+    }
     if (taskEditorSaveGuardRef.current) return
     const dirtyEditor = taskEditor && (
       JSON.stringify(taskEditor.draft) !== JSON.stringify(taskEditor.initialDraft || taskWithServiceEstimate(taskEditor.baseTask || taskEditor.teamSnapshot.tasks[taskEditor.taskIndex], serviceForWeeklyTask(taskEditor.draft))) ||
@@ -394,7 +442,7 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
   }
   useEffect(() => {
     if (navigationGuardRef) navigationGuardRef.current = requestWeeklyLeave
-    if (navigationGuardRef?.current) navigationGuardRef.current.hasDraft = () => Boolean(taskEditor && (
+    if (navigationGuardRef?.current) navigationGuardRef.current.hasDraft = () => Object.keys(memberSelectionsRef.current).length > 0 || Boolean(taskEditor && (
       JSON.stringify(taskEditor.draft) !== JSON.stringify(taskEditor.initialDraft || taskWithServiceEstimate(taskEditor.baseTask || taskEditor.teamSnapshot.tasks[taskEditor.taskIndex], serviceForWeeklyTask(taskEditor.draft))) ||
       (!taskEditor.baseRecord && taskHasContent(taskEditor.draft)) || taskEditor.photoData || taskEditor.photoRemoved
     ))
@@ -603,8 +651,38 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
     }
   }
   const updateTeam = (day, teamIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index === teamIndex ? { ...team, ...patch } : team) }))
+  const persistMemberSelection = async (day, teamIndex, target, desired, plan) => {
+    const selectionKey = weeklyTeamInteractionKey(day, target.teamId, teamIndex)
+    const preview = { ...desired, phase: 'pending', revision: null, sentMemberIds: desired.memberIds, sentMembers: desired.members }
+    setMemberSelections(previous => ({ ...previous, [selectionKey]: preview }))
+    try {
+      await afterInteractionPaint()
+      const payload = await persistWeeklyService({
+        operation: 'team-members',
+        day,
+        teamId: target.teamId,
+        teamIndex,
+        baseMemberIds: target.memberIds || [],
+        baseMembers: target.members || [],
+        materializeTeam: !(weekly[day]?.teams || []).some((team, index) => team.teamId
+          ? String(team.teamId) === String(target.teamId)
+          : team.label ? teamLabelNumber(team) === teamLabelNumber(target) : index === teamIndex),
+        memberIds: preview.sentMemberIds,
+        members: preview.sentMembers,
+        guardOverride: isSaturday(day) ? true : undefined,
+        fallbackPlan: plan
+      })
+      setMemberSelections(previous => ({ ...previous, [selectionKey]: acknowledgedInteraction(previous[selectionKey], payload) }))
+    } catch (error) {
+      setMemberSelections(previous => {
+        const next = { ...previous }
+        delete next[selectionKey]
+        return next
+      })
+      setNotice(`No se guardó la asignación de técnicos. ${error.message || 'Recargá la planificación e intentá nuevamente.'}`)
+    }
+  }
   const toggleWeeklyTech = async (day, teamIndex, technician) => {
-    if (memberSelectionGuard.current) return
     const advance = advancedGuardForDay(day)
     if (advance) {
       setTechPicker(null)
@@ -617,9 +695,12 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
     const actualIndex = isSaturday(day) ? 0 : teamIndex
     const target = plan.teams[actualIndex]
     if (!target) { setNotice('El equipo cambió o fue eliminado. Recargá la planificación antes de reintentar.'); return }
-    const selected = (target.memberIds || []).some(id => String(id) === String(technician.id))
-    let memberIds = [...(target.memberIds || [])]
-    let members = [...(target.members || [])]
+    const selectionKey = weeklyTeamInteractionKey(day, target.teamId, actualIndex)
+    const pending = memberSelectionsRef.current[selectionKey]
+    const selection = pending || target
+    const selected = (selection.memberIds || []).some(id => String(id) === String(technician.id))
+    let memberIds = [...(selection.memberIds || [])]
+    let members = [...(selection.members || [])]
     if (isSaturday(day)) {
       // Un sábado admite una sola persona: elegir otro nombre crea una
       // excepción puntual sin modificar la rotación anual.
@@ -633,33 +714,13 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
       memberIds.push(technician.id)
       members.push(technician.name)
     }
-    memberSelectionGuard.current = true
-    setMemberSelection({ day, teamId: target.teamId, memberIds, members })
-    try {
-      // Let the optimistic checkbox paint before preparing the save command.
-      await new Promise(resolve => window.setTimeout(resolve, 0))
-      await persistWeeklyService({
-        operation: 'team-members',
-        day,
-        teamId: target.teamId,
-        teamIndex: actualIndex,
-        baseMemberIds: target.memberIds || [],
-        baseMembers: target.members || [],
-        materializeTeam: !(weekly[day]?.teams || []).some((team, index) => team.teamId
-          ? String(team.teamId) === String(target.teamId)
-          : team.label ? teamLabelNumber(team) === teamLabelNumber(target) : index === actualIndex),
-        memberIds,
-        members,
-        guardOverride: isSaturday(day) ? true : undefined,
-        fallbackPlan: plan
-      })
-      setNotice('La asignación de técnicos se guardó correctamente.')
-    } catch (error) {
-      setNotice(`No se guardó la asignación de técnicos. ${error.message || 'Recargá la planificación e intentá nuevamente.'}`)
-    } finally {
-      memberSelectionGuard.current = false
-      setMemberSelection(null)
+    const preview = { phase: 'pending', revision: null, day, teamId: target.teamId, teamIndex: actualIndex, memberIds, members }
+    if (pending) {
+      // Do not enqueue one request per click: this is the desired final state.
+      setMemberSelections(previous => ({ ...previous, [selectionKey]: { ...previous[selectionKey], memberIds, members } }))
+      return
     }
+    await persistMemberSelection(day, actualIndex, target, preview, plan)
   }
   const updateTask = (day, teamIndex, taskIndex, patch) => updateDay(day, plan => ({ ...plan, teams: plan.teams.map((team, index) => index !== teamIndex ? team : { ...team, tasks: team.tasks.map((task, index) => index === taskIndex ? stampServiceRecord({ ...task, ...patch }, authUser) : task) }) }))
   const addTeam = day => {
@@ -693,14 +754,23 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
     }
   }
   const hoursForDay = (day, teamId) => planningHoursForDay(day, weekly, teamId)
+  const conflictCache = useMemo(() => new Map(), [weekly, activeTechs, operationalHistory, services])
   const conflictsForDay = day => {
-    return technicianTimeConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).map(task => taskForScheduleOccupancy(task, day, operationalHistory)).filter(Boolean) })), activeTechs)
+    const key = `technicians:${day}`
+    if (!conflictCache.has(key)) conflictCache.set(key, technicianTimeConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).map(task => taskForScheduleOccupancy(task, day, operationalHistory)).filter(Boolean) })), activeTechs))
+    return conflictCache.get(key)
   }
-  const gapConflictsForDay = day => minimumServiceGapConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).map(task => {
-    const occupancyTask = taskForScheduleOccupancy(task, day, operationalHistory)
-    return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(task)) : null
-  }).filter(Boolean) })))
+  const gapConflictsForDay = day => {
+    const key = `gaps:${day}`
+    if (!conflictCache.has(key)) conflictCache.set(key, minimumServiceGapConflicts(dayPlan(day).teams.map(team => ({ ...team, tasks: (team.tasks || []).map(task => {
+      const occupancyTask = taskForScheduleOccupancy(task, day, operationalHistory)
+      return occupancyTask ? taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(task)) : null
+    }).filter(Boolean) }))))
+    return conflictCache.get(key)
+  }
   const conflictForWeeklyTask = (day, teamIndex, taskIndex, overrideTask = null) => {
+    const cacheKey = `task:${day}:${teamIndex}:${taskIndex}`
+    if (!overrideTask && conflictCache.has(cacheKey)) return conflictCache.get(cacheKey)
     const team = dayPlan(day).teams[teamIndex]
     if (!team) return null
     const target = overrideTask || team.tasks?.[taskIndex]
@@ -714,7 +784,17 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
       const occupancyTask = taskForScheduleOccupancy(overrideTask, day, operationalHistory)
       if (occupancyTask) tasks.push({ ...taskWithServiceEstimate(occupancyTask, serviceForWeeklyTask(overrideTask)), _scheduleTaskIndex: taskIndex })
     }
-    return minimumServiceGapConflicts([{ ...team, tasks }]).find(conflict => conflict.firstTask._scheduleTaskIndex === taskIndex || conflict.secondTask._scheduleTaskIndex === taskIndex) || null
+    const conflict = minimumServiceGapConflicts([{ ...team, tasks }]).find(conflict => conflict.firstTask._scheduleTaskIndex === taskIndex || conflict.secondTask._scheduleTaskIndex === taskIndex) || null
+    if (!overrideTask) conflictCache.set(cacheKey, conflict)
+    return conflict
+  }
+  const teamGapCache = useMemo(() => new Map(), [weekly, activeTechs, operationalHistory, services, planningClock])
+  const gapsForTeam = (day, team, teamIndex, hours) => {
+    const key = weeklyTeamInteractionKey(day, team.teamId, teamIndex)
+    if (!teamGapCache.has(key)) {
+      teamGapCache.set(key, withLunchNotice(team.tasks, serviceGaps(team.tasks.map(task => taskWithServiceEstimate({ ...task, ...historyRecordForTask(task, day, operationalHistory), date: day }, serviceForWeeklyTask(task))), { ...hours, fullAvailability: true, day, now: planningClock }), hours))
+    }
+    return teamGapCache.get(key)
   }
   const commitWeeklyCustomerText = (day, teamIndex, taskIndex, value) => updateTask(day, teamIndex, taskIndex, { newCustomer: false, subscriberReservation: false, customerId: '', client: value, clientAccount: '', clientNameAtService: '', address: '', phone: '' })
   const selectWeeklyCustomerResult = (day, teamIndex, taskIndex, customer) => updateTask(day, teamIndex, taskIndex, customerLinkPatch(dayPlan(day).teams[teamIndex]?.tasks?.[taskIndex], customer, authUser))
@@ -1156,14 +1236,15 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
             {conflicts.length > 0 && <p className="weekly-conflict">Conflicto: {conflicts.map(item => `${item.name} ${item.time}`).join(', ')}</p>}
             {gapConflicts.length > 0 && <p className="weekly-conflict">{planningConflictMessage(day, plan.teams[gapConflicts[0].teamIndex], gapConflicts[0].teamIndex, gapConflicts[0])}</p>}
             <fieldset className="week-teams weekly-day-fields" disabled={finishedDay || readOnly}>{plan.teams.map((team, teamIndex) => {
-              if (memberSelection?.day === day && String(memberSelection.teamId) === String(team.teamId)) team = { ...team, memberIds: memberSelection.memberIds, members: memberSelection.members }
+              const memberSelection = memberSelections[weeklyTeamInteractionKey(day, team.teamId, teamIndex)]
+              if (memberSelection) team = { ...team, memberIds: memberSelection.memberIds, members: memberSelection.members }
               const pickerKey = `${day}-${teamIndex}`
               const teamHours = hoursForDay(day, team.teamId)
-              const gaps = withLunchNotice(team.tasks, serviceGaps(team.tasks.map(task => taskWithServiceEstimate({ ...task, ...historyRecordForTask(task, day, operationalHistory), date: day }, serviceForWeeklyTask(task))), { ...teamHours, fullAvailability: true, day, now: planningClock }), teamHours)
+              const gaps = gapsForTeam(day, team, teamIndex, teamHours)
               return <article className="week-team" key={team.teamId || teamIndex}>
-                <div className="week-team-header"><div className="week-team-identity"><strong>{team.label || `Equipo ${teamIndex + 1}`}</strong><span title={team.members?.join(' · ') || 'Sin técnicos'}>{team.members?.length ? team.members.map(weeklyTechnicianName).join(' · ') : 'Sin técnicos'}</span></div>{!readOnly && <div className="weekly-team-actions">{plan.teams.length > 1 && <button className="weekly-remove-team" disabled={Boolean(memberSelection)} title="Solicitá quitar este equipo y su asignación del día; revisá los servicios asociados antes de confirmar." aria-label={`Quitar ${team.label || `Equipo ${teamIndex + 1}`}`} onClick={() => setTeamRemoval({ day, teamIndex, label: team.label || `Equipo ${teamIndex + 1}` })}><Icon name="trash" size={15} /></button>}<div className="weekly-technicians-picker"><button className="secondary small weekly-add-tech-button" title="Elegí los técnicos que integrarán este equipo en la fecha seleccionada." aria-label="Agregar técnicos" onClick={() => { setTechPicker(techPicker === pickerKey ? null : pickerKey); setTechFilter('') }}><Icon name="users" size={16} /><span aria-hidden="true">+</span></button>{techPicker === pickerKey && <div className="tech-popover weekly-tech-popover" aria-busy={Boolean(memberSelection)}><div className="weekly-tech-popover-title"><div><strong>Asignar técnicos</strong><small>{team.label || `Equipo ${teamIndex + 1}`}</small></div><span>{team.members?.length || 0} seleccionados</span></div><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={event => setTechFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(techFilter.toLowerCase())).map(tech => <label key={tech.id} title={tech.name}><input type="checkbox" disabled={Boolean(memberSelection)} checked={(team.memberIds || []).some(id => String(id) === String(tech.id))} onChange={() => toggleWeeklyTech(day, teamIndex, tech.name)} />{tech.firstName || tech.name.split(' ')[0]}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div>{memberSelection && <p role="status" aria-live="polite">Guardando selección…</p>}</div>}</div></div>}</div>
+                <div className="week-team-header"><div className="week-team-identity"><strong>{team.label || `Equipo ${teamIndex + 1}`}</strong><span title={team.members?.join(' · ') || 'Sin técnicos'}>{team.members?.length ? team.members.map(weeklyTechnicianName).join(' · ') : 'Sin técnicos'}</span></div>{!readOnly && <div className="weekly-team-actions">{plan.teams.length > 1 && <button className="weekly-remove-team" disabled={Boolean(memberSelection)} title="Solicitá quitar este equipo y su asignación del día; revisá los servicios asociados antes de confirmar." aria-label={`Quitar ${team.label || `Equipo ${teamIndex + 1}`}`} onClick={() => setTeamRemoval({ day, teamIndex, label: team.label || `Equipo ${teamIndex + 1}` })}><Icon name="trash" size={15} /></button>}<div className="weekly-technicians-picker"><button className="secondary small weekly-add-tech-button" title="Elegí los técnicos que integrarán este equipo en la fecha seleccionada." aria-label="Agregar técnicos" onClick={() => { setTechPicker(techPicker === pickerKey ? null : pickerKey); setTechFilter('') }}><Icon name="users" size={16} /><span aria-hidden="true">+</span></button>{techPicker === pickerKey && <div className="tech-popover weekly-tech-popover" aria-busy={Boolean(memberSelection)}><div className="weekly-tech-popover-title"><div><strong>Asignar técnicos</strong><small>{team.label || `Equipo ${teamIndex + 1}`}</small></div><span>{team.members?.length || 0} seleccionados</span></div><input autoFocus placeholder="Buscar técnico..." value={techFilter} onChange={event => setTechFilter(event.target.value)} /><div className="tech-list">{activeTechs.filter(tech => tech.name.toLowerCase().includes(techFilter.toLowerCase())).map(tech => <label key={tech.id} title={tech.name}><input type="checkbox" checked={(team.memberIds || []).some(id => String(id) === String(tech.id))} onChange={() => toggleWeeklyTech(day, teamIndex, tech.name)} />{tech.firstName || tech.name.split(' ')[0]}</label>)}{!activeTechs.length && <p>No hay técnicos activos.</p>}</div>{memberSelection && <p role="status" aria-live="polite">Guardando selección…</p>}</div>}</div></div>}</div>
                 {team.tasks.map((task, taskIndex) => <React.Fragment key={task.taskId || taskIndex}>{gaps.filter(gap => gap.beforeIndex === taskIndex).map(gap => gap.kind === 'lunch' ? <LunchCard key="lunch" hours={gap.hours} /> : <div className="weekly-time-gap" key={gap.start}><strong>Disponibilidad horaria desde las {gap.start} hs hasta las {gap.end} hs</strong>{!readOnly && !advancedGuard && <button title="Creá un servicio en esta franja horaria disponible del equipo." type="button" className="secondary" onClick={() => addTask(day, teamIndex, gap.start)}><Icon name="plus" size={16} />Agregar servicio</button>}</div>)}<div className={`week-task week-task-summary ${!task.client ? 'available-slot' : ''}`} data-weekly-search={task.client || ''} data-weekly-search-key={`${day}/${teamIndex}/${taskIndex}`} role="button" tabIndex={0} onClick={() => openTaskEditor(day, teamIndex, taskIndex)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openTaskEditor(day, teamIndex, taskIndex) } }}>
-                  <div className="week-task-title"><span className="week-task-heading"><ServicePreparationButton record={historyRecordForTask(task, day, operationalHistory) || task} disabled={readOnly} persist={persistWeeklyService} onNotice={setNotice} /><span>Servicio {taskIndex + 1}</span><TaskStatusBadge task={task} date={day} history={operationalHistory} statusOnly /></span><small className="week-task-hour">{task.time || '--:--'} Hs</small></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>{serviceLocality(task) && <span className="week-task-locality">{serviceLocality(task)}</span>}{task.awaitingConfirmation === true && <span className="service-confirmation-label">(A CONFIRMAR)</span>}
+                  <div className="week-task-title"><span className="week-task-heading"><ServicePreparationButton record={historyRecordForTask(task, day, operationalHistory) || task} disabled={readOnly} persist={persistWeeklyService} onNotice={setNotice} confirmedRevision={confirmedRevision} /><span>Servicio {taskIndex + 1}</span><TaskStatusBadge task={task} date={day} history={operationalHistory} statusOnly /></span><small className="week-task-hour">{task.time || '--:--'} Hs</small></div><strong className="week-task-client">{task.client || 'Disponible'}</strong>{serviceLocality(task) && <span className="week-task-locality">{serviceLocality(task)}</span>}{task.awaitingConfirmation === true && <span className="service-confirmation-label">(A CONFIRMAR)</span>}
                   <TaskStatusBadge task={task} date={day} history={operationalHistory} weekly />
                   {journeyLabel(historyRecordForTask(task, day, operationalHistory), operationalHistory) && <small className="journey-label">{journeyLabel(historyRecordForTask(task, day, operationalHistory), operationalHistory)}</small>}
                   {!task.vehicleControl && <ServicePhoto record={historyRecordForTask(task, day, operationalHistory) || task} className="weekly-service-photo" />}

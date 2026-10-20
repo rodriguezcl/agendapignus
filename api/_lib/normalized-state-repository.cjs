@@ -1,3 +1,6 @@
+const { isDeepStrictEqual } = require('node:util')
+const { rememberNormalizedCredentials, normalizedCredentialsUnchanged } = require('./normalized-credential-snapshot.cjs')
+
 function payload(value) {
   if (typeof value !== 'string') return value
   try { return JSON.parse(value) } catch { return value }
@@ -89,6 +92,7 @@ async function readNormalizedState(sql, { includeCredentials = false, includeCon
     customers: collection('customers'), history,
     agenda: { ...daily, weekly }, reviews: collection('reviews'), preferences
   }
+  if (includeCredentials) rememberNormalizedCredentials(state)
   return includeControl ? { state, control: payload(batch.storage_control) } : state
 }
 
@@ -110,7 +114,7 @@ function canonical(value) {
   if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]))
   return value
 }
-const equivalent = (left, right) => JSON.stringify(canonical(left)) === JSON.stringify(canonical(right))
+const equivalent = (left, right) => isDeepStrictEqual(left, right) || JSON.stringify(canonical(left)) === JSON.stringify(canonical(right))
 const rowKey = (row, keys) => JSON.stringify(keys.map(key => row[key] == null ? null : String(row[key])))
 const MAX_BATCH_PARAMETERS = 30_000
 const MAX_DELETE_BATCH_ROWS = 1_000
@@ -131,32 +135,37 @@ function changedPositionBuckets(beforeRows, nextRows, bucketKeys, identityKeys) 
   return changed
 }
 
-async function vacateChangedPositions(sql, table, beforeRows, nextRows, identityKeys) {
+function preparePositionChanges(table, beforeRows, nextRows, identityKeys) {
   const bucketKeys = POSITIONAL_UNIQUE_BUCKETS[table]
-  if (!bucketKeys) return new Set()
+  if (!bucketKeys) return { changed: new Set(), values: [] }
   const changed = changedPositionBuckets(beforeRows, nextRows, bucketKeys, identityKeys)
   const buckets = new Map(beforeRows.map(row => [positionBucketKey(row, bucketKeys), bucketKeys.map(key => row[key])]))
-  for (const bucket of changed) {
-    const values = buckets.get(bucket)
-    if (!values) continue
+  return { changed, values: [...changed].filter(bucket => buckets.has(bucket)).map(bucket => buckets.get(bucket)) }
+}
+
+async function vacateChangedPositions(sql, table, valuesByBucket) {
+  const bucketKeys = POSITIONAL_UNIQUE_BUCKETS[table]
+  for (const values of valuesByBucket) {
     const conditions = bucketKeys.map((key, index) => `${key} = $${index + 2}`).join(' and ')
     // Free the final non-negative positions before swapping/replacing rows.
     // The enclosing transaction makes this temporary offset invisible.
     await queryRows(sql, `update normalized_shadow.${table} set position = position + $1 where ${conditions}`, [1_000_000, ...values])
   }
-  return changed
 }
 
-async function vacateTransferredJobTaskIds(sql, beforeRows, nextRows, identityKeys) {
+function transferredJobTaskOwnerIds(beforeRows, nextRows, identityKeys) {
   const ownerByTaskId = rows => new Map(rows
     .filter(row => row.source_task_id != null && String(row.source_task_id).trim())
     .map(row => [String(row.source_task_id), rowKey(row, identityKeys)]))
   const beforeOwners = ownerByTaskId(beforeRows)
   const nextOwners = ownerByTaskId(nextRows)
   const transferred = new Set([...nextOwners].filter(([taskId, owner]) => beforeOwners.has(taskId) && beforeOwners.get(taskId) !== owner).map(([taskId]) => taskId))
-  const previousOwnerIds = beforeRows
+  return beforeRows
     .filter(row => transferred.has(String(row.source_task_id || '')))
     .map(row => row.id)
+}
+
+async function vacateTransferredJobTaskIds(sql, previousOwnerIds) {
   if (!previousOwnerIds.length) return
   const placeholders = previousOwnerIds.map((_, index) => `$${index + 1}`).join(',')
   // source_task_id is the stable identity of a service, but legacy repairs can
@@ -227,19 +236,48 @@ async function synchronizeCredentials(sql, employees) {
   return changedRows
 }
 
+function prepareTableChanges(previous, next) {
+  return Object.entries(TABLE_KEYS).map(([table, keys]) => {
+    const beforeRows = previous.tables[table] || [], nextRows = next.tables[table] || []
+    const positions = preparePositionChanges(table, beforeRows, nextRows, keys)
+    const positionBucketKeys = POSITIONAL_UNIQUE_BUCKETS[table]
+    const before = new Map(beforeRows.map(row => [rowKey(row, keys), row])), after = new Set()
+    const changed = []
+    for (const row of nextRows) {
+      const identity = rowKey(row, keys), old = before.get(identity)
+      after.add(identity)
+      const positionVacated = positionBucketKeys && positions.changed.has(positionBucketKey(row, positionBucketKeys))
+      if (!positionVacated && old && equivalent(old, row)) continue
+      changed.push(row)
+    }
+    return {
+      table, keys, changed,
+      removed: [...before].filter(([identity]) => !after.has(identity)).map(([, row]) => row),
+      positionBuckets: positions.values,
+      transferredOwnerIds: table === 'jobs' ? transferredJobTaskOwnerIds(beforeRows, nextRows, keys) : []
+    }
+  })
+}
+
 function prepareNormalizedStateWrite(previousState, nextState) {
   // Lazy import avoids a module cycle during isolated rehearsal startup.
   const { buildShadowCandidate } = require('./normalization-rehearsal.cjs')
   const previous = buildShadowCandidate(previousState), next = buildShadowCandidate(nextState)
-  return { previous, next }
+  // Compute dependency-ordered differences before the caller acquires the
+  // revision lock. Fingerprints and the database conflict checks remain exact.
+  return { previous, next, changes: prepareTableChanges(previous, next) }
 }
 
 async function synchronizeNormalizedStateInTransaction(sql, previousState, nextState, prepared) {
-  const { previous, next } = prepared || prepareNormalizedStateWrite(previousState, nextState)
+  const projection = prepared || prepareNormalizedStateWrite(previousState, nextState)
+  const { previous, next } = projection
+  const changes = projection.changes || prepareTableChanges(previous, next)
+  const syncCredentials = () => normalizedCredentialsUnchanged(previousState, nextState)
+    ? 0 : synchronizeCredentials(sql, nextState.employees)
   const [batch] = await queryRows(sql, 'select source_fingerprint, source_revision from normalized_shadow.import_batch where id = 1 for update')
   if (!batch) { const error = new Error('El modelo normalizado todavía no tiene un lote importado.'); error.code = 'NORMALIZED_STATE_EMPTY'; throw error }
   if (batch.source_fingerprint === next.analysis.sourceFingerprint && Number(batch.source_revision) === Number(next.analysis.revision)) {
-    const credentialChanges = await synchronizeCredentials(sql, nextState.employees)
+    const credentialChanges = await syncCredentials()
     return { revision: next.analysis.revision, sourceFingerprint: next.analysis.sourceFingerprint, previousSourceFingerprint: previous.analysis.sourceFingerprint, idempotent: true, changedRows: credentialChanges }
   }
   if (batch.source_fingerprint !== previous.analysis.sourceFingerprint || Number(batch.source_revision) !== Number(previous.analysis.revision)) {
@@ -248,33 +286,20 @@ async function synchronizeNormalizedStateInTransaction(sql, previousState, nextS
     throw error
   }
   let changedRows = 0
-  const tableNames = Object.keys(TABLE_KEYS)
   // Parents are inserted before children and existing children are moved to
   // their new parents before obsolete parent rows are removed.
-  for (const table of tableNames) {
-    const keys = TABLE_KEYS[table], beforeRows = previous.tables[table] || [], nextRows = next.tables[table] || []
-    const vacatedBuckets = await vacateChangedPositions(sql, table, beforeRows, nextRows, keys)
-    if (table === 'jobs') await vacateTransferredJobTaskIds(sql, beforeRows, nextRows, keys)
-    const positionBucketKeys = POSITIONAL_UNIQUE_BUCKETS[table]
-    const before = new Map(beforeRows.map(row => [rowKey(row, keys), row]))
-    const changed = []
-    for (const row of nextRows) {
-      const old = before.get(rowKey(row, keys))
-      const positionVacated = positionBucketKeys && vacatedBuckets.has(positionBucketKey(row, positionBucketKeys))
-      if (!positionVacated && old && equivalent(old, row)) continue
-      changed.push(row)
-    }
+  for (const { table, keys, changed, positionBuckets, transferredOwnerIds } of changes) {
+    await vacateChangedPositions(sql, table, positionBuckets)
+    if (table === 'jobs') await vacateTransferredJobTaskIds(sql, transferredOwnerIds)
     changedRows += await bulkUpsertRows(sql, table, keys, changed)
   }
   // Credentials reference employees. New parent rows must exist before their
   // password hashes are inserted; credentials for removed employees must be
   // deleted before the reverse dependency pass removes those employees.
-  changedRows += await synchronizeCredentials(sql, nextState.employees)
+  changedRows += await syncCredentials()
   // Once every surviving row points at its final parent, children and then
   // obsolete parents can be removed in reverse dependency order.
-  for (const table of [...tableNames].reverse()) {
-    const keys = TABLE_KEYS[table], before = new Map((previous.tables[table] || []).map(row => [rowKey(row, keys), row])), after = new Map((next.tables[table] || []).map(row => [rowKey(row, keys), row]))
-    const removed = [...before].filter(([identity]) => !after.has(identity)).map(([, row]) => row)
+  for (const { table, keys, removed } of [...changes].reverse()) {
     changedRows += await bulkDeleteRows(sql, table, keys, removed)
   }
   await queryRows(sql, "update normalized_shadow.import_batch set source_fingerprint = $1, source_revision = $2, status = case when (select active_model from normalized_shadow.storage_control where id = 1) = 'normalized' then 'active' else 'shadow' end, report = $3 where id = 1",

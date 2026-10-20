@@ -2,6 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createSaveSnapshotCache } = require('../api/_lib/save-snapshot-cache.cjs')
 const { preparedSnapshots } = require('../api/_lib/storage-router.cjs')
+const { normalizedCredentialsUnchanged } = require('../api/_lib/normalized-credential-snapshot.cjs')
 
 test('save snapshot cache checks live revisions and credentials, isolates callers and invalidates other writers', async () => {
   let revision = 1, batchRevision = 1, model = 'normalized', hash = 'fresh', reads = 0, queries = 0
@@ -21,6 +22,9 @@ test('save snapshot cache checks live revisions and credentials, isolates caller
   assert.equal(queries, 1)
   assert.equal(hit.history[0].detail, 'rev-1')
   assert.equal(hit.employees[0].passwordHash, 'new password')
+  assert.equal(normalizedCredentialsUnchanged(hit, { ...hit, revision: 2 }), true)
+  hit.employees[0].passwordHash = 'in-place change'
+  assert.equal(normalizedCredentialsUnchanged(hit, { ...hit, revision: 2 }), false)
   revision = batchRevision = 2
   assert.equal((await cache.read(sql)).history[0].detail, 'rev-2')
   assert.equal(reads, 2)

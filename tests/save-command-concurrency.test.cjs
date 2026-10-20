@@ -19,6 +19,7 @@ async function harness() {
     createSaveActivity, operationScopes, stateOperations, alignOperationBaselines,
     saveSessionEpochRef: ref(1), saveActivityRef: ref(createSaveActivity()), pendingConfirmedSavesRef: ref(0), saveBatchRef: ref(null),
     currentSnapshotRef: ref(JSON.stringify(snapshot)), lastPersistedSnapshotRef: ref(JSON.stringify(snapshot)), lastServerSnapshotRef: ref({ ...snapshot, revision: 1 }),
+    currentDisplaySnapshotRef: ref(snapshot), quickCommandBaseRef: ref({ serialized: null, value: null }),
     confirmedSaveRef: ref(false), stateSaveTimerRef: ref(null), pendingStateSaves: ref(0), stateSaveGenerationRef: ref(0), stateSaveQueue: ref(Promise.resolve()),
     stateRevisionRef: ref(1), saveDraftConflictRef: ref(false), setConfirmedSaving() {}, window: { clearTimeout() {} },
     stateRepository: { commit: (ops, revision) => new Promise((resolve, reject) => requests.push({ ops, revision, resolve, reject })) },
@@ -104,4 +105,33 @@ test('actual App aligns display baselines only with the matching server revision
     requests[0].resolve({ state: { ...displayed, revision: 3 } })
     await pending
   }
+})
+
+test('quick commands reuse the immutable display and parsed baseline without submitting other drafts', async () => {
+  const { run, requests, context, snapshot } = await harness()
+  const local = { ...snapshot, history: [{ id: 'a', detail: 'Unsaved unrelated draft' }, snapshot.history[1]] }
+  context.currentSnapshotRef.current = JSON.stringify(local)
+  context.currentDisplaySnapshotRef.current = local
+  let observed
+  const first = run(current => { observed = current; return command('b')() }, {
+    combinePendingState: true, independentService: true, quickAction: true
+  })
+  await tick()
+  assert.equal(observed, local)
+  assert.equal(requests[0].ops.length, 1)
+  assert.equal(requests[0].ops[0].path[1].id, 'b')
+  const cached = context.quickCommandBaseRef.current.value
+  requests[0].resolve({ state: { ...snapshot, revision: 2 } })
+  await first
+  const second = run(command('b'), { combinePendingState: true, independentService: true, quickAction: true })
+  await tick()
+  assert.equal(context.quickCommandBaseRef.current.value, cached)
+  requests[1].resolve({ state: { ...snapshot, revision: 3 } })
+  await second
+  context.lastPersistedSnapshotRef.current = JSON.stringify({ ...snapshot, revision: 3 })
+  const third = run(command('b'), { combinePendingState: true, independentService: true, quickAction: true })
+  await tick()
+  assert.notEqual(context.quickCommandBaseRef.current.value, cached)
+  requests[2].resolve({ state: { ...snapshot, revision: 4 } })
+  await third
 })

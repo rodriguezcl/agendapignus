@@ -1,11 +1,12 @@
 const crypto = require('node:crypto')
+const { isDeepStrictEqual } = require('node:util')
 
 const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value
 const fingerprint = value => crypto.createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex')
 const key = value => String(value ?? '')
 const sortedIds = values => (values || []).map(key).sort()
-const same = (a, b) => fingerprint(a ?? null) === fingerprint(b ?? null)
+const same = (a, b) => isDeepStrictEqual(a ?? null, b ?? null) || fingerprint(a ?? null) === fingerprint(b ?? null)
 
 function analyzeNormalization(state) {
   const issues = [], occurrences = []

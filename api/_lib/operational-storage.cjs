@@ -22,13 +22,11 @@ async function appendOperationalAudit(sql, entries, { shadowPrepared = false } =
   }
   // Bind serialized JSON as text first: postgres.js otherwise infers jsonb
   // and serializes the string again, so jsonb_array_elements receives a scalar.
-  await queryRows(sql, `insert into pignus_audit_log (id, occurred_at, data)
+  const legacyInsert = `insert into pignus_audit_log (id, occurred_at, data)
     select (event->>'id')::uuid, (event->>'at')::timestamptz, event
     from jsonb_array_elements($1::text::jsonb) as item(event)
-    on conflict (id) do nothing`, [JSON.stringify([...first.values()])])
-  await queryRows(sql, 'delete from pignus_audit_log where id in (select id from pignus_audit_log order by occurred_at desc offset 100)')
-  if (!shadowPrepared && !(await normalizedShadowIsPrepared(sql))) return
-  await queryRows(sql, `insert into normalized_shadow.audit_events
+    on conflict (id) do nothing`
+  const shadowInsert = `insert into normalized_shadow.audit_events
     (id, occurred_at, actor_employee_id, actor_name, actor_email, actor_role, action, entity, entity_id, before_payload, after_payload, original_payload)
     select (event->>'id')::uuid, (event->>'at')::timestamptz,
       event->'user'->>'id', nullif(event->'user'->>'name', ''), nullif(event->'user'->>'email', ''),
@@ -38,9 +36,23 @@ async function appendOperationalAudit(sql, entries, { shadowPrepared = false } =
     on conflict (id) do update set occurred_at=excluded.occurred_at, actor_employee_id=excluded.actor_employee_id,
       actor_name=excluded.actor_name, actor_email=excluded.actor_email, actor_role=excluded.actor_role,
       action=excluded.action, entity=excluded.entity, entity_id=excluded.entity_id,
-      before_payload=excluded.before_payload, after_payload=excluded.after_payload, original_payload=excluded.original_payload`,
-    [JSON.stringify([...last.values()])])
-  await queryRows(sql, 'delete from normalized_shadow.audit_events where id in (select id from normalized_shadow.audit_events order by occurred_at desc offset 100)')
+      before_payload=excluded.before_payload, after_payload=excluded.after_payload, original_payload=excluded.original_payload`
+  const legacyTrim = 'delete from pignus_audit_log where id in (select id from pignus_audit_log order by occurred_at desc offset 100)'
+  const shadowTrim = 'delete from normalized_shadow.audit_events where id in (select id from normalized_shadow.audit_events order by occurred_at desc offset 100)'
+  if (shadowPrepared) {
+    // Both inserts share one round trip; both trims share the next. Trimming
+    // must be a separate statement so its snapshot includes every inserted
+    // event (including batches larger than the 100-event retention limit).
+    await queryRows(sql, `with legacy_write as (${legacyInsert}) ${shadowInsert.replaceAll('$1', '$2')}`,
+      [JSON.stringify([...first.values()]), JSON.stringify([...last.values()])])
+    await queryRows(sql, `with legacy_trim as (${legacyTrim}) ${shadowTrim}`)
+    return
+  }
+  await queryRows(sql, legacyInsert, [JSON.stringify([...first.values()])])
+  await queryRows(sql, legacyTrim)
+  if (!(await normalizedShadowIsPrepared(sql))) return
+  await queryRows(sql, shadowInsert, [JSON.stringify([...last.values()])])
+  await queryRows(sql, shadowTrim)
 }
 
 async function upsertVehicleInsuranceDocument(sql, document) {

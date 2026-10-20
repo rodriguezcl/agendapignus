@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const { buildShadowCandidate, insertShadowCandidate } = require('../api/_lib/normalization-rehearsal.cjs')
-const { readNormalizedState, synchronizeNormalizedState } = require('../api/_lib/normalized-state-repository.cjs')
+const { prepareNormalizedStateWrite, readNormalizedState, synchronizeNormalizedState } = require('../api/_lib/normalized-state-repository.cjs')
 
 function fixture() {
   return { revision: 1, roles: [{ id: 'r', name: 'Rol', permissions: { agenda: true } }], employees: [{ id: 'e', roleId: 'r', name: 'Técnico', passwordHash: 'SECRET' }],
@@ -23,6 +23,55 @@ async function applyAndVerify(pg, previous, mutate) {
   assert.deepEqual(await readNormalizedState(pg), safeState(next))
   return next
 }
+
+test('prepared projections preserve fingerprints and isolate mutable callers and credentials', () => {
+  const previous = fixture(), next = structuredClone(previous)
+  next.revision++
+  next.history[0].servicePreparation = { materialsReady: true }
+  const first = prepareNormalizedStateWrite(previous, next)
+  assert.deepEqual(first.previous, buildShadowCandidate(previous))
+  assert.deepEqual(first.next, buildShadowCandidate(next))
+  first.next.tables.history_evidence[0].original_payload.detail = 'Must not enter another projection'
+  first.next.analysis.summary.history = 9000
+  next.employees[0].passwordHash = 'CHANGED_CREDENTIAL'
+  const after = { ...next, revision: next.revision + 1 }
+  const second = prepareNormalizedStateWrite(next, after)
+  assert.deepEqual(second.previous, buildShadowCandidate(next))
+  assert.ok(!JSON.stringify(second).includes('CHANGED_CREDENTIAL'))
+  next.history[0].detail = 'In-place operational change'
+  const third = prepareNormalizedStateWrite(next, { ...next, revision: next.revision + 1 })
+  assert.deepEqual(third.previous, buildShadowCandidate(next), 'same object with changed contents must produce a fresh candidate')
+  assert.notEqual(third.previous.analysis.sourceFingerprint, second.previous.analysis.sourceFingerprint)
+})
+
+test('planning writes avoid credential rereads only for an unchanged observed credential snapshot', async () => {
+  const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
+  try {
+    await pg.exec(fs.readFileSync(path.join(__dirname, '../supabase/proposals/normalized-shadow-v1.sql'), 'utf8'))
+    await insertShadowCandidate(pg, buildShadowCandidate(fixture()))
+    await pg.query("insert into normalized_shadow.employee_credentials (employee_id, password_hash) values ('e', 'INITIAL')")
+    const current = await readNormalizedState(pg, { includeCredentials: true })
+    const next = { ...current, revision: current.revision + 1, history: current.history.map(row => ({ ...row, servicePreparation: { materialsReady: true } })) }
+    // A concurrent password change must survive a planning-only write.
+    await pg.query("update normalized_shadow.employee_credentials set password_hash = 'CONCURRENT'")
+    const statements = []
+    const sql = {
+      exec: statement => pg.exec(statement),
+      query: (statement, parameters) => { statements.push(statement); return pg.query(statement, parameters) }
+    }
+    await synchronizeNormalizedState(sql, current, next)
+    assert.ok(!statements.some(statement => /employee_credentials/.test(statement)), 'no credential SQL for untouched employees')
+    assert.equal((await readNormalizedState(pg, { includeCredentials: true })).employees[0].passwordHash, 'CONCURRENT')
+    assert.deepEqual((await readNormalizedState(pg)).history, next.history)
+
+    const updated = await readNormalizedState(pg, { includeCredentials: true })
+    updated.employees[0].passwordHash = 'INTENTIONAL_CHANGE'
+    statements.length = 0
+    await synchronizeNormalizedState(sql, updated, { ...updated, revision: updated.revision + 1 })
+    assert.ok(statements.some(statement => /select employee_id, password_hash/.test(statement)), 'in-place changes cannot bypass credential synchronization')
+    assert.equal((await readNormalizedState(pg, { includeCredentials: true })).employees[0].passwordHash, 'INTENTIONAL_CHANGE')
+  } finally { await pg.close() }
+})
 
 test('normalized repository projects the application state and synchronizes only a changed record', async () => {
   const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()

@@ -443,9 +443,14 @@ async function handleSaveState(req, res, sql, user) {
     const result = await retryPreparedWrite(() => sql.begin(async transaction => {
       // Agenda writes update the legacy and normalized models atomically. A
       // short wait incorrectly reported normal serialization as a busy DB.
-      await transaction`set local lock_timeout = '15s'`
-      await transaction`set local statement_timeout = '40s'`
-      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      await transaction`
+        with settings as (
+          select set_config('lock_timeout', '15s', true),
+                 set_config('statement_timeout', '40s', true)
+        )
+        insert into pignus_preferences (key, value)
+        select 'state_revision', '0' from settings
+        on conflict (key) do nothing`
       // Preparation is concurrent; only the atomic projection commit is serialized.
       // Stale preparations retry outside the lock, never overwrite another save.
       const current = await saveSnapshots.read(transaction)
@@ -458,8 +463,9 @@ async function handleSaveState(req, res, sql, user) {
       }
       const individual = req.method === 'PATCH'
       const employeeCommand = individual && employeeOnly(incoming.operations)
-      const operationState = individual ? stateForOperationComparison(current) : current
-      let next = employeeCommand ? applyEmployeeOperation(current, incoming.operations, user) : authorizeIncomingState(individual ? applyStateOperations(visibleStateForUser(operationState, user), incoming.operations) : incoming, current, user)
+      const planningClick = individual && !employeeCommand && require('./_lib/planning-click-operation.cjs').preparePlanningClick(current, incoming.operations, user)
+      const operationState = individual && !planningClick ? stateForOperationComparison(current) : current
+      let next = planningClick ? planningClick.state : employeeCommand ? applyEmployeeOperation(current, incoming.operations, user) : authorizeIncomingState(individual ? applyStateOperations(visibleStateForUser(operationState, user), incoming.operations) : incoming, current, user)
       const base = incoming.base && typeof incoming.base === 'object' ? incoming.base : null
       const merged = Boolean(base && concurrentStateChanged(base, current))
       if (!individual && base) next = mergeConcurrentState(base, current, next)
@@ -468,7 +474,7 @@ async function handleSaveState(req, res, sql, user) {
         error.statusCode = 409
         throw error
       }
-      if (!employeeCommand) {
+      if (!employeeCommand && !planningClick) {
         next = normalizeStateForSave(next, current, { allowEarlyCompletion: user.roleCode === 'administrator' })
         next.employees = secureEmployees(next.employees, current.employees)
         validateState(next, current)
@@ -477,18 +483,21 @@ async function handleSaveState(req, res, sql, user) {
       timing.mark('validation')
       // Un estado idéntico no es una nueva versión. Esto permite que dos
       // sesiones se hidraten simultáneamente sin generarse conflictos entre sí.
-      if (!statePersistenceChanged(current, next)) {
+      if (planningClick ? current.history === next.history && current.agenda === next.agenda : !statePersistenceChanged(current, next)) {
         await verifyRevision()
         return { revision: currentRevision, state: current, previous: current, merged, normalized: require('./_lib/storage-router.cjs').preparedSnapshots.has(current) }
       }
+      const changedHistory = planningClick ? current.history.flatMap((before, index) => before === next.history[index] ? [] : [{ before, after: next.history[index] }]) : null
       const entries = [
+        ...(!planningClick ? [
         ...auditChanges(current.roles, next.roles, 'id', 'Rol', user),
         ...auditChanges(current.employees, next.employees, 'id', 'Empleado', user),
         ...auditChanges(current.services, next.services, 'id', 'Tipo de servicio', user),
         ...auditChanges(current.vehicles, next.vehicles, 'id', 'Vehículo', user),
-        ...auditChanges(current.history, next.history, 'id', 'Servicio / historial', user),
         ...auditChanges(current.customers, next.customers, 'customerId', 'Abonado / Cliente', user),
         ...auditChanges(current.reviews, next.reviews, 'id', 'Reseña', user)
+        ] : []),
+        ...auditChanges(changedHistory ? changedHistory.map(change => change.before) : current.history, changedHistory ? changedHistory.map(change => change.after) : next.history, 'id', 'Servicio / historial', user),
       ]
       if (JSON.stringify(current.agenda) !== JSON.stringify(next.agenda)) entries.push(auditEntry(user, 'Modificó', 'Agenda técnica', 'agenda-actual', current.agenda, next.agenda))
       const nextRevision = currentRevision + 1
@@ -503,7 +512,7 @@ async function handleSaveState(req, res, sql, user) {
       await verifyRevision()
       await persistStateCollections(transaction, current, next, nextRevision, prepared)
       timing.mark('persist')
-      if (JSON.stringify(current.customers) !== JSON.stringify(next.customers)) await setAuxiliaryPreference(transaction, CUSTOMER_IMPORT_BACKUP_KEY, null)
+      if (current.customers !== next.customers && JSON.stringify(current.customers) !== JSON.stringify(next.customers)) await setAuxiliaryPreference(transaction, CUSTOMER_IMPORT_BACKUP_KEY, null)
       await appendAudit(transaction, entries, { shadowPrepared: Boolean(prepared) })
       timing.mark('audit')
       return { revision: nextRevision, state: { ...next, revision: nextRevision }, previous: current, merged, normalized: require('./_lib/storage-router.cjs').preparedSnapshots.has(current) }
