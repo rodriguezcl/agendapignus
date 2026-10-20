@@ -182,7 +182,9 @@ async function checkStructure(page, scenario) {
     assert(await overview.locator(selector).isVisible(), `${selector} is directly visible`)
     assert(await overview.locator(selector).getByRole('heading').count() > 0, `${selector} has a meaningful heading`)
   }
-  assert.equal(await overview.locator('.dashboard-detail-grid > .zone-summary').count(), 2, 'Installation and retirement details remain together below charts')
+  assert.equal(await overview.locator('.dashboard-block-grid > .zone-summary').count(), 2, 'Installation and retirement details remain direct cards in the shared grid')
+  assert.equal(await overview.locator('.dashboard-overview-charts,.dashboard-detail-grid').count(), 0, 'The shared grid replaces the previous nested layouts')
+  assert.equal(await overview.locator('.dashboard-block-grid > article').count(), 6, 'Authorized users have six direct grid cards')
   if (scenario === 'current' || scenario === 'multi' || scenario === 'negative' || scenario === 'past') {
     assert(await overview.locator('.net-projection-card svg').count() > 0, 'Net development has a chart')
     assert(await overview.locator('.work-composition-card svg').count() > 0, 'Period composition has a chart')
@@ -256,8 +258,10 @@ async function checkInteractions(page, width) {
 
 async function checkPermissions(page, theme) {
   await render(page, 'current', theme, 'summary')
-  const details = page.locator('.dashboard-detail-grid')
-  assert.equal(await details.locator('button').count(), 0, 'Summary-only role cannot open detail or export records')
+  const details = page.locator('.dashboard-block-grid')
+  assert.equal(await details.locator('.zone-summary button').count(), 0, 'Summary-only role cannot open detail or export records')
+  assert.equal(await details.locator(':scope > article').count(), 5, 'Summary-only users have five cards with no collections information')
+  assert.equal(await details.locator('.collections-overview-card').count(), 0, 'Collections permissions are required for financial aggregates')
   assert.equal(await page.locator('.net-projection-card,.work-composition-card,.annual-evolution-card').count(), 3, 'Aggregate charts remain available to dashboard viewers')
   await render(page, 'current', theme, 'detail')
   assert.equal(await details.getByRole('button', { name: /Excel|PDF/ }).count(), 0, 'Record detail permission does not grant export')

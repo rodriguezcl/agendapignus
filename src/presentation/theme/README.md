@@ -69,10 +69,12 @@ de pantalla con datos sintéticos; las capturas quedan en
 
 ## Gráficos del Resumen general
 
-El selector de mes es común a los gráficos y a los detalles. La primera fila
-distribuye proyección neta y composición en proporción 55/45; la evolución anual
-ocupa el ancho de la segunda fila. En pantallas angostas las tarjetas se apilan.
-Los detalles de altas por ubicación y retiros quedan debajo de los gráficos.
+El selector de mes es común a los gráficos y a los detalles. Una única grilla de
+dos columnas iguales alinea las seis tarjetas y estira su altura por fila.
+La primera fila contiene proyección neta y composición; la segunda, evolución
+anual y estado de cobranzas; la tercera, altas por ubicación y retiros.
+Hasta 1200 px las tarjetas se apilan. Sin permiso de consulta de cobranzas o de
+importes, su tarjeta se omite y evolución anual ocupa la fila completa.
 Esta composición reemplaza las cuatro tarjetas superiores y el bloque de
 acumulado anual, evitando repetir cifras y abrir modales para leer los gráficos.
 Las acciones Ver, Excel y PDF conservan sus permisos de detalle y exportación.
@@ -89,11 +91,27 @@ puede aportar varios tipos de prestación, por lo que ese total puede diferir de
 la cantidad de trabajos completados; la interfaz distingue ambas cantidades.
 
 Se conserva SVG declarativo en React, siguiendo el precedente de
-`AnnualEvolutionChart`. No se agregan dependencias para estos tres gráficos.
+`AnnualEvolutionChart`. No se agregan dependencias para estos cuatro gráficos.
 Los datos se calculan en modelos separados de la presentación, y los componentes
 usan los tokens del tema junto con alternativas textuales, foco visible y
 movimiento reducido. No se reordenan tarjetas ni se crean gráficos o modales
 mediante búsquedas globales del DOM.
+
+Cobranzas comparte `collectionRecords` y `collectionService` con su módulo:
+una cobranza por servicio, fecha de la primera jornada vigente, sin limitar a
+trabajos completados. Las barras semanales separan confirmados, pendientes hasta
+hoy y pendientes futuros. Un índice de jornadas resuelve sus fechas una sola
+vez por historial, evitando búsquedas repetidas durante la ordenación.
+Los importes se suman en centavos. Se comprueba el
+alcance tanto del registro dueño como de la jornada vigente usando el contexto
+actual, incluso si quedaron datos de un rol anterior en memoria.
+Los períodos anteriores o parcialmente cubiertos desde el 14/10/2026 se explican,
+sin presentar falta de seguimiento como ausencia de deuda. Las cobranzas
+registradas antes de ese corte se muestran con advertencia de cobertura parcial.
+El botón Ver cobranzas navega mediante el guard existente y abre el listado con
+las fechas del mes seleccionado y todos los estados, conservando los totales
+generales del módulo. El gráfico representa estado actual por fecha de servicio,
+no ingresos recibidos por fecha de confirmación.
 
 La revisión de documentación oficial del 20/10/2026 tomó estas referencias:
 
@@ -116,3 +134,6 @@ y Playwright disponible en `NODE_PATH`. Usa registros sintéticos, bloquea la re
 y comprueba estados mensuales, totales, permisos, teclado, tacto y composición
 responsive en ambos temas. Guarda capturas y resultados en
 `tmp/visual-qa/dashboard-overview/`.
+`node scripts/verify-dashboard-collections.cjs` verifica además las seis tarjetas,
+sus bordes y alturas por fila, permisos, rangos mensuales, navegación al listado,
+interacción accesible y pantallas de 320 a 2560 px con datos sintéticos.

@@ -28,7 +28,7 @@ function linePath(points) {
   }, `M${points[0].x},${points[0].y}`)
 }
 
-export default function AnnualEvolutionChart({ months = [], year }) {
+export default function AnnualEvolutionChart({ months = [], year, subtitle }) {
   const model = useMemo(() => annualChartModel(months), [months])
   const [hidden, setHidden] = useState([])
   const [activeIndex, setActiveIndex] = useState(null)
@@ -70,7 +70,7 @@ export default function AnnualEvolutionChart({ months = [], year }) {
   }
 
   return <article className="data-card annual-chart annual-evolution-card">
-    <header className="annual-evolution-header"><p className="eyebrow">EVOLUCIÓN ANUAL</p><h2 id={`${id}-title`}>Instalaciones y bajas · {year}</h2></header>
+    <header className="annual-evolution-header"><p className="eyebrow">EVOLUCIÓN ANUAL</p><h2 id={`${id}-title`}>Instalaciones y bajas · {year}</h2>{subtitle && <p className="annual-evolution-subtitle">{subtitle}</p>}</header>
     <div className="annual-evolution-chart">
       <div ref={plot} className="annual-evolution-plot" onPointerLeave={() => { if (!plot.current?.contains(document.activeElement)) setActiveIndex(null) }}>
         {months.length > 0 ? <svg className="annual-evolution-svg" viewBox={`0 0 ${width} ${height}`} width="100%" height={height} role="group" aria-labelledby={`${id}-title`}>

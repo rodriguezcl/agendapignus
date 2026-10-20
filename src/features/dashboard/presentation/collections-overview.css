@@ -1,0 +1,79 @@
+.collections-overview-card {
+  position: relative;
+  --collections-confirmed: #258667;
+  --collections-pending: #c08c17;
+  --collections-future: #4386c8;
+  container-type: inline-size;
+}
+.app-shell[data-theme="dark"] .collections-overview-card {
+  --collections-confirmed: #69c6a2;
+  --collections-pending: #efbd51;
+  --collections-future: #6ba8eb;
+}
+.collections-overview-summary { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 18px 22px 10px; }
+.app-shell[data-theme] .collections-overview-summary > span { color: var(--ap-muted); font-size: 12px; }
+.app-shell[data-theme] .collections-overview-summary > strong {
+  max-width: 100%;
+  color: var(--ap-text);
+  font-size: 34px;
+  line-height: 1.15;
+  letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.app-shell[data-theme] .collections-overview-summary > small { color: var(--ap-muted); font-size: 11px; line-height: 1.5; }
+.collections-overview-plot { position: relative; min-width: 0; margin: 8px 16px 0; }
+.collections-overview-svg { display: block; max-width: 100%; overflow: hidden; }
+.collections-bar { stroke: var(--ap-surface); stroke-width: 1.5; }
+.collections-week.is-active .collections-bar { stroke: var(--ap-text); stroke-width: 1.5; }
+.collections-week-label { font-size: 10px; }
+.collections-week-target { cursor: pointer; }
+.collections-week-target:focus-visible { outline: none; stroke: var(--ap-info); stroke-width: 2; }
+.collections-overview-tooltip {
+  position: absolute;
+  top: 0;
+  right: 8px;
+  z-index: 1;
+  width: min(285px, calc(100% - 16px));
+  padding: 10px 12px;
+  border: 1px solid var(--ap-border);
+  border-radius: 6px;
+  background: var(--ap-surface);
+  color: var(--ap-text);
+  box-shadow: 0 4px 14px #00000018;
+  pointer-events: none;
+}
+.app-shell[data-theme] .collections-overview-tooltip > strong { display: block; margin-bottom: 6px; font-size: 12px; color: var(--ap-text); }
+.collections-overview-tooltip > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 8px; padding: 4px 0; font-size: 10px; }
+.collections-overview-tooltip > div + div { border-top: 1px solid var(--ap-border); }
+.collections-overview-tooltip b { font-size: 11px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.app-shell[data-theme] .collections-overview-tooltip small { grid-column: 1 / -1; color: var(--ap-muted); font-size: 10px; }
+.collections-overview-legend { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; list-style: none; margin: 0; padding: 10px 22px 18px; }
+.collections-overview-legend li { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.collections-legend-label { display: flex; align-items: flex-start; gap: 6px; min-height: 30px; font-size: 11px; line-height: 1.4; }
+.collections-legend-label i { flex: 0 0 8px; width: 8px; height: 8px; margin-top: 3px; border-radius: 2px; }
+.collections-overview-legend .is-confirmed i { background: var(--collections-confirmed); }
+.collections-overview-legend .is-pending i { background: repeating-linear-gradient(35deg, #ffffff44 0 1px, transparent 1px 4px), var(--collections-pending); }
+.collections-overview-legend .is-future i { background: var(--collections-future); }
+.app-shell[data-theme] .collections-overview-legend strong { color: var(--ap-text); font-size: 15px; line-height: 1.4; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.app-shell[data-theme] .collections-overview-legend small { color: var(--ap-muted); font-size: 11px; }
+.app-shell[data-theme] .collections-legend-context { color: var(--ap-muted); font-size: 10px; line-height: 1.5; }
+.collections-overview-empty { min-height: 210px; }
+.app-shell[data-theme] .collections-overview-footer .collections-overview-coverage { margin-top: 6px; }
+.app-shell[data-theme] .collections-overview-open { display: inline-flex; align-items: center; justify-content: center; gap: 7px; max-width: 100%; min-height: 44px; margin-top: 12px; font-size: 12px; }
+.collections-overview-open:focus-visible { outline: 2px solid var(--ap-info); outline-offset: 2px; }
+@container (max-width: 420px) {
+  .collections-overview-legend { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .collections-overview-legend li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; padding-top: 9px; border-top: 1px solid var(--ap-border); }
+  .collections-legend-label { min-height: 0; }
+  .collections-overview-legend li > strong { grid-column: 2; grid-row: 1; text-align: right; }
+  .collections-overview-legend li > small { grid-column: 2; grid-row: 2; text-align: right; }
+  .collections-legend-context { grid-column: 1; grid-row: 2; }
+}
+@media (max-width: 540px) {
+  .collections-overview-summary { padding: 16px 18px 8px; }
+  .app-shell[data-theme] .collections-overview-summary > strong { font-size: 28px; }
+  .collections-overview-plot { margin-inline: 8px; }
+  .collections-overview-legend { padding-inline: 18px; }
+  .collections-overview-open { width: 100%; }
+}

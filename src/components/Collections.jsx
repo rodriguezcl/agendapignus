@@ -1,10 +1,10 @@
 import { useActionPermissions } from '../presentation/hooks/useActionPermissions.mjs'
-import { canWriteRecord } from '../domain/access/record-scope.mjs'
+import { canReadRecord, canWriteRecord } from '../domain/access/record-scope.mjs'
 import React, { useEffect, useMemo, useState } from 'react'
 import ModuleIntroduction from './ModuleIntroduction.jsx'
 import EditorModal from './ui/EditorModal.jsx'
 import Icon from './ui/Icon.jsx'
-import { COLLECTION_PAYMENT_METHODS, collectionBase, collectionConfirmed, collectionMoney, collectionRecords, collectionService } from '../domain/collections/collections.mjs'
+import { COLLECTION_PAYMENT_METHODS, collectionBase, collectionConfirmed, collectionMoney, collectionRecords, collectionServiceResolver } from '../domain/collections/collections.mjs'
 import './collections.css'
 import { parseCollectionAmount, displayCollectionAmount } from '../domain/collections/collection-amount.mjs'
 
@@ -13,7 +13,7 @@ const timestamp = value => new Date(value).toLocaleString('es-AR', { timeZone: '
 const terms = value => `${collectionMoney(value.amount)} · ${value.paymentMethod}`
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 
-export default function Collections({ history, canManage, onSave, openRequest, onOpenRequestHandled, setNotice }) {
+export default function Collections({ history, customers = [], canManage, onSave, openRequest, onOpenRequestHandled, setNotice }) {
   const { can, granular, user } = useActionPermissions()
   canManage = granular ? ['collections.confirm', 'collections.amount', 'collections.method'].some(key => can(key)) : canManage
   const financial = can('records.financial')
@@ -23,10 +23,22 @@ export default function Collections({ history, canManage, onSave, openRequest, o
   const [through, setThrough] = useState('')
   const [page, setPage] = useState(1)
   const [selection, setSelection] = useState(null)
-  const records = useMemo(() => collectionRecords(history), [history])
-  const schedule = record => collectionService(record, history) || record
+  const resolveService = useMemo(() => collectionServiceResolver(history), [history])
+  const records = useMemo(() => collectionRecords(history, resolveService).filter(record =>
+    canReadRecord(record, user, customers) && canReadRecord(resolveService(record) || record, user, customers)
+  ), [history, resolveService, user, customers])
+  const schedule = record => resolveService(record) || record
   useEffect(() => {
     if (!openRequest) return
+    if (openRequest.from && openRequest.through && !openRequest.id) {
+      setSelection(null)
+      setStatus('all')
+      setQuery('')
+      setFrom(openRequest.from)
+      setThrough(openRequest.through)
+      onOpenRequestHandled()
+      return
+    }
     const record = records.find(item => String(item.id) === String(openRequest.id))
     if (record) { setSelection(record); setStatus('all'); setQuery(''); setFrom(''); setThrough('') }
     else setNotice('La cobranza ya no está disponible. Revisá el listado actualizado.')
@@ -44,8 +56,8 @@ export default function Collections({ history, canManage, onSave, openRequest, o
   return <div className="collections-page">
     <ModuleIntroduction><h1>Cobranzas</h1><p>Revisá los pagos de cada servicio y confirmá su recepción.</p></ModuleIntroduction>
     <div className="collections-summary">
-      <article><span>Pendiente de pago</span><strong>{collectionMoney(pending.reduce((sum, record) => sum + Number(record.amount), 0))}</strong><small>{pending.length} servicio(s)</small></article>
-      <article><span>Pagos confirmados</span><strong>{collectionMoney(confirmed.reduce((sum, record) => sum + Number(record.amount), 0))}</strong><small>{confirmed.length} servicio(s)</small></article>
+      <article><span>Pendiente de pago</span><strong>{collectionMoney(pending.reduce((sum, record) => sum + Number(record.amount), 0))}</strong><small>{pending.length} servicio(s){(from || through) && ' · todos los períodos'}</small></article>
+      <article><span>Pagos confirmados</span><strong>{collectionMoney(confirmed.reduce((sum, record) => sum + Number(record.amount), 0))}</strong><small>{confirmed.length} servicio(s){(from || through) && ' · todos los períodos'}</small></article>
     </div>
     <p className="collections-help">Seguimiento desde el 14/10/2026. Los servicios cancelados dejan de generar cobranzas pendientes. Los avisos comienzan en la fecha del servicio o de su primera jornada vigente.</p>
     <div className="collections-filters">
@@ -63,17 +75,17 @@ export default function Collections({ history, canManage, onSave, openRequest, o
         <td data-label="Monto"><strong>{collectionMoney(record.amount)}</strong></td>
         <td data-label="Forma de pago">{record.paymentMethod}</td>
         <td data-label="Estado del pago"><span className={`collection-status ${collectionConfirmed(record) ? 'confirmed' : ''}`}>{collectionConfirmed(record) ? 'Confirmado' : 'Pendiente de pago'}</span>{record.collection?.confirmedAt && <small>{timestamp(record.collection.confirmedAt)}</small>}</td>
-        <td data-label="Acciones"><button title="Abrí el detalle del pago y las acciones de cobranza disponibles." type="button" className="secondary" aria-label={`${canManage && canWriteRecord(record, user) ? 'Gestionar' : 'Ver'} cobranza de ${record.client}`} onClick={() => setSelection(record)}><Icon name={canManage && canWriteRecord(record, user) ? 'edit' : 'eye'} />{canManage && canWriteRecord(record, user) ? 'Gestionar' : 'Ver detalle'}</button></td>
+        <td data-label="Acciones"><button title="Abrí el detalle del pago y las acciones de cobranza disponibles." type="button" className="secondary" aria-label={`${canManage && canWriteRecord(record, user, customers) ? 'Gestionar' : 'Ver'} cobranza de ${record.client}`} onClick={() => setSelection(record)}><Icon name={canManage && canWriteRecord(record, user, customers) ? 'edit' : 'eye'} />{canManage && canWriteRecord(record, user, customers) ? 'Gestionar' : 'Ver detalle'}</button></td>
       </tr>)}</tbody>
     </table>{!filtered.length && <p className="empty-state">No hay cobranzas que coincidan con estos filtros.</p>}</div>
     {pages > 1 && <nav className="collections-pagination" aria-label="Paginación de cobranzas"><button title="Consultá la página anterior de cobranzas." className="secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Anterior</button><span>{currentPage} de {pages}</span><button title="Consultá la siguiente página de cobranzas." className="secondary" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Siguiente</button></nav>}
-    {selection && <CollectionEditor key={selection.id} record={selection} serviceDate={schedule(selection).date} canManage={canManage && canWriteRecord(selection, user)} onSave={onSave} close={() => setSelection(null)} onSaved={message => { setSelection(null); setNotice(message) }} />}
+    {selection && records.some(record => String(record.id) === String(selection.id)) && <CollectionEditor key={selection.id} record={selection} customers={customers} serviceDate={schedule(selection).date} canManage={canManage && canWriteRecord(selection, user, customers)} onSave={onSave} close={() => setSelection(null)} onSaved={message => { setSelection(null); setNotice(message) }} />}
   </div>
 }
 
-function CollectionEditor({ record, serviceDate, canManage, onSave, close, onSaved }) {
+function CollectionEditor({ record, customers, serviceDate, canManage, onSave, close, onSaved }) {
   const { can, user } = useActionPermissions()
-  const writable = canWriteRecord(record, user)
+  const writable = canWriteRecord(record, user, customers)
   const canConfirm = writable && can('collections.confirm', canManage)
   const canAmount = writable && can('collections.amount', canManage)
   const canMethod = writable && can('collections.method', canManage)

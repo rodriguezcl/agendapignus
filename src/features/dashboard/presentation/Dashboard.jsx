@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react'
 import { useActionPermissions } from '../../../presentation/hooks/useActionPermissions.mjs'
+import { usePermissions } from '../../../presentation/contexts/permissions-context.jsx'
 import { isAlarmInstallationRecord } from '../../../domain/services/installation-metrics.mjs'
 import { isEquipmentRetirementRecord } from '../../../domain/services/equipment-retirement.mjs'
 import { annualChartMonths } from '../../../domain/dashboard/annual-chart-model.mjs'
 import { dashboardNetProjection, buildWorkComposition } from '../../../domain/dashboard/dashboard-insights.mjs'
+import { buildCollectionOverview } from '../../../domain/dashboard/collection-chart-model.mjs'
 import { triggerBrowserDownload, reportDownloadName } from '../../../infrastructure/browser/browser-download.mjs'
 import { serviceTypesLabel } from '../../../domain/services/multi-service.mjs'
 import ModuleIntroduction from '../../../components/ModuleIntroduction.jsx'
@@ -13,12 +15,15 @@ import LocationInstallationsModal from '../../../components/LocationInstallation
 import { retirementClientLabel } from '../../../domain/customers/retirement-label.mjs'
 import { currentLocalDate, prettyDate } from '../../../presentation/formatting.mjs'
 import { NetProjectionChart, WorkCompositionChart } from './DashboardInsights.jsx'
+import CollectionsOverviewChart from './CollectionsOverviewChart.jsx'
 
 const zones = [['docta', 'Docta Urbanización'], ['nobu-town', 'Nobu Town'], ['residencial', 'Residenciales']]
 const zoneOf = record => record.installationZone || (`${record.address || ''} ${record.client || ''}`.toLowerCase().includes('docta') ? 'docta' : `${record.address || ''} ${record.client || ''}`.toLowerCase().includes('nobu') ? 'nobu-town' : 'residencial')
 
-export default function DashboardStatusView({ history = [], services = [] }) {
+export default function DashboardStatusView({ history = [], services = [], customers = [], onOpenCollections }) {
   const { can } = useActionPermissions()
+  const { can: hasPermission, user } = usePermissions()
+  const canViewCollections = Boolean(user) && ['dashboard.view', 'collections.view', 'records.financial'].every(hasPermission)
   const canDetail = can('dashboard.detail')
   const canExport = can('records.export')
   const [locationDetail, setLocationDetail] = useState(null)
@@ -39,6 +44,9 @@ export default function DashboardStatusView({ history = [], services = [] }) {
       composition: buildWorkComposition(records)
     }
   }, [history, services, month, year, todayKey])
+  const collections = useMemo(() => canViewCollections
+    ? buildCollectionOverview(history, { month, today: todayKey, user, customers })
+    : null, [canViewCollections, history, month, todayKey, user, customers])
   const download = (category, format = 'excel') => {
     if (!canExport) return
     const href = `/api/history/export?month=${encodeURIComponent(month)}&category=${encodeURIComponent(category)}&format=${encodeURIComponent(format)}`
@@ -52,15 +60,14 @@ export default function DashboardStatusView({ history = [], services = [] }) {
 
   return <div className="dashboard-overview">
     <div className="module-intro">
-      <ModuleIntroduction><p className="eyebrow">RESUMEN GERENCIAL</p><h1>Indicadores operativos</h1><p>Las métricas contabilizan únicamente servicios completados.</p></ModuleIntroduction>
+      <ModuleIntroduction><p className="eyebrow">RESUMEN GERENCIAL</p><h1>Indicadores operativos</h1><p>{canViewCollections ? 'Trabajos completados y estado de cobranzas del período.' : 'Las métricas contabilizan únicamente servicios completados.'}</p></ModuleIntroduction>
       <label className="month-filter"><span>Mes de análisis</span><input type="month" value={month} onChange={event => { if (event.target.value) setMonth(event.target.value) }} /></label>
     </div>
-    <div className="dashboard-overview-charts">
+    <div className={`dashboard-block-grid${canViewCollections ? '' : ' without-collections'}`}>
       <NetProjectionChart model={projection} periodLabel={periodLabel} />
       <WorkCompositionChart model={composition} periodLabel={periodLabel} />
-    </div>
-    <AnnualEvolutionChart months={months} year={year} />
-    <div className="dashboard-detail-grid">
+      <AnnualEvolutionChart months={months} year={year} subtitle="Servicios completados por mes" />
+      {collections && <CollectionsOverviewChart model={collections} periodLabel={periodLabel} onOpenCollections={onOpenCollections} />}
       <article className="data-card zone-summary">
         <p className="eyebrow">ALTAS DE SERVICIO</p><h2>Detalle por ubicación</h2>
         <div><span>Todas las instalaciones</span><b>{alarms.length}</b>{reportActions('all', () => setLocationDetail('all'), 'todas las instalaciones')}</div>

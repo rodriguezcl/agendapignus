@@ -7,20 +7,40 @@ export const COLLECTION_PAYMENT_METHODS = ['Efectivo', 'Transferencia', 'Débito
 export const collectionMoney = value => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(value) || 0)
 export const collectionConfirmed = record => record?.collection?.status === 'confirmed'
 const cancelled = record => record?.status === 'Cancelado' || record?.technicalStatus === 'Cancelado'
+const compareVisits = (a, b) => String(a.date).localeCompare(String(b.date)) || a.serviceJourney.index - b.serviceJourney.index
 
 // Keep the original payment owner, even when the first planned visit is cancelled.
 // The first remaining visit determines when the single shared receivable is due.
 export function collectionService(record, history = [record]) {
   if (!record?.serviceJourney) return cancelled(record) ? null : record
   return history.filter(item => item.serviceJourney?.id === record.serviceJourney.id && !cancelled(item))
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.serviceJourney.index - b.serviceJourney.index)[0] || null
+    .sort(compareVisits)[0] || null
 }
 
-export function hasCollection(record, history = [record]) {
+// Share this snapshot resolver across filtering, sorting and rendering. Each
+// active journey is ordered once, preserving the original stable date/index
+// ordering. Rebuild it when history changes, including cancellations or dates.
+export function collectionServiceResolver(history = []) {
+  const journeys = new Map()
+  for (const record of history) {
+    if (!record?.serviceJourney || cancelled(record)) continue
+    const id = record.serviceJourney.id
+    if (!journeys.has(id)) journeys.set(id, [])
+    journeys.get(id).push(record)
+  }
+  const firstVisits = new Map()
+  for (const [id, visits] of journeys) firstVisits.set(id, visits.sort(compareVisits)[0])
+  return record => {
+    if (!record?.serviceJourney) return cancelled(record) ? null : record
+    return firstVisits.get(record.serviceJourney.id) || null
+  }
+}
+
+export function hasCollection(record, history = [record], resolveService = item => collectionService(item, history)) {
   // A multi-day job carries copied commercial fields on each visit. Its first
   // record owns the receivable; visits must not multiply the amount to collect.
   if (record?.serviceJourney && String(record.id) !== String(record.serviceJourney.id)) return false
-  if (!collectionConfirmed(record) && !collectionService(record, history)) return false
+  if (!collectionConfirmed(record) && !resolveService(record)) return false
   if (record?.collection) return true // Confirmed payments retain their audit after cancellation.
   if (!record?.id || record.vehicleControl || !/^\d{4}-\d{2}-\d{2}$/.test(record.date || '')) return false
   const originalDates = [record.date, record.rescheduledFrom, ...(record.reschedulingHistory || []).map(visit => visit.date)].filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date || ''))
@@ -28,9 +48,9 @@ export function hasCollection(record, history = [record]) {
   return Number(record.amount) > 0 && Number.isFinite(Number(record.amount)) && Boolean(String(record.paymentMethod || '').trim()) && record.paymentMethod !== 'No aplica'
 }
 
-export function collectionRecords(history = []) {
-  const schedule = record => collectionService(record, history) || record
-  return history.filter(record => hasCollection(record, history)).sort((a, b) => String(schedule(a).date).localeCompare(String(schedule(b).date)) || String(schedule(a).time || '').localeCompare(String(schedule(b).time || '')) || String(a.id).localeCompare(String(b.id)))
+export function collectionRecords(history = [], resolveService = collectionServiceResolver(history)) {
+  const schedule = record => resolveService(record) || record
+  return history.filter(record => hasCollection(record, history, resolveService)).sort((a, b) => String(schedule(a).date).localeCompare(String(schedule(b).date)) || String(schedule(a).time || '').localeCompare(String(schedule(b).time || '')) || String(a.id).localeCompare(String(b.id)))
 }
 
 export function collectionBase(record) {
