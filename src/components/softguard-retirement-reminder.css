@@ -1,0 +1,16 @@
+.softguard-retirement-reminder { margin: 16px 0; padding: 16px; border: 1px solid var(--ap-border); border-left: 3px solid var(--ap-accent); border-radius: 8px; background: var(--ap-surface-alt); color: var(--ap-text); overflow-wrap: anywhere; }
+.softguard-retirement-reminder[data-state="resolved"] { border-left-color: var(--ap-success); }
+.softguard-retirement-heading { display: flex; align-items: center; gap: 9px; }
+.softguard-retirement-heading > svg { flex: 0 0 auto; color: var(--ap-accent); }
+.softguard-retirement-reminder[data-state="resolved"] .softguard-retirement-heading > svg { color: var(--ap-success); }
+.softguard-retirement-reminder p { margin: 10px 0 0; font-size: 13px; line-height: 1.6; }
+.softguard-retirement-action { display: grid; gap: 14px; margin-top: 16px; }
+.softguard-retirement-verification { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.6; cursor: pointer; }
+.softguard-retirement-verification input { flex: 0 0 auto; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--ap-accent); }
+.softguard-retirement-submit { min-height: 44px; white-space: normal; justify-self: start; max-width: 100%; }
+.softguard-retirement-readonly, .softguard-retirement-resolution { color: var(--ap-muted); }
+.softguard-retirement-error { color: var(--ap-danger); }
+@media (max-width: 480px) {
+  .softguard-retirement-reminder { padding: 12px; }
+  .softguard-retirement-submit { width: 100%; }
+}

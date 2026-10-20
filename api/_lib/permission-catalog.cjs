@@ -70,7 +70,7 @@ function legacySelection(subject) {
   grant('collections.timeline', moduleOn('collections') && financial)
   grant('collections.confirm collections.amount collections.method', feature('collectionsManage', 'collections'))
   grant('customers.create', accounts || plan)
-  grant('customers.edit customers.coordinates customers.cctv subscriptions.correct', accounts)
+  grant('customers.edit customers.coordinates customers.cctv subscriptions.correct customers.softguard.resolve', accounts)
   grant('customers.delete', feature('accountsDelete', 'accounts'))
   grant('customers.import', feature('accountsImport', 'accounts'))
   grant('subscriptions.read', moduleOn('accounts') && financial)

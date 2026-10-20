@@ -1026,6 +1026,15 @@
       "sensitive": false
     },
     {
+      "id": "customers.softguard.resolve",
+      "label": "Registrar baja realizada en SoftGuard",
+      "groups": ["accounts"],
+      "all": ["accounts.view"],
+      "any": [],
+      "note": "Confirma la gestión externa de una baja pendiente y conserva su fecha y responsable. No realiza la baja en SoftGuard ni habilita importaciones.",
+      "sensitive": false
+    },
+    {
       "id": "customers.coordinates",
       "label": "Editar coordenadas manuales",
       "groups": [
@@ -1880,7 +1889,7 @@
       "groups": ["notifications", "accounts"],
       "all": ["accounts.view"],
       "any": [],
-      "note": "Permite ver el aviso de actualización de SoftGuard, sin habilitar importaciones.",
+      "note": "Permite recibir avisos de bajas pendientes y verificación de SoftGuard. No habilita resolverlos ni importar abonados.",
       "sensitive": false
     },
     {

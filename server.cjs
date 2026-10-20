@@ -622,6 +622,7 @@ function convertCompletedRetirementSubscriber(record) {
   const nextNumber = Math.max(0, ...customers.map(item => Number(String(item.account || '').match(/^CLI-(\d+)$/i)?.[1]) || 0)) + 1
   const nextAccount = `CLI-${String(nextNumber).padStart(4, '0')}`
   const converted = { ...customer, kind: 'client', account: nextAccount, type: 'Cliente de servicio', convertedFromAccount: customer.account, convertedFromType: customer.type, subscriptionEndedAt: new Date().toISOString() }
+  delete converted.softguardRetirementResolution
   const redirect = item => String(item.customerId || '') === String(customer.customerId) ? { ...item, customerId: customer.customerId, clientAccount: nextAccount, clientNameAtService: converted.name, client: `${nextAccount} ${converted.name}` } : item
   const redirectTeams = teams => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).map(redirect) }))
   const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
@@ -894,7 +895,9 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
 // sobre colecciones para las que el rol autenticado no tiene permiso.
 function authorizedIncomingState(state, user) {
   const current = readState()
-  if (require('./api/_lib/permission-catalog.cjs').isGranular(user)) return require('./api/_lib/granular-write-policy.cjs').authorizeGranularState(state, current, user)
+  const retirementPolicy = require('./api/_lib/softguard-retirement-policy.cjs')
+  state = retirementPolicy.protectSoftguardRetirementInput(state, current)
+  if (require('./api/_lib/permission-catalog.cjs').isGranular(user)) return retirementPolicy.assertSoftguardRetirementDeletion(current, require('./api/_lib/granular-write-policy.cjs').authorizeGranularState(state, current, user))
   const administrator = user?.roleCode === 'administrator'
   const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
   assertVehicleControlOmissionAuthorized(state, current, user)
@@ -956,7 +959,7 @@ function authorizedIncomingState(state, user) {
     customers = customers.filter(customer => !existingCustomerIds.has(String(customer.customerId)) || incomingIds.has(String(customer.customerId)))
   }
   const planningHistory = canPlan ? planningHistoryForAgenda(state.history || [], current.history || [], incomingAgenda) : current.history
-  return {
+  return retirementPolicy.assertSoftguardRetirementDeletion(current, {
     ...state,
     roles: administrator ? state.roles : current.roles,
     employees,
@@ -968,7 +971,7 @@ function authorizedIncomingState(state, user) {
     // y nunca se reemplazan con datos provenientes de la interfaz.
     reviews: current.reviews,
     agenda
-  }
+  })
 }
 
 function replaceRows(table, records, key, previous = null) {
@@ -1258,7 +1261,9 @@ function saveState(state, user) {
     const phone = rawPhone || (kind === 'subscriber' ? '-' : '')
     const normalized = { ...customer, customerId: customer.customerId || legacyCustomerId(customer), kind, cctvService: Boolean(customer.cctvService), name, street, address, phone }
     if (normalized.kind !== 'subscriber' || !completedRetirementCustomerIds.has(String(normalized.customerId))) return normalized
-    return { ...normalized, kind: 'client', account: `CLI-${String(nextClientNumber++).padStart(4, '0')}`, type: 'Cliente de servicio', convertedFromAccount: normalized.account, convertedFromType: normalized.type, subscriptionEndedAt: new Date().toISOString() }
+    const converted = { ...normalized, kind: 'client', account: `CLI-${String(nextClientNumber++).padStart(4, '0')}`, type: 'Cliente de servicio', convertedFromAccount: normalized.account, convertedFromType: normalized.type, subscriptionEndedAt: new Date().toISOString() }
+    delete converted.softguardRetirementResolution
+    return converted
   })
   const customerById = new Map(normalizedCustomers.map(customer => [String(customer.customerId), customer]))
   const customerByAccount = new Map()
@@ -2022,6 +2027,24 @@ const server = http.createServer((req, res) => {
       recordId: decodeURIComponent(receiptRoute[1]), receiptId: decodeURIComponent(receiptRoute[2]),
       store: require('./api/_lib/collection-receipt-store.cjs').sqliteCollectionReceiptStore(db)
     }).catch(error => send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo consultar el comprobante.' }))
+  }
+  if (req.method === 'POST' && url.pathname === '/api/customers/softguard-retirement') {
+    const user = requireSession(req, res)
+    if (!user) return
+    return readJson(req, 20_000).then(input => {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const current = readState()
+        require('./api/_lib/softguard-retirement-policy.cjs').assertSoftguardRetirementAccess(current, input, user)
+        const resolution = require('./api/_lib/softguard-retirement.cjs').resolveSoftguardRetirement(current, input, user)
+        db.prepare('UPDATE customers SET data = ? WHERE account = ?').run(JSON.stringify(resolution.after), String(resolution.before.account))
+        writeAudit(user, 'Registró baja realizada en SoftGuard', 'Abonado / Cliente', String(resolution.before.customerId), resolution.before, resolution.after)
+        const revision = currentStateRevision() + 1
+        db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
+        db.exec('COMMIT')
+        return send(res, 200, { ok: true, revision })
+      } catch (error) { db.exec('ROLLBACK'); throw error }
+    }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo registrar la baja en SoftGuard.' }))
   }
   if (req.method === 'POST' && url.pathname === '/api/customers/subscription-correction') {
     const user = requireSession(req, res)

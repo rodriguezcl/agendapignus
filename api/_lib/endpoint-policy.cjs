@@ -33,6 +33,7 @@ function assertEndpointPermission(user, method, route) {
     return require('records.financial')
   }
   if (route === '/customers/subscription-correction') return require('subscriptions.correct')
+  if (route === '/customers/softguard-retirement') return method === 'POST' ? require('customers.softguard.resolve') : write.fail('customers.softguard.resolve')
   if (route === '/customers/import') return require(method === 'GET' ? 'customers.backup' : method === 'DELETE' ? 'customers.undo' : 'customers.import')
   if (route === '/audit' || route.startsWith('/audit/')) return require(route === '/audit' ? 'audit.view' : 'audit.detail')
   if (route === '/agenda/daily/clear') return require('agenda.clear')

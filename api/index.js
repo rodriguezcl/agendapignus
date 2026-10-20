@@ -1081,6 +1081,29 @@ async function handleCollectionManagement(req, res, sql, user) {
   }
 }
 
+async function handleSoftguardRetirement(req, res, sql, user) {
+  try {
+    const input = requestBody(req)
+    const result = await sql.begin(async transaction => {
+      await transaction`set local lock_timeout = '5s'`
+      await transaction`set local statement_timeout = '25s'`
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      const locked = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const current = await readState(transaction)
+      require('./_lib/softguard-retirement-policy.cjs').assertSoftguardRetirementAccess(current, input, user)
+      const resolution = require('./_lib/softguard-retirement.cjs').resolveSoftguardRetirement(current, input, user)
+      const revision = Number(locked[0]?.value || 0) + 1
+      await persistStateCollections(transaction, current, resolution.state, revision)
+      await appendAudit(transaction, [auditEntry(user, 'Registró baja realizada en SoftGuard', 'Abonado / Cliente', String(resolution.before.customerId), resolution.before, resolution.after)])
+      return { revision }
+    })
+    return send(res, 200, { ok: true, revision: result.revision })
+  } catch (error) {
+    const busy = ['55P03', '57014'].includes(error.code)
+    return send(res, busy ? 503 : error.statusCode || 400, { error: busy ? 'La base de datos está ocupada. Intentá nuevamente.' : error.message || 'No se pudo registrar la baja en SoftGuard.' })
+  }
+}
+
 async function handleSubscriptionCorrection(req, res, sql, user) {
   if ((!isGranular(user) && user.roleCode === 'technician') || !userCan(user, 'accountsEdit')) return send(res, 403, { error: 'No tenés permiso para corregir datos del abono.' })
   try {
@@ -1290,6 +1313,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST' && route === '/admin/advance-request/deny') return await handleServiceAdvance(req, res, sql, session.user, 'denied')
     if (req.method === 'POST' && route === '/history/category-correction') return await handleCategoryCorrection(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/collections/manage') return await handleCollectionManagement(req, res, sql, session.user)
+    if (req.method === 'POST' && route === '/customers/softguard-retirement') return await handleSoftguardRetirement(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/customers/subscription-correction') return await handleSubscriptionCorrection(req, res, sql, session.user)
     if (['GET', 'POST', 'DELETE'].includes(req.method) && route === '/customers/import') return await handleCustomerImport(req, res, sql, session.user)
     if (req.method === 'GET' && route.startsWith('/vehicle-control/photo/')) return await handleVehicleControlPhoto(req, res, sql, session.user, decodeURIComponent(route.slice('/vehicle-control/photo/'.length)))

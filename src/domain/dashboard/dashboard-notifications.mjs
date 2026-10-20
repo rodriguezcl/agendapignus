@@ -5,6 +5,7 @@ import { reservationFormReady } from '../agenda/reservation-form-ready.mjs'
 import { compareReservationReminders } from '../agenda/reservation-reminder-order.mjs'
 import { reservationLocality } from '../agenda/service-locality.mjs'
 import { softguardVerificationCases } from '../customers/softguard-verification.mjs'
+import { pendingSoftguardRetirements } from '../customers/softguard-retirement.mjs'
 import { canReadRecord } from '../access/record-scope.mjs'
 import policy from '../../../api/_lib/permission-catalog.cjs'
 
@@ -134,6 +135,13 @@ export function selectDashboardNotifications({ history = [], vehicles = [], cust
     })
   }
 
+  for (const customer of receives('softguard') ? pendingSoftguardRetirements(visibleCustomers) : []) {
+    notices.push({
+      id: `softguard-retirement:${customer.customerId}`, title: 'Baja pendiente en SoftGuard', tone: 'warning',
+      detail: `${customer.name} · ${customer.convertedFromAccount}. La baja ya está confirmada en la agenda (${customer.account}). Falta dar de baja la cuenta en SoftGuard y registrar que se realizó.`,
+      target: { type: 'softguard-retirement', customerId: String(customer.customerId) }
+    })
+  }
   const verification = receives('softguard') ? softguardVerificationCases(visibleCustomers) : []
   if (verification.length) notices.push({
     id: 'softguard-verification', title: `Pendiente de verificación en SoftGuard: ${verification.length} cuenta(s)`,

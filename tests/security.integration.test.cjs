@@ -138,6 +138,73 @@ function seedGranularUser(db, id, keys, extraPermissions = {}) {
   return `${id}@pignus.test`
 }
 
+test('SoftGuard HTTP: permiso específico, alcance, CAS y protección de metadatos en estado genérico', async () => {
+  const { softguardRetirementBase } = require('../api/_lib/softguard-retirement.cjs')
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const customer = { customerId: 'qa-softguard', account: 'CLI-998700', kind: 'client', name: 'RETIRO QA', street: 'Calle QA 123', phone: '3515551000', convertedFromAccount: 'PIG-998700', subscriptionEndedAt: '2026-10-20T15:00:00.000Z' }
+  upsertJson(db, 'customers', 'account', customer)
+  const resolverEmail = seedGranularUser(db, 'qa-softguard-resolver', ['accounts.view', 'customers.softguard.resolve'])
+  const scopedEmail = seedGranularUser(db, 'qa-softguard-scoped', ['accounts.view', 'customers.softguard.resolve'], { 'scope.customers.read.cctv': true })
+  const viewerEmail = seedGranularUser(db, 'qa-softguard-viewer', ['accounts.view'])
+  db.close()
+  const admin = await login('qa-admin@pignus.test'), resolver = await login(resolverEmail)
+  const scoped = await login(scopedEmail), viewer = await login(viewerEmail), tech = await login('qa-tech@pignus.test')
+  const before = await state(admin), command = { customerId: customer.customerId, base: softguardRetirementBase(customer) }
+  for (const cookie of [null, scoped, viewer, tech]) {
+    const response = await api('/api/customers/softguard-retirement', cookie, { method: 'POST', body: JSON.stringify(command) })
+    assert.equal(response.status, cookie ? 403 : 401, await response.clone().text())
+  }
+  assert.equal((await state(admin)).revision, before.revision)
+  const forged = structuredClone(before)
+  forged.customers.find(row => row.customerId === customer.customerId).softguardRetirementResolution = { convertedFromAccount: customer.convertedFromAccount, subscriptionEndedAt: customer.subscriptionEndedAt, completedAt: new Date().toISOString(), completedBy: 'forged' }
+  assert.equal((await api('/api/state', admin, { method: 'PUT', body: JSON.stringify(forged) })).status, 403)
+  const removed = { ...before, customers: before.customers.filter(row => row.customerId !== customer.customerId) }
+  const deniedDelete = await api('/api/state', admin, { method: 'PUT', body: JSON.stringify(removed) })
+  assert.equal(deniedDelete.status, 403)
+  assert.match((await deniedDelete.json()).error, /Registrá primero la baja/)
+  const success = await api('/api/customers/softguard-retirement', resolver, { method: 'POST', body: JSON.stringify(command) })
+  assert.equal(success.status, 200, await success.clone().text())
+  assert.deepEqual(Object.keys(await success.json()).sort(), ['ok', 'revision'])
+  const saved = await state(admin), acknowledged = saved.customers.find(row => row.customerId === customer.customerId)
+  assert.equal(saved.revision, before.revision + 1)
+  assert.equal(acknowledged.softguardRetirementResolution.completedBy, 'qa-softguard-resolver')
+  assert.deepEqual((await state(resolver)).history, [])
+  assert.equal((await api('/api/customers/softguard-retirement', resolver, { method: 'POST', body: JSON.stringify(command) })).status, 409)
+  const omitted = structuredClone(saved), editable = omitted.customers.find(row => row.customerId === customer.customerId)
+  delete editable.softguardRetirementResolution
+  delete editable.subscriptionEndedAt
+  delete editable.convertedFromAccount
+  editable.name = 'RETIRO QA EDITADO'
+  const update = await api('/api/state', admin, { method: 'PUT', body: JSON.stringify(omitted) })
+  assert.equal(update.status, 200, await update.clone().text())
+  assert.deepEqual((await state(admin)).customers.find(row => row.customerId === customer.customerId).softguardRetirementResolution, acknowledged.softguardRetirementResolution)
+  const persisted = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const entries = persisted.prepare('SELECT data FROM audit_log').all().map(row => JSON.parse(row.data))
+  persisted.close()
+  assert.equal(entries.filter(entry => entry.action === 'Registró baja realizada en SoftGuard' && entry.entityId === customer.customerId).length, 1)
+})
+
+test('SoftGuard HTTP: un fallo de auditoría revierte cliente y revisión dentro de la misma transacción', async () => {
+  const { softguardRetirementBase } = require('../api/_lib/softguard-retirement.cjs')
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const customer = { customerId: 'qa-softguard-rollback', account: 'CLI-998701', kind: 'client', name: 'RETIRO ROLLBACK', convertedFromAccount: 'PIG-998701', subscriptionEndedAt: '2026-10-20T16:00:00.000Z' }
+  upsertJson(db, 'customers', 'account', customer)
+  db.exec("CREATE TRIGGER reject_softguard_audit BEFORE INSERT ON audit_log WHEN json_extract(NEW.data, '$.action') = 'Registró baja realizada en SoftGuard' BEGIN SELECT RAISE(ABORT, 'forced softguard audit failure'); END")
+  db.close()
+  const admin = await login('qa-admin@pignus.test'), before = await state(admin)
+  const request = () => api('/api/customers/softguard-retirement', admin, { method: 'POST', body: JSON.stringify({ customerId: customer.customerId, base: softguardRetirementBase(customer) }) })
+  const rejected = await request()
+  assert.equal(rejected.status, 400, await rejected.clone().text())
+  const afterFailure = await state(admin)
+  assert.equal(afterFailure.revision, before.revision)
+  assert.deepEqual(afterFailure.customers.find(row => row.customerId === customer.customerId), customer)
+  const repair = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  repair.exec('DROP TRIGGER reject_softguard_audit')
+  repair.close()
+  assert.equal((await request()).status, 200)
+  assert.equal((await state(admin)).revision, before.revision + 1)
+})
+
 test('granular HTTP: operador con notas conserva datos ocultos en PUT y PATCH sin ampliar sus permisos', async () => {
   const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
   const email = seedGranularUser(db, 'qa-v2-notes', ['history.view', 'records.read', 'planning.notes'])
@@ -1417,7 +1484,7 @@ test('mantiene vinculados los históricos cuando una baja convierte PIG en CLI',
   current = await state(administratorCookie)
   const cli = current.customers.find(customer => customer.customerId === customerId)
   const importedId = 'qa-reimported-pig'
-  current.customers.push({ ...cli, customerId: importedId, account: originalAccount, kind: 'subscriber', convertedFromAccount: undefined, subscriptionEndedAt: undefined })
+  current.customers.push({ ...cli, customerId: importedId, account: originalAccount, kind: 'subscriber', convertedFromAccount: undefined, convertedFromType: undefined, subscriptionEndedAt: undefined, softguardRetirementResolution: undefined })
   response = await api('/api/state', administratorCookie, { method: 'PUT', body: JSON.stringify(current) })
   assert.equal(response.status, 200, await response.clone().text())
   current = await state(administratorCookie)

@@ -10,7 +10,7 @@ const notificationTitles = {
   'notifications.rescheduling': 'Pendientes de reprogramación',
   'notifications.overdue': 'Pendientes de días anteriores',
   'notifications.insurance': 'Seguro vehicular desactualizado',
-  'notifications.softguard': 'Pendiente de verificación en SoftGuard',
+  'notifications.softguard': 'Baja pendiente en SoftGuard / verificación de cuentas',
   'notifications.passwordRequests': 'Solicitud de cambio de contraseña'
 }
 const scopeDescriptions = {

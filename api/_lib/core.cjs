@@ -220,7 +220,9 @@ function persistentStateInput(state) {
 
 function authorizeIncomingState(incoming, current, user) {
   incoming = persistentStateInput(incoming)
-  if (require('./permission-catalog.cjs').isGranular(user)) return require('./granular-write-policy.cjs').authorizeGranularState(incoming, current, user)
+  const retirementPolicy = require('./softguard-retirement-policy.cjs')
+  incoming = retirementPolicy.protectSoftguardRetirementInput(incoming, current)
+  if (require('./permission-catalog.cjs').isGranular(user)) return retirementPolicy.assertSoftguardRetirementDeletion(current, require('./granular-write-policy.cjs').authorizeGranularState(incoming, current, user))
   incoming = restoreLegacyCollectionReceipts(incoming, current, user)
   if (isOperator(user)) throw Object.assign(new Error('Operador tiene acceso de solo lectura.'), { statusCode: 403 })
   const administrator = user.roleCode === 'administrator'
@@ -281,7 +283,7 @@ function authorizeIncomingState(incoming, current, user) {
     customers = customers.filter(customer => !existingCustomerIds.has(String(customer.customerId)) || incomingIds.has(String(customer.customerId)))
   }
   const planningHistory = canPlan ? planningHistoryForAgenda(incoming.history || [], current.history || [], incomingAgenda) : current.history
-  return require('./service-preparation.cjs').applyServicePreparation({
+  return retirementPolicy.assertSoftguardRetirementDeletion(current, require('./service-preparation.cjs').applyServicePreparation({
     ...incoming,
     roles: administrator ? incoming.roles : current.roles,
     employees,
@@ -295,7 +297,7 @@ function authorizeIncomingState(incoming, current, user) {
       ...(userCan(user, 'agenda') ? { date: incomingAgenda.date, teams: incomingAgenda.teams } : {}),
       ...(userCan(user, 'weekly') ? { weekly: protectedWeekly } : {})
     }
-  }, current, user, canPlan)
+  }, current, user, canPlan))
 }
 
 function customerKind(customer) {
@@ -427,13 +429,14 @@ function normalizeRetirementCustomers(state, previous = null) {
         conversions.set(String(customer.customerId), { before: customer, after: restored })
         return customer
       }
-      const { convertedFromAccount, convertedFromType, subscriptionEndedAt, ...rest } = customer
+      const { convertedFromAccount, convertedFromType, subscriptionEndedAt, softguardRetirementResolution, ...rest } = customer
       const restored = { ...rest, kind: 'subscriber', account, type: convertedFromType ?? 'Abonado' }
       conversions.set(String(customer.customerId), { before: customer, after: restored })
       return restored
     }
     if (!retiringCustomerIds.has(String(customer.customerId)) || customerKind(customer) !== 'subscriber') return customer
     const converted = { ...customer, kind: 'client', account: `CLI-${String(nextNumber++).padStart(4, '0')}`, type: 'Cliente de servicio', convertedFromAccount: customer.account, convertedFromType: customer.type, subscriptionEndedAt: new Date().toISOString() }
+    delete converted.softguardRetirementResolution
     conversions.set(String(customer.customerId), { before: customer, after: converted })
     return converted
   }).filter(customer => !removedCustomerIds.has(String(customer.customerId))).map(customer => mergedCustomers.get(String(customer.customerId)) || customer)

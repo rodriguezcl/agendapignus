@@ -255,6 +255,8 @@ async function checkNavigation(page, theme) {
   assert.equal(await page.getByLabel('Servicio hasta', { exact: true }).inputValue(), '2026-10-31')
   assert.equal(await page.getByRole('combobox', { name: /^Estado del pago/ }).inputValue(), 'all')
   assert.equal(await page.locator('.collections-table tbody tr').count(), 3, 'Month listing contains confirmed, due and future entries')
+  assert.equal(await page.locator('[data-segment="current"] tbody tr').count(), 2, 'Month CTA separates confirmed and due current services')
+  assert.equal(await page.locator('[data-segment="future"] tbody tr').count(), 1, 'Month CTA preserves future services in their own section')
   assert.equal(await page.getByRole('dialog').count(), 0, 'Month navigation opens the listing without selecting a payment')
   await page.getByLabel('Buscar', { exact: true }).fill('does-not-match')
   await page.evaluate(() => window.openCollectionById('paid'))
@@ -273,6 +275,8 @@ async function checkNavigation(page, theme) {
   await page.locator('.collections-page').waitFor()
   assert.deepEqual(await page.evaluate(() => window.__qaCollectionRequests), [{ from: '2026-11-01', through: '2026-11-30', status: 'all' }], 'CTA uses the selected month rather than the current month')
   assert.equal(await page.locator('.collections-table tbody tr').count(), 1)
+  assert.equal(await page.locator('[data-segment="current"] tbody tr').count(), 0, 'Future-month navigation leaves the current section empty')
+  assert.equal(await page.locator('[data-segment="future"] tbody tr').count(), 1, 'Future-month navigation lists its payment in future')
 }
 
 async function checkPermissions(page, theme, width) {
@@ -298,7 +302,7 @@ async function checkPermissions(page, theme, width) {
   assert(!/70\.000|110\.000/.test(await page.locator('.collections-page').innerText()), 'Scope revocation removes stale financial data from the editor and listing')
   await page.evaluate(() => window.setDashboardCollectionsAccess('noFinancial'))
   await page.waitForFunction(() => document.querySelector('.app-shell')?.dataset.qaAccess === 'noFinancial')
-  assert.equal(await page.locator('.collections-summary,.collections-table').count(), 0, 'Revoking financial access removes the mounted collection amounts and records')
+  assert.equal(await page.locator('.collections-segment,.collections-table').count(), 0, 'Revoking financial access removes the mounted collection amounts and records')
   await render(page, 'current', theme, 'reader')
   await page.evaluate(() => window.setDashboardCollectionsAccess('noFinancial'))
   await page.waitForFunction(() => document.querySelector('.app-shell')?.dataset.qaAccess === 'noFinancial')

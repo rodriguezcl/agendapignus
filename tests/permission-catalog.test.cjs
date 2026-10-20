@@ -5,7 +5,7 @@ const custom = permissions => ({ roleCode: 'role-test', role: 'Prueba', permissi
 
 test('catalogue contains unique capabilities with known acyclic prerequisites', () => {
   assert.equal(policy.validateCatalog(), true)
-  assert.equal(policy.CATALOG.length, 130)
+  assert.equal(policy.CATALOG.length, 131)
   assert.equal(policy.MODULES.length, 13)
   assert.equal(policy.PERMISSION_GROUPS.length, 14)
   assert.equal(policy.MODULES.some(([id]) => id === 'notifications'), false)
@@ -23,6 +23,24 @@ test('checking a parent grants no child and removing it recursively clears depen
   assert.equal(result.permissions['records.read'], false)
   assert.equal(result.permissions['technical.start'], false)
   assert.equal(result.permissions['technical.complete'], false)
+})
+
+test('SoftGuard resolution is separate from notices, importing and editing customer identity', () => {
+  const resolver = custom({ 'accounts.view': true, 'customers.softguard.resolve': true, 'notifications.softguard': false })
+  assert.equal(policy.can(resolver, 'customers.softguard.resolve'), true)
+  for (const id of ['customers.edit', 'customers.import', 'records.financial', 'notifications.softguard']) assert.equal(policy.can(resolver, id), false, id)
+  assert.equal(policy.hasAnyWrite(resolver), true)
+  assert.equal(policy.can(custom({ 'accounts.view': true, 'customers.edit': true }), 'customers.softguard.resolve'), false)
+  assert.equal(policy.can(custom({ 'accounts.view': true, 'notifications.softguard': true }), 'customers.softguard.resolve'), false)
+  const removed = policy.togglePermission(resolver, 'accounts.view', false)
+  assert.equal(removed.permissions['customers.softguard.resolve'], false)
+  assert.ok(removed.removed.includes('customers.softguard.resolve'))
+  assert.equal(policy.can({ roleCode: 'administrator' }, 'customers.softguard.resolve'), true)
+  assert.equal(policy.can({ roleCode: 'coordinator', permissions: { accounts: true, accountsEdit: true } }, 'customers.softguard.resolve'), true)
+  for (const roleCode of ['operator', 'supervisor', 'technician']) {
+    assert.equal(policy.can({ roleCode, permissions: { accounts: true, accountsEdit: true } }, 'customers.softguard.resolve'), false, roleCode)
+  }
+  assert.equal(policy.can({ roleCode: 'coordinator', permissions: { accounts: true } }, 'customers.softguard.resolve'), false)
 })
 test('shared actions remain enabled through another authorized module', () => {
   const user = custom({ 'weekly.view': true, 'agenda.view': true, 'records.read': true, 'planning.edit': true })

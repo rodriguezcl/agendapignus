@@ -9,6 +9,8 @@ import { COLLECTION_PAYMENT_METHODS, collectionBase, collectionConfirmed, collec
 import './collections.css'
 import { parseCollectionAmount, displayCollectionAmount } from '../domain/collections/collection-amount.mjs'
 import CollectionReceiptField from './CollectionReceiptField.jsx'
+import { collectionSegments } from '../domain/collections/collection-segments.mjs'
+import { currentLocalDate } from '../presentation/formatting.mjs'
 
 const dateLabel = value => value?.split('-').reverse().join('/') || 'Sin fecha'
 const timestamp = value => new Date(value).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })
@@ -24,7 +26,7 @@ export default function Collections({ history, customers = [], canManage, onSave
   const [query, setQuery] = useState('')
   const [from, setFrom] = useState('')
   const [through, setThrough] = useState('')
-  const [page, setPage] = useState(1)
+  const [today, setToday] = useState(currentLocalDate)
   const [selection, setSelection] = useState(null)
   const resolveService = useMemo(() => collectionServiceResolver(history), [history])
   const records = useMemo(() => collectionRecords(history, resolveService).filter(record =>
@@ -32,6 +34,13 @@ export default function Collections({ history, customers = [], canManage, onSave
   ), [history, resolveService, user, customers])
   const schedule = record => resolveService(record) || record
   const mayManage = record => canManage && canWriteRecord(record, user, customers) && canWriteRecord(schedule(record), user, customers)
+  useEffect(() => {
+    const refreshDate = () => setToday(currentLocalDate())
+    const timer = setInterval(refreshDate, 60_000)
+    window.addEventListener('focus', refreshDate)
+    document.addEventListener('visibilitychange', refreshDate)
+    return () => { clearInterval(timer); window.removeEventListener('focus', refreshDate); document.removeEventListener('visibilitychange', refreshDate) }
+  }, [])
   useEffect(() => {
     if (!openRequest) return
     if (openRequest.from && openRequest.through && !openRequest.id) {
@@ -48,22 +57,15 @@ export default function Collections({ history, customers = [], canManage, onSave
     else setNotice('La cobranza ya no está disponible. Revisá el listado actualizado.')
     onOpenRequestHandled()
   }, [openRequest, records, onOpenRequestHandled, setNotice])
-  useEffect(() => { setPage(1) }, [status, query, from, through])
   const filtered = records.filter(record => (status === 'all' || collectionConfirmed(record) === (status === 'confirmed'))
     && (!from || schedule(record).date >= from) && (!through || schedule(record).date <= through)
     && normalize(`${record.client} ${record.service} ${(record.technicians || []).join(' ')} ${record.paymentMethod}`).includes(normalize(query)))
-  const pending = records.filter(record => !collectionConfirmed(record))
-  const confirmed = records.filter(collectionConfirmed)
-  const pages = Math.max(1, Math.ceil(filtered.length / 25))
-  const currentPage = Math.min(page, pages)
+  const segments = collectionSegments(filtered, { today, resolveService })
+  const filterKey = JSON.stringify([status, query, from, through, today])
   const selectedVisibleRecord = selection && records.find(record => String(record.id) === String(selection.id))
   if (!canView) return <div className="collections-page"><ModuleIntroduction><h1>Cobranzas</h1><p>La consulta de cobranzas requiere acceso al módulo y permiso para ver importes y medios de pago.</p></ModuleIntroduction></div>
   return <div className="collections-page">
     <ModuleIntroduction><h1>Cobranzas</h1><p>Revisá los pagos de cada servicio y confirmá su recepción.</p></ModuleIntroduction>
-    <div className="collections-summary">
-      <article><span>Pendiente de pago</span><strong>{collectionMoney(pending.reduce((sum, record) => sum + Number(record.amount), 0))}</strong><small>{pending.length} servicio(s){(from || through) && ' · todos los períodos'}</small></article>
-      <article><span>Pagos confirmados</span><strong>{collectionMoney(confirmed.reduce((sum, record) => sum + Number(record.amount), 0))}</strong><small>{confirmed.length} servicio(s){(from || through) && ' · todos los períodos'}</small></article>
-    </div>
     <p className="collections-help">Seguimiento desde el 14/10/2026. Los servicios cancelados dejan de generar cobranzas pendientes. Los avisos comienzan en la fecha del servicio o de su primera jornada vigente.</p>
     <div className="collections-filters">
       <label>Buscar<input type="search" placeholder="Cliente, servicio o forma de pago" value={query} onChange={event => setQuery(event.target.value)} /></label>
@@ -71,21 +73,46 @@ export default function Collections({ history, customers = [], canManage, onSave
       <label>Servicio desde<input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label>
       <label>Servicio hasta<input type="date" value={through} min={from || undefined} onChange={event => setThrough(event.target.value)} /></label>
     </div>
-    <p className="collections-help" role="status">{filtered.length} cobranza(s) en este listado · {collectionMoney(filtered.reduce((sum, record) => sum + Number(record.amount), 0))}</p>
-    <div className="collections-table-wrap"><table className="collections-table">
+    <p className="collections-help" role="status">{filtered.length} cobranza(s) entre ambos segmentos · Los importes y cantidades respetan los filtros seleccionados.</p>
+    <div className="collections-segments">{segments.map(segment => <CollectionSegment key={`${segment.id}:${filterKey}`} segment={segment} today={today} schedule={schedule} mayManage={mayManage} onSelect={setSelection} focusRecordId={selection?.id} />)}</div>
+    {selectedVisibleRecord && <CollectionEditor key={selection.id} record={selection} currentRecord={selectedVisibleRecord} effectiveRecord={schedule(selectedVisibleRecord)} customers={customers} serviceDate={schedule(selection).date} canManage={mayManage(selectedVisibleRecord)} onSave={onSave} close={() => setSelection(null)} onSaved={message => { setSelection(null); setNotice(message) }} />}
+  </div>
+}
+
+function CollectionSegment({ segment, today, schedule, mayManage, onSelect, focusRecordId }) {
+  const [page, setPage] = useState(1)
+  const future = segment.id === 'future'
+  const title = future ? 'Futuras' : 'Actuales y anteriores'
+  const pages = Math.max(1, Math.ceil(segment.records.length / 25))
+  const currentPage = Math.min(page, pages)
+  useEffect(() => {
+    if (focusRecordId == null) return
+    const index = segment.records.findIndex(record => String(record.id) === String(focusRecordId))
+    if (index >= 0) setPage(Math.floor(index / 25) + 1)
+  }, [focusRecordId, segment.records])
+  return <section className="collections-segment" data-segment={segment.id} aria-labelledby={`collections-${segment.id}-title`}>
+    <header className="collections-segment-heading">
+      <div className="collections-segment-title"><span className="collections-segment-icon"><Icon name={future ? 'calendar' : 'wallet'} size={21} /></span><div><h2 id={`collections-${segment.id}-title`}>{title}</h2><p>{future ? `Servicios posteriores al ${dateLabel(today)}. Incluye pagos anticipados.` : `Servicios de hoy y anteriores · hasta el ${dateLabel(today)} inclusive.`}</p></div></div>
+      <div className="collections-segment-total"><strong>{segment.records.length} cobranza(s)</strong><span>Total del segmento: {collectionMoney(segment.total)}</span></div>
+    </header>
+    <dl className="collections-segment-summary" aria-label={`Importes de ${title.toLowerCase()}`}>
+      <div data-status="pending"><dt>{future ? 'Pendiente de cobro futuro' : 'Pendiente de pago'}</dt><dd><strong>{collectionMoney(segment.pending.total)}</strong><small>{segment.pending.count} servicio(s)</small></dd></div>
+      <div data-status="confirmed"><dt>{future ? 'Pagos anticipados confirmados' : 'Pagos confirmados'}</dt><dd><strong>{collectionMoney(segment.confirmed.total)}</strong><small>{segment.confirmed.count} servicio(s)</small></dd></div>
+    </dl>
+    <div className="collections-table-wrap"><table className="collections-table" aria-label={`Cobranzas ${title.toLowerCase()}`}>
+      <colgroup><col className="collection-column-date" /><col /><col className="collection-column-amount" /><col className="collection-column-method" /><col className="collection-column-status" /><col className="collection-column-actions" /></colgroup>
       <thead><tr>{['Fecha del servicio', 'Cliente y servicio', 'Monto', 'Forma de pago', 'Estado del pago', 'Acciones'].map(label => <th key={label}>{label}</th>)}</tr></thead>
-      <tbody>{filtered.slice((currentPage - 1) * 25, currentPage * 25).map(record => <tr key={record.id}>
+      <tbody>{segment.records.slice((currentPage - 1) * 25, currentPage * 25).map(record => <tr key={record.id}>
         <td data-label="Fecha del servicio">{dateLabel(schedule(record).date)}<small>{schedule(record).time || 'Sin horario'}</small></td>
         <td data-label="Cliente y servicio"><strong>{record.client}</strong><small>{record.service}</small><small>{schedule(record).status} · {(schedule(record).technicians || []).join(' / ') || 'Sin técnicos asignados'}</small></td>
         <td data-label="Monto"><strong>{collectionMoney(record.amount)}</strong></td>
         <td data-label="Forma de pago">{record.paymentMethod}</td>
-        <td data-label="Estado del pago"><span className={`collection-status ${collectionConfirmed(record) ? 'confirmed' : ''}`}>{collectionConfirmed(record) ? 'Confirmado' : 'Pendiente de pago'}</span>{record.collection?.confirmedAt && <small>{timestamp(record.collection.confirmedAt)}</small>}</td>
-        <td data-label="Acciones"><button title="Abrí el detalle del pago y las acciones de cobranza disponibles." type="button" className="secondary" aria-label={`${mayManage(record) ? 'Gestionar' : 'Ver'} cobranza de ${record.client}`} onClick={() => setSelection(record)}><Icon name={mayManage(record) ? 'edit' : 'eye'} />{mayManage(record) ? 'Gestionar' : 'Ver detalle'}</button></td>
+        <td data-label="Estado del pago"><span className={`collection-status ${collectionConfirmed(record) ? 'confirmed' : future ? 'future' : ''}`}>{collectionConfirmed(record) ? future ? 'Confirmado · anticipado' : 'Confirmado' : 'Pendiente de pago'}</span>{record.collection?.confirmedAt && <small>{timestamp(record.collection.confirmedAt)}</small>}</td>
+        <td data-label="Acciones"><button title="Abrí el detalle del pago y las acciones de cobranza disponibles." type="button" className="secondary" aria-label={`${mayManage(record) ? 'Gestionar' : 'Ver'} cobranza de ${record.client}`} onClick={() => onSelect(record)}><Icon name={mayManage(record) ? 'edit' : 'eye'} />{mayManage(record) ? 'Gestionar' : 'Ver detalle'}</button></td>
       </tr>)}</tbody>
-    </table>{!filtered.length && <p className="empty-state">No hay cobranzas que coincidan con estos filtros.</p>}</div>
-    {pages > 1 && <nav className="collections-pagination" aria-label="Paginación de cobranzas"><button title="Consultá la página anterior de cobranzas." className="secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Anterior</button><span>{currentPage} de {pages}</span><button title="Consultá la siguiente página de cobranzas." className="secondary" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Siguiente</button></nav>}
-    {selectedVisibleRecord && <CollectionEditor key={selection.id} record={selection} currentRecord={selectedVisibleRecord} effectiveRecord={schedule(selectedVisibleRecord)} customers={customers} serviceDate={schedule(selection).date} canManage={mayManage(selectedVisibleRecord)} onSave={onSave} close={() => setSelection(null)} onSaved={message => { setSelection(null); setNotice(message) }} />}
-  </div>
+    </table>{!segment.records.length && <p className="empty-state">No hay cobranzas {future ? 'futuras' : 'actuales ni anteriores'} que coincidan con estos filtros.</p>}</div>
+    {pages > 1 && <nav className="collections-pagination" aria-label={`Paginación de cobranzas ${title.toLowerCase()}`}><button title={`Consultá la página anterior de cobranzas ${title.toLowerCase()}.`} className="secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Anterior</button><span>{currentPage} de {pages}</span><button title={`Consultá la siguiente página de cobranzas ${title.toLowerCase()}.`} className="secondary" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Siguiente</button></nav>}
+  </section>
 }
 
 function CollectionEditor({ record, currentRecord, effectiveRecord, customers, serviceDate, canManage, onSave, close, onSaved }) {

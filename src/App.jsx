@@ -22,6 +22,7 @@ import SidebarNavigation from "./presentation/components/navigation/SidebarNavig
 import { NAVIGATION_ITEMS, navigationLabel } from "./domain/access/navigation.mjs";
 import SystemState from "./components/ui/SystemState.jsx";
 import SoftGuardVerification from "./components/SoftGuardVerification.jsx";
+import SoftGuardRetirementReminder from "./components/SoftGuardRetirementReminder.jsx";
 import { fetchAuthWithRetry, fetchWithTimeout } from "./infrastructure/http/fetch-timeout.mjs";
 import { DEFAULT_2026_GUARD_ROTATION, firstSaturdayOfYear } from "./domain/agenda/annual-guards.mjs";
 import { ensureVehicleControlService } from "./domain/vehicles/vehicle-controls.mjs";
@@ -66,7 +67,7 @@ import { TechnicianPortalErrorBoundary } from "./presentation/components/Technic
 import { createTaskId, createTeamId, createCustomerId } from "./infrastructure/browser/identity.mjs";
 import { normalizeInternalChecklist, resolveServiceForTask, taskWithServiceEstimate } from "./features/services/application/service-fields.mjs";
 import { sortTasksByTime, sortPlanTasksByTime, isSaturday, isSunday, default2026GuardRotationFor, assignGuardToEmptySaturday, advancedGuardForSaturdayDate, removeUnavailableDefaultSlots, taskForScheduleOccupancy, serviceTrace, stampServiceRecord, normalizeSaturdayTeams, applyRemovedWeeklySlots, applyRemovedWeeklyTasks, applyRemovedWeeklyTeams, renumberVisibleWeeklyTeams, dailyPlanWithMonthlyTeams, moveRecordInWeeklyAgenda, prettyReportDateTime } from "./features/agenda/application/agenda-model.mjs";
-import { customerKind, nextCustomerCode } from "./features/customers/application/customer-model.mjs";
+import { customerKind } from "./features/customers/application/customer-model.mjs";
 import { Confirm } from "./presentation/components/Confirm.jsx";
 
 const Dashboard = lazy(() => import('./features/dashboard/presentation/Dashboard.jsx'))
@@ -490,25 +491,8 @@ export default function App() {
     setWeekly(previous => { const next = Object.fromEntries(Object.entries(previous || {}).map(([key, value]) => [key, key.startsWith('_') ? value : { ...value, teams: normalizeTeams(value?.teams) }])); return JSON.stringify(next) === JSON.stringify(previous) ? previous : next })
     setHistory(previous => { const next = previous.map(normalizeReference); return JSON.stringify(next) === JSON.stringify(previous) ? previous : next })
   }, [customers])
-  useEffect(() => {
-    if (granularAccess) return
-    const completedRetirementCustomerIds = new Set(history
-      .filter(record => record.status === 'Completado' && normalizeServiceName(record.service).includes('retiro de equipo'))
-      .map(record => String(record.customerId || ''))
-      .filter(Boolean))
-    if (!completedRetirementCustomerIds.size) return
-    setCustomers(previous => {
-      let next = previous
-      let changed = false
-      previous.forEach(customer => {
-        if (customerKind(customer) !== 'subscriber' || !completedRetirementCustomerIds.has(String(customer.customerId))) return
-        const account = nextCustomerCode(next, 'client')
-        next = next.map(item => item.customerId === customer.customerId ? { ...item, kind: 'client', account, type: 'Cliente de servicio', convertedFromAccount: item.account, convertedFromType: item.type, subscriptionEndedAt: new Date().toISOString() } : item)
-        changed = true
-      })
-      return changed ? next : previous
-    })
-  }, [history])
+  // Retirement identity and timestamps come from the confirmed server write.
+  // A local conversion would race its customer code and protected provenance.
   useEffect(() => {
     if (granularAccess || !employees.length) return
     const byId = new Map(employees.map(employee => [String(employee.id), employee]))
@@ -1509,13 +1493,17 @@ const Agenda = lazy(() => import('./features/agenda/presentation/DailyAgenda.jsx
 const WeeklyPlanner = lazy(() => import('./features/agenda/presentation/WeeklyPlanner.jsx').then(module => ({ default: module.WeeklyPlanner })))
 
 function NotificationActionDialog({ notification, history, customers, passwordResetState, close }) {
+  const [busy, setBusy] = useState(false)
   const target = notification.target
+  const retirementCustomer = target.type === 'softguard-retirement' ? customers.find(customer => String(customer.customerId) === target.customerId) : null
   if (target.type === 'softguard') return <SoftGuardVerification customers={customers} initialOpen showTrigger={false} onClose={close} />
-  return <div className="modal-layer" onClick={event => { if (event.target === event.currentTarget) close() }}>
-    <section className="modal notification-action-modal" role="dialog" aria-modal="true" aria-labelledby="notification-action-title">
-      <button type="button" className="close-modal" aria-label="Cerrar notificación" title="Cerrá el detalle; el aviso permanece hasta que se resuelva." onClick={close}><Icon name="close" /></button>
+  return <div className="modal-layer" onClick={event => { if (!busy && event.target === event.currentTarget) close() }}>
+    <section className="modal notification-action-modal" role="dialog" aria-modal="true" aria-busy={busy || undefined} aria-labelledby="notification-action-title">
+      <button type="button" className="close-modal" aria-label="Cerrar notificación" title="Cerrá el detalle; el aviso permanece hasta que se resuelva." disabled={busy} onClick={close}><Icon name="close" /></button>
       <p className="eyebrow">NOTIFICACIONES</p><h2 id="notification-action-title">{notification.title}</h2>
-      {target.type === 'advance-request'
+      {target.type === 'softguard-retirement'
+        ? <SoftGuardRetirementReminder key={`${retirementCustomer?.customerId}:${retirementCustomer?.convertedFromAccount}:${retirementCustomer?.subscriptionEndedAt}`} customer={retirementCustomer} showHeading={false} onResolved={close} onBusyChange={setBusy} />
+        : target.type === 'advance-request'
         ? <ServiceAdvanceRequestsReminder history={history.filter(record => String(record.id) === target.recordId)} />
         : target.type === 'password-reset'
           ? <PasswordResetReminder onManage={close} state={{ ...passwordResetState, requests: passwordResetState.requests.filter(request => String(request.id) === target.requestId) }} />

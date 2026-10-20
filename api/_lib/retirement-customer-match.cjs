@@ -37,6 +37,7 @@ function mergeRetiredSubscriber(client, subscriber) {
   delete merged.convertedFromAccount
   delete merged.convertedFromType
   delete merged.subscriptionEndedAt
+  delete merged.softguardRetirementResolution
   return merged
 }
 

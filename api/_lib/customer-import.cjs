@@ -1,4 +1,5 @@
 const { isDeepStrictEqual } = require('node:util')
+const { preserveSoftguardRetirementCustomers, assertSoftguardRetirementDeletion } = require('./softguard-retirement-policy.cjs')
 
 function customerKind(customer) {
   if (customer?.kind === 'subscriber' || customer?.kind === 'client') return customer.kind
@@ -16,7 +17,7 @@ function normalizeImportedCustomers(customers = []) {
 function preserveCustomerTrackingFlags(currentCustomers = [], importedCustomers = []) {
   const byId = new Map(currentCustomers.map(customer => [String(customer?.customerId || ''), customer]))
   const byAccount = new Map(currentCustomers.map(customer => [String(customer?.account || '').trim().toUpperCase(), customer]))
-  return importedCustomers.map(customer => {
+  return preserveSoftguardRetirementCustomers(currentCustomers, importedCustomers).map(customer => {
     const current = byId.get(String(customer?.customerId || '')) || byAccount.get(String(customer?.account || '').trim().toUpperCase())
     // Coordinates belong to the local record, never to the imported spreadsheet.
     const { locationOverride, ...imported } = customer
@@ -65,12 +66,27 @@ function customerImportChanges(currentCustomers = [], nextCustomers = []) {
 }
 
 function restoreCustomerImportBackup(currentCustomers = [], backup) {
-  if (Array.isArray(backup?.customers)) return normalizeImportedCustomers(backup.customers)
+  const previous = Array.isArray(backup?.customers) ? backup.customers : backup?.before || []
+  const previousById = new Map(previous.map(customer => [String(customer.customerId), customer]))
+  const createdAccounts = new Set((backup?.createdAccounts || []).map(value => String(value).trim().toUpperCase()))
+  const lifecycleChanged = currentCustomers.some(customer => {
+    const prior = previousById.get(String(customer.customerId))
+    return prior && String(prior.account).toUpperCase() !== String(customer.account).toUpperCase() ||
+      customer.convertedFromAccount && createdAccounts.has(String(customer.convertedFromAccount).toUpperCase()) ||
+      (customer.mergedRetirementCustomers || []).some(merged => previousById.has(String(merged.customerId)) || createdAccounts.has(String(merged.account).toUpperCase()))
+  })
+  if (lifecycleChanged) throw Object.assign(new Error('La situación de un abonado cambió después de la importación. No se puede deshacer la importación sin afectar su baja o restitución.'), { statusCode: 409 })
+  const preserve = customers => {
+    const next = preserveSoftguardRetirementCustomers(currentCustomers, customers)
+    assertSoftguardRetirementDeletion({ customers: currentCustomers }, { customers: next })
+    return next
+  }
+  if (Array.isArray(backup?.customers)) return preserve(normalizeImportedCustomers(backup.customers))
   if (backup?.version !== 2 || !Array.isArray(backup.before) || !Array.isArray(backup.createdAccounts)) throw new Error('La copia de seguridad de la importación no es válida.')
   const created = new Set(backup.createdAccounts.map(String))
   const restoredByAccount = new Map(currentCustomers.filter(customer => !created.has(String(customer.account))).map(customer => [String(customer.account), customer]))
   normalizeImportedCustomers(backup.before).forEach(customer => restoredByAccount.set(String(customer.account), customer))
-  return [...restoredByAccount.values()]
+  return preserve([...restoredByAccount.values()])
 }
 
 module.exports = { customerImportChanges, normalizeImportedCustomers, preserveCustomerTrackingFlags, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport }
