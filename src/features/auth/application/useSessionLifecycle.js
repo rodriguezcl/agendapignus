@@ -8,11 +8,13 @@ export const TECHNICIAN_SESSION_STATUS_INTERVAL_MS = 15 * 1000
 const ACTIVITY_SYNC_INTERVAL_MS = 60 * 1000
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'scroll']
 
-export function useSessionLifecycle({ enabled, idleTimeoutMs = SESSION_IDLE_TIMEOUT_MS, statusIntervalMs = SESSION_STATUS_INTERVAL_MS, onInvalidated, onIdle }) {
+export function useSessionLifecycle({ enabled, idleTimeoutMs = SESSION_IDLE_TIMEOUT_MS, statusIntervalMs = SESSION_STATUS_INTERVAL_MS, onInvalidated, onIdle, onSessionUser }) {
   const invalidatedRef = useRef(onInvalidated)
   const idleRef = useRef(onIdle)
+  const sessionUserRef = useRef(onSessionUser)
   invalidatedRef.current = onInvalidated
   idleRef.current = onIdle
+  sessionUserRef.current = onSessionUser
 
   useEffect(() => {
     if (!enabled) return undefined
@@ -62,8 +64,10 @@ export function useSessionLifecycle({ enabled, idleTimeoutMs = SESSION_IDLE_TIME
         return
       }
       checking = true
+      const receiveSessionUser = sessionUserRef.current
       try {
-        await sessionRepository.status()
+        const response = await sessionRepository.status()
+        if (!stopped && response.sessionUser) receiveSessionUser?.(response.sessionUser)
       } catch (error) {
         if (error.status === 401) invalidate(error)
       } finally {

@@ -17,8 +17,10 @@ function applyEmployeeOperation(current, operations, user) {
     if (!firstName || !lastName || !/^\S+@\S+\.\S+$/.test(String(employee.email || ''))) throw new Error('Completá nombre, apellido y un correo válido.')
     if (!['Activo', 'Inactivo'].includes(employee.status)) throw new Error('Estado del empleado inválido.')
     if (current.employees.some(item => String(item.id) !== targetId && String(item.email).trim().toLowerCase() === String(employee.email).trim().toLowerCase())) throw new Error('Ya existe un empleado con ese correo electrónico.')
-    return { ...employee, firstName, lastName, name: `${firstName} ${lastName}`, roleId: role.id, role: role.name, technicalEnabled: ['operator', 'supervisor'].includes(role.code || legacyRoleCode(role)) ? false : employee.technicalEnabled === true }
+    return { ...employee, firstName, lastName, name: `${firstName} ${lastName}`, roleId: role.id, role: role.name, technicalEnabled: !require('./permission-catalog.cjs').isGranular(role) && ['operator', 'supervisor'].includes(role.code || legacyRoleCode(role)) ? false : employee.technicalEnabled === true }
   })
-  return { ...current, employees: secureEmployees(employees, current.employees) }
+  const next = { ...current, employees: secureEmployees(employees, current.employees) }
+  if ((current.roles || []).some(require('./permission-catalog.cjs').isGranular)) require('./granular-write-policy.cjs').assertActiveAdministrator(next, current)
+  return next
 }
 module.exports = { employeeOnly, applyEmployeeOperation }

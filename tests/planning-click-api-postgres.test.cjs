@@ -46,6 +46,8 @@ test('planning clicks retain transactional guards, deltas, audit and both models
     assert.equal((await pg.query("select current_setting('lock_timeout') as value")).rows[0].value, '0', 'transaction settings must not leak')
     const legacy = await readState(sql)
     assert.deepEqual(applyStateDelta(visibleStateForUser(initial, admin), legacySaved.body.delta), visibleStateForUser(legacy, admin))
+    assert.deepEqual(applyStateDelta(visibleStateForUser(initial, admin), legacySaved.body.delta).sessionUser, admin, 'fast ready response retains public session identity through its delta')
+    assert.equal(Object.hasOwn(legacy, 'sessionUser'), false, 'response metadata is not persisted')
     assert.equal(legacy.history[0].servicePreparation.byId, 'admin')
     await pg.exec(fs.readFileSync(path.join(root, 'supabase/proposals/normalized-shadow-v1.sql'), 'utf8'))
     const candidate = buildShadowCandidate(legacy)
@@ -63,6 +65,8 @@ test('planning clicks retain transactional guards, deltas, audit and both models
     assert.deepEqual(saved.history[0].technicianIds, ['two'])
     assert.deepEqual(await readNormalizedState(pg), saved)
     assert.deepEqual(applyStateDelta(visibleStateForUser(legacy, planner), assigned.body.delta), visibleStateForUser(saved, planner))
+    assert.deepEqual(applyStateDelta(visibleStateForUser(legacy, planner), assigned.body.delta).sessionUser, planner, 'fast membership response retains public session identity through its delta')
+    assert.equal(Object.hasOwn(saved, 'sessionUser'), false)
     const audit = () => pg.query('select data from pignus_audit_log order by occurred_at,id').then(result => result.rows)
     const baselineAudit = await audit()
     // Force a fresh server instance so its snapshot comes from persisted JSON,

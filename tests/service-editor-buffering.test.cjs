@@ -44,5 +44,5 @@ test('weekly manual fields use local buffering, including internal notes and amo
   assert.match(modal, /BufferedInput[^>]+value=\{task.phone\}/)
   assert.match(modal, /BufferedInput[^>]+value=\{task.time\}/)
   assert.match(modal, /ServiceExtraFields[^>]+buffered onChange=\{updateTaskDraft\}/)
-  assert.match(source, /BufferedInput maxLength=\{500\} value=\{item.text\}/)
+  assert.match(source, /BufferedInput[^>]+maxLength=\{500\} value=\{item.text\}/)
 })

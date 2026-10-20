@@ -54,6 +54,9 @@ function restoreUnchanged(before, after) {
 // label. Structural additions and every mixed/unknown payload use the complete
 // state pipeline. Existing conflict and authorization policies remain canonical.
 function preparePlanningClick(current, operations, user) {
+  // Scoped snapshots omit the customer/role data needed by v2 scope policies.
+  // The complete pipeline remains authoritative for granular roles.
+  if (require('./permission-catalog.cjs').isGranular(user)) return null
   if (!Array.isArray(operations) || !operations.length || operations.length > 32) return null
   const preparation = preparationOperation(operations)
   if (preparation) {

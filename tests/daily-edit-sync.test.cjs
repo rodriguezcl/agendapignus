@@ -16,6 +16,7 @@ const teams = address => [{ teamId: 'team-1', label: 'Equipo 1', memberIds: ['pa
 function render(state, module = 'agenda', reverseEffect = toDaily) {
   const updates = []
   const context = {
+    canWritePlan: true, granularAccess: false,
     module, date, weekly: state.weekly, teams: state.teams,
     pastDayBlocked: false, loadedAgendaDate: { current: date }, advancedGuard: null,
     sundayBlocked: false, holidayBlocked: false, holidayCalendarUnavailable: false,
@@ -33,7 +34,7 @@ function render(state, module = 'agenda', reverseEffect = toDaily) {
 
 test('regression fixture reproduces alternating reservation addresses without the guard', () => {
   const state = { teams: teams('Corregida'), weekly: { [date]: { teams: teams('Anterior') } } }
-  const oldEffect = toDaily.replace("    if (module === 'agenda') return", '')
+  const oldEffect = toDaily.replace("granularAccess || module === 'agenda'", "granularAccess")
   render(state, 'agenda', oldEffect)
   assert.equal(state.teams[0].tasks[0].address, 'Anterior')
   render(state, 'agenda', oldEffect)

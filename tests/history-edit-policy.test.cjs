@@ -7,7 +7,7 @@ const { synchronizeAgendaHistoryRecord } = require('../api/_lib/history-record-o
 
 test('registered customer contact comes from its profile and synchronizes both agendas', () => {
   const source = frontendSource()
-  const line = source.split(/\r?\n/).find(line => line.includes('const patch = { ...draft,'))
+  const line = source.split(/\r?\n/).find(line => /(?:const|let) patch = \{ \.\.\.draft,/.test(line))
   const record = { id: 'h', status: 'Requiere revisión', customerId: 'old', technicianIds: ['t'] }
   const draft = { customerId: 'new', address: 'Manual', phone: '456', estimatedMinutes: 120 }
   const patch = vm.runInNewContext(line + '\npatch', { record, draft, customer: { address: 'Ficha', phone: '123' }, service: { id: 'new-service', name: 'Nuevo servicio' }, authUser: {}, customerLinkPatch: () => ({ customerId: 'new', client: 'Nuevo cliente', address: 'Ficha', phone: '123' }) })
@@ -24,9 +24,9 @@ test('registered customer contact comes from its profile and synchronizes both a
   assert.equal(task.customerId, 'old')
   assert.doesNotMatch(source, /identityLocked|protectServiceIdentity/)
   const modal = source.slice(source.indexOf('function HistoryManagementDetail'), source.indexOf('function HistoryDetail('))
-  assert.match(modal, /<CustomerAutocomplete value=\{draft.client/)
-  assert.match(modal, /readOnly=\{Boolean\(draft.customerId\)\} value=\{draft.address\}/)
-  assert.match(modal, /readOnly=\{Boolean\(draft.customerId\)\} value=\{draft.phone\}/)
+  assert.match(modal, /<CustomerAutocomplete[^>]*value=\{draft.client/)
+  assert.match(modal, /readOnly=\{Boolean\(draft.customerId\)\}[^>]*value=\{draft.address\}/)
+  assert.match(modal, /readOnly=\{Boolean\(draft.customerId\)\}[^>]*value=\{draft.phone\}/)
 })
 
 test('pending rescheduling requires a different date', async () => {

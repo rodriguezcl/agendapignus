@@ -28,7 +28,7 @@ test('history displays duration and exposes the shared duration editor while con
   const detail = source.slice(source.indexOf('function HistoryManagementDetail'), source.indexOf('function HistoryDetail('))
   assert.match(detail, /<b>Tiempo estimado<\/b>/)
   assert.match(detail, /durationLabel\(serviceEstimateForTask\(record/)
-  assert.match(detail, /ServiceEstimatedDurationField value=\{draft.estimatedMinutes\}/)
+  assert.match(detail, /ServiceEstimatedDurationField[^>]*value=\{draft.estimatedMinutes\}/)
   assert.match(detail, /estimatedMinutesCustomized: true/)
   assert.match(detail, /record.vehicleControl \? <label>Tiempo estimado<input value="15 minutos" readOnly/)
 })

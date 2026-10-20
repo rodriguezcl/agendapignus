@@ -64,6 +64,8 @@ export function selectDashboardNotifications({ history = [], vehicles = [], cust
         target: { type: 'advance-request', recordId: String(record.id) }
       })
     }
+  }
+  if (isAdministrator || permissions['employees.requests.read'] === true) {
     for (const request of passwordResetRequests) {
       notices.push({
         id: `password:${request.id}`, title: 'Solicitud de cambio de contraseña', tone: 'warning',

@@ -1,3 +1,5 @@
+import { canWriteRecord } from '../domain/access/record-scope.mjs'
+import { usePermissions } from '../presentation/contexts/permissions-context.jsx'
 import React, { useContext, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from './ui/Icon.jsx'
@@ -20,13 +22,15 @@ export function JourneyIdentityField({ record, customer = false, children }) {
 }
 
 export function JourneyHistory({ record }) {
+  const { can } = usePermissions()
   const context = useContext(ServiceJourneysContext)
   if (!record?.serviceJourney) return <ReschedulingHistory record={record} />
   const visits = (context?.history || [record]).filter(item => item.serviceJourney?.id === record.serviceJourney.id).sort((a,b) => a.serviceJourney.index - b.serviceJourney.index)
-  return <><ReschedulingHistory record={record} /><section className="journey-history"><h3>Planificación original e informes</h3>{visits.map(item => <article key={item.id}><b>Jornada {item.serviceJourney.index} de {item.serviceJourney.total} · {item.date.split('-').reverse().join('/')} · {item.time}</b><p>{item.team} · {item.technicians?.join(' / ')} · {durationLabel(item.estimatedMinutes)}</p><p>{item.status}</p>{item.technicalObservation && <p className="journey-report">{item.technicalReportedByName || 'Técnico'}: {item.technicalObservation}</p>}</article>)}</section></>
+  return <><ReschedulingHistory record={record} /><section className="journey-history"><h3>Planificación original e informes</h3>{visits.map(item => <article key={item.id}><b>Jornada {item.serviceJourney.index} de {item.serviceJourney.total} · {item.date.split('-').reverse().join('/')} · {item.time}</b><p>{item.team} · {item.technicians?.join(' / ')} · {durationLabel(item.estimatedMinutes)}</p><p>{item.status}</p>{can('service.documents.read') && item.technicalObservation && <p className="journey-report">{item.technicalReportedByName || 'Técnico'}: {item.technicalObservation}</p>}</article>)}</section></>
 }
 
 export function ServiceJourneys({ record, disabled = false, compact = false, action = false, toolbar = false }) {
+  const { can, user } = usePermissions()
   const context = useContext(ServiceJourneysContext)
   const titleId = useId()
   const dialogRef = useRef(null)
@@ -64,11 +68,11 @@ export function ServiceJourneys({ record, disabled = false, compact = false, act
     const label = journeyLabel(record, context?.history)
     return compact || action || !label ? null : <small className="journey-label">{label}</small>
   }
-  if (!context?.enabled || record.vehicleControl || isMonthlyMeeting(record) || record.startedAt || record.technicalStatus || record.status !== 'Pendiente' || record.date < context.today) return null
+  if (!can('planning.journeys') || !canWriteRecord(record, user) || !context?.enabled || record.vehicleControl || isMonthlyMeeting(record) || record.startedAt || record.technicalStatus || record.status !== 'Pendiente' || record.date < context.today) return null
   const change = (index, patch) => setVisits(previous => previous.map((item, position) => position === index ? { ...item, ...patch } : item))
   const add = () => setVisits(previous => [...previous, { date: '', time: '', teamId: '', estimatedMinutes: 60 }])
   const submit = async event => {
-    event.preventDefault(); setSaving(true); setError('')
+    event.preventDefault(); if (!can('planning.journeys')) return; setSaving(true); setError('')
     try { await context.save(record, visits); setOpen(false) }
     catch (failure) { setError(failure.message || 'No se guardaron las jornadas.') }
     finally { setSaving(false) }

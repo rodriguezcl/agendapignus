@@ -1,3 +1,4 @@
+import { useActionPermissions } from '../presentation/hooks/useActionPermissions.mjs'
 import React, { useContext, useState } from 'react'
 import { FrozenMonthsContext } from './FrozenMonths.jsx'
 import { isResidentialInstallation, recordBelongsToCustomer, subscriptionCorrectionBase } from '../domain/customers/subscription-correction.mjs'
@@ -6,6 +7,7 @@ import './customer-subscription-correction.css'
 const dateLabel = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value.split('-').reverse().join('/') : value
 
 export function CustomerSubscriptionCorrection({ customer, history, services, onSave, onBusyChange }) {
+  const { can } = useActionPermissions()
   const options = useContext(FrozenMonthsContext)
   const [selection, setSelection] = useState(null)
   const [draft, setDraft] = useState({})
@@ -14,13 +16,14 @@ export function CustomerSubscriptionCorrection({ customer, history, services, on
   const [error, setError] = useState('')
   const records = history.filter(record => recordBelongsToCustomer(record, customer) && isResidentialInstallation(record, services))
     .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.id).localeCompare(String(a.id)))
-  if (!records.length) return null
+  if (!can('subscriptions.correct') || !records.length) return null
   const select = record => {
     setSelection(record); setMessage(''); setError('')
     setDraft({ monthlyFee: record.monthlyFee ?? '', monthlyFeeEffectiveFrom: record.monthlyFeeEffectiveFrom || '', freezeMonthlyFee: record.freezeMonthlyFee ?? '', frozenMonths: record.frozenMonths || '' })
   }
   const save = async event => {
     event.preventDefault()
+    if (!can('subscriptions.correct')) return
     if (typeof draft.freezeMonthlyFee !== 'boolean') { setError('Indicá si se otorgaron meses congelados.'); return }
     setBusy(true); onBusyChange?.(true); setError('')
     try {

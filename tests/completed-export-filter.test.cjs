@@ -8,8 +8,8 @@ for (const file of ['api/index.js', 'server.cjs']) {
     const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
     const start = file === 'api/index.js' ? 'const records = state.history.filter(record => {' : "const records = rows('work_history').filter(record => {"
     const body = source.split(start)[1].split('}).sort(compareReportRecords)')[0]
-    const filter = new Function('record', 'month', 'user', 'technicianId', 'isRetirement', 'isRetirementExport', 'alarmCategory', 'alarmService', 'normalizedServiceName', 'category', 'isAllCategories', body)
-    const matches = record => filter(record, '2026-10', { roleCode: 'administrator' }, null, false, false, () => 'residencial', { id: 'alarm' }, value => String(value).toLowerCase(), 'all', true)
+    const filter = new Function('record', 'month', 'user', 'technicianId', 'isRetirement', 'isRetirementExport', 'alarmCategory', 'alarmService', 'normalizedServiceName', 'category', 'isAllCategories', 'isGranular', body)
+    const matches = record => filter(record, '2026-10', { roleCode: 'administrator' }, null, false, false, () => 'residencial', { id: 'alarm' }, value => String(value).toLowerCase(), 'all', true, require('../api/_lib/permission-catalog.cjs').isGranular)
     const base = { serviceId: 'alarm', date: '2026-10-09', client: 'PIG-6308 FRANCO GAITAN' }
     for (const status of ['Pendiente', 'En proceso', 'Cancelado', 'Reprogramado', 'Reprogramación pendiente', 'Avance registrado', undefined]) {
       assert.equal(matches({ ...base, status }), false, status)

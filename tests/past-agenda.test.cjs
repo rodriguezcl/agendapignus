@@ -41,7 +41,7 @@ test('la agenda semanal bloquea días finalizados, amortigua Detalle y eleva err
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(source, /const dayHasFinished = day => String\(day \|\| ''\) < today/)
   assert.match(source, /<fieldset className="week-teams weekly-day-fields" disabled=\{finishedDay \|\| readOnly\}>/)
-  assert.match(source, /<BufferedTextarea value=\{task\.detail\}/)
+  assert.match(source, /<BufferedTextarea[^>]+value=\{task\.detail\}/)
   assert.match(styles, /body:has\(\.modal-backdrop, \.modal-layer\) \.app-shell \.content > \.notice/)
 })
 

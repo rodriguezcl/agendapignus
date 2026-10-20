@@ -13,7 +13,10 @@ async function builders() {
   }
 }
 function general(current, operations, user = admin) {
-  const next = normalizeStateForSave(authorizeIncomingState(applyStateOperations(visibleStateForUser(current, user), operations), current, user), current, { allowEarlyCompletion: true })
+  // Compare persistent state with the optimized helper. sessionUser belongs to
+  // the final HTTP projection, whose full/delta behavior has integration tests.
+  const { sessionUser, ...editable } = visibleStateForUser(current, user)
+  const next = normalizeStateForSave(authorizeIncomingState(applyStateOperations(editable, operations), current, user), current, { allowEarlyCompletion: true })
   validateState(next, current)
   return next
 }

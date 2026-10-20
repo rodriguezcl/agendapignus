@@ -1,8 +1,11 @@
+import { useActionPermissions } from '../presentation/hooks/useActionPermissions.mjs'
 import React, { useEffect, useState } from 'react'
 import { requestJson } from '../infrastructure/http/json-request.mjs'
 import './vehicle-control-photos.css'
 
 export default function VehicleControlPhotos({ record }) {
+  const { can } = useActionPermissions()
+  const mayRead = can('vehicle.controls.read')
   const [opened, setOpened] = useState(false)
   const [files, setFiles] = useState([])
   const [loading, setLoading] = useState(false)
@@ -13,14 +16,14 @@ export default function VehicleControlPhotos({ record }) {
   const [photoAttempts, setPhotoAttempts] = useState({})
   const endpoint = `/api/attachments/service/${encodeURIComponent(String(record.id))}`
   useEffect(() => {
-    if (!opened) return
+    if (!mayRead || !opened) return
     let active = true
     setLoading(true); setError('')
     requestJson(endpoint).then(result => {
       if (active) setFiles((result.attachments || []).filter(file => file.mime?.startsWith('image/')))
     }).catch(err => { if (active) setError(err.message) }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [opened, endpoint, attempt])
+  }, [opened, endpoint, attempt, mayRead])
   const photos = [
     ...(record.vehiclePhotoUrl ? [{ url: record.vehiclePhotoUrl, name: 'Foto del control' }] : []),
     ...files.map(file => ({ url: `${endpoint}/${encodeURIComponent(file.id)}`, name: file.name }))
@@ -34,6 +37,7 @@ export default function VehicleControlPhotos({ record }) {
     return `${url}${url.includes('?') ? '&' : '?'}retry=${photoAttempts[url]}`
   }
   const date = record.date ? new Date(`${record.date}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : 'Sin fecha'
+  if (!mayRead) return null
   return <details onToggle={event => { if (event.currentTarget.open) setOpened(true) }}>
     <summary>{date} · {record.status || 'Pendiente'}</summary>
     <p>{record.technicalReportedByName || record.technicians?.join(' / ') || 'Sin responsable informado'}{record.vehicleMileage != null && ` · ${Number(record.vehicleMileage).toLocaleString('es-AR')} km`}</p>

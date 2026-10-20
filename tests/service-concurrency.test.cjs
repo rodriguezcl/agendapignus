@@ -29,7 +29,7 @@ test('el historial conserva el borrador y explica los cambios concurrentes sin u
   assert.match(source, /const remotelyUpdated = recordFingerprint !== acceptedFingerprint/)
   assert.match(source, /const interactionBlocked = remotelyUpdated \|\| saving/)
   assert.match(source, /disabled=\{interactionBlocked\}/)
-  assert.match(source, /if \(interactionBlocked\) return/)
+  assert.match(source, /if \(interactionBlocked(?: \|\| [^)]+)?\) return/)
   assert.match(source, /Hay una versión más reciente de este servicio/)
   assert.match(source, /Tu borrador permanece visible y no fue reemplazado/)
   assert.match(source, /Revisar versión actual/)

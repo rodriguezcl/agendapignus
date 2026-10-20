@@ -1,11 +1,14 @@
+import { usePermissions } from '../presentation/contexts/permissions-context.jsx'
 import React, { useContext, useState } from 'react'
 
 import { FrozenMonthsContext } from '../presentation/contexts/agenda-contexts.js'
 export { FrozenMonthsContext } from '../presentation/contexts/agenda-contexts.js'
-export function FrozenMonthsFields({ task, onChange }) {
+export function FrozenMonthsFields({ task, onChange, disabled = false }) {
+  const { can } = usePermissions()
   const options = useContext(FrozenMonthsContext)
   const value = Number(task.frozenMonths || 0)
-  return <><label className="service-extra-field">Meses congelados<select required value={task.freezeMonthlyFee === true ? 'yes' : task.freezeMonthlyFee === false ? 'no' : ''} onChange={event => onChange({ freezeMonthlyFee: event.target.value === '' ? null : event.target.value === 'yes', frozenMonths: 0 })}><option value="">Seleccionar</option><option value="no">No</option><option value="yes" disabled={!options.length}>Sí</option></select></label>{task.freezeMonthlyFee && <label className="service-extra-field">Cantidad de meses congelados<select required value={value || ''} onChange={event => onChange({ frozenMonths: Number(event.target.value) })}><option value="">Seleccionar</option>{value > 0 && !options.includes(value) && <option value={value}>{value} meses (selección anterior)</option>}{options.map(months => <option key={months} value={months}>{months} meses</option>)}</select></label>}</>
+  if (!can('records.financial')) return null
+  return <><label className="service-extra-field">Meses congelados<select disabled={disabled || !can('planning.freeze')} required value={task.freezeMonthlyFee === true ? 'yes' : task.freezeMonthlyFee === false ? 'no' : ''} onChange={event => onChange({ freezeMonthlyFee: event.target.value === '' ? null : event.target.value === 'yes', frozenMonths: 0 })}><option value="">Seleccionar</option><option value="no">No</option><option value="yes" disabled={!options.length}>Sí</option></select></label>{task.freezeMonthlyFee && <label className="service-extra-field">Cantidad de meses congelados<select disabled={disabled || !can('planning.freeze')} required value={value || ''} onChange={event => onChange({ frozenMonths: Number(event.target.value) })}><option value="">Seleccionar</option>{value > 0 && !options.includes(value) && <option value={value}>{value} meses (selección anterior)</option>}{options.map(months => <option key={months} value={months}>{months} meses</option>)}</select></label>}</>
 }
 
 export function FrozenMonthsSettings({ options, onSave }) {

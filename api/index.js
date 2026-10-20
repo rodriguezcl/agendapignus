@@ -3,6 +3,10 @@ const { fetchWeather } = require('./_lib/weather.cjs')
 const { employeeOnly, applyEmployeeOperation } = require('./_lib/employee-operation.cjs')
 const { isOperator, operatorRouteAllowed } = require('./_lib/operator-access.cjs')
 const { canPerformTechnicalServices } = require('./_lib/technical-capability.cjs')
+const { isGranular, can: canPermission, permissionSnapshot } = require('./_lib/permission-catalog.cjs')
+const granularRead = require('./_lib/granular-read-policy.cjs')
+const granularWrite = require('./_lib/granular-write-policy.cjs')
+const endpointPolicy = require('./_lib/endpoint-policy.cjs')
 const { retirementClientLabel } = require('./_lib/retirement-label.cjs')
 const { completeExpiredMonthlyMeetings } = require('./_lib/monthly-meeting-completion.cjs')
 let lastMeetingCompletionScan = 0
@@ -114,7 +118,7 @@ async function handleVehicleControlPhoto(req, res, sql, user, recordId) {
   `
   const row = rows[0]
   if (!row) return send(res, 404, { error: 'La foto no existe.' })
-  const allowed = isOperator(user) || user.roleCode === 'administrator' || (user.roleCode !== 'supervisor' && userCan(user, 'history')) || row.record?.technicianIds?.some(id => String(id) === String(user.id))
+  const allowed = isGranular(user) ? granularRead.serviceReadable(row.record, user, await readState(sql)) : isOperator(user) || user.roleCode === 'administrator' || (user.roleCode !== 'supervisor' && userCan(user, 'history')) || row.record?.technicianIds?.some(id => String(id) === String(user.id))
   if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
   securityHeaders(res)
   res.setHeader('Content-Type', row.mime_type)
@@ -216,30 +220,49 @@ async function handleServicePhoto(req, res, sql, user, recordId) {
   const records = await sql`select data from pignus_work_history where id = ${String(recordId)}`
   const record = records[0]?.data
   if (!record || record.vehicleControl) return send(res, 404, { error: 'El servicio no existe.' })
+  const accessState = isGranular(user) ? await readState(sql) : null
+  if (isGranular(user) && req.method === 'GET') {
+    try { endpointPolicy.assertLegacyPhoto(user, record, accessState, 'GET') } catch (error) { return send(res, error.statusCode || 403, { error: error.message }) }
+  }
   if (req.method === 'GET') {
-    let allowed = user.roleCode === 'administrator' || user.roleCode !== 'technician' || record.technicianIds?.some(id => String(id) === String(user.id))
-    if (user.roleCode === 'supervisor') {
+    let allowed = isGranular(user) || user.roleCode === 'administrator' || user.roleCode !== 'technician' || record.technicianIds?.some(id => String(id) === String(user.id))
+    if (!isGranular(user) && user.roleCode === 'supervisor') {
       const state = await readState(sql)
       allowed = visibleStateForUser(state, user).history.some(item => String(item.id) === String(recordId))
     }
     if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
-    const photos = await sql`select mime_type, photo_data from pignus_service_photos where record_id = ${String(recordId)}`
+    const photos = await sql`select mime_type, photo_data, uploaded_by_id from pignus_service_photos where record_id = ${String(recordId)}`
     if (!photos[0]) return send(res, 404, { error: 'La foto no existe.' })
+    if (String(req.query?.metadata || '') === '1') return send(res, 200, { exists: true, uploadedBy: photos[0].uploaded_by_id || null, canDelete: isGranular(user) ? granularRead.serviceWritable(record, user, accessState) && (canPermission(user, 'service.documents.deleteAny') || canPermission(user, 'service.documents.deleteOwn') && String(photos[0].uploaded_by_id) === String(user.id)) : !['technician', 'supervisor', 'operator'].includes(user.roleCode) })
     securityHeaders(res)
     res.setHeader('Content-Type', photos[0].mime_type)
     res.setHeader('Content-Length', photos[0].photo_data.length)
     return res.status(200).send(photos[0].photo_data)
   }
-  if (user.roleCode === 'technician' || user.roleCode === 'supervisor') return send(res, 403, { error: 'Sólo Administración y usuarios pueden modificar la foto del servicio.' })
+  if (!isGranular(user) && (user.roleCode === 'technician' || user.roleCode === 'supervisor')) return send(res, 403, { error: 'Sólo Administración y usuarios pueden modificar la foto del servicio.' })
+  const mutate = action => sql.begin(async transaction => {
+    const current = (await transaction`select data from pignus_work_history where id = ${String(recordId)} for update`)[0]?.data
+    if (!current) throw Object.assign(new Error('El servicio no existe.'), { statusCode: 404 })
+    if (isGranular(user)) {
+      const state = await readState(transaction)
+      endpointPolicy.assertServiceAccess(user, current, state, { write: true })
+      const existing = (await transaction`select uploaded_by_id from pignus_service_photos where record_id = ${String(recordId)}`)[0]
+      if (req.method === 'POST') endpointPolicy.assertLegacyPhoto(user, current, state, 'POST')
+      else granularWrite.requireAny(user, ['service.documents.deleteOwn', 'service.documents.deleteAny'])
+      // Replacing the legacy single-photo slot removes the previous file too.
+      if (existing) endpointPolicy.assertLegacyPhoto(user, current, state, 'DELETE', existing.uploaded_by_id)
+    }
+    return action(transaction)
+  })
   if (req.method === 'DELETE') {
-    await deleteServicePhoto(sql, recordId)
+    await mutate(transaction => deleteServicePhoto(transaction, recordId))
     return send(res, 200, { ok: true })
   }
   const match = String(requestBody(req).photo || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([a-z0-9+/=]+)$/i)
   const data = match ? Buffer.from(match[2], 'base64') : null
   if (!data?.length || data.length > 1_000_000) return send(res, 400, { error: 'Seleccioná una foto válida de hasta 1 MB.' })
   const createdAt = new Date().toISOString()
-  await upsertServicePhoto(sql, { recordId, mimeType: match[1].toLowerCase(), data, createdAt, uploadedById: user.id, uploadedByName: user.name || user.email })
+  await mutate(transaction => upsertServicePhoto(transaction, { recordId, mimeType: match[1].toLowerCase(), data, createdAt, uploadedById: user.id, uploadedByName: user.name || user.email }))
   return send(res, 200, { ok: true, url: `/api/service-photo/${encodeURIComponent(String(recordId))}`, createdAt })
 }
 
@@ -258,7 +281,8 @@ async function handleVehicleInsurance(req, res, sql, user, vehicleId) {
   if (req.method === 'GET') {
     const state = await readState(sql)
     if (!(state.vehicles || []).some(vehicle => String(vehicle.id) === String(vehicleId))) return send(res, 404, { error: 'El vehículo no existe.' })
-    if (!canPerformTechnicalServices(user) && !userCan(user, 'vehicles')) return send(res, 403, { error: 'No tenés permiso para descargar este seguro.' })
+    if (isGranular(user) && !granularRead.vehicleReadable(state.vehicles.find(vehicle => String(vehicle.id) === String(vehicleId)), user, state)) return send(res, 403, { error: 'El vehículo no está incluido en tu alcance.' })
+    if (!isGranular(user) && !canPerformTechnicalServices(user) && !userCan(user, 'vehicles')) return send(res, 403, { error: 'No tenés permiso para descargar este seguro.' })
     const rows = await sql`select file_name, pdf_data from pignus_vehicle_insurance_documents where vehicle_id = ${String(vehicleId)}`
     if (!rows[0]) return send(res, 404, { error: 'El seguro no está cargado.' })
     securityHeaders(res)
@@ -266,7 +290,7 @@ async function handleVehicleInsurance(req, res, sql, user, vehicleId) {
     res.setHeader('Content-Disposition', `attachment; filename="${String(rows[0].file_name || 'seguro.pdf').replace(/["\r\n]/g, '')}"`)
     return res.status(200).send(rows[0].pdf_data)
   }
-  if (user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede cargar seguros.' })
+  if (!isGranular(user) && user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede cargar seguros.' })
   const { fileName, pdf, vehicle: incomingVehicle, insuranceExpiresOn, revision: incomingRevision } = requestBody(req)
   const match = String(pdf || '').match(/^data:application\/pdf;base64,([a-z0-9+/=]+)$/i)
   const data = match ? Buffer.from(match[1], 'base64') : null
@@ -296,7 +320,8 @@ async function handleVehicleInsurance(req, res, sql, user, vehicleId) {
       const expiresOn = String(insuranceExpiresOn || submittedVehicle.insuranceExpiresOn || '')
       if (!/^\d{4}-\d{2}-\d{2}$/.test(expiresOn)) throw new Error('Indicá una fecha de vencimiento válida para el seguro.')
       const documentUrl = `/api/vehicle-insurance/${encodeURIComponent(String(vehicleId))}`
-      const nextVehicle = { ...submittedVehicle, id: vehicleId, insuranceExpiresOn: expiresOn, insuranceFileName: safeName, insuranceUploadedAt: uploadedAt, insuranceDocumentUrl: documentUrl }
+      const nextVehicle = { ...previousVehicle, ...submittedVehicle, id: vehicleId, insuranceExpiresOn: expiresOn, insuranceFileName: safeName, insuranceUploadedAt: uploadedAt, insuranceDocumentUrl: documentUrl }
+        if (isGranular(user)) granularWrite.assertCatalogChange('vehicles', previousVehicle, nextVehicle, user)
       const nextVehicles = previousVehicle
         ? current.vehicles.map(vehicle => String(vehicle.id) === String(vehicleId) ? nextVehicle : vehicle)
         : [...current.vehicles, nextVehicle]
@@ -307,7 +332,7 @@ async function handleVehicleInsurance(req, res, sql, user, vehicleId) {
       await persistStateCollections(transaction, current, next, revision)
       await upsertVehicleInsuranceDocument(transaction, { vehicleId, fileName: safeName, data, uploadedAt })
       await appendAudit(transaction, entries)
-      return { vehicle: nextVehicle, revision, fileName: safeName, uploadedAt, documentUrl }
+      return { vehicle: isGranular(user) ? granularRead.sanitizeVehicle(nextVehicle, user) : nextVehicle, revision, fileName: safeName, uploadedAt, documentUrl }
     })
     return send(res, 200, result)
   } catch (error) {
@@ -475,7 +500,7 @@ async function handleSaveState(req, res, sql, user) {
         throw error
       }
       if (!employeeCommand && !planningClick) {
-        next = normalizeStateForSave(next, current, { allowEarlyCompletion: user.roleCode === 'administrator' })
+        next = normalizeStateForSave(next, current, { allowEarlyCompletion: isGranular(user) ? canPermission(user, 'history.completeEarly') : user.roleCode === 'administrator' })
         next.employees = secureEmployees(next.employees, current.employees)
         validateState(next, current)
       }
@@ -572,7 +597,8 @@ async function handleServiceCatalog(req, res, sql, user, requestOperation) {
     const result = await require('./_lib/prepared-catalog-write.cjs').executePreparedCatalogWrite(sql, {
       snapshots: saveSnapshots, persist: persistStateCollections, audit: appendAudit,
       prepare: current => {
-        const operation = applyServiceCatalogOperation(current, { ...incoming, ...requestOperation })
+        const operation = applyServiceCatalogOperation(current, { ...endpointPolicy.catalogInput('services', current, incoming, requestOperation, user), ...requestOperation })
+        if (isGranular(user)) granularWrite.assertCatalogChange('services', current.services.find(item => String(item.id) === String(requestOperation.serviceId)), operation.service, user)
         const next = normalizeStateForSave({ ...current, services: operation.services }, current)
         next.employees = secureEmployees(next.employees, current.employees)
         validateState(next, current)
@@ -608,14 +634,15 @@ async function handleVehicles(req, res, sql, user, requestOperation) {
     const result = await require('./_lib/prepared-catalog-write.cjs').executePreparedCatalogWrite(sql, {
       snapshots: saveSnapshots, persist: persistStateCollections, audit: appendAudit,
       prepare: current => {
-        const operation = applyVehicleOperation(current, { ...incoming, ...requestOperation })
+        const operation = applyVehicleOperation(current, { ...endpointPolicy.catalogInput('vehicles', current, incoming, requestOperation, user), ...requestOperation })
+        if (isGranular(user)) granularWrite.assertCatalogChange('vehicles', current.vehicles.find(item => String(item.id) === String(requestOperation.vehicleId)), operation.vehicle, user)
         const next = normalizeStateForSave({ ...current, vehicles: operation.vehicles }, current)
         next.employees = secureEmployees(next.employees, current.employees)
         validateState(next, current)
         const persistedVehicle = operation.vehicle ? next.vehicles.find(vehicle => String(vehicle.id) === String(operation.vehicle.id)) || operation.vehicle : null
         return {
           next, entries: auditChanges(current.vehicles, next.vehicles, 'id', 'Vehículo', user),
-          response: { vehicles: next.vehicles, vehicle: persistedVehicle, outcome: operation.outcome }
+          response: { vehicles: isGranular(user) ? next.vehicles.filter(vehicle => granularRead.vehicleReadable(vehicle, user, next)).map(vehicle => granularRead.sanitizeVehicle(vehicle, user)) : next.vehicles, vehicle: persistedVehicle && isGranular(user) ? granularRead.sanitizeVehicle(persistedVehicle, user) : persistedVehicle, outcome: operation.outcome }
         }
       }
     })
@@ -635,23 +662,25 @@ function alarmCategory(record) {
 }
 
 async function handleExport(req, res, sql, user) {
+  if (isGranular(user)) user = permissionSnapshot(user)
   const month = String(req.query.month || new Date().toISOString().slice(0, 7))
   const category = String(req.query.category || 'residencial')
   const format = String(req.query.format || 'excel')
   const isRetirement = category === 'retirements'
-  const state = await require('./_lib/export-state.cjs').readApplicationExportState(sql, { month, technicianId: user.roleCode === 'technician' ? user.id : null })
+  const state = isGranular(user) ? await readState(sql) : await require('./_lib/export-state.cjs').readApplicationExportState(sql, { month, technicianId: user.roleCode === 'technician' ? user.id : null })
   const alarmService = state.services.find(service => service.code === 'alarm-installation')
   const records = state.history.filter(record => {
+    if (isGranular(user) && !granularRead.serviceExportable(record, user, state)) return false
     if (record.status !== 'Completado') return false
-    if (!record.date?.startsWith(month) || (user.roleCode === 'technician' && !record.technicianIds?.some(id => String(id) === String(user.id)))) return false
+    if (!record.date?.startsWith(month) || (!isGranular(user) && user.roleCode === 'technician' && !record.technicianIds?.some(id => String(id) === String(user.id)))) return false
     if (isRetirement) return record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo')
     const installationCategory = alarmCategory(record)
     return !record.subscriberReservation && installationCategory !== 'no-monitoreada' && (String(record.serviceId) === String(alarmService?.id) || (!record.serviceId && normalizedServiceName(record.service) === 'instalacion de alarma')) && (category === 'all' || installationCategory === category)
-  }).sort(compareReportRecords)
+  }).sort(compareReportRecords).map(record => isGranular(user) ? granularRead.sanitizeService(record, user) : record)
   const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
   const generatedAt = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
   const label = { docta: 'Docta Urbanización', 'nobu-town': 'Nobu Town', residencial: 'Residenciales', all: 'Todas las instalaciones de alarma' }[category] || 'Instalaciones de alarma'
-  const includeSubscription = !['docta', 'nobu-town'].includes(category)
+  const includeSubscription = (!isGranular(user) || canPermission(user, 'records.financial')) && !['docta', 'nobu-town'].includes(category)
   const headers = isRetirement ? ['Fecha', 'Cliente', 'Servicio', 'Dirección', 'Contacto', 'Técnicos asignados'] : ['Fecha', 'Cliente', 'Dirección', 'Contacto', 'Técnicos asignados', ...(includeSubscription ? subscriptionHeaders : [])]
   const rows = records.map(record => isRetirement ? [record.date, retirementClientLabel(record), record.service, record.address, record.phone, record.technicians?.join(' / ')] : [record.date, record.client, record.address, record.phone, record.technicians?.join(' / '), ...(includeSubscription ? subscriptionColumns(record, user.roleCode, alarmCategory(record)) : [])])
   const title = isRetirement ? 'Bajas de servicio' : `Altas de servicio · ${label}`
@@ -681,6 +710,7 @@ async function handleTechnicianStart(req, res, sql, user) {
       const currentRevision = Number(revisionRows[0]?.value || 0)
       const rows = await transaction`select data from pignus_work_history where id = ${String(recordId || '')} for update`
       const previous = rows[0]?.data
+      if (isGranular(user)) endpointPolicy.assertTechnicalAction(user, previous, await readState(transaction), 'start')
       const next = startTechnicianServiceRecord(previous, user)
       if (next === previous) return { record: previous, revision: currentRevision }
       const currentState = await readState(transaction)
@@ -690,7 +720,7 @@ async function handleTechnicianStart(req, res, sql, user) {
       await appendAudit(transaction, [auditEntry(user, 'Inició servicio técnico', 'Servicio / historial', String(next.id), previous, next)])
       return { record: next, revision: currentRevision + 1 }
     })
-    return send(res, 200, { record: technicianSafeRecord(result.record), revision: result.revision })
+    return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(result.record, user) : technicianSafeRecord(result.record), revision: result.revision })
   } catch (error) {
     const databaseBusy = error.code === '55P03' || error.code === '57014'
     return send(res, databaseBusy ? 503 : (error.statusCode || 400), { error: databaseBusy ? 'La base de datos está ocupada. Intentá nuevamente.' : (error.message || 'No se pudo iniciar el servicio.') })
@@ -732,6 +762,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
       let vehicleChange = null
       let photo = null
       const currentState = await readState(transaction)
+      endpointPolicy.assertTechnicalAction(user, record, currentState, type)
       require('./_lib/service-journeys.cjs').assertJourneyReport(record, type, currentState.history)
       const workingState = structuredClone(currentState)
       if (completingVehicleControl) {
@@ -778,7 +809,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
       await appendAudit(transaction, entries)
       return next
     })
-    return send(res, 200, { record: technicianSafeRecord(updated) })
+    return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(updated, user) : technicianSafeRecord(updated) })
   } catch (error) {
     const databaseBusy = error.code === '55P03' || error.code === '57014'
     return send(res, databaseBusy ? 503 : (error.statusCode || 400), { error: databaseBusy ? 'La base de datos está ocupada. El sistema volverá a intentarlo automáticamente.' : (error.message || 'No se pudo informar el estado.') })
@@ -796,24 +827,27 @@ async function clearDailyAgenda(sql, user) {
     const date = new Date().toISOString().slice(0, 10)
     const teamId = `team-${crypto.createHash('sha256').update(`${date.slice(0, 7)}:0`).digest('hex').slice(0, 20)}`
     const next = { ...previous, date, teams: [{ teamId, memberIds: [], members: [], tasks: [] }] }
+    if (isGranular(user)) granularWrite.assertAgendaChange(previous, next, user, current)
     await persistStateCollections(transaction, current, { ...current, agenda: next }, currentRevision + 1)
     await appendAudit(transaction, [auditEntry(user, 'Limpió', 'Agenda del día', 'agenda-diaria', previous, next)])
     return currentRevision + 1
   })
 }
 
-function managedHistoryRecord(current, proposed, user, now) {
+function managedHistoryRecord(current, proposed, user, now, accessState) {
+  proposed = endpointPolicy.restoreServiceProposal(current, proposed, user, accessState)
+  if (isGranular(user)) granularWrite.assertServiceChange(current, { ...current, ...proposed }, user, accessState)
   require('./_lib/completed-service-policy.cjs').assertCompletedServiceChange(current, proposed)
   require('./_lib/service-confirmation.cjs').assertServiceConfirmationChange(current, { ...current, ...proposed }, now)
   const allowedStatuses = ['Pendiente', 'Completado', 'Avance registrado', 'Cancelado', 'Reprogramado', 'Requiere revisión']
   if (!allowedStatuses.includes(proposed.status || 'Pendiente')) throw new Error('El estado solicitado no es válido.')
   let next = { ...current, ...proposed, id: current.id, status: proposed.status || 'Pendiente' }
   if (next.status === 'Avance registrado' && current.status !== 'Avance registrado') {
-    if (user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
+    if (isGranular(user) ? !canPermission(user, 'history.completeEarly') : user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
     next = { ...next, journeyClosedAt: now }
   } else if (next.status !== 'Avance registrado') delete next.journeyClosedAt
   if (next.status === 'Completado' && current.status !== 'Completado') {
-    if (user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
+    if (isGranular(user) ? !canPermission(user, 'history.completeEarly') : user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
     next = { ...next, completedAt: next.completedAt || now }
   } else if (next.status !== 'Completado') {
     const { completedAt: _discardedCompletion, ...withoutCompletion } = next
@@ -823,7 +857,7 @@ function managedHistoryRecord(current, proposed, user, now) {
 }
 
 async function handleCategoryCorrection(req, res, sql, user) {
-  if (user.roleCode !== 'administrator' || !userCan(user, 'historyManage')) return send(res, 403, { error: 'Sólo Administración puede corregir categorías.' })
+  if (!isGranular(user) && (user.roleCode !== 'administrator' || !userCan(user, 'historyManage'))) return send(res, 403, { error: 'Sólo Administración puede corregir categorías.' })
   try {
     const result = await sql.begin(async transaction => {
       await transaction`set local lock_timeout = '5s'`
@@ -834,6 +868,7 @@ async function handleCategoryCorrection(req, res, sql, user) {
       const current = await readState(transaction)
       const { correctServiceCategory } = await import('../src/domain/history/category-correction.mjs')
       const correction = require('./_lib/category-correction.cjs').prepareCategoryCorrection(current, requestBody(req), user, correctServiceCategory)
+      endpointPolicy.assertServiceAccess(user, correction.before, current, { write: true, permission: 'history.category' })
       await persistStateCollections(transaction, current, correction.state, revision, undefined, correction.policyOptions)
       await appendAudit(transaction, [auditEntry(user, 'Corrigió categoría', 'Servicio / historial', String(correction.before.id), correction.before, correction.after), ...correction.conversions.map(({ before, after }) => auditEntry(user, after.kind === 'subscriber' ? 'Restituyó abonado al corregir retiro' : 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after))])
       return { revision, state: correction.state }
@@ -846,7 +881,7 @@ async function handleCategoryCorrection(req, res, sql, user) {
 }
 
 async function handleHistoryRecordUpdate(req, res, sql, user, recordId) {
-  if (!userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
+  if (!isGranular(user) && !userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
   const { base, record: proposed } = requestBody(req)
   if (!base || !proposed || String(base.id || '') !== String(recordId) || String(proposed.id || '') !== String(recordId)) return send(res, 400, { error: 'El servicio solicitado no es válido.' })
   try {
@@ -859,11 +894,11 @@ async function handleHistoryRecordUpdate(req, res, sql, user, recordId) {
       const rows = await transaction`select data from pignus_work_history where id = ${String(recordId)} for update`
       const current = rows[0]?.data
       if (!current) { const error = new Error('El servicio ya no existe.'); error.statusCode = 404; throw error }
-      if (JSON.stringify(current) !== JSON.stringify(base)) { const error = new Error('Este servicio cambió desde otra sesión. Recargá la página y revisá su versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
+      if (!endpointPolicy.recordBaseMatches(current, base, user)) { const error = new Error('Este servicio cambió desde otra sesión. Recargá la página y revisá su versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
       const now = new Date().toISOString()
-      const next = managedHistoryRecord(current, proposed, user, now)
       await transaction`select data from pignus_agendas where id = 'current' for update`
       const currentState = await readState(transaction)
+      const next = managedHistoryRecord(current, proposed, user, now, currentState)
       let nextState = structuredClone(currentState)
       nextState.history = nextState.history.map(item => String(item.id) === String(recordId) ? next : item)
       if (nextState.agenda) nextState.agenda = synchronizeAgendaHistoryRecord(nextState.agenda, current, next)
@@ -887,7 +922,7 @@ async function handleHistoryRecordUpdate(req, res, sql, user, recordId) {
 }
 
 async function handleHistoryRecordsBulkUpdate(req, res, sql, user) {
-  if (!userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
+  if (!isGranular(user) && !userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
   const updates = requestBody(req).updates
   if (!Array.isArray(updates) || !updates.length || updates.length > 100) return send(res, 400, { error: 'Seleccioná entre 1 y 100 servicios válidos.' })
   const identifiers = updates.map(update => String(update?.record?.id || ''))
@@ -907,7 +942,7 @@ async function handleHistoryRecordsBulkUpdate(req, res, sql, user) {
       }
       for (const update of updates) {
         const current = currentById.get(String(update.record.id))
-        if (JSON.stringify(current) !== JSON.stringify(update.base)) { const error = new Error('Uno de los servicios cambió desde otra sesión. Recargá la página y revisá la selección.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
+        if (!endpointPolicy.recordBaseMatches(current, update.base, user)) { const error = new Error('Uno de los servicios cambió desde otra sesión. Recargá la página y revisá la selección.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
       }
       await transaction`select data from pignus_agendas where id = 'current' for update`
       const currentState = await readState(transaction)
@@ -917,7 +952,7 @@ async function handleHistoryRecordsBulkUpdate(req, res, sql, user) {
       for (const update of updates) {
         const recordId = String(update.record.id)
         const current = currentById.get(recordId)
-        const next = managedHistoryRecord(current, update.record, user, now)
+        const next = managedHistoryRecord(current, update.record, user, now, currentState)
         nextState.history = nextState.history.map(item => String(item.id) === recordId ? next : item)
         if (nextState.agenda) nextState.agenda = synchronizeAgendaHistoryRecord(nextState.agenda, current, next)
         entries.push(auditEntry(user, 'Modificó', 'Servicio / historial', recordId, current, next))
@@ -937,7 +972,7 @@ async function handleHistoryRecordsBulkUpdate(req, res, sql, user) {
 }
 
 async function handleHistoryRecordRemoval(req, res, sql, user, recordId) {
-  if (!userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para eliminar servicios del historial.' })
+  if (!isGranular(user) && !userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para eliminar servicios del historial.' })
   const { base } = requestBody(req)
   if (!base || String(base.id || '') !== String(recordId)) return send(res, 400, { error: 'El servicio solicitado no es válido.' })
   try {
@@ -952,10 +987,11 @@ async function handleHistoryRecordRemoval(req, res, sql, user, recordId) {
       const currentState = await readState(transaction)
       const current = (currentState.history || []).find(record => String(record.id) === String(recordId))
       if (!current) return { revision: currentRevision, state: currentState, deleted: null }
+      if (isGranular(user)) granularWrite.assertServiceChange(current, null, user, currentState)
       if (current.vehicleControl) {
-        if (user.roleCode !== 'administrator') { const error = new Error('Sólo el rol Administrador puede eliminar un control vehicular.'); error.statusCode = 403; throw error }
+        if (isGranular(user) ? !canPermission(user, 'vehicle.controls.delete') : user.roleCode !== 'administrator') { const error = new Error('No tenés permiso para eliminar un control vehicular.'); error.statusCode = 403; throw error }
         if (!base.vehicleControl) { const error = new Error('El control vehicular solicitado no coincide con la versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
-      } else if (JSON.stringify(current) !== JSON.stringify(base)) {
+      } else if (!endpointPolicy.recordBaseMatches(current, base, user)) {
         const error = new Error('Este servicio cambió desde otra sesión. Recargá la página y revisá su versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error
       }
       const removed = removeHistoryRecord(currentState, recordId)
@@ -985,6 +1021,7 @@ async function handleServiceAdvance(req, res, sql, user, decision = '') {
       const currentRevision = Number(revisionRows[0]?.value || 0)
       const rows = await transaction`select data from pignus_work_history where id = ${String(recordId || '')} for update`
       const previous = rows[0]?.data
+      if (isGranular(user) && !administratorDecision) endpointPolicy.assertTechnicalAction(user, previous, await readState(transaction), 'advance')
       const next = administratorDecision ? resolveServiceAdvance(previous, user, decision) : startServiceEarly(previous, user)
       if (next === previous) return { record: previous, revision: await readRevision(transaction) }
       await transaction`select data from pignus_agendas where id = 'current' for update`
@@ -997,7 +1034,7 @@ async function handleServiceAdvance(req, res, sql, user, decision = '') {
       await appendAudit(transaction, [auditEntry(user, action, 'Servicio / historial', String(next.id), previous, next)])
       return { record: next, revision: currentRevision + 1 }
     })
-    return send(res, 200, { record: user.roleCode === 'technician' ? technicianSafeRecord(result.record) : result.record, revision: result.revision })
+    return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(result.record, user) : user.roleCode === 'technician' ? technicianSafeRecord(result.record) : result.record, revision: result.revision })
   } catch (error) {
     const databaseBusy = error.code === '55P03' || error.code === '57014'
     return send(res, databaseBusy ? 503 : (error.statusCode || 400), { error: databaseBusy ? 'La base de datos está ocupada. Intentá nuevamente.' : (error.message || 'No se pudo procesar la solicitud de adelanto.') })
@@ -1011,7 +1048,7 @@ async function handleClearAgenda(req, res, sql, user) {
 }
 
 async function handleCollectionManagement(req, res, sql, user) {
-  if (user.roleCode === 'technician' || !userCan(user, 'collectionsManage')) return send(res, 403, { error: 'No tenés permiso para gestionar cobranzas.' })
+  if ((!isGranular(user) && user.roleCode === 'technician') || !userCan(user, 'collectionsManage')) return send(res, 403, { error: 'No tenés permiso para gestionar cobranzas.' })
   try {
     const input = requestBody(req)
     const { manageCollection } = await import('../src/domain/collections/collections.mjs')
@@ -1021,6 +1058,7 @@ async function handleCollectionManagement(req, res, sql, user) {
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
       const locked = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const current = await readState(transaction)
+      endpointPolicy.assertCollectionAction(user, current, input)
       const correction = manageCollection(current, input, user)
       const revision = Number(locked[0]?.value || 0) + 1
       await persistStateCollections(transaction, current, correction.state, revision, undefined, { collectionCorrectionIds: correction.recordIds })
@@ -1035,17 +1073,18 @@ async function handleCollectionManagement(req, res, sql, user) {
 }
 
 async function handleSubscriptionCorrection(req, res, sql, user) {
-  if (user.roleCode === 'technician' || !userCan(user, 'accountsEdit')) return send(res, 403, { error: 'No tenés permiso para corregir datos del abono.' })
+  if ((!isGranular(user) && user.roleCode === 'technician') || !userCan(user, 'accountsEdit')) return send(res, 403, { error: 'No tenés permiso para corregir datos del abono.' })
   try {
     const input = requestBody(req)
-    const { correctSubscription } = await import('../src/domain/customers/subscription-correction.mjs')
+    const { correctSubscription, subscriptionCorrectionBase } = await import('../src/domain/customers/subscription-correction.mjs')
     const result = await sql.begin(async transaction => {
       await transaction`set local lock_timeout = '5s'`
       await transaction`set local statement_timeout = '25s'`
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
       const locked = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const current = await readState(transaction)
-      const correction = correctSubscription(current, input, user)
+      const correction = correctSubscription(current, endpointPolicy.subscriptionInput(current, input, user, subscriptionCorrectionBase), user)
+      endpointPolicy.assertServiceAccess(user, correction.before, current, { write: true, permission: 'subscriptions.correct' })
       const revision = Number(locked[0]?.value || 0) + 1
       await persistStateCollections(transaction, current, correction.state, revision, undefined, { subscriptionCorrectionId: correction.before.id })
       await appendAudit(transaction, [auditEntry(user, 'Corrigió datos del abono', 'Servicio / historial', String(correction.before.id), correction.before, correction.after)])
@@ -1060,13 +1099,13 @@ async function handleSubscriptionCorrection(req, res, sql, user) {
 
 async function handleCustomerImport(req, res, sql, user) {
   if (req.method === 'GET') {
-    if (user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede consultar importaciones reversibles.' })
+    if (!isGranular(user) && user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede consultar importaciones reversibles.' })
     const rows = await sql`select value from pignus_preferences where key = ${CUSTOMER_IMPORT_BACKUP_KEY}`
     return send(res, 200, { canUndo: Boolean(rows[0]?.value) })
   }
   const undo = req.method === 'DELETE'
   let responseMode = ''
-  if (undo ? user.roleCode !== 'administrator' : !userCan(user, 'accountsImport')) return send(res, 403, { error: undo ? 'Solamente un administrador puede deshacer una importación.' : 'No tenés permiso para importar abonados.' })
+  if (!isGranular(user) && (undo ? user.roleCode !== 'administrator' : !userCan(user, 'accountsImport'))) return send(res, 403, { error: undo ? 'Solamente un administrador puede deshacer una importación.' : 'No tenés permiso para importar abonados.' })
   try {
     const result = await sql.begin(async transaction => {
       await transaction`set local lock_timeout = '10s'`
@@ -1090,6 +1129,7 @@ async function handleCustomerImport(req, res, sql, user) {
         if (!Array.isArray(body.customers)) throw new Error('La importación no contiene una lista válida de abonados.')
         nextCustomers = preserveCustomerTrackingFlags(currentCustomers, normalizeImportedCustomers(body.customers))
       }
+      endpointPolicy.assertImportScope(user, currentState, nextCustomers)
       validateImportedCustomers(nextCustomers)
       if (!undo) validateIncrementalCustomerImport(currentCustomers, nextCustomers)
       const changes = customerImportChanges(currentCustomers, nextCustomers)
@@ -1106,7 +1146,7 @@ async function handleCustomerImport(req, res, sql, user) {
       // no interpretar una respuesta compacta como una colección vacía.
       return responseMode === 'compact-v1' && !undo
         ? { revision: nextRevision, customerCount: nextCustomers.length, canUndo: true }
-        : { revision: nextRevision, customers: nextCustomers, canUndo: !undo }
+        : { revision: nextRevision, customers: isGranular(user) ? nextCustomers.filter(customer => granularRead.customerReadable(customer, user, { ...currentState, customers: nextCustomers })).map(customer => granularRead.sanitizeCustomer(customer, user)) : nextCustomers, canUndo: !undo }
     })
     return send(res, 200, result)
   } catch (error) {
@@ -1135,6 +1175,7 @@ module.exports = async function handler(req, res) {
     }
     const session = await requireSession(req, res, sql)
     if (!session) return
+    try { endpointPolicy.assertEndpointPermission(session.user, req.method, route) } catch (error) { return send(res, error.statusCode || 403, { error: error.message, code: error.code, permission: error.permission }) }
     if (isOperator(session.user) && !operatorRouteAllowed(req.method, route)) return send(res, 403, { error: 'Operador sólo puede consultar la Agenda semanal.' })
     if (route.startsWith('/attachments/')) {
       const parts = route.split('/').slice(2).map(decodeURIComponent)
@@ -1149,10 +1190,10 @@ module.exports = async function handler(req, res) {
         const vehicles = typeof value === 'string' ? JSON.parse(value) : value
         entity = (vehicles || []).find(vehicle => String(vehicle.id) === entityId)
       }
-      try { return await require('./_lib/attachments.cjs').handleAttachments({ req, res, body: req.method === 'POST' ? requestBody(req) : null, user: session.user, scope, entityId, attachmentId, entity, store: require('./_lib/attachment-store.cjs').postgresAttachmentStore(sql) }) } catch (error) { return send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo completar la operación de adjuntos.' }) }
+      try { return await require('./_lib/attachments.cjs').handleAttachments({ req, res, body: req.method === 'POST' ? requestBody(req) : null, user: session.user, scope, entityId, attachmentId, entity, state: isGranular(session.user) ? await readState(sql) : undefined, store: require('./_lib/attachment-store.cjs').postgresAttachmentStore(sql) }) } catch (error) { return send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo completar la operación de adjuntos.' }) }
     }
     if (req.method === 'GET' && route === '/auth/session-status') {
-      return send(res, 200, { active: true, expiresAt: session.expiresAt.toISOString() })
+      return send(res, 200, { active: true, expiresAt: session.expiresAt.toISOString(), sessionUser: session.user })
     }
     if (req.method === 'POST' && route === '/auth/activity') {
       const sessionIdleTimeoutMs = sessionIdleTimeoutFor(session.user)
@@ -1163,7 +1204,7 @@ module.exports = async function handler(req, res) {
       return send(res, 200, { active: true, expiresAt: expiresAt.toISOString() })
     }
     if (route === '/auth/password-reset-requests') {
-      if (session.user.roleCode !== 'administrator') return send(res, 403, { error: 'Las solicitudes de contraseña son exclusivas del rol Administrador.' })
+      if (!isGranular(session.user) && session.user.roleCode !== 'administrator') return send(res, 403, { error: 'Las solicitudes de contraseña son exclusivas del rol Administrador.' })
       if (req.method === 'GET') return send(res, 200, { requests: await readPasswordResetRequests(sql) })
       if (req.method === 'DELETE') return await resolvePasswordResetRequest(req, res, sql, session.user)
     }
@@ -1174,11 +1215,11 @@ module.exports = async function handler(req, res) {
       const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
       const revision = await readRevision(sql)
       if (require('./_lib/conditional-technician-state.cjs').technicianStateUnchanged(req.query, revision, today)) return send(res, 200, { unchanged: true, revision, day: today })
-      const state = await readTechnicianState(sql, session.user.id, today)
-      return send(res, 200, visibleStateForUser(state, { ...session.user, roleCode: 'technician' }))
+      const state = isGranular(session.user) ? await readState(sql) : await readTechnicianState(sql, session.user.id, today)
+      return send(res, 200, require('./_lib/core.cjs').visibleTechnicianStateForUser(state, session.user))
     }
     if (req.method === 'GET' && route === '/state') {
-      const state = session.user.roleCode === 'technician'
+      const state = !isGranular(session.user) && session.user.roleCode === 'technician'
         ? await readTechnicianState(sql, session.user.id, new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date()))
         : await readState(sql)
       return send(res, 200, visibleStateForUser(state, session.user))
@@ -1201,27 +1242,27 @@ module.exports = async function handler(req, res) {
       }
     }
     if (['PUT', 'PATCH'].includes(req.method) && route === '/state') {
-      if (session.user.roleCode === 'technician' || session.user.roleCode === 'supervisor') return send(res, 403, { error: 'Este rol tiene acceso de solo lectura.' })
+      if (!isGranular(session.user) && (session.user.roleCode === 'technician' || session.user.roleCode === 'supervisor')) return send(res, 403, { error: 'Este rol tiene acceso de solo lectura.' })
       return await handleSaveState(req, res, sql, session.user)
     }
     if (req.method === 'GET' && route === '/history/export') {
-      if (session.user.roleCode === 'supervisor' || (session.user.roleCode !== 'technician' && !userCan(session.user, 'history'))) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
+      if (!isGranular(session.user) && (session.user.roleCode === 'supervisor' || (session.user.roleCode !== 'technician' && !userCan(session.user, 'history')))) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
       return await handleExport(req, res, sql, session.user)
     }
     if (req.method === 'PATCH' && route === '/history/bulk') return await handleHistoryRecordsBulkUpdate(req, res, sql, session.user)
     if (req.method === 'PATCH' && route.startsWith('/history/')) return await handleHistoryRecordUpdate(req, res, sql, session.user, decodeURIComponent(route.slice('/history/'.length)))
     if (req.method === 'DELETE' && route.startsWith('/history/')) return await handleHistoryRecordRemoval(req, res, sql, session.user, decodeURIComponent(route.slice('/history/'.length)))
     if (req.method === 'GET' && route === '/audit') {
-      if (session.user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
+      if (!isGranular(session.user) && session.user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
       const limit = Math.min(Math.max(Number(req.query.limit) || AUDIT_LOG_LIMIT, 1), AUDIT_LOG_LIMIT)
       const rows = await sql`select data from pignus_audit_log order by occurred_at desc limit ${limit}`
-      return send(res, 200, { records: rows.map(row => { const { before, after, ...summary } = row.data; return summary }) })
+      return send(res, 200, { records: rows.map(row => { const { before, after, ...summary } = row.data; return isGranular(session.user) ? granularRead.sanitizeAudit(summary, session.user) : summary }) })
     }
     if (req.method === 'GET' && route.startsWith('/audit/')) {
-      if (session.user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
+      if (!isGranular(session.user) && session.user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
       const id = decodeURIComponent(route.slice('/audit/'.length))
       const rows = await sql`select data from pignus_audit_log where id = ${id}`
-      return rows[0] ? send(res, 200, { record: rows[0].data }) : send(res, 404, { error: 'El registro de auditoría no existe.' })
+      return rows[0] ? send(res, 200, { record: isGranular(session.user) ? granularRead.sanitizeAudit(rows[0].data, session.user) : rows[0].data }) : send(res, 404, { error: 'El registro de auditoría no existe.' })
     }
     if (req.method === 'POST' && route === '/technician/start') return await handleTechnicianStart(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/technician/status') return await handleTechnicianStatus(req, res, sql, session.user)
@@ -1239,6 +1280,7 @@ module.exports = async function handler(req, res) {
     return send(res, 404, { error: 'Ruta no encontrada.' })
   } catch (error) {
     console.error('Error de API:', error)
+    if (error.statusCode >= 400 && error.statusCode < 500) return send(res, error.statusCode, { error: error.message, ...(error.code ? { code: error.code } : {}) })
     return send(res, 500, { error: 'No se pudo completar la operación.' })
   }
 }

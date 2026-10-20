@@ -70,13 +70,26 @@ test('la agenda distingue servicios sin persistir y confirma su alta en historia
   assert.match(source, /El servidor no confirmó todos los servicios en el historial\./)
 })
 
-test('la vista previa permite copiar la agenda con la misma acción del botón exterior', () => {
+test('copiar la agenda sólo exporta y no registra ni limpia planificación', async () => {
   const source = frontendSource()
-
-  assert.match(source, /const copyAgenda = \(\) => \{[\s\S]*?navigator\.clipboard\?\.writeText\(message\)[\s\S]*?return clearAgenda\(\)/)
-  assert.match(source, /<button\b[^>]*className="primary" onClick=\{copyAgenda\}><Icon name="copy" \/>Copiar agenda<\/button>/)
-  assert.match(source, /<Preview title="Vista previa de la agenda" text=\{message\} onCopy=\{copyAgenda\}/)
-  assert.match(source, /className="modal-actions preview-modal-actions"[\s\S]*?onClick=\{onCopy\}[\s\S]*?Copiar agenda/)
+  const start = source.indexOf('  const copyAgenda = async () => {')
+  const handler = source.slice(start, source.indexOf('  const previewValue', start))
+  const copied = [], notices = []
+  const vm = require('node:vm')
+  let allowed = true
+  const copy = vm.runInNewContext(handler + '\ncopyAgenda', {
+    requirePermission: key => allowed && key === 'planning.copy',
+    copyTextToClipboard: async text => { copied.push(text); return true }, message: 'agenda segura',
+    setNotice: notice => notices.push(notice),
+    registerHistory: () => { throw new Error('La exportación no debe guardar') },
+    clearAgenda: () => { throw new Error('La exportación no debe limpiar') }
+  })
+  await copy()
+  assert.deepEqual(copied, ['agenda segura'])
+  assert.match(notices[0], /copiada/)
+  allowed = false
+  await copy()
+  assert.equal(copied.length, 1)
 })
 
 test('la agenda diaria conserva la dotación semanal vigente al recuperar servicios históricos', () => {

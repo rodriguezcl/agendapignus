@@ -9,6 +9,7 @@ test('ignora controles y espacios vacíos, y conserva la numeración visual', ()
   const code = source.slice(start, source.indexOf('  const clearAgenda', start))
   let errors = []
   const validate = vm.runInNewContext(code + '\nvalidateAgenda', {
+    can: () => true, canEditTask: () => true, historyRecordForTask: () => null,
     teams: [], date: '2099-09-18', history: [],
     taskHasContent: task => Boolean(task.service), taskIsResolvedForPlanning: () => false,
     serviceForTask: () => ({}), isTrainingService: () => false, serviceCode: () => '',

@@ -32,7 +32,7 @@ export function applyStateDelta(base, delta) {
   if (!base || Number(base.revision) !== delta.baseRevision || delta.revision < delta.baseRevision) throw new Error('La respuesta no corresponde a la versión local.')
   const next = { ...base, revision: delta.revision }
   for (const [key, change] of Object.entries(delta.changes)) {
-    if (!Object.hasOwn(collections, key) && !['agenda', 'preferences'].includes(key)) throw new Error('Sección de respuesta inválida.')
+    if (!Object.hasOwn(collections, key) && !['agenda', 'preferences', 'sessionUser'].includes(key)) throw new Error('Sección de respuesta inválida.')
     if (Object.hasOwn(change, 'value')) next[key] = change.value
     else if (key === 'agenda') {
       const weekly = { ...base.agenda.weekly }

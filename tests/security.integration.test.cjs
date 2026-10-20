@@ -111,6 +111,175 @@ function upsertJson(db, table, key, record) {
   db.prepare(`INSERT OR REPLACE INTO ${table} (${key}, data) VALUES (?, ?)`).run(String(record[key]), JSON.stringify(record))
 }
 
+function seedGranularUser(db, id, keys, extraPermissions = {}) {
+  const roleId = `${id}-role`
+  upsertJson(db, 'roles', 'id', {
+    id: roleId, code: id, name: `Operador ${id}`,
+    permissions: { __catalogV2: true, ...Object.fromEntries(keys.map(key => [key, true])), ...extraPermissions }
+  })
+  upsertJson(db, 'employees', 'id', {
+    id, firstName: 'QA', lastName: id, name: `QA ${id}`, roleId, role: `Operador ${id}`,
+    email: `${id}@pignus.test`, status: 'Activo', passwordHash: passwordHash('Prueba1234')
+  })
+  return `${id}@pignus.test`
+}
+
+test('granular HTTP: operador con notas conserva datos ocultos en PUT y PATCH sin ampliar sus permisos', async () => {
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const email = seedGranularUser(db, 'qa-v2-notes', ['history.view', 'records.read', 'planning.notes'])
+  const oldOperator = JSON.parse(db.prepare('SELECT data FROM roles WHERE id = ?').get('d9d7a587-a581-44f2-88d2-bc2deb579a1e').data)
+  upsertJson(db, 'roles', 'id', { ...oldOperator, code: 'qa-legacy-operator' })
+  const granularOperator = JSON.parse(db.prepare('SELECT data FROM roles WHERE id = ?').get('qa-v2-notes-role').data)
+  upsertJson(db, 'roles', 'id', { ...granularOperator, code: 'operator' })
+  const record = {
+    id: 'qa-v2-note-record', date: '2099-01-15', time: '09:00', status: 'Pendiente',
+    client: 'PIG-9001 CLIENTE INCLUIDO QA', customerId: 'qa-customer-a', clientAccount: 'PIG-9001',
+    serviceId: 'qa-service', service: 'Service técnico', technicianIds: ['qa-tech'], technicians: ['QA Técnico'],
+    address: 'Contacto reservado', phone: '3519999999', amount: '18500', paymentMethod: 'Efectivo',
+    monthlyFee: '25000', internalNote: 'Original', technicalObservation: 'Informe reservado',
+    servicePhotoUrl: '/api/service-photo/qa-v2-note-record'
+  }
+  upsertJson(db, 'work_history', 'id', record)
+  db.close()
+  const cookie = await login(email)
+  const visible = await state(cookie)
+  const before = visible.history.find(item => item.id === record.id)
+  assert.ok(before)
+  for (const field of ['address', 'phone', 'amount', 'paymentMethod', 'monthlyFee', 'technicalObservation', 'servicePhotoUrl']) assert.equal(before[field], undefined, field)
+  before.internalNote = 'Nota editada mediante estado'
+  const put = await api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(visible) })
+  assert.equal(put.status, 200, await put.clone().text())
+  const current = (await state(cookie)).history.find(item => item.id === record.id)
+  const patch = await api(`/api/history/${record.id}`, cookie, { method: 'PATCH', body: JSON.stringify({ base: current, record: { ...current, internalNote: 'Nota editada directamente' } }) })
+  assert.equal(patch.status, 200, await patch.clone().text())
+  const savedView = (await state(cookie)).history.find(item => item.id === record.id)
+  assert.equal(savedView.internalNote, 'Nota editada directamente')
+  const hiddenField = await api(`/api/history/${record.id}`, cookie, { method: 'PATCH', body: JSON.stringify({ base: savedView, record: { ...savedView, amount: '1' } }) })
+  assert.equal(hiddenField.status, 200, 'los campos ocultos se restauran de la versión persistida')
+  const denied = await api(`/api/history/${record.id}`, cookie, { method: 'PATCH', body: JSON.stringify({ base: savedView, record: { ...savedView, detail: 'Cambio general no autorizado' } }) })
+  assert.equal(denied.status, 403, await denied.clone().text())
+  for (const [method, route] of [
+    ['GET', '/api/history/export?month=2099-01'], ['DELETE', `/api/history/${record.id}`],
+    ['GET', `/api/service-photo/${record.id}`], ['GET', `/api/attachments/service/${record.id}`],
+    ['PATCH', '/api/history/bulk'], ['POST', '/api/services'], ['GET', '/api/audit']
+  ]) {
+    const response = await api(route, cookie, { method, ...(method !== 'GET' ? { body: '{}' } : {}) })
+    assert.equal(response.status, 403, `${method} ${route}: ${await response.text()}`)
+  }
+  const persisted = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const saved = JSON.parse(persisted.prepare('SELECT data FROM work_history WHERE id = ?').get(record.id).data)
+  persisted.close()
+  assert.equal(saved.internalNote, 'Nota editada directamente')
+  for (const field of ['address', 'phone', 'amount', 'paymentMethod', 'monthlyFee', 'technicalObservation', 'servicePhotoUrl']) assert.equal(saved[field], record[field], field)
+})
+
+test('granular HTTP: documentos verifican autor real, alcance de escritura y lectura independiente', async () => {
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const email = seedGranularUser(db, 'qa-v2-files', ['history.view', 'records.read', 'service.documents.read', 'service.documents.upload', 'service.documents.deleteOwn'], { 'scope.services.write.assigned': true })
+  for (const own of [true, false]) upsertJson(db, 'work_history', 'id', {
+    id: own ? 'qa-v2-file-own' : 'qa-v2-file-outside', date: '2099-01-15', time: '09:00',
+    client: 'CLIENTE QA', serviceId: 'qa-service', service: 'Service técnico', status: 'Pendiente',
+    technicianIds: [own ? 'qa-v2-files' : 'qa-tech']
+  })
+  db.close()
+  const cookie = await login(email)
+  const admin = await login('qa-admin@pignus.test')
+  const route = '/api/attachments/service/qa-v2-file-own'
+  const file = { name: 'Referencia.pdf', data: 'data:application/pdf;base64,' + Buffer.from('%PDF-1.4\nExample').toString('base64') }
+  const foreign = await api(route, admin, { method: 'POST', body: JSON.stringify({ ...file, id: 'attachment-v2-foreign' }) })
+  assert.equal(foreign.status, 200, await foreign.clone().text())
+  const uploaded = await api(route, cookie, { method: 'POST', body: JSON.stringify({ ...file, id: 'attachment-v2-own', uploadedBy: 'qa-admin' }) })
+  assert.equal(uploaded.status, 200, await uploaded.clone().text())
+  const listed = await (await api(route, cookie)).json()
+  assert.equal(listed.attachments.find(item => item.id === 'attachment-v2-own').uploadedBy, 'qa-v2-files', 'el autor enviado por el cliente no se acepta')
+  assert.equal(listed.attachments.find(item => item.id === 'attachment-v2-own').canDelete, true)
+  assert.equal(listed.attachments.find(item => item.id === 'attachment-v2-foreign').canDelete, false)
+  assert.equal((await api(`${route}/attachment-v2-foreign`, cookie, { method: 'DELETE' })).status, 403)
+  assert.equal((await api(`${route}/attachment-v2-own`, cookie, { method: 'DELETE' })).status, 200)
+  const outside = '/api/attachments/service/qa-v2-file-outside'
+  assert.equal((await api(outside, cookie)).status, 200, 'la lectura puede ser más amplia que la escritura')
+  assert.equal((await api(outside, cookie, { method: 'POST', body: JSON.stringify({ ...file, id: 'attachment-v2-outside' }) })).status, 403)
+  const photoRoute = '/api/service-photo/qa-v2-file-own'
+  const photo = 'data:image/jpeg;base64,' + Buffer.from('foto-sintetica-v2').toString('base64')
+  assert.equal((await api(photoRoute, admin, { method: 'POST', body: JSON.stringify({ photo }) })).status, 200)
+  const foreignMetadata = await (await api(`${photoRoute}?metadata=1`, cookie)).json()
+  assert.equal(foreignMetadata.canDelete, false)
+  assert.equal((await api(photoRoute, cookie, { method: 'DELETE' })).status, 403)
+  assert.equal((await api(photoRoute, cookie, { method: 'POST', body: JSON.stringify({ photo }) })).status, 403, 'subir no permite reemplazar una foto ajena sin permiso de borrado')
+  const preservedMetadata = await (await api(`${photoRoute}?metadata=1`, cookie)).json()
+  assert.equal(preservedMetadata.uploadedBy, 'qa-admin', 'el intento rechazado conserva el autor original')
+  assert.equal((await api(photoRoute, admin, { method: 'DELETE' })).status, 200)
+  assert.equal((await api(photoRoute, cookie, { method: 'POST', body: JSON.stringify({ photo }) })).status, 200)
+  const ownMetadata = await (await api(`${photoRoute}?metadata=1`, cookie)).json()
+  assert.equal(ownMetadata.uploadedBy, 'qa-v2-files')
+  assert.equal(ownMetadata.canDelete, true)
+  assert.equal((await api(photoRoute, cookie, { method: 'POST', body: JSON.stringify({ photo }) })).status, 200, 'el permiso de borrar archivos propios permite reemplazar la foto propia')
+  const unassign = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const own = JSON.parse(unassign.prepare('SELECT data FROM work_history WHERE id = ?').get('qa-v2-file-own').data)
+  upsertJson(unassign, 'work_history', 'id', { ...own, technicianIds: ['qa-tech'] })
+  unassign.close()
+  const outsideMetadata = await (await api(`${photoRoute}?metadata=1`, cookie)).json()
+  assert.equal(outsideMetadata.canDelete, false, 'el autor pierde la facultad de borrar fuera del alcance')
+  assert.equal((await api(photoRoute, cookie, { method: 'DELETE' })).status, 403)
+})
+
+test('granular HTTP: consultar clientes no revela historial y su permiso respeta alcance CCTV', async () => {
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const reader = seedGranularUser(db, 'qa-v2-accounts', ['accounts.view', 'records.read'], { 'scope.customers.read.cctv': true })
+  const historian = seedGranularUser(db, 'qa-v2-account-history', ['accounts.view', 'records.read', 'customer.history'], { 'scope.customers.read.cctv': true })
+  db.close()
+  const basic = await state(await login(reader))
+  assert.deepEqual(basic.history, [])
+  assert.deepEqual(basic.customers.map(customer => customer.customerId), ['qa-customer-a'])
+  const history = await state(await login(historian))
+  assert.ok(history.history.some(record => record.id === 'qa-history-included'))
+  assert.equal(history.history.some(record => record.id === 'qa-history-excluded'), false)
+})
+
+test('granular HTTP: contraseña no autoriza editar identidad ni administrar cuentas protegidas', async () => {
+  const { employeeOperations } = await import('../src/features/state/application/employee-operations.mjs')
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const email = seedGranularUser(db, 'qa-v2-password', ['employees.view', 'employees.password'])
+  db.close()
+  const cookie = await login(email)
+  const before = await state(cookie)
+  const target = before.employees.find(employee => employee.id === 'qa-tech')
+  assert.ok(target)
+  const sendEmployee = (base, record) => api('/api/state', cookie, { method: 'PATCH', body: JSON.stringify({ revision: before.revision, operations: employeeOperations(base, record) }) })
+  const rename = await sendEmployee(target, { ...target, name: 'Nombre inyectado' })
+  assert.equal(rename.status, 403, await rename.clone().text())
+  const administrator = before.employees.find(employee => employee.id === 'qa-admin')
+  const protectedPassword = await sendEmployee(administrator, { ...administrator, password: 'Nueva12345' })
+  assert.equal(protectedPassword.status, 403, await protectedPassword.clone().text())
+  const allowed = await sendEmployee(target, { ...target, password: 'Nueva12345' })
+  assert.equal(allowed.status, 200, await allowed.clone().text())
+  const verification = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const saved = JSON.parse(verification.prepare('SELECT data FROM employees WHERE id = ?').get('qa-tech').data)
+  verification.close()
+  const [salt, hash] = saved.passwordHash.split(':')
+  assert.equal(crypto.scryptSync('Nueva12345', salt, 64).toString('hex'), hash)
+  assert.equal(saved.name, target.name)
+  assert.equal(saved.roleId, target.roleId)
+})
+
+test('granular HTTP: ningún cambio de estado deja el sistema sin administrador activo', async () => {
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const administrator = JSON.parse(db.prepare('SELECT data FROM roles WHERE id = ?').get('1').data)
+  upsertJson(db, 'roles', 'id', { ...administrator, permissions: { __catalogV2: true } })
+  db.close()
+  const cookie = await login('qa-admin@pignus.test')
+  const before = await state(cookie)
+  const secondaryInactive = { ...before, employees: before.employees.map(employee => employee.id === 'qa-admin-secondary' ? { ...employee, status: 'Inactivo' } : employee) }
+  const allowed = await api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(secondaryInactive) })
+  assert.equal(allowed.status, 200, await allowed.clone().text())
+  const oneAdministrator = await state(cookie)
+  const noAdministrator = { ...oneAdministrator, employees: oneAdministrator.employees.map(employee => employee.id === 'qa-admin' ? { ...employee, status: 'Inactivo' } : employee) }
+  const denied = await api('/api/state', cookie, { method: 'PUT', body: JSON.stringify(noAdministrator) })
+  assert.equal(denied.status, 403, await denied.clone().text())
+  assert.match((await denied.json()).error, /administrador activo/)
+  assert.equal((await state(cookie)).employees.find(employee => employee.id === 'qa-admin').status, 'Activo')
+})
+
 function createFixtureDatabase(databasePath) {
   const db = new DatabaseSync(databasePath)
   db.exec(`
@@ -638,8 +807,15 @@ test('el último ingreso invalida cualquier sesión anterior del mismo correo', 
   let statusResponse = await api('/api/auth/session-status', firstCookie)
   assert.equal(statusResponse.status, 200)
   let statusPayload = await statusResponse.json()
-  assert.deepEqual(Object.keys(statusPayload).sort(), ['active', 'expiresAt'])
+  assert.deepEqual(Object.keys(statusPayload).sort(), ['active', 'expiresAt', 'sessionUser'])
   assert.equal(statusPayload.active, true)
+  const ownMetadata = statusPayload.sessionUser
+  assert.equal(ownMetadata.id, 'qa-tech')
+  assert.equal(ownMetadata.email, 'qa-tech@pignus.test')
+  assert.equal(ownMetadata.roleCode, 'technician')
+  assert.equal(typeof ownMetadata.permissions, 'object')
+  assert.deepEqual(Object.keys(ownMetadata).sort(), ['email', 'id', 'name', 'permissions', 'role', 'roleCode', 'roleId', 'technicalEnabled'])
+  for (const key of ['password', 'passwordHash', 'sessionToken', 'token']) assert.equal(Object.hasOwn(ownMetadata, key), false)
 
   const activityResponse = await api('/api/auth/activity', firstCookie, { method: 'POST' })
   assert.equal(activityResponse.status, 200)
@@ -655,6 +831,7 @@ test('el último ingreso invalida cualquier sesión anterior del mismo correo', 
   statusResponse = await api('/api/auth/session-status', secondCookie)
   statusPayload = await statusResponse.json()
   assert.equal(statusPayload.active, true)
+  assert.deepEqual(statusPayload.sessionUser, ownMetadata)
 })
 
 test('el ingreso entrega el estado y la recuperación por F5 valida primero la sesión de forma liviana', async () => {
@@ -1251,7 +1428,7 @@ test('la importación requiere permiso, pide una revisión vigente y el administ
   assert.equal(response.status, 200, await response.clone().text())
   assert.equal((await response.json()).canUndo, false)
   response = await api('/api/customers/import', administratorCookie, { method: 'POST', body: JSON.stringify({ revision: before.revision, customers: [] }) })
-  assert.equal(response.status, 409)
+  assert.equal(response.status, 409, await response.clone().text())
   assert.match((await response.json()).error, /no puede eliminar abonados ni clientes existentes/)
   assert.equal((await state(administratorCookie)).customers.length, before.customers.length)
   const importedCustomer = { customerId: 'qa-import-reversible', kind: 'subscriber', account: 'PIG-999999', name: 'IMPORTACIÓN REVERSIBLE QA', street: 'Calle QA 999', address: 'Calle QA 999', locality: 'Córdoba', province: 'Córdoba', phone: '3519999999', type: 'Residencial', fields: {} }

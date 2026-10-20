@@ -1,4 +1,7 @@
 import { normalizeServiceName } from '../shared/normalization.mjs'
+import permissionPolicy from '../../../api/_lib/permission-catalog.cjs'
+export const { CATALOG, MODULES, BY_ID, VERSION_KEY, SCOPE_KEYS, ALIASES, isGranular, toGranularPermissions, readScope, writeScope, hasAnyWrite, dependencyReason, normalizePermissions, togglePermission } = permissionPolicy
+export const canPermission = permissionPolicy.can
 
 // Single permission catalogue used by navigation and role administration.
 export const MODULE_PERMISSIONS = [
@@ -34,7 +37,7 @@ export const DEFAULT_FEATURE_PERMISSIONS = Object.fromEntries(FEATURE_PERMISSION
 
 export const normalizeRoleName = normalizeServiceName
 
-export const roleCode = role => normalizeRoleName(role?.name) === 'operador' ? 'operator' : normalizeRoleName(role?.name) === 'supervisor' ? 'supervisor' : role?.code || ({
+export const roleCode = role => isGranular(role) ? permissionPolicy.roleCode(role) : normalizeRoleName(role?.name) === 'operador' ? 'operator' : normalizeRoleName(role?.name) === 'supervisor' ? 'supervisor' : role?.code || ({
   administrador: 'administrator',
   tecnico: 'technician',
   coordinador: 'coordinator',
@@ -43,6 +46,7 @@ export const roleCode = role => normalizeRoleName(role?.name) === 'operador' ? '
 }[normalizeRoleName(role?.name)] || `role-${role?.id}`)
 
 export const resolvedRolePermissions = role => {
+  if (isGranular(role)) return { ...toGranularPermissions(role), ...permissionPolicy.permissionsWithAliases(role) }
   const code = roleCode(role)
   const explicit = role?.permissions || {}
   const resolved = { ...DEFAULT_MODULE_PERMISSIONS, ...DEFAULT_FEATURE_PERMISSIONS, ...explicit }

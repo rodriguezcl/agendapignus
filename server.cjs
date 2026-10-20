@@ -30,6 +30,10 @@ const { startServiceEarly, resolveServiceAdvance, synchronizeAgendaAdvance } = r
 const { startTechnicianServiceRecord, assertTechnicianServiceStarted } = require('./api/_lib/technician-service-start.cjs')
 const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
 const { canPerformTechnicalServices } = require('./api/_lib/technical-capability.cjs')
+const { isGranular, can: canPermission, permissionSnapshot } = require('./api/_lib/permission-catalog.cjs')
+const granularRead = require('./api/_lib/granular-read-policy.cjs')
+const granularWrite = require('./api/_lib/granular-write-policy.cjs')
+const endpointPolicy = require('./api/_lib/endpoint-policy.cjs')
 const { customerImportChanges, normalizeImportedCustomers, preserveCustomerTrackingFlags, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('./api/_lib/customer-import.cjs')
 const { concurrentStateChanged, mergeConcurrentState } = require('./api/_lib/state-merge.cjs')
 const { logStateConcurrencyEvent } = require('./api/_lib/concurrency-observability.cjs')
@@ -794,9 +798,15 @@ function readTechnicianState(user) {
 }
 
 function readStateForUser(user) {
-  if (isOperator(user)) return operatorState(readState())
-  if (user.roleCode === 'technician') return readTechnicianState(user)
   const state = readState()
+  const sessionUser = require('./api/_lib/core.cjs').stateSessionUser(state, user)
+  return { ...localStateProjection(state, sessionUser), sessionUser }
+}
+
+function localStateProjection(state, user) {
+  if (require('./api/_lib/permission-catalog.cjs').isGranular(user)) return require('./api/_lib/granular-read-policy.cjs').granularVisibleState(state, user)
+  if (isOperator(user)) return operatorState(state)
+  if (user.roleCode === 'technician') return readTechnicianState(user)
   const { reviews: retiredReviews, ...visibleState } = state
   if (user.roleCode === 'administrator') return { ...visibleState, services: ensureVehicleControlService(state.services) }
   if (user.roleCode === 'supervisor' || normalizedRoleName(user.role) === 'supervisor') {
@@ -884,6 +894,7 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
 // sobre colecciones para las que el rol autenticado no tiene permiso.
 function authorizedIncomingState(state, user) {
   const current = readState()
+  if (require('./api/_lib/permission-catalog.cjs').isGranular(user)) return require('./api/_lib/granular-write-policy.cjs').authorizeGranularState(state, current, user)
   const administrator = user?.roleCode === 'administrator'
   const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
   assertVehicleControlOmissionAuthorized(state, current, user)
@@ -966,6 +977,7 @@ function replaceRows(table, records, key, previous = null) {
 
 /** Guarda todas las entidades dentro de una transacción para evitar estados parciales. */
 function validateState(state, previousState = null) {
+  granularWrite.validateGranularRoles(state || {}, previousState)
   require('./api/_lib/completed-service-policy.cjs').assertCompletedServices(state, previousState)
   require('./api/_lib/journey-identity.cjs').synchronizeJourneyIdentity(state, previousState)
   require('./api/_lib/service-journeys.cjs').validateServiceJourneys(state, previousState)
@@ -1128,7 +1140,9 @@ function stampStateServiceTrace(state, previousAgenda, previousHistory, user) {
   return { ...state, agenda: { ...agenda, teams: stampTeams(agenda.teams), weekly }, history: (state.history || []).map(stamp) }
 }
 
-function managedHistoryRecord(current, proposed, user, now = new Date().toISOString()) {
+function managedHistoryRecord(current, proposed, user, now = new Date().toISOString(), accessState) {
+  proposed = endpointPolicy.restoreServiceProposal(current, proposed, user, accessState)
+  if (isGranular(user)) granularWrite.assertServiceChange(current, { ...current, ...proposed }, user, accessState)
   require('./api/_lib/completed-service-policy.cjs').assertCompletedServiceChange(current, proposed)
   if (current.serviceJourney) {
     const root = db.prepare('SELECT data FROM work_history WHERE id = ?').get(String(current.serviceJourney.id))
@@ -1139,11 +1153,11 @@ function managedHistoryRecord(current, proposed, user, now = new Date().toISOStr
   if (!allowedStatuses.includes(proposed.status || 'Pendiente')) throw new Error('El estado solicitado no es válido.')
   let next = { ...current, ...proposed, id: current.id, status: proposed.status || 'Pendiente' }
   if (next.status === 'Avance registrado' && current.status !== 'Avance registrado') {
-    if (user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
+    if (isGranular(user) ? !canPermission(user, 'history.completeEarly') : user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
     next = { ...next, journeyClosedAt: now }
   } else if (next.status !== 'Avance registrado') delete next.journeyClosedAt
   if (next.status === 'Completado' && current.status !== 'Completado') {
-    if (user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
+    if (isGranular(user) ? !canPermission(user, 'history.completeEarly') : user.roleCode !== 'administrator') assertServiceCanBeCompleted(next, now)
     next = { ...next, completedAt: next.completedAt || now }
   } else if (next.status !== 'Completado') {
     const { completedAt: _discardedCompletion, ...withoutCompletion } = next
@@ -1286,7 +1300,7 @@ function saveState(state, user) {
     return { ...base, status: base.status || 'Pendiente', teamId: base.teamId ?? (teamIndex >= 0 ? stableTeamId(String(base.date || '').slice(0, 7), teamIndex) : null), technicianIds: technicians.map(employee => employee.id), technicians: technicians.map(employee => employee.name) }
   }
   const previousHistory = previousState.history
-  const normalizedIncomingHistory = normalizeHistoryCompletionTimes((state.history || []).map(normalizeHistoryRecord), previousHistory, new Date().toISOString(), { allowEarlyCompletion: user.roleCode === 'administrator' })
+  const normalizedIncomingHistory = normalizeHistoryCompletionTimes((state.history || []).map(normalizeHistoryRecord), previousHistory, new Date().toISOString(), { allowEarlyCompletion: isGranular(user) ? canPermission(user, 'history.completeEarly') : user.roleCode === 'administrator' })
   state = { ...state, roles: normalizedRoles, employees: normalizedEmployees, services: normalizedServices, vehicles: normalizedVehicles, customers: normalizedCustomers, history: normalizedIncomingHistory, agenda: { ...incomingAgenda, teams: normalizeTeams(incomingAgenda.teams, String(incomingAgenda.date || '').slice(0, 7)), weekly: normalizedWeekly } }
   const previousAgenda = previousState.agenda || {}
   state = stampStateServiceTrace(state, previousAgenda, previousHistory, user)
@@ -1357,7 +1371,7 @@ function serviceOperationForRequest(method, pathname) {
 
 function saveServiceCatalogOperation(input, requestOperation, user) {
   const current = readState()
-  const operation = applyServiceCatalogOperation(current, { ...input, ...requestOperation })
+  const operation = applyServiceCatalogOperation(current, { ...endpointPolicy.catalogInput('services', current, input, requestOperation, user), ...requestOperation })
   const result = saveState({ ...current, services: operation.services, revision: current.revision, base: { services: current.services } }, user)
   const persisted = readState()
   return {
@@ -1379,13 +1393,14 @@ function vehicleOperationForRequest(method, pathname) {
 
 function saveVehicleOperation(input, requestOperation, user) {
   const current = readState()
-  const operation = applyVehicleOperation(current, { ...input, ...requestOperation })
+  const operation = applyVehicleOperation(current, { ...endpointPolicy.catalogInput('vehicles', current, input, requestOperation, user), ...requestOperation })
   const result = saveState({ ...current, vehicles: operation.vehicles, revision: current.revision, base: { vehicles: current.vehicles } }, user)
   const persisted = readState()
+  const visibleVehicles = isGranular(user) ? granularRead.granularVisibleState(persisted, user).vehicles : persisted.vehicles
   return {
     revision: result.revision,
-    vehicles: persisted.vehicles,
-    vehicle: operation.vehicle ? persisted.vehicles.find(vehicle => String(vehicle.id) === String(operation.vehicle.id)) || operation.vehicle : null,
+    vehicles: visibleVehicles,
+    vehicle: operation.vehicle ? visibleVehicles.find(vehicle => String(vehicle.id) === String(operation.vehicle.id)) || (isGranular(user) ? granularRead.sanitizeVehicle(operation.vehicle, user) : operation.vehicle) : null,
     outcome: operation.outcome
   }
 }
@@ -1477,7 +1492,7 @@ function sessionUser(req) {
     sessions.delete(token)
     return null
   }
-  const user = { id: employee.id, name: employee.name, email: employee.email, roleId: role.id, roleCode: normalizedRoleName(role.name) === 'operador' ? 'operator' : normalizedRoleName(role.name) === 'supervisor' ? 'supervisor' : role.code || legacyRoleCode(role), role: role.name, technicalEnabled: employee.technicalEnabled === true, permissions: role.permissions || {} }
+  const user = require('./api/_lib/core.cjs').userForEmployee(employee, [role])
   session.user = user
   return user
 }
@@ -1497,6 +1512,10 @@ function requireSession(req, res) {
   }
   if (isOperator(user) && !operatorRouteAllowed(req.method, new URL(req.url, 'http://localhost').pathname.replace(/^\/api/, ''))) {
     send(res, 403, { error: 'Operador sólo puede consultar la Agenda semanal.' })
+    return null
+  }
+  try { endpointPolicy.assertEndpointPermission(user, req.method, new URL(req.url, 'http://localhost').pathname.replace(/^\/api/, '')) } catch (error) {
+    send(res, error.statusCode || 403, { error: error.message, code: error.code, permission: error.permission })
     return null
   }
   return user
@@ -1557,6 +1576,7 @@ function clearDailyAgenda(user) {
     date,
     teams: [{ teamId: stableTeamId(date.slice(0, 7), 0), memberIds: [], members: [], tasks: [] }]
   }
+  if (isGranular(user)) granularWrite.assertAgendaChange(previous, next, user, readState())
   const revision = currentStateRevision() + 1
   db.exec('BEGIN')
   try {
@@ -1572,18 +1592,21 @@ function clearDailyAgenda(user) {
 }
 
 /** Genera el reporte Excel compatible solicitado por gerencia, filtrado por ubicación. */
-function exportHistory(res, month, category, technicianId = null, format = 'excel') {
+function exportHistory(res, month, category, technicianId = null, format = 'excel', user = null) {
+  if (isGranular(user)) user = permissionSnapshot(user)
+  const exportState = isGranular(user) ? readState() : null
   const isRetirementExport = category === 'retirements'
   // "all" permite obtener un único reporte mensual sin perder los reportes por ubicación.
   const isAllCategories = category === 'all'
   const alarmService = rows('services').find(service => service.code === 'alarm-installation')
   const records = rows('work_history').filter(record => {
+    if (isGranular(user) && !granularRead.serviceExportable(record, user, exportState)) return false
     if (record.status !== 'Completado') return false
     if (!record.date?.startsWith(month) || (technicianId && !record.technicianIds?.some(id => String(id) === String(technicianId)))) return false
     if (isRetirementExport) return record.status === 'Completado' && normalizedServiceName(record.service).includes('retiro de equipo')
     const installationCategory = alarmCategory(record)
     return !record.subscriberReservation && installationCategory !== 'no-monitoreada' && (String(record.serviceId) === String(alarmService?.id) || (!record.serviceId && normalizedServiceName(record.service) === 'instalacion de alarma')) && (isAllCategories || installationCategory === category)
-  }).sort(compareReportRecords)
+  }).sort(compareReportRecords).map(record => isGranular(user) ? granularRead.sanitizeService(record, user) : record)
   if (isRetirementExport) {
     const headers = ['Fecha', 'Cliente', 'Servicio', 'Dirección', 'Contacto', 'Técnicos asignados']
     const reportRows = records.map(record => [record.date, retirementClientLabel(record), record.service, record.address, record.phone, record.technicians?.join(' / ')])
@@ -1600,7 +1623,7 @@ function exportHistory(res, month, category, technicianId = null, format = 'exce
     return res.end(`\ufeff${html}`)
   }
   const label = { docta: 'Docta Urbanización', 'nobu-town': 'Nobu Town', residencial: 'Residenciales', all: 'Todas las instalaciones de alarma' }[category] || 'Instalaciones de alarma'
-  const includeSubscription = !['docta', 'nobu-town'].includes(category)
+  const includeSubscription = (!isGranular(user) || canPermission(user, 'records.financial')) && !['docta', 'nobu-town'].includes(category)
   const headers = ['Fecha', 'Cliente', 'Dirección', 'Contacto', 'Técnicos asignados', ...(includeSubscription ? subscriptionHeaders : [])]
   const reportRows = records.map(record => [record.date, record.client, record.address, record.phone, record.technicians?.join(' / '), ...(includeSubscription ? subscriptionColumns(record, technicianId ? 'technician' : 'administrator', alarmCategory(record)) : [])])
   if (format === 'pdf') {
@@ -1618,11 +1641,11 @@ function exportHistory(res, month, category, technicianId = null, format = 'exce
 
 function handleCustomerImport(req, res, user) {
   if (req.method === 'GET') {
-    if (user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede consultar importaciones reversibles.' })
+    if (!isGranular(user) && user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede consultar importaciones reversibles.' })
     return send(res, 200, { canUndo: Boolean(db.prepare('SELECT value FROM preferences WHERE key = ?').get(CUSTOMER_IMPORT_BACKUP_KEY)?.value) })
   }
   const undo = req.method === 'DELETE'
-  if (undo ? user.roleCode !== 'administrator' : !userCan(user, 'accountsImport')) return send(res, 403, { error: undo ? 'Solamente un administrador puede deshacer una importación.' : 'No tenés permiso para importar abonados.' })
+  if (!isGranular(user) && (undo ? user.roleCode !== 'administrator' : !userCan(user, 'accountsImport'))) return send(res, 403, { error: undo ? 'Solamente un administrador puede deshacer una importación.' : 'No tenés permiso para importar abonados.' })
   const execute = body => {
     db.exec('BEGIN IMMEDIATE')
     try {
@@ -1640,6 +1663,7 @@ function handleCustomerImport(req, res, user) {
         if (!Array.isArray(body.customers)) throw new Error('La importación no contiene una lista válida de abonados.')
         nextCustomers = preserveCustomerTrackingFlags(currentCustomers, normalizeImportedCustomers(body.customers))
       }
+      endpointPolicy.assertImportScope(user, isGranular(user) ? readState() : null, nextCustomers)
       validateImportedCustomers(nextCustomers)
       if (!undo) validateIncrementalCustomerImport(currentCustomers, nextCustomers)
       const changes = customerImportChanges(currentCustomers, nextCustomers)
@@ -1653,9 +1677,10 @@ function handleCustomerImport(req, res, user) {
       const revision = currentRevision + 1
       db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
       db.exec('COMMIT')
+      const responseState = isGranular(user) ? readState() : null
       return send(res, 200, body.responseMode === 'compact-v1' && !undo
         ? { revision, customerCount: nextCustomers.length, canUndo: true }
-        : { revision, customers: nextCustomers, canUndo: !undo })
+        : { revision, customers: isGranular(user) ? nextCustomers.filter(customer => granularRead.customerReadable(customer, user, responseState)).map(customer => granularRead.sanitizeCustomer(customer, user)) : nextCustomers, canUndo: !undo })
     } catch (error) {
       db.exec('ROLLBACK')
       return send(res, error.statusCode || 400, { error: error.message || 'No se pudo procesar la importación.' })
@@ -1700,7 +1725,7 @@ const server = http.createServer((req, res) => {
       }
       clearLoginFailures(req)
       const assignedRole = rows('roles').find(role => String(role.id) === String(employee.roleId)) || rows('roles').find(role => normalizedRoleName(role.name) === normalizedRoleName(employee.role))
-      const user = { id: employee.id, name: employee.name, email: employee.email, roleId: assignedRole?.id, roleCode: normalizedRoleName(assignedRole?.name || employee.role) === 'operador' ? 'operator' : normalizedRoleName(assignedRole?.name || employee.role) === 'supervisor' ? 'supervisor' : assignedRole?.code || legacyRoleCode(assignedRole || { id: employee.roleId, name: employee.role }), role: assignedRole?.name || employee.role }
+      const user = require('./api/_lib/core.cjs').userForEmployee(employee, assignedRole ? [assignedRole] : [])
       const token = crypto.randomBytes(32).toString('hex')
       let replacedSessions = 0
       for (const [activeToken, session] of sessions) {
@@ -1752,7 +1777,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/auth/session-status') {
     const context = localSessionContext(req)
     if (!context) return send(res, 401, { code: 'SESSION_ENDED', error: 'Esta sesión ya no está activa. La cuenta pudo haberse abierto en otro dispositivo o la sesión pudo haber vencido.' })
-    return send(res, 200, { active: true, expiresAt: new Date(context.session.expiresAt).toISOString() })
+    return send(res, 200, { active: true, expiresAt: new Date(context.session.expiresAt).toISOString(), sessionUser: context.user })
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/activity') {
     const context = localSessionContext(req)
@@ -1765,7 +1790,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/auth/password-reset-requests' && ['GET', 'DELETE'].includes(req.method)) {
     const user = requireSession(req, res)
     if (!user) return
-    if (user.roleCode !== 'administrator') return send(res, 403, { error: 'Las solicitudes de contraseña son exclusivas del rol Administrador.' })
+    if (!isGranular(user) && user.roleCode !== 'administrator') return send(res, 403, { error: 'Las solicitudes de contraseña son exclusivas del rol Administrador.' })
     if (req.method === 'GET') return send(res, 200, { requests: passwordResetRequests().sort((a, b) => String(b.requestedAt).localeCompare(String(a.requestedAt))) })
     return readJson(req).then(({ id }) => {
       const requests = passwordResetRequests()
@@ -1779,9 +1804,9 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/history/export') {
     const user = requireSession(req, res)
     if (!user) return
-    if (user.roleCode === 'technician') return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial', user.id, url.searchParams.get('format') || 'excel')
-    if (user.roleCode === 'supervisor' || !userCan(user, 'history')) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
-    return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial', null, url.searchParams.get('format') || 'excel')
+    if (!isGranular(user) && user.roleCode === 'technician') return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial', user.id, url.searchParams.get('format') || 'excel')
+    if (!isGranular(user) && (user.roleCode === 'supervisor' || !userCan(user, 'history'))) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
+    return exportHistory(res, url.searchParams.get('month') || new Date().toISOString().slice(0, 7), url.searchParams.get('category') || 'residencial', null, url.searchParams.get('format') || 'excel', user)
   }
   if (req.method === 'GET' && url.pathname === '/api/technician/state') {
     const user = requireSession(req, res)
@@ -1790,7 +1815,7 @@ const server = http.createServer((req, res) => {
     const revision = currentStateRevision()
     const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
     if (require('./api/_lib/conditional-technician-state.cjs').technicianStateUnchanged(Object.fromEntries(url.searchParams), revision, today)) return send(res, 200, { unchanged: true, revision, day: today })
-    return send(res, 200, readTechnicianState(user))
+    return send(res, 200, isGranular(user) ? readStateForUser(user) : { ...readTechnicianState(user), sessionUser: user })
   }
   if (req.method === 'GET' && req.url === '/api/state') {
     const user = requireSession(req, res)
@@ -1813,7 +1838,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'PATCH' && url.pathname === '/api/history/bulk') {
     const user = requireSession(req, res)
     if (!user) return
-    if (!userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
+    if (!isGranular(user) && !userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
     return readJson(req, 500_000).then(({ updates }) => {
       if (!Array.isArray(updates) || !updates.length || updates.length > 100) return send(res, 400, { error: 'Seleccioná entre 1 y 100 servicios válidos.' })
       const identifiers = updates.map(update => String(update?.record?.id || ''))
@@ -1829,15 +1854,16 @@ const server = http.createServer((req, res) => {
         }
         for (const update of updates) {
           const current = currentById.get(String(update.record.id))
-          if (JSON.stringify(current) !== JSON.stringify(update.base)) { const error = new Error('Uno de los servicios cambió desde otra sesión. Recargá la página y revisá la selección.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
+          if (!endpointPolicy.recordBaseMatches(current, update.base, user)) { const error = new Error('Uno de los servicios cambió desde otra sesión. Recargá la página y revisá la selección.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
         }
         const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
         let agenda = agendaRow?.data ? JSON.parse(agendaRow.data) : null
         const now = new Date().toISOString()
+        const accessState = isGranular(user) ? readState() : undefined
         for (const update of updates) {
           const recordId = String(update.record.id)
           const current = currentById.get(recordId)
-          const next = managedHistoryRecord(current, update.record, user, now)
+          const next = managedHistoryRecord(current, update.record, user, now, accessState)
           db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(next), recordId)
           if (agenda) agenda = synchronizeAgendaHistoryRecord(agenda, current, next)
           writeAudit(user, 'Modificó', 'Servicio / historial', recordId, current, next)
@@ -1857,7 +1883,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'DELETE' && url.pathname.startsWith('/api/history/')) {
     const user = requireSession(req, res)
     if (!user) return
-    if (!userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para eliminar servicios del historial.' })
+    if (!isGranular(user) && !userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para eliminar servicios del historial.' })
     const recordId = decodeURIComponent(url.pathname.slice('/api/history/'.length))
     return readJson(req, 500_000).then(({ base }) => {
       if (!base || String(base.id || '') !== recordId) return send(res, 400, { error: 'El servicio solicitado no es válido.' })
@@ -1870,12 +1896,13 @@ const server = http.createServer((req, res) => {
           return send(res, 200, { ok: true, revision: currentStateRevision(), state: readStateForUser(user), deleted: false })
         }
         if (current.vehicleControl) {
-          if (user.roleCode !== 'administrator') { const error = new Error('Sólo el rol Administrador puede eliminar un control vehicular.'); error.statusCode = 403; throw error }
+          if (isGranular(user) ? !canPermission(user, 'vehicle.controls.delete') : user.roleCode !== 'administrator') { const error = new Error('No tenés permiso para eliminar un control vehicular.'); error.statusCode = 403; throw error }
           if (!base.vehicleControl) { const error = new Error('El control vehicular solicitado no coincide con la versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
-        } else if (JSON.stringify(current) !== JSON.stringify(base)) {
+        } else if (!endpointPolicy.recordBaseMatches(current, base, user)) {
           const error = new Error('Este servicio cambió desde otra sesión. Recargá la página y revisá su versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error
         }
         const currentState = readState()
+        if (isGranular(user)) granularWrite.assertServiceChange(current, null, user, currentState)
         const removed = removeHistoryRecord(currentState, recordId)
         db.prepare('DELETE FROM service_photos WHERE record_id = ?').run(recordId)
         db.prepare('DELETE FROM work_history WHERE id = ?').run(recordId)
@@ -1894,7 +1921,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'PATCH' && url.pathname.startsWith('/api/history/')) {
     const user = requireSession(req, res)
     if (!user) return
-    if (!userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
+    if (!isGranular(user) && !userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
     const recordId = decodeURIComponent(url.pathname.slice('/api/history/'.length))
     return readJson(req, 500_000).then(({ base, record: proposed }) => {
       if (!base || !proposed || String(base.id || '') !== recordId || String(proposed.id || '') !== recordId) return send(res, 400, { error: 'El servicio solicitado no es válido.' })
@@ -1903,9 +1930,9 @@ const server = http.createServer((req, res) => {
         const stored = db.prepare('SELECT data FROM work_history WHERE id = ?').get(recordId)
         const current = stored?.data ? JSON.parse(stored.data) : null
         if (!current) { const error = new Error('El servicio ya no existe.'); error.statusCode = 404; throw error }
-        if (JSON.stringify(current) !== JSON.stringify(base)) { const error = new Error('Este servicio cambió desde otra sesión. Recargá la página y revisá su versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
+        if (!endpointPolicy.recordBaseMatches(current, base, user)) { const error = new Error('Este servicio cambió desde otra sesión. Recargá la página y revisá su versión actual.'); error.statusCode = 409; error.code = 'HISTORY_RECORD_CONFLICT'; throw error }
         const now = new Date().toISOString()
-        const next = managedHistoryRecord(current, proposed, user, now)
+        const next = managedHistoryRecord(current, proposed, user, now, isGranular(user) ? readState() : undefined)
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(next), recordId)
         const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
         if (agendaRow?.data) {
@@ -1928,7 +1955,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/history/category-correction') {
     const user = requireSession(req, res)
     if (!user) return
-    if (user.roleCode !== 'administrator' || !userCan(user, 'historyManage')) return send(res, 403, { error: 'Sólo Administración puede corregir categorías.' })
+    if (!isGranular(user) && (user.roleCode !== 'administrator' || !userCan(user, 'historyManage'))) return send(res, 403, { error: 'Sólo Administración puede corregir categorías.' })
     return readJson(req, 500_000).then(async input => {
       // Load the module before opening the synchronous SQLite transaction.
       const { correctServiceCategory } = await import('./src/domain/history/category-correction.mjs')
@@ -1936,6 +1963,7 @@ const server = http.createServer((req, res) => {
       try {
         const current = readState()
         const correction = require('./api/_lib/category-correction.cjs').prepareCategoryCorrection(current, input, user, correctServiceCategory)
+        endpointPolicy.assertServiceAccess(user, correction.before, current, { write: true, permission: 'history.category' })
         for (const record of correction.state.history) db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(record), String(record.id))
         for (const { before, after } of correction.conversions) {
           db.prepare('DELETE FROM customers WHERE account = ?').run(String(before.account))
@@ -1955,12 +1983,13 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/collections/manage') {
     const user = requireSession(req, res)
     if (!user) return
-    if (user.roleCode === 'technician' || !userCan(user, 'collectionsManage')) return send(res, 403, { error: 'No tenés permiso para gestionar cobranzas.' })
+    if ((!isGranular(user) && user.roleCode === 'technician') || !userCan(user, 'collectionsManage')) return send(res, 403, { error: 'No tenés permiso para gestionar cobranzas.' })
     return readJson(req, 500_000).then(async input => {
       const { manageCollection } = await import('./src/domain/collections/collections.mjs')
       db.exec('BEGIN IMMEDIATE')
       try {
         const current = readState()
+        endpointPolicy.assertCollectionAction(user, current, input)
         const correction = manageCollection(current, input, user)
         require('./api/_lib/completed-service-policy.cjs').assertCompletedServices(correction.state, current, { collectionCorrectionIds: correction.recordIds })
         for (const record of correction.state.history.filter(item => correction.recordIds.includes(String(item.id)))) db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(record), String(record.id))
@@ -1979,13 +2008,14 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/customers/subscription-correction') {
     const user = requireSession(req, res)
     if (!user) return
-    if (user.roleCode === 'technician' || !userCan(user, 'accountsEdit')) return send(res, 403, { error: 'No tenés permiso para corregir datos del abono.' })
+    if ((!isGranular(user) && user.roleCode === 'technician') || !userCan(user, 'accountsEdit')) return send(res, 403, { error: 'No tenés permiso para corregir datos del abono.' })
     return readJson(req, 500_000).then(async input => {
-      const { correctSubscription } = await import('./src/domain/customers/subscription-correction.mjs')
+      const { correctSubscription, subscriptionCorrectionBase } = await import('./src/domain/customers/subscription-correction.mjs')
       db.exec('BEGIN IMMEDIATE')
       try {
         const current = readState()
-        const correction = correctSubscription(current, input, user)
+        const correction = correctSubscription(current, endpointPolicy.subscriptionInput(current, input, user, subscriptionCorrectionBase), user)
+        endpointPolicy.assertServiceAccess(user, correction.before, current, { write: true, permission: 'subscriptions.correct' })
         require('./api/_lib/completed-service-policy.cjs').assertCompletedServices(correction.state, current, { subscriptionCorrectionId: correction.before.id })
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(correction.after), String(correction.before.id))
         if (JSON.stringify(current.agenda) !== JSON.stringify(correction.state.agenda)) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(correction.state.agenda), 'current')
@@ -2022,17 +2052,17 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/audit') {
     const user = requireSession(req, res)
     if (!user) return
-    if (user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
+    if (!isGranular(user) && user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
     const requestedLimit = Number(url.searchParams.get('limit')) || AUDIT_LOG_LIMIT
     const limit = Math.min(Math.max(requestedLimit, 1), AUDIT_LOG_LIMIT)
-    return send(res, 200, { records: recentAuditRows(limit) })
+    return send(res, 200, { records: isGranular(user) ? granularRead.sanitizeAudit(recentAuditRows(limit), user) : recentAuditRows(limit) })
   }
   if (req.method === 'GET' && url.pathname.startsWith('/api/audit/')) {
     const user = requireSession(req, res)
     if (!user) return
-    if (user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
+    if (!isGranular(user) && user.roleCode !== 'administrator') return send(res, 403, { error: 'La auditoría es exclusiva del rol Administrador.' })
     const record = auditRow(decodeURIComponent(url.pathname.slice('/api/audit/'.length)))
-    return record ? send(res, 200, { record }) : send(res, 404, { error: 'El registro de auditoría no existe.' })
+    return record ? send(res, 200, { record: isGranular(user) ? granularRead.sanitizeAudit(record, user) : record }) : send(res, 404, { error: 'El registro de auditoría no existe.' })
   }
   if (req.method === 'GET' && url.pathname.startsWith('/api/vehicle-control/photo/')) {
     const user = requireSession(req, res)
@@ -2041,7 +2071,7 @@ const server = http.createServer((req, res) => {
     const photo = db.prepare('SELECT mime_type, photo_data FROM vehicle_control_photos WHERE record_id = ?').get(recordId)
     const record = rows('work_history').find(item => String(item.id) === String(recordId))
     if (!photo || !record) return send(res, 404, { error: 'La foto no existe.' })
-    const allowed = isOperator(user) || user.roleCode === 'administrator' || (user.roleCode !== 'supervisor' && userCan(user, 'history')) || record.technicianIds?.some(id => String(id) === String(user.id))
+    const allowed = isGranular(user) ? granularRead.serviceReadable(record, user, readState()) : isOperator(user) || user.roleCode === 'administrator' || (user.roleCode !== 'supervisor' && userCan(user, 'history')) || record.technicianIds?.some(id => String(id) === String(user.id))
     if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
     res.writeHead(200, { 'Content-Type': photo.mime_type, 'Content-Length': photo.photo_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
     return res.end(photo.photo_data)
@@ -2062,7 +2092,7 @@ const server = http.createServer((req, res) => {
         const raw = db.prepare('SELECT value FROM preferences WHERE key=?').get('vehicles')?.value
         entity = (JSON.parse(raw || '[]')).find(vehicle => String(vehicle.id) === entityId)
       }
-      return require('./api/_lib/attachments.cjs').handleAttachments({ req, res, body: req.method === 'POST' ? await readJson(req, 4_100_000) : null, user, scope, entityId, attachmentId, entity, store: require('./api/_lib/attachment-store.cjs').sqliteAttachmentStore(db) })
+      return require('./api/_lib/attachments.cjs').handleAttachments({ req, res, body: req.method === 'POST' ? await readJson(req, 4_100_000) : null, user, scope, entityId, attachmentId, entity, state: isGranular(user) ? readState() : undefined, store: require('./api/_lib/attachment-store.cjs').sqliteAttachmentStore(db) })
     }
     return handle().catch(error => send(res, error.statusCode || 400, { error: error.message }))
   }
@@ -2072,29 +2102,49 @@ const server = http.createServer((req, res) => {
     const recordId = decodeURIComponent(url.pathname.slice('/api/service-photo/'.length))
     const record = rows('work_history').find(item => String(item.id) === String(recordId))
     if (!record || record.vehicleControl) return send(res, 404, { error: 'El servicio no existe.' })
+    const accessState = isGranular(user) ? readState() : null
+    if (isGranular(user) && req.method === 'GET') {
+      try { endpointPolicy.assertLegacyPhoto(user, record, accessState, 'GET') } catch (error) { return send(res, error.statusCode || 403, { error: error.message }) }
+    }
     if (req.method === 'GET') {
-      const allowed = user.roleCode === 'supervisor'
+      const allowed = isGranular(user) ? granularRead.serviceReadable(record, user, accessState) : user.roleCode === 'supervisor'
         ? readStateForUser(user).history.some(item => String(item.id) === String(recordId))
         : user.roleCode !== 'technician' || record.technicianIds?.some(id => String(id) === String(user.id))
       if (!allowed) return send(res, 403, { error: 'No tenés permiso para ver esta foto.' })
-      const photo = db.prepare('SELECT mime_type, photo_data FROM service_photos WHERE record_id = ?').get(recordId)
+      const photo = db.prepare('SELECT mime_type, photo_data, uploaded_by_id FROM service_photos WHERE record_id = ?').get(recordId)
       if (!photo) return send(res, 404, { error: 'La foto no existe.' })
+      if (url.searchParams.get('metadata') === '1') return send(res, 200, { exists: true, uploadedBy: photo.uploaded_by_id || null, canDelete: isGranular(user) ? granularRead.serviceWritable(record, user, accessState) && (canPermission(user, 'service.documents.deleteAny') || canPermission(user, 'service.documents.deleteOwn') && String(photo.uploaded_by_id) === String(user.id)) : !['technician', 'supervisor', 'operator'].includes(user.roleCode) })
       res.writeHead(200, { 'Content-Type': photo.mime_type, 'Content-Length': photo.photo_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
       return res.end(photo.photo_data)
     }
-    if (user.roleCode === 'technician' || user.roleCode === 'supervisor') return send(res, 403, { error: 'Sólo Administración y usuarios pueden modificar la foto del servicio.' })
+    if (!isGranular(user) && (user.roleCode === 'technician' || user.roleCode === 'supervisor')) return send(res, 403, { error: 'Sólo Administración y usuarios pueden modificar la foto del servicio.' })
+    const mutate = action => {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        if (isGranular(user)) {
+          const state = readState(), current = state.history.find(row => String(row.id) === String(recordId))
+          endpointPolicy.assertServiceAccess(user, current, state, { write: true })
+          const existing = db.prepare('SELECT uploaded_by_id FROM service_photos WHERE record_id = ?').get(recordId)
+          if (req.method === 'POST') endpointPolicy.assertLegacyPhoto(user, current, state, 'POST')
+          else granularWrite.requireAny(user, ['service.documents.deleteOwn', 'service.documents.deleteAny'])
+          if (existing) endpointPolicy.assertLegacyPhoto(user, current, state, 'DELETE', existing.uploaded_by_id)
+        }
+        action()
+        db.exec('COMMIT')
+      } catch (error) { db.exec('ROLLBACK'); throw error }
+    }
     if (req.method === 'DELETE') {
-      db.prepare('DELETE FROM service_photos WHERE record_id = ?').run(recordId)
-      return send(res, 200, { ok: true })
+      try { mutate(() => db.prepare('DELETE FROM service_photos WHERE record_id = ?').run(recordId)); return send(res, 200, { ok: true }) }
+      catch (error) { return send(res, error.statusCode || 400, { error: error.message }) }
     }
     return readJson(req, 2_000_000).then(({ photo }) => {
       const match = String(photo || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([a-z0-9+/=]+)$/i)
       const data = match ? Buffer.from(match[2], 'base64') : null
       if (!data?.length || data.length > 1_000_000) return send(res, 400, { error: 'Seleccioná una foto válida de hasta 1 MB.' })
       const createdAt = new Date().toISOString()
-      db.prepare('INSERT OR REPLACE INTO service_photos (record_id, mime_type, photo_data, created_at, uploaded_by_id, uploaded_by_name) VALUES (?, ?, ?, ?, ?, ?)').run(recordId, match[1].toLowerCase(), data, createdAt, String(user.id), user.name || user.email || '')
+      mutate(() => db.prepare('INSERT OR REPLACE INTO service_photos (record_id, mime_type, photo_data, created_at, uploaded_by_id, uploaded_by_name) VALUES (?, ?, ?, ?, ?, ?)').run(recordId, match[1].toLowerCase(), data, createdAt, String(user.id), user.name || user.email || ''))
       return send(res, 200, { ok: true, url: `/api/service-photo/${encodeURIComponent(recordId)}`, createdAt })
-    }).catch(error => send(res, 400, { error: error.message || 'No se pudo guardar la foto.' }))
+    }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo guardar la foto.' }))
   }
   if (['GET', 'POST'].includes(req.method) && url.pathname.startsWith('/api/vehicle-insurance/')) {
     const user = requireSession(req, res)
@@ -2102,13 +2152,14 @@ const server = http.createServer((req, res) => {
     const vehicleId = decodeURIComponent(url.pathname.slice('/api/vehicle-insurance/'.length))
     if (req.method === 'GET') {
       if (!(readState().vehicles || []).some(vehicle => String(vehicle.id) === String(vehicleId))) return send(res, 404, { error: 'El vehículo no existe.' })
-      if (!canPerformTechnicalServices(user) && !userCan(user, 'vehicles')) return send(res, 403, { error: 'No tenés permiso para descargar este seguro.' })
+      if (isGranular(user) && !granularRead.vehicleReadable(readState().vehicles.find(vehicle => String(vehicle.id) === String(vehicleId)), user, readState())) return send(res, 403, { error: 'El vehículo no está incluido en tu alcance.' })
+      if (!isGranular(user) && !canPerformTechnicalServices(user) && !userCan(user, 'vehicles')) return send(res, 403, { error: 'No tenés permiso para descargar este seguro.' })
       const document = db.prepare('SELECT file_name, pdf_data FROM vehicle_insurance_documents WHERE vehicle_id = ?').get(vehicleId)
       if (!document) return send(res, 404, { error: 'El seguro no está cargado.' })
       res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${String(document.file_name || 'seguro.pdf').replace(/["\r\n]/g, '')}"`, 'Content-Length': document.pdf_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
       return res.end(document.pdf_data)
     }
-    if (user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede cargar seguros.' })
+    if (!isGranular(user) && user.roleCode !== 'administrator') return send(res, 403, { error: 'Solamente un administrador puede cargar seguros.' })
     return readJson(req, 11_000_000).then(({ fileName, pdf, vehicle: incomingVehicle, insuranceExpiresOn, revision: incomingRevision }) => {
       const match = String(pdf || '').match(/^data:application\/pdf;base64,([a-z0-9+/=]+)$/i)
       const data = match ? Buffer.from(match[1], 'base64') : null
@@ -2134,7 +2185,8 @@ const server = http.createServer((req, res) => {
         const expiresOn = String(insuranceExpiresOn || submittedVehicle.insuranceExpiresOn || '')
         if (!/^\d{4}-\d{2}-\d{2}$/.test(expiresOn)) throw new Error('Indicá una fecha de vencimiento válida para el seguro.')
         const documentUrl = `/api/vehicle-insurance/${encodeURIComponent(vehicleId)}`
-        const nextVehicle = { ...submittedVehicle, id: vehicleId, insuranceExpiresOn: expiresOn, insuranceFileName: safeName, insuranceUploadedAt: uploadedAt, insuranceDocumentUrl: documentUrl }
+        const nextVehicle = { ...previousVehicle, ...submittedVehicle, id: vehicleId, insuranceExpiresOn: expiresOn, insuranceFileName: safeName, insuranceUploadedAt: uploadedAt, insuranceDocumentUrl: documentUrl }
+        if (isGranular(user)) granularWrite.assertCatalogChange('vehicles', previousVehicle, nextVehicle, user)
         const nextVehicles = previousVehicle
           ? current.vehicles.map(vehicle => String(vehicle.id) === String(vehicleId) ? nextVehicle : vehicle)
           : [...current.vehicles, nextVehicle]
@@ -2145,7 +2197,7 @@ const server = http.createServer((req, res) => {
         const revision = currentRevision + 1
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
         db.exec('COMMIT')
-        return send(res, 200, { vehicle: nextVehicle, revision, fileName: safeName, uploadedAt, documentUrl })
+        return send(res, 200, { vehicle: isGranular(user) ? granularRead.sanitizeVehicle(nextVehicle, user) : nextVehicle, revision, fileName: safeName, uploadedAt, documentUrl })
       } catch (error) {
         db.exec('ROLLBACK')
         throw error
@@ -2163,10 +2215,11 @@ const server = http.createServer((req, res) => {
       try {
         const previousRow = db.prepare('SELECT data FROM work_history WHERE id = ?').get(String(recordId || ''))
         const previous = previousRow?.data ? JSON.parse(previousRow.data) : null
+        if (!decision) endpointPolicy.assertTechnicalAction(user, previous, isGranular(user) ? readState() : undefined, 'advance')
         const next = decision ? resolveServiceAdvance(previous, user, decision) : startServiceEarly(previous, user)
         if (next === previous) {
           db.exec('COMMIT')
-          return send(res, 200, { record: technicianSafeRecord(previous), revision: currentStateRevision() })
+          return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(previous, user) : technicianSafeRecord(previous), revision: currentStateRevision() })
         }
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(next), String(next.id))
         const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
@@ -2179,7 +2232,7 @@ const server = http.createServer((req, res) => {
         const revision = currentStateRevision() + 1
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
         db.exec('COMMIT')
-        return send(res, 200, { record: user.roleCode === 'technician' ? technicianSafeRecord(next) : next, revision })
+        return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(next, user) : user.roleCode === 'technician' ? technicianSafeRecord(next) : next, revision })
       } catch (error) {
         db.exec('ROLLBACK')
         throw error
@@ -2195,17 +2248,18 @@ const server = http.createServer((req, res) => {
       try {
         const previousRow = db.prepare('SELECT data FROM work_history WHERE id = ?').get(String(recordId || ''))
         const previous = previousRow?.data ? JSON.parse(previousRow.data) : null
+        endpointPolicy.assertTechnicalAction(user, previous, isGranular(user) ? readState() : undefined, 'start')
         const next = startTechnicianServiceRecord(previous, user)
         if (next === previous) {
           db.exec('COMMIT')
-          return send(res, 200, { record: technicianSafeRecord(previous), revision: currentStateRevision() })
+          return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(previous, user) : technicianSafeRecord(previous), revision: currentStateRevision() })
         }
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(next), String(next.id))
         writeAudit(user, 'Inició servicio técnico', 'Servicio / historial', String(next.id), previous, next)
         const revision = currentStateRevision() + 1
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
         db.exec('COMMIT')
-        return send(res, 200, { record: technicianSafeRecord(next), revision })
+        return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(next, user) : technicianSafeRecord(next), revision })
       } catch (error) {
         db.exec('ROLLBACK')
         throw error
@@ -2234,6 +2288,7 @@ const server = http.createServer((req, res) => {
           if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record: technicianSafeRecord(record) })
           return send(res, 409, { error: 'Este servicio ya fue informado desde otra sesión.' })
         }
+      endpointPolicy.assertTechnicalAction(user, record, isGranular(user) ? readState() : undefined, type)
       require('./api/_lib/service-journeys.cjs').assertJourneyReport(record, type, readState().history)
       const completingVehicleControl = Boolean(record.vehicleControl && type === 'Completado')
       let vehicleChange = null
@@ -2285,7 +2340,7 @@ const server = http.createServer((req, res) => {
         db.exec('ROLLBACK')
         throw error
       }
-      return send(res, 200, { record: technicianSafeRecord(updated) })
+      return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(updated, user) : technicianSafeRecord(updated) })
     }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo informar el estado.' }))
   }
   if (req.method === 'POST' && url.pathname === '/api/agenda/daily/clear') {
@@ -2320,7 +2375,7 @@ const server = http.createServer((req, res) => {
   if (['PUT', 'PATCH'].includes(req.method) && req.url === '/api/state') {
     const user = requireSession(req, res)
     if (!user) return
-    if (user.roleCode === 'technician' || user.roleCode === 'supervisor') return send(res, 403, { error: 'Este rol tiene acceso de solo lectura.' })
+    if (!isGranular(user) && (user.roleCode === 'technician' || user.roleCode === 'supervisor')) return send(res, 403, { error: 'Este rol tiene acceso de solo lectura.' })
     let attemptedRevision = null
     readJson(req, 15_000_000).then(state => {
       if (req.method === 'PATCH' && !Array.isArray(state.operations)) throw new Error('Faltan las operaciones de guardado.')

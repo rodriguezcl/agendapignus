@@ -24,6 +24,7 @@ test('past services open saved payment information without opening an editor', (
   const code = source.slice(start, end)
   let viewed
   const open = vm.runInNewContext(code + '\nopenTaskEditor', {
+    can: () => true, canReadRecord: () => true, canWriteTask: () => true, scopedTask: task => task, authUser: null, customers: [], serviceCopyRecord: record => ({ ...record }),
     readOnly: false,
     setTaskEditorError: () => {},
     setWeeklyServiceSource: () => {},

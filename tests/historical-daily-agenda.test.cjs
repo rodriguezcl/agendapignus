@@ -71,6 +71,7 @@ test('el banner abre una vista previa de cualquier día sin cambiar la agenda ni
     const before = JSON.stringify(plan)
     let preview
     const onClick = vm.runInNewContext(planner.slice(callback.start, callback.end), {
+      can: () => true, serviceCopyRecord: record => ({ ...record }),
       day, services: [], operationalHistory: [], dayPlan: () => plan,
       historyRecordForTask: () => ({ detail: 'guardado', status: 'Completado' }),
       setDayPreview: value => { preview = value },

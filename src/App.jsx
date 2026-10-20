@@ -27,7 +27,9 @@ import { normalizeServiceEstimatedMinutes } from "./domain/agenda/service-schedu
 import { buildCustomerReferenceIndex, reconcileCustomerReference } from "./domain/customers/customer-import.mjs";
 import { serviceCode } from "./domain/services/service.mjs";
 import { normalizeCustomerName, normalizeServiceName } from "./domain/shared/normalization.mjs";
-import { normalizeRoleName, resolvedRolePermissions, roleCode } from "./domain/access/permissions.mjs";
+import { normalizeRoleName, resolvedRolePermissions, roleCode, isGranular, canPermission, hasAnyWrite } from "./domain/access/permissions.mjs";
+import { PermissionsProvider, usePermissions } from "./presentation/contexts/permissions-context.jsx";
+import { currentSessionRole, reconcileSessionUser } from "./features/auth/application/session-user.mjs";
 import { stateRepository } from "./infrastructure/repositories/state-repository.mjs";
 import { agendaRescheduleRepairCandidates } from "./domain/agenda/reschedule-repair.mjs";
 import { SESSION_IDLE_TIMEOUT_MS, SESSION_STATUS_INTERVAL_MS, TECHNICIAN_SESSION_IDLE_TIMEOUT_MS, TECHNICIAN_SESSION_STATUS_INTERVAL_MS, useSessionLifecycle } from "./features/auth/application/useSessionLifecycle.js";
@@ -138,7 +140,7 @@ export default function App() {
   const employeeRole = employee => roles.find(role => String(role.id) === String(employee.roleId)) || roles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role))
   // Se calcula antes de registrar efectos que sincronizan reprogramaciones.
   // Así también está disponible mientras se recupera una sesión persistente.
-  const activeTechs = useMemo(() => employees.filter(employee => employee.status === 'Activo' && (roleCode(employeeRole(employee)) === 'technician' || (roleCode(employeeRole(employee)) !== 'supervisor' && employee.technicalEnabled === true))).map(employee => ({ ...employee, roleCode: roleCode(employeeRole(employee)) })), [employees, roles])
+  const activeTechs = useMemo(() => employees.filter(employee => employee.status === 'Activo' && (roleCode(employeeRole(employee)) === 'technician' || ((isGranular(employeeRole(employee)) || roleCode(employeeRole(employee)) !== 'supervisor') && employee.technicalEnabled === true))).map(employee => ({ ...employee, roleCode: roleCode(employeeRole(employee)) })), [employees, roles])
   const [services, setServices] = useState([])
   const [vehicles, setVehicles] = useState([])
   const [history, setHistory] = useState([])
@@ -193,12 +195,23 @@ export default function App() {
     const saved = themeAccountKey ? readLocalValue(`pignus-theme-account:${themeAccountKey}`, 'light') : 'light'
     setThemeState(saved === 'dark' ? 'dark' : 'light')
   }, [themeAccountKey])
-  const activeRole = roles.find(role => String(role.id) === String(authUser?.roleId)) || roles.find(role => role.name === authUser?.role)
-  const isSupervisor = authUser?.roleCode === 'supervisor' || normalizeRoleName(authUser?.role) === 'supervisor' || roleCode(activeRole) === 'supervisor'
-  const isOperator = authUser?.roleCode === 'operator' || normalizeRoleName(authUser?.role) === 'operador' || roleCode(activeRole) === 'operator'
-  const isReadOnly = isSupervisor || isOperator
+  const activeRole = useMemo(() => currentSessionRole(authUser, roles), [authUser, roles])
+  const permissionUser = useMemo(() => ({ ...authUser, ...(activeRole ? { roleCode: roleCode(activeRole), role: activeRole.name, permissions: activeRole.permissions ?? authUser?.permissions } : {}) }), [authUser, activeRole])
+  const granularAccess = isGranular(permissionUser)
+  const access = useMemo(() => resolvedRolePermissions(granularAccess ? permissionUser : activeRole), [granularAccess, permissionUser, activeRole])
+  const allowed = key => granularAccess ? access[key] === true : canPermission(permissionUser, key)
+  const legacyTechnician = !granularAccess && (authUser?.roleCode === 'technician' || normalizeRoleName(authUser?.role) === 'tecnico')
+  const isSupervisor = !granularAccess && (authUser?.roleCode === 'supervisor' || normalizeRoleName(authUser?.role) === 'supervisor' || roleCode(activeRole) === 'supervisor')
+  const isOperator = !granularAccess && (authUser?.roleCode === 'operator' || normalizeRoleName(authUser?.role) === 'operador' || roleCode(activeRole) === 'operator')
+  const isReadOnly = isSupervisor || isOperator || (granularAccess && !hasAnyWrite(permissionUser))
   // Resolve before rendering: restoring a session must never flash statistics.
-  const module = isOperator ? 'weekly' : isSupervisor && requestedModule !== 'accounts' ? 'history' : requestedModule === 'agenda' ? 'weekly' : requestedModule
+  const granularModule = requestedModule === 'myServices' ? 'technical' : requestedModule
+  const technicalFunctionEnabled = (permissionUser?.technicalEnabled ?? employees.find(employee => String(employee.id) === String(authUser?.id))?.technicalEnabled) === true
+  const technicalEligible = permissionUser?.roleCode === 'technician' || technicalFunctionEnabled
+  const firstAllowedModule = ['dashboard', 'weekly', 'agenda', 'history', 'collections', 'accounts', 'map', 'employees', 'services', 'vehicles', 'settings', 'audit', 'technical'].find(key => access[key] && (key !== 'technical' || technicalEligible))
+  const module = isOperator ? 'weekly' : isSupervisor && requestedModule !== 'accounts' ? 'history' : granularAccess
+    ? (granularModule === 'help' || access[granularModule] && (granularModule !== 'technical' || technicalEligible) ? requestedModule : firstAllowedModule === 'technical' ? 'myServices' : firstAllowedModule || 'help')
+    : requestedModule === 'agenda' ? 'weekly' : requestedModule
   const [sessionEndedMessage, setSessionEndedMessage] = useState('')
   globalThis.__pignusCurrentUser = authUser
   globalThis.__pignusHistory = history
@@ -431,7 +444,7 @@ export default function App() {
   }, [])
   useEffect(clearOperationalStorage, [])
   useEffect(() => {
-    if (!services.length) return
+    if (granularAccess || !services.length) return
     const previousDefaults = serviceDefaultsRef.current
     const nextDefaults = new Map(services.map(service => [String(service.id), normalizeServiceEstimatedMinutes(service.estimatedMinutes)]))
     const normalizeReference = item => {
@@ -462,7 +475,7 @@ export default function App() {
     serviceDefaultsRef.current = nextDefaults
   }, [services])
   useEffect(() => {
-    if (!customers.length) return
+    if (granularAccess || !customers.length) return
     const normalizedCustomers = customers.map(customer => ({ ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer), name: normalizeCustomerName(customer.name) }))
     if (normalizedCustomers.some((customer, index) => JSON.stringify(customer) !== JSON.stringify(customers[index]))) {
       setCustomers(normalizedCustomers)
@@ -476,6 +489,7 @@ export default function App() {
     setHistory(previous => { const next = previous.map(normalizeReference); return JSON.stringify(next) === JSON.stringify(previous) ? previous : next })
   }, [customers])
   useEffect(() => {
+    if (granularAccess) return
     const completedRetirementCustomerIds = new Set(history
       .filter(record => record.status === 'Completado' && normalizeServiceName(record.service).includes('retiro de equipo'))
       .map(record => String(record.customerId || ''))
@@ -494,7 +508,7 @@ export default function App() {
     })
   }, [history])
   useEffect(() => {
-    if (!employees.length) return
+    if (granularAccess || !employees.length) return
     const byId = new Map(employees.map(employee => [String(employee.id), employee]))
     const byName = new Map(employees.map(employee => [normalizeServiceName(employee.name), employee]))
     const normalizeAssignments = item => {
@@ -593,6 +607,7 @@ export default function App() {
     // Las agendas vencidas son snapshots cerrados. Una modificación cualquiera
     // de Historial no debe intentar reconstruir allí reprogramaciones antiguas:
     // además de ser innecesario, el servidor lo detecta como un alta tardía.
+    if (granularAccess) return
     const rescheduled = agendaRescheduleRepairCandidates(history, currentLocalDate())
     if (!rescheduled.length) return
     setWeekly(previous => {
@@ -618,6 +633,7 @@ export default function App() {
     // Los controles vehiculares tienen un responsable propio en la tarjeta.
     // Los servicios comunes conservan la instantánea leída del Historial hasta
     // que un guardado explícito actualice también su asignación.
+    if (granularAccess) return
     setHistory(previous => {
       let changed = false
       const next = previous.map(record => {
@@ -826,7 +842,7 @@ export default function App() {
     // to weekly. Copying weekly back during the same render can exchange two
     // successive edits forever. Initial loading and confirmed remote saves
     // already hydrate the daily form through their explicit paths.
-    if (module === 'agenda') return
+    if (granularAccess || module === 'agenda') return
     const weeklyTasks = weekly?.[date]?.teams?.flatMap(team => team.tasks || []) || []
     if (!weeklyTasks.length) return
     const byTaskId = new Map(weeklyTasks.filter(task => task.taskId).map(task => [String(task.taskId), task]))
@@ -840,6 +856,7 @@ export default function App() {
   }, [weekly, date, module])
   const applyRemoteState = (data, { preserveFrom = null } = {}) => {
     if (lastServerSnapshotRef.current && Number(data.revision) < Number(stateRevisionRef.current)) return
+    if (data.sessionUser) setAuthUser(current => current === authUser ? reconcileSessionUser(current, data.sessionUser) : current)
     stateRepository.prime(data)
     data = migrateLegacyEstimatedMinutes(data, { repairUnidentifiedAgenda: true }).state
     // Keep the server's projections before display effects reconcile daily and
@@ -850,7 +867,7 @@ export default function App() {
     remoteConflictRevisionRef.current = null
     stateRevisionRef.current = Number(data.revision || 0)
     setStateRevision(stateRevisionRef.current)
-    const loadedRoles = Array.isArray(data.roles) ? data.roles.map(role => { const code = roleCode(role); const permissions = resolvedRolePermissions({ ...role, code, permissions: { dashboard: true, weekly: role.permissions?.weekly ?? ['administrator', 'user', 'coordinator'].includes(code), ...role.permissions } }); return { ...role, code, permissions } }) : []
+    const loadedRoles = Array.isArray(data.roles) ? data.roles.map(role => { const code = roleCode(role); if (isGranular(role)) return { ...role, code }; const permissions = resolvedRolePermissions({ ...role, code, permissions: { dashboard: true, weekly: role.permissions?.weekly ?? ['administrator', 'user', 'coordinator'].includes(code), ...role.permissions } }); return { ...role, code, permissions } }) : []
 
     const loaded_employees = Array.isArray(data.employees) ? data.employees.map(employee => { const assignedRole = loadedRoles.find(role => String(role.id) === String(employee.roleId)) || loadedRoles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role)); return assignedRole ? { ...employee, roleId: assignedRole.id, role: assignedRole.name } : employee }) : []
     const loaded_services = ensureVehicleControlService(Array.isArray(data.services) ? data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) })) : [])
@@ -989,7 +1006,7 @@ export default function App() {
       : command.operation === 'team-members'
       ? weeklyTeamMemberOperations(snapshot, command)
       : command.operation === 'team-remove'
-        ? weeklyTeamRemovalOperations(snapshot, { ...command, allowVehicleControlRemoval: authUser?.roleCode === 'administrator' })
+        ? weeklyTeamRemovalOperations(snapshot, { ...command, allowVehicleControlRemoval: granularAccess ? allowed('vehicle.controls.omit') : authUser?.roleCode === 'administrator' })
         : command.operation === 'task-remove'
           ? weeklyTaskRemovalOperations(snapshot, command)
       : command.dailyDraft
@@ -997,6 +1014,8 @@ export default function App() {
         : weeklyServiceOperations(snapshot, command)
   ), { combinePendingState: true, alignDisplayBaselines: true, independentService: !command.sourceDay && (!command.operation || ['service-preparation', 'team-members'].includes(command.operation)), quickAction: ['service-preparation', 'team-members'].includes(command.operation), isolatedMove: Boolean(command.sourceDay && (command.task?.vehicleControl || command.advanceToFriday)) })
   const persistWeeklyConfiguration = buildNext => persistStateCommand(snapshot => stateOperations(snapshot, buildNext(snapshot)), { combinePendingState: true, rebaseOnRecordConflict: true })
+  const roleBaseline = id => structuredClone(lastServerSnapshotRef.current?.roles?.find(role => String(role.id) === String(id)))
+  const persistRole = (before, after) => persistStateCommand(() => [{ path: ['roles', { key: 'id', id: String(after.id) }], before: before || null, after, existed: Boolean(before), exists: true }], { combinePendingState: true, independentService: true })
   const employeeBaseline = id => structuredClone(lastServerSnapshotRef.current?.employees?.find(employee => String(employee.id) === String(id)) || null)
   const persistEmployee = (before, after) => persistStateCommand(() => employeeOperations(before, after), { combinePendingState: true, independentService: true })
   const persistAgendaRecords = (before, records) => persistStateCommand(() => stateRepository.commit(stateOperations({ history: before }, { history: records }), stateRevisionRef.current))
@@ -1118,7 +1137,7 @@ export default function App() {
     stateRepository.load().then(applyRemoteState).catch(error => {
       setDatabaseError(error.message || 'No se pudo conectar con la base de datos.')
     })
-  }, [authUser])
+  }, [authUser?.id])
   useEffect(() => {
     if (!databaseReady || !hydratingStateRef.current) return undefined
     window.clearTimeout(hydrationTimerRef.current)
@@ -1134,7 +1153,7 @@ export default function App() {
   }, [databaseReady, serializedStateSnapshot])
   useEffect(() => {
     if (isReadOnly || saveDraftConflictRef.current) return
-    if (confirmedSaveRef.current || loggingOutRef.current || hydratingStateRef.current || serializedStateSnapshot === lastPersistedSnapshotRef.current || !databaseReady || stateRevision === null || !authUser || authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return
+    if (confirmedSaveRef.current || loggingOutRef.current || hydratingStateRef.current || serializedStateSnapshot === lastPersistedSnapshotRef.current || !databaseReady || stateRevision === null || !authUser || legacyTechnician) return
     // Desde que existe un cambio local pendiente (incluido el debounce) se
     // bloquea la recarga periódica para que no restaure la versión anterior.
     pendingStateSaves.current += 1
@@ -1196,7 +1215,7 @@ export default function App() {
     // Sincronización ligera de todos los módulos. Evita que dos sesiones abiertas
     // muestren indicadores, historial o agenda de revisiones diferentes.
     if (!databaseReady || !authUser) return undefined
-    if (authUser.roleCode === 'technician' || (!authUser.roleCode && normalizeRoleName(authUser.role) === 'tecnico')) return undefined
+    if (legacyTechnician) return undefined
     let refreshing = false
     let stopped = false
     const pendingRemoteSnapshot = createRevisionSnapshotCache()
@@ -1228,6 +1247,7 @@ export default function App() {
         if (!stopped && remoteRevision !== Number(stateRevisionRef.current)) {
           const remoteState = await pendingRemoteSnapshot(remoteRevision, () => stateRepository.load())
           if (stopped || loggingOutRef.current) return
+          if (remoteState.sessionUser) setAuthUser(current => current === authUser ? reconcileSessionUser(current, remoteState.sessionUser) : current)
           const hasLocalChanges = !canRefresh(remoteState)
           if (hasLocalChanges) {
             if (remoteConflictRevisionRef.current !== remoteRevision) setNotice(REMOTE_EDIT_NOTICE)
@@ -1292,7 +1312,7 @@ export default function App() {
       return { ...currentTeam, tasks: changesTime && !timeInput ? sortTasksByTime(availableTasks) : availableTasks }
     }))
   }
-  const isAdministrator = authUser?.roleCode === 'administrator' || (!authUser?.roleCode && normalizeRoleName(authUser?.role) === 'administrador')
+  const isAdministrator = permissionUser?.roleCode === 'administrator' || (!permissionUser?.roleCode && normalizeRoleName(permissionUser?.role) === 'administrador')
   useEffect(() => {
     if (!isAdministrator || !databaseReady) return
     const rotation = default2026GuardRotationFor(activeTechs)
@@ -1307,8 +1327,8 @@ export default function App() {
   }, [isAdministrator, databaseReady, activeTechs.map(tech => `${tech.id}:${tech.name}`).join('|')])
   // Cada módulo tiene un ícono propio para facilitar el reconocimiento visual en la navegación.
   const nav = [['dashboard', 'dashboard', 'Menú principal'], ['weekly', 'calendar', 'Agenda semanal'], ['history', 'history', 'Historial'], ['collections', 'wallet', 'Cobranzas'], ['accounts', 'accounts', 'Abonados y clientes'], ['map', 'map', 'Mapa'], ['employees', 'users', 'Empleados'], ['services', 'tools', 'Tipo de servicio'], ['vehicles', 'vehicle', 'Vehículos'], ['settings', 'settings', 'Configuración']]
-  const modulePermissions = isOperator ? resolvedRolePermissions({ name: 'Operador' }) : isSupervisor ? resolvedRolePermissions({ name: 'Supervisor' }) : { ...resolvedRolePermissions(activeRole), dashboard: true, help: true }
-  const passwordResetState = usePasswordResetRequests({ enabled: Boolean(authUser && databaseReady && isAdministrator), accountKey: authUser?.id || authUser?.email })
+  const modulePermissions = granularAccess ? { ...access, help: true } : isOperator ? resolvedRolePermissions({ name: 'Operador' }) : isSupervisor ? resolvedRolePermissions({ name: 'Supervisor' }) : { ...resolvedRolePermissions(activeRole), dashboard: true, help: true }
+  const passwordResetState = usePasswordResetRequests({ enabled: Boolean(authUser && databaseReady && (granularAccess ? allowed('employees.requests.read') : isAdministrator)), accountKey: authUser?.id || authUser?.email })
   const [notificationNow, setNotificationNow] = useState(Date.now)
   const [activeNotificationId, setActiveNotificationId] = useState(null)
   const [collectionOpenRequest, setCollectionOpenRequest] = useState(null)
@@ -1352,20 +1372,21 @@ export default function App() {
   useEffect(() => {
     if (activeNotificationId && !activeNotification) setActiveNotificationId(null)
   }, [activeNotificationId, activeNotification])
-  const technicalEnabled = !isReadOnly && (employees.find(employee => String(employee.id) === String(authUser?.id))?.technicalEnabled ?? authUser?.technicalEnabled) === true
+  const technicalEnabled = granularAccess ? allowed('technical.view') && technicalEligible : !isReadOnly && technicalFunctionEnabled
   modulePermissions.myServices = technicalEnabled
   if (technicalEnabled) nav.push(['myServices', 'tools', 'Mis servicios'])
+  if (granularAccess && modulePermissions.agenda) nav.splice(2, 0, ['agenda', 'calendar', 'Agenda del día'])
   if (!isAdministrator) {
     for (let index = nav.length - 1; index >= 0; index -= 1) if (!modulePermissions[nav[index][0]]) nav.splice(index, 1)
   }
   useEffect(() => {
     if (!isAdministrator && !modulePermissions[module] && nav[0]) setModule(nav[0][0])
-  }, [isAdministrator, module, activeRole?.id, technicalEnabled])
+  }, [isAdministrator, module, activeRole, technicalEnabled])
   const title = { dashboard: 'Menú principal', weekly: 'Agenda semanal', agenda: 'Agenda del día', history: 'Historial', collections: 'Cobranzas', accounts: 'Abonados y clientes', map: 'Mapa', employees: 'Empleados', services: 'Tipo de servicio', vehicles: 'Vehículos', settings: 'Configuración', audit: 'Auditoría', help: 'Centro de ayuda' }[module]
   useEffect(() => {
     document.title = authUser ? `${title || 'Agenda técnica'} | PIGNUS` : 'Ingresar | PIGNUS'
   }, [title, authUser])
-  if (isAdministrator) nav.push(['audit', 'audit', 'Auditoría'])
+  if (isAdministrator || (granularAccess && modulePermissions.audit)) nav.push(['audit', 'audit', 'Auditoría'])
   if (!isReadOnly) nav.push(['help', 'help', 'Centro de ayuda'])
   const logout = async ({ requireServerLogout = false } = {}) => {
     if (loggingOutRef.current) return
@@ -1382,7 +1403,7 @@ export default function App() {
       // explícita la instantánea más reciente antes de invalidar la sesión.
       await stateSaveQueue.current.catch(() => {})
       const latestSerializedSnapshot = currentSnapshotRef.current
-      const canPersistLatestSnapshot = !isReadOnly && databaseReady && stateRevisionRef.current !== null && authUser && authUser.roleCode !== 'technician' && (authUser.roleCode || normalizeRoleName(authUser.role) !== 'tecnico')
+      const canPersistLatestSnapshot = !isReadOnly && databaseReady && stateRevisionRef.current !== null && authUser && !legacyTechnician
       if (canPersistLatestSnapshot && hadPendingStateSave && latestSerializedSnapshot && latestSerializedSnapshot !== lastPersistedSnapshotRef.current) {
         const snapshot = JSON.parse(latestSerializedSnapshot)
         let base = null
@@ -1428,6 +1449,7 @@ export default function App() {
     idleTimeoutMs: authUser?.roleCode === 'technician' ? TECHNICIAN_SESSION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS,
     statusIntervalMs: authUser?.roleCode === 'technician' ? TECHNICIAN_SESSION_STATUS_INTERVAL_MS : SESSION_STATUS_INTERVAL_MS,
     onInvalidated: endInvalidatedSession,
+    onSessionUser: incoming => setAuthUser(current => current === authUser ? reconcileSessionUser(current, incoming) : current),
     onIdle: async () => {
       setSessionEndedMessage(authUser?.roleCode === 'technician'
         ? 'La sesión técnica se cerró por seguridad después de 24 horas sin actividad. Iniciá sesión nuevamente para continuar.'
@@ -1446,7 +1468,7 @@ export default function App() {
   useEffect(() => {
     const refresh = () => requestManualRefresh({
       busy: confirmedSaveRef.current || loggingOutRef.current || pendingStateSaves.current > 0 || Boolean(stateSaveTimerRef.current) || Boolean(document.querySelector('.confirm-modal .confirm-actions button:disabled, .modal[aria-busy="true"], form[aria-busy="true"], .technician-page[aria-busy="true"]')),
-      dirty: hasRefreshDraft() || Boolean(document.querySelector('[data-unsaved-attachments="true"]')) || Boolean(weeklyNavigationGuard.current?.hasDraft?.()) || (!isReadOnly && authUser?.roleCode !== 'technician' && currentSnapshotRef.current !== lastPersistedSnapshotRef.current),
+      dirty: hasRefreshDraft() || Boolean(document.querySelector('[data-unsaved-attachments="true"]')) || Boolean(weeklyNavigationGuard.current?.hasDraft?.()) || (!isReadOnly && !legacyTechnician && currentSnapshotRef.current !== lastPersistedSnapshotRef.current),
       online: navigator.onLine !== false,
       confirm: message => window.confirm(message),
       notify: message => window.alert(message),
@@ -1458,12 +1480,12 @@ export default function App() {
   if (loggingOut) return <main className="login-page"><SystemState type="syncing" inverse title="Cerrando sesión segura…" detail="Esperá mientras cerramos tu sesión." /></main>
   if (authLoading) return <main className="login-page"><SystemState type="loading" inverse title="Verificando sesión segura…" detail="Estamos recuperando tu acceso y los datos autorizados." /></main>
   if (!authUser) return <Suspense fallback={<SystemState type="loading" title="Cargando acceso…" />}><Login initialError={sessionEndedMessage} onLogin={(user, initialState) => { setSessionEndedMessage(''); setNotice(''); initialRemoteStateRef.current = initialState || null; setAuthUser(user) }} /></Suspense>
-  if (!databaseReady) return <main className="login-page"><div className="login-card"><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">DATOS PROTEGIDOS</p><SystemState type={databaseError ? 'error' : 'loading'} title={databaseError ? 'No se pudo cargar la agenda' : 'Cargando información autorizada…'} detail={databaseError || 'Estamos preparando la información permitida para tu perfil.'} action={databaseError ? () => { setDatabaseError(''); setAuthUser(current => current ? { ...current } : current) } : undefined} /><button title="Cerrá tu sesión; necesitarás tus credenciales para volver a ingresar." className="secondary" type="button" onClick={logout}><Icon name="logout" size={16} />Cerrar sesión</button></div></main>
-  if (authUser.roleCode === 'technician' || normalizeRoleName(authUser.role) === 'tecnico') return <TechnicianPortalErrorBoundary logout={logout}><Suspense fallback={<SystemState type="loading" title="Cargando agenda técnica…" />}><TechnicianPortal user={authUser} history={history} setHistory={setHistory} vehicles={vehicles} setVehicles={setVehicles} logout={logout} sessionInvalidated={endInvalidatedSession} /></Suspense></TechnicianPortalErrorBoundary>
+  if (!databaseReady) return <main className="login-page"><div className="login-card"><img src="/logo-pignus.png" alt="Pignus" /><p className="eyebrow">DATOS PROTEGIDOS</p><SystemState type={databaseError ? 'error' : 'loading'} title={databaseError ? 'No se pudo cargar la agenda' : 'Cargando información autorizada…'} detail={databaseError || 'Estamos preparando la información permitida para tu perfil.'} action={databaseError ? () => { setDatabaseError(''); stateRepository.load().then(applyRemoteState).catch(error => setDatabaseError(error.message || 'No se pudo conectar con la base de datos.')) } : undefined} /><button title="Cerrá tu sesión; necesitarás tus credenciales para volver a ingresar." className="secondary" type="button" onClick={logout}><Icon name="logout" size={16} />Cerrar sesión</button></div></main>
+  if (legacyTechnician || (granularAccess && technicalEnabled && !['dashboard', 'weekly', 'agenda', 'history', 'collections', 'accounts', 'map', 'employees', 'services', 'vehicles', 'settings', 'audit'].some(key => modulePermissions[key]))) return <PermissionsProvider user={permissionUser}><TechnicianPortalErrorBoundary logout={logout}><Suspense fallback={<SystemState type="loading" title="Cargando agenda técnica…" />}><TechnicianPortal user={permissionUser} history={history} setHistory={setHistory} vehicles={vehicles} setVehicles={setVehicles} logout={logout} sessionInvalidated={endInvalidatedSession} /></Suspense></TechnicianPortalErrorBoundary></PermissionsProvider>
 
-  if (module === 'myServices' && technicalEnabled) return <Suspense fallback={<SystemState type="loading" title="Cargando servicios…" />}><PersonalTechnicalServices user={authUser} logout={logout} sessionInvalidated={endInvalidatedSession} onBack={() => setModule('dashboard')} /></Suspense>
+  if (module === 'myServices' && technicalEnabled) return <PermissionsProvider user={permissionUser}><Suspense fallback={<SystemState type="loading" title="Cargando servicios…" />}><PersonalTechnicalServices user={permissionUser} logout={logout} sessionInvalidated={endInvalidatedSession} onBack={() => setModule(nav.find(item => item[0] !== 'myServices')?.[0] || 'help')} /></Suspense></PermissionsProvider>
 
-  return <FrozenMonthsContext.Provider value={weekly?._frozenMonthOptions ?? [4, 6]}><ServiceJourneysContext.Provider value={{history, today: currentLocalDate(), enabled: !isReadOnly && (isAdministrator || Boolean(modulePermissions.agenda || modulePermissions.weekly)), teamsForDate: reschedulingTeams, availableTeams: historyScheduling.teamsForDate, save: async (base, visits) => {
+  return <PermissionsProvider user={permissionUser}><FrozenMonthsContext.Provider value={weekly?._frozenMonthOptions ?? [4, 6]}><ServiceJourneysContext.Provider value={{history, today: currentLocalDate(), enabled: granularAccess ? allowed('planning.journeys') : !isReadOnly && (isAdministrator || Boolean(modulePermissions.agenda || modulePermissions.weekly)), teamsForDate: reschedulingTeams, availableTeams: historyScheduling.teamsForDate, save: async (base, visits) => {
         for (const year of new Set(visits.map(visit => String(visit.date).slice(0,4)))) {
           const response = await fetchWithTimeout('/api/holidays?year=' + encodeURIComponent(year), { credentials: 'same-origin' })
           if (!response.ok) throw new Error('No se pudo verificar el calendario laboral. No se guardaron las jornadas.')
@@ -1471,7 +1493,7 @@ export default function App() {
           for (const visit of visits) if ((calendar.holidays || []).some(holiday => holiday.date === visit.date) && weekly._holidayOverrides?.[visit.date]?.status !== 'working') throw new Error('La fecha ' + visit.date + ' es feriado y no está habilitada.')
         }
         await persistWeeklyService({ operation: 'service-journeys', base, visits })
-      }}}><div className={`app-shell ${desktopSidebar && sidebarCollapsed ? 'sidebar-collapsed' : ''}`} data-theme={theme}>{confirmedSaving && <div className="confirmed-save-status" role="status" aria-live="polite"><p>Guardando cambios… Podés seguir consultando la agenda.</p></div>}<aside id="main-navigation" aria-label="Menú principal" className={`sidebar ${menuOpen && !desktopSidebar ? 'open' : ''} ${desktopSidebar && sidebarCollapsed ? 'sidebar-compact' : ''}`}><div className="brand" role="button" tabIndex={0} aria-label="Ir al inicio" onClick={() => requestNavigation(() => setModule(nav[0]?.[0] || 'dashboard'))} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); requestNavigation(() => setModule(nav[0]?.[0] || 'dashboard')) } }}><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button title={`Abrí el módulo ${label} desde el menú de navegación.`} key={id} aria-label={label} aria-current={module === id ? 'page' : undefined} onClick={() => { if (id !== module) requestNavigation(() => { setModule(id); setMenuOpen(false) }); else setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} /><span className="nav-item-label">{label}</span></button>)}</nav><div className="sidebar-session"><strong>{authUser.name}</strong><small>{authUser.email}</small><small>{authUser.role}</small></div><div className="sidebar-bottom">v2.0 · Agenda técnica</div></aside>{menuOpen && !desktopSidebar && <button title="Cerrá el menú lateral para volver al contenido." className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main ><header className="topbar"><button type="button" className="sidebar-toggle topbar-icon-button" aria-controls="main-navigation" aria-expanded={desktopSidebar ? !sidebarCollapsed : menuOpen} aria-label={desktopSidebar ? (sidebarCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral') : (menuOpen ? 'Cerrar menú lateral' : 'Abrir menú lateral')} title={desktopSidebar ? (sidebarCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral') : 'Abrir o cerrar menú lateral'} onClick={() => desktopSidebar ? setSidebarCollapsed(value => !value) : setMenuOpen(value => !value)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><h1>{title}</h1><div id="module-description-slot" /></div><div className="profile">{(isAdministrator || modulePermissions.dashboard) && <NotificationCenter notifications={notifications} onSelect={openNotification} />}<FullscreenToggle /><button title={theme === 'light' ? 'Cambiá a colores oscuros para reducir el brillo de la pantalla.' : 'Cambiá a colores claros para visualizar la plataforma.'} className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><div className="profile-menu"><button title="Abrí la información de tu perfil y tu sesión." className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span></button>{profileOpen && <div className="profile-popover"><b>{authUser.name}</b><span>{authUser.email}</span><small>{authUser.role}</small></div>}</div><RefreshButton /><button className="logout-button" disabled={confirmedSaving} onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrá tu sesión; necesitarás tus credenciales para volver a ingresar."><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content"><Suspense fallback={<SystemState type="loading" title="Cargando módulo…" detail="Estamos preparando esta pantalla." />}>{notice && <div className="notice" data-tone={noticeLevel} role={noticeLevel === 'error' || noticeLevel === 'offline' ? 'alert' : 'status'} aria-live={noticeLevel === 'error' || noticeLevel === 'offline' ? 'assertive' : 'polite'}><span><Icon name={noticeLevel === 'success' ? 'check' : 'alert'} size={16} />{notice}</span><button title="Ocultá este aviso; esta acción no modifica los datos." onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'help' && <HelpCenter onNavigate={id => requestNavigation(() => setModule(id))} isAdministrator={isAdministrator} allowedModules={nav.map(([id]) => id)} />}{module === 'audit' && isAdministrator && <AuditPage user={authUser} onBack={() => setModule('dashboard')} onOpenMenu={() => setMenuOpen(true)} logout={requestLogout} />}{module === 'dashboard' && <Dashboard isAdministrator={isAdministrator} passwordResetState={passwordResetState} onOpenReservation={modulePermissions.weekly ? record => requestNavigation(() => { setWeeklyOpenRequest({ id: record.id }); setModule('weekly') }) : undefined} history={history} services={services} customers={customers} onEditVehicle={isAdministrator && modulePermissions.vehicles ? id => requestNavigation(() => { setVehicleEditRequest(id); setModule('vehicles') }) : undefined} />}{module === 'weekly' && <WeeklyPlanner confirmedRevision={stateRevision} openRequest={weeklyOpenRequest} onOpenRequestHandled={() => setWeeklyOpenRequest(null)} navigationGuardRef={weeklyNavigationGuard} {...{ persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, authUser, vehicles }} permissions={modulePermissions} openDaily={(nextDate, nextTeams) => { if (nextDate < currentLocalDate()) setHistoricalDate(nextDate); else { setHistoricalDate(null); setDate(nextDate); setTeams(nextTeams) } setModule('agenda') }} />}{module === 'agenda' && <Agenda navigationGuardRef={weeklyNavigationGuard} {...{ persistWeeklyService, persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady, authUser }} date={historicalDate || date} setDate={nextDate => { if (nextDate < currentLocalDate()) setHistoricalDate(nextDate); else { setHistoricalDate(null); setDate(nextDate) } }} />}{module === 'history' && <History initialFilter={historyEntryFilter} history={history} setHistory={setHistory} customers={customers} services={services} employees={activeTechs} authUser={authUser} canManage={isAdministrator || modulePermissions.historyManage} persistHistoryRecord={persistHistoryRecord} persistHistoryRecordRemoval={persistHistoryRecordRemoval} historyScheduling={historyScheduling} />}{module === 'map' && (isAdministrator || modulePermissions.map) && <><SubscriberMap customers={customers} onOpenCustomer={isAdministrator || modulePermissions.accounts ? setMapCustomer : undefined} />{mapCustomer && (isAdministrator || modulePermissions.accounts) && <CustomerDetail customer={customers.find(item => item.customerId === mapCustomer.customerId) || mapCustomer} history={history} services={services} close={() => setMapCustomer(null)} />}</>}{module === 'collections' && (isAdministrator || modulePermissions.collections) && <Collections history={history} canManage={isAdministrator || modulePermissions.collectionsManage} onSave={persistCollection} openRequest={collectionOpenRequest} onOpenRequestHandled={() => setCollectionOpenRequest(null)} setNotice={setNotice} />}{module === 'accounts' && <Accounts {...{ persistSubscriptionCorrection, services, customers, setCustomers, setNotice, ask, history, teams, weekly, stateRevision, refreshRemoteState, applyCustomerImportState }} permissions={modulePermissions} isAdministrator={isAdministrator} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask, history, teams, weekly, persistEmployee, employeeBaseline }} canEnableTechnical={isAdministrator} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask, history, teams, weekly }} />}{module === 'vehicles' && <Vehicles {...{ history, vehicles, setVehicles, setNotice, ask, isAdministrator, stateRevision, refreshRemoteState }} editRequest={vehicleEditRequest} onEditRequestHandled={() => setVehicleEditRequest(null)} />}{module === 'settings' && <>{isAdministrator && <FrozenMonthsSettings options={weekly?._frozenMonthOptions ?? [4, 6]} onSave={options => persistWeeklyConfiguration(snapshot => ({ ...snapshot, agenda: { ...snapshot.agenda, weekly: { ...snapshot.agenda?.weekly, _frozenMonthOptions: options } } }))} />}<Settings {...{ roles, setRoles, setNotice, ask, employees, weekly, persistWeeklyConfiguration }} canConfigureWorkday={isAdministrator || Boolean(modulePermissions.weeklyHours)} /></>}</Suspense></section></main>{activeNotification && <NotificationActionDialog key={activeNotification.id} notification={activeNotification} history={history} customers={customers} passwordResetState={passwordResetState} close={() => setActiveNotificationId(null)} />}{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div></ServiceJourneysContext.Provider></FrozenMonthsContext.Provider>
+      }}}><div className={`app-shell ${desktopSidebar && sidebarCollapsed ? 'sidebar-collapsed' : ''}`} data-theme={theme}>{confirmedSaving && <div className="confirmed-save-status" role="status" aria-live="polite"><p>Guardando cambios… Podés seguir consultando la agenda.</p></div>}<aside id="main-navigation" aria-label="Menú principal" className={`sidebar ${menuOpen && !desktopSidebar ? 'open' : ''} ${desktopSidebar && sidebarCollapsed ? 'sidebar-compact' : ''}`}><div className="brand" role="button" tabIndex={0} aria-label="Ir al inicio" onClick={() => requestNavigation(() => setModule(nav[0]?.[0] || 'dashboard'))} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); requestNavigation(() => setModule(nav[0]?.[0] || 'dashboard')) } }}><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><p className="nav-label">MÓDULOS</p><nav>{nav.map(([id, icon, label]) => <button title={`Abrí el módulo ${label} desde el menú de navegación.`} key={id} aria-label={label} aria-current={module === id ? 'page' : undefined} onClick={() => { if (id !== module) requestNavigation(() => { setModule(id); setMenuOpen(false) }); else setMenuOpen(false) }} className={module === id ? 'active' : ''}><Icon name={icon} /><span className="nav-item-label">{label}</span></button>)}</nav><div className="sidebar-session"><strong>{authUser.name}</strong><small>{authUser.email}</small><small>{authUser.role}</small></div><div className="sidebar-bottom">v2.0 · Agenda técnica</div></aside>{menuOpen && !desktopSidebar && <button title="Cerrá el menú lateral para volver al contenido." className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main ><header className="topbar"><button type="button" className="sidebar-toggle topbar-icon-button" aria-controls="main-navigation" aria-expanded={desktopSidebar ? !sidebarCollapsed : menuOpen} aria-label={desktopSidebar ? (sidebarCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral') : (menuOpen ? 'Cerrar menú lateral' : 'Abrir menú lateral')} title={desktopSidebar ? (sidebarCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral') : 'Abrir o cerrar menú lateral'} onClick={() => desktopSidebar ? setSidebarCollapsed(value => !value) : setMenuOpen(value => !value)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><h1>{title}</h1><div id="module-description-slot" /></div><div className="profile">{(isAdministrator || modulePermissions.dashboard) && <NotificationCenter notifications={notifications} onSelect={openNotification} />}<FullscreenToggle /><button title={theme === 'light' ? 'Cambiá a colores oscuros para reducir el brillo de la pantalla.' : 'Cambiá a colores claros para visualizar la plataforma.'} className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><div className="profile-menu"><button title="Abrí la información de tu perfil y tu sesión." className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span></button>{profileOpen && <div className="profile-popover"><b>{authUser.name}</b><span>{authUser.email}</span><small>{authUser.role}</small></div>}</div><RefreshButton /><button className="logout-button" disabled={confirmedSaving} onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrá tu sesión; necesitarás tus credenciales para volver a ingresar."><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content"><Suspense fallback={<SystemState type="loading" title="Cargando módulo…" detail="Estamos preparando esta pantalla." />}>{notice && <div className="notice" data-tone={noticeLevel} role={noticeLevel === 'error' || noticeLevel === 'offline' ? 'alert' : 'status'} aria-live={noticeLevel === 'error' || noticeLevel === 'offline' ? 'assertive' : 'polite'}><span><Icon name={noticeLevel === 'success' ? 'check' : 'alert'} size={16} />{notice}</span><button title="Ocultá este aviso; esta acción no modifica los datos." onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'help' && <HelpCenter onNavigate={id => requestNavigation(() => setModule(id))} isAdministrator={isAdministrator} allowedModules={nav.map(([id]) => id)} />}{module === 'audit' && (granularAccess ? allowed('audit.view') : isAdministrator) && <AuditPage user={authUser} onBack={() => setModule('dashboard')} onOpenMenu={() => setMenuOpen(true)} logout={requestLogout} />}{module === 'dashboard' && <Dashboard isAdministrator={isAdministrator} passwordResetState={passwordResetState} onOpenReservation={modulePermissions.weekly ? record => requestNavigation(() => { setWeeklyOpenRequest({ id: record.id }); setModule('weekly') }) : undefined} history={history} services={services} customers={customers} onEditVehicle={(granularAccess ? allowed('vehicles.edit') : isAdministrator && modulePermissions.vehicles) ? id => requestNavigation(() => { setVehicleEditRequest(id); setModule('vehicles') }) : undefined} />}{module === 'weekly' && <WeeklyPlanner confirmedRevision={stateRevision} openRequest={weeklyOpenRequest} onOpenRequestHandled={() => setWeeklyOpenRequest(null)} navigationGuardRef={weeklyNavigationGuard} {...{ persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, authUser: permissionUser, vehicles }} permissions={modulePermissions} openDaily={(nextDate, nextTeams) => { if (nextDate < currentLocalDate()) setHistoricalDate(nextDate); else { setHistoricalDate(null); setDate(nextDate); setTeams(nextTeams) } setModule('agenda') }} />}{module === 'agenda' && <Agenda navigationGuardRef={weeklyNavigationGuard} {...{ persistWeeklyService, persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady, authUser: permissionUser }} date={historicalDate || date} setDate={nextDate => { if (nextDate < currentLocalDate()) setHistoricalDate(nextDate); else { setHistoricalDate(null); setDate(nextDate) } }} />}{module === 'history' && <History initialFilter={historyEntryFilter} history={history} setHistory={setHistory} customers={customers} services={services} employees={activeTechs} authUser={permissionUser} canManage={isAdministrator || modulePermissions.historyManage} persistHistoryRecord={persistHistoryRecord} persistHistoryRecordRemoval={persistHistoryRecordRemoval} historyScheduling={historyScheduling} />}{module === 'map' && (isAdministrator || modulePermissions.map) && <><SubscriberMap customers={customers} onOpenCustomer={isAdministrator || modulePermissions.accounts ? setMapCustomer : undefined} />{mapCustomer && (isAdministrator || modulePermissions.accounts) && <CustomerDetail customer={customers.find(item => item.customerId === mapCustomer.customerId) || mapCustomer} history={history} services={services} close={() => setMapCustomer(null)} />}</>}{module === 'collections' && (isAdministrator || modulePermissions.collections) && <Collections history={history} canManage={isAdministrator || modulePermissions.collectionsManage} onSave={persistCollection} openRequest={collectionOpenRequest} onOpenRequestHandled={() => setCollectionOpenRequest(null)} setNotice={setNotice} />}{module === 'accounts' && <Accounts {...{ persistSubscriptionCorrection, services, customers, setCustomers, setNotice, ask, history, teams, weekly, stateRevision, refreshRemoteState, applyCustomerImportState }} permissions={modulePermissions} isAdministrator={isAdministrator} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask, history, teams, weekly, persistEmployee, employeeBaseline }} canEnableTechnical={granularAccess ? allowed('employees.technical') : isAdministrator} />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask, history, teams, weekly }} />}{module === 'vehicles' && <Vehicles {...{ history, vehicles, setVehicles, setNotice, ask, isAdministrator, stateRevision, refreshRemoteState }} editRequest={vehicleEditRequest} onEditRequestHandled={() => setVehicleEditRequest(null)} />}{module === 'settings' && <>{(granularAccess ? allowed('settings.frozenMonths') : isAdministrator) && <FrozenMonthsSettings options={weekly?._frozenMonthOptions ?? [4, 6]} onSave={options => persistWeeklyConfiguration(snapshot => ({ ...snapshot, agenda: { ...snapshot.agenda, weekly: { ...snapshot.agenda?.weekly, _frozenMonthOptions: options } } }))} />}<Settings {...{ roles, setRoles, setNotice, ask, employees, weekly, persistWeeklyConfiguration, persistRole, roleBaseline }} canConfigureWorkday={granularAccess ? allowed('settings.workday.read') : isAdministrator || Boolean(modulePermissions.weeklyHours)} /></>}</Suspense></section></main>{activeNotification && <NotificationActionDialog key={activeNotification.id} notification={activeNotification} history={history} customers={customers} passwordResetState={passwordResetState} close={() => setActiveNotificationId(null)} />}{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div></ServiceJourneysContext.Provider></FrozenMonthsContext.Provider></PermissionsProvider>
 
 }
 
@@ -1496,9 +1518,10 @@ function NotificationActionDialog({ notification, history, customers, passwordRe
 }
 
 function PasswordResetReminder({ state, onManage }) {
+  const { can } = usePermissions()
   const { requests = [], error = '', resolve = () => {} } = state || {}
   if (!requests.length && !error) return null
-  return <section className="password-reset-reminders" aria-label="Solicitudes de cambio de contraseña">{error && <p className="login-error" role="alert">{error}</p>}{requests.map(request => <article className="password-reset-reminder" key={request.id} data-notification-id={`password:${request.id}`}><Icon name="settings" /><div><b>Solicitud de cambio de contraseña</b><span><strong>{request.email}</strong> solicita actualizar su contraseña.</span><small>{new Date(request.requestedAt).toLocaleString('es-AR')}</small></div><div className="password-reset-actions"><button title="Abrí Empleados para gestionar el acceso solicitado." className="secondary" type="button" onClick={() => { onManage?.(); window.dispatchEvent(new Event('pignus:open-employees')) }}>Gestionar en Empleados</button><button title="Marcá esta solicitud de acceso como atendida." className="primary" type="button" onClick={() => resolve(request.id)}>Marcar resuelta</button></div></article>)}</section>
+  return <section className="password-reset-reminders" aria-label="Solicitudes de cambio de contraseña">{error && <p className="login-error" role="alert">{error}</p>}{requests.map(request => <article className="password-reset-reminder" key={request.id} data-notification-id={`password:${request.id}`}><Icon name="settings" /><div><b>Solicitud de cambio de contraseña</b><span><strong>{request.email}</strong> solicita actualizar su contraseña.</span><small>{new Date(request.requestedAt).toLocaleString('es-AR')}</small></div><div className="password-reset-actions">{can('employees.view') && <button title="Abrí Empleados para gestionar el acceso solicitado." className="secondary" type="button" onClick={() => { onManage?.(); window.dispatchEvent(new Event('pignus:open-employees')) }}>Gestionar en Empleados</button>}{can('employees.requests.resolve') && <button title="Marcá esta solicitud de acceso como atendida." className="primary" type="button" onClick={() => resolve(request.id)}>Marcar resuelta</button>}</div></article>)}</section>
 }
 
 function ServiceAdvanceRequestsReminder({ history = [] }) {

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import workday from '../../api/_lib/workday.cjs'
 
-export default function WorkdaySettings({ weekly, persistWeeklyConfiguration, setNotice }) {
+export default function WorkdaySettings({ weekly, persistWeeklyConfiguration, setNotice, canManage = true }) {
   const [scope, setScope] = useState('weekday')
   const [weekday, setWeekday] = useState('1')
   const [date, setDate] = useState('')
@@ -15,6 +15,7 @@ export default function WorkdaySettings({ weekly, persistWeeklyConfiguration, se
   const current = draft || (scope === 'weekday' ? config.weekdays?.[weekday] || workday.defaults(Number(weekday)) : workday.workdayForDate(date, weekly, teamId) || workday.defaults(1))
   const changeScope = action => { action(); setDraft(null) }
   const save = async (remove = false) => {
+    if (!canManage) return
     if (scope !== 'weekday' && (!date || new Date(`${date}T12:00:00`).getDay() === 0)) return setNotice('Elegí una fecha laboral de lunes a sábado.')
     setSaving(true)
     try {
@@ -36,7 +37,7 @@ export default function WorkdaySettings({ weekly, persistWeeklyConfiguration, se
     <form onSubmit={event => { event.preventDefault(); save() }}><fieldset disabled={saving}><div className="monthly-time-grid">
       <label>Aplicar a<select value={scope} onChange={event => changeScope(() => { setScope(event.target.value); setTeamId('') })}><option value="weekday">Jornada habitual</option><option value="date">Excepción por día o equipo</option></select></label>
       {scope === 'weekday' ? <label>Día de la semana<select value={weekday} onChange={event => changeScope(() => setWeekday(event.target.value))}>{['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'].map((label, index) => <option key={label} value={index + 1}>{label}</option>)}</select></label> : <><label>Fecha<input required type="date" value={date} onChange={event => changeScope(() => { setDate(event.target.value); setTeamId('') })} /></label><label>Equipo<select value={teamId} onChange={event => changeScope(() => setTeamId(event.target.value))}><option value="">Todos los equipos del día</option>{teams.filter(team => team.teamId).map((team, index) => <option key={team.teamId} value={team.teamId}>{team.label || `Equipo ${index + 1}`} · {(team.members || []).join(' · ')}</option>)}</select></label></>}
-      {[['start', 'Ingreso'], ['bookable', 'Inicio de disponibilidad'], ['end', 'Fin de jornada'], ['breakStart', 'Inicio del descanso'], ['breakEnd', 'Fin del descanso']].map(([field, label]) => <label key={field}>{label}<input required type="time" value={current[field]} onChange={event => setDraft({ ...current, [field]: event.target.value })} /></label>)}
-    </div><div className="modal-actions"><button className="primary" title="Guardá la jornada laboral y recalculá las franjas disponibles." type="submit">{saving ? 'Guardando…' : 'Guardar jornada'}</button>{config[collection]?.[key] && <button className="secondary" title="Quitá esta configuración para volver a utilizar la jornada heredada." type="button" onClick={() => save(true)}>Restablecer jornada</button>}</div></fieldset></form>
+      {[['start', 'Ingreso'], ['bookable', 'Inicio de disponibilidad'], ['end', 'Fin de jornada'], ['breakStart', 'Inicio del descanso'], ['breakEnd', 'Fin del descanso']].map(([field, label]) => <label key={field}>{label}<input disabled={!canManage} required type="time" value={current[field]} onChange={event => setDraft({ ...current, [field]: event.target.value })} /></label>)}
+    </div><div className="modal-actions"><button disabled={!canManage} className="primary" title="Guardá la jornada laboral y recalculá las franjas disponibles." type="submit">{saving ? 'Guardando…' : 'Guardar jornada'}</button>{canManage && config[collection]?.[key] && <button className="secondary" title="Quitá esta configuración para volver a utilizar la jornada heredada." type="button" onClick={() => save(true)}>Restablecer jornada</button>}</div></fieldset></form>
   </section>
 }

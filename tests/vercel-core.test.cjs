@@ -809,7 +809,7 @@ test('los servicios cerrados no ofrecen guardado y una finalización anticipada 
   const source = frontendSource()
   assert.match(source, /const taskIsResolvedForPlanning = \(task, date, history\) => \{[\s\S]*?\['Completado', 'Avance registrado'\]\.includes\(status\) \|\| serviceSlotReleased\(historyRecordForTask\(task, date, history\) \|\| task, date\)/)
   assert.match(source, /const showSaveAgenda = hasPendingAgendaServices \|\| !hasResolvedAgendaServices/)
-  assert.match(source, /\{showSaveAgenda && <button\b[^>]*type="button" className="secondary save-agenda-button"/)
+  assert.match(source, /\{canWritePlan && showSaveAgenda && <button\b[^>]*type="button" className="secondary save-agenda-button"/)
   assert.doesNotMatch(source, /weekly-save-day/)
   assert.match(source, /conflictsForDay = day =>[\s\S]*?taskForScheduleOccupancy\(task, day, operationalHistory\)/)
   assert.match(source, /\['Completado', 'Avance registrado'\]\.includes\(status\) && String\(date \|\| ''\) !== currentLocalDate\(\)/)
@@ -887,11 +887,14 @@ test('cada equipo reserva una hora mínima y oculta turnos vacíos incompatibles
   assert.match(help, /reserva operativa mínima de 60 minutos/)
 })
 
-test('jornada laboral reemplaza los horarios mensuales en configuración', () => {
+test('jornada laboral y horarios mensuales tienen permisos y editores separados', () => {
   const source = frontendSource()
-  assert.doesNotMatch(source, /Horarios del mes|monthly-times-modal/)
-  assert.match(source, /canConfigureWorkday=\{isAdministrator \|\| Boolean\(modulePermissions.weeklyHours\)\}/)
+  assert.match(source, /canConfigureWorkday=\{granularAccess \? allowed\('settings\.workday\.read'\) : isAdministrator \|\| Boolean\(modulePermissions.weeklyHours\)\}/)
   assert.match(fs.readFileSync(path.resolve(__dirname, '../src/features/settings/presentation/Settings.jsx'), 'utf8'), /<WorkdaySettings/)
+  const monthly = fs.readFileSync(path.resolve(__dirname, '../src/components/MonthlyHoursSettings.jsx'), 'utf8')
+  assert.match(monthly, /can\('weekly\.monthlyHours\.read'\)/)
+  assert.match(monthly, /can\('weekly\.monthlyHours\.manage'\)/)
+  assert.match(monthly, /month >= today\.slice\(0, 7\)/)
 })
 
 test('los meses finalizados no solicitan ni permiten configuraciones mensuales', () => {
@@ -1010,7 +1013,7 @@ test('la nota y el checklist internos se conservan para administración y no apa
   assert.match(source, /internalNote: task\.internalNote \|\| ''/)
   assert.match(source, /internalChecklist: normalizeInternalChecklist\(task\.internalChecklist\)/)
   assert.doesNotMatch(source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function History(')), /internalNote|internalChecklist|Nota interna|Checklist de preparación/)
-  assert.match(apiSource, /record: technicianSafeRecord\(updated\)/)
+  assert.match(apiSource, /record: isGranular\(user\) \? granularRead\.sanitizeService\(updated, user\) : technicianSafeRecord\(updated\)/)
   assert.match(localServer, /history:[\s\S]*?\.map\(record => technicianSafeRecord\(/)
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(styles, /\.content > \.team-card \.task-row > \.internal-preparation,[\s\S]*?grid-column: 2 \/ 5 !important/)
@@ -1034,7 +1037,7 @@ test('el técnico dispone del módulo Vehículos como tabla de solo lectura y pu
   const technicianPortal = source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function History('))
   assert.match(technicianPortal, /data-view="vehicles"[\s\S]*?<span>Vehículos<\/span>/)
   assert.match(technicianPortal, /data-view="help"[\s\S]*?<span>Centro de ayuda<\/span>/)
-  assert.match(technicianPortal, /<TechnicianHelpCenter onNavigate=\{setView\} \/>/)
+  assert.match(technicianPortal, /<TechnicianHelpCenter onNavigate=\{next => \{[\s\S]*?can\('technical.history'\)[\s\S]*?setView\(next\)/)
   assert.match(technicianPortal, /technician-vehicle-head[\s\S]*?<span>Vehículo<\/span><span>Año<\/span><span>Matrícula<\/span><span>Seguro<\/span>/)
   assert.match(technicianPortal, /<VehicleInsuranceDownload vehicle=\{vehicle\}/)
   const download = fs.readFileSync(path.resolve(__dirname, '../src/components/VehicleInsuranceDownload.jsx'), 'utf8')
@@ -1173,7 +1176,7 @@ test('vehículos del mes recibe la flota sin habilitar el módulo completo de ve
   const role = { id: 'weekly-vehicles-role', code: 'user', name: 'Usuario', permissions: { weekly: true, weeklyVehicles: true, vehicles: false } }
   const user = userForEmployee({ ...employee, roleId: role.id, role: role.name }, [...roles, role])
   const vehicle = { id: 'v1', brand: 'Ford', model: 'Ka', plate: 'AB403KZ' }
-  const visible = visibleStateForUser({ revision: 1, roles: [...roles, role], employees: [employee], services: [], vehicles: [vehicle], customers: [], history: [], agenda: { weekly: {} }, preferences: {} }, user)
+  const visible = visibleStateForUser({ revision: 1, roles: [...roles, role], employees: [{ ...employee, roleId: role.id, role: role.name }], services: [], vehicles: [vehicle], customers: [], history: [], agenda: { weekly: {} }, preferences: {} }, user)
   assert.deepEqual(visible.vehicles, [vehicle])
 })
 
@@ -1185,7 +1188,7 @@ test('vehículos del mes espera la confirmación atómica antes de informar el g
   assert.match(source, /rebaseOnRecordConflict: true/)
   assert.match(source, /const remote = await stateRepository\.load\(\)/)
   assert.match(source, /stateRepository\.commit\(await buildOperations\(remote\), Number\(remote\.revision\)\)/)
-  assert.match(save, /const saveMonthlyVehicleSetup = async \(\) =>/)
+  assert.match(save, /const saveMonthlyVehicleSetup = async \(scheduleOnly = false\) =>/)
   assert.match(save, /await persistWeeklyConfiguration\(snapshot =>/)
   assert.ok(save.indexOf('await persistWeeklyConfiguration') < save.indexOf('setMonthlyVehicleSetup(null)'))
   assert.ok(save.indexOf('await persistWeeklyConfiguration') < save.indexOf('Se guardaron los responsables'))
@@ -1302,7 +1305,7 @@ test('las agendas comparten las ubicaciones de instalación y distinguen reserva
   const help = fs.readFileSync(path.resolve(__dirname, '../src/HelpCenter.jsx'), 'utf8')
   assert.match(source, /\['residencial', 'Residencial con monitoreo'\]/)
   assert.match(source, /\['no-monitoreada', 'Residencial sin monitoreo'\]/)
-  assert.match(source, /<fieldset className="installation-zone">.*?\{INSTALLATION_ZONES\.map/s)
+  assert.match(source, /<fieldset disabled=\{!canEditTask\(task\)\} className="installation-zone">.*?\{INSTALLATION_ZONES\.map/s)
   assert.doesNotMatch(source, /daily-unmonitored-zone/)
   assert.match(source, />Reservar nuevo abonado<\/button>/)
   assert.match(source, /onReserveSubscriber=\{serviceCode\(serviceForTask\(task\)\) === 'alarm-installation' \? beginSubscriberReservation : undefined\}/)
@@ -1323,7 +1326,7 @@ test('las agendas comparten las ubicaciones de instalación y distinguen reserva
   assert.match(source, /kind: 'client'/)
   assert.match(fs.readFileSync(path.resolve(__dirname, '../src/features/dashboard/presentation/Dashboard.jsx'), 'utf8'), /zoneOf\(record\) !== 'no-monitoreada'/)
   assert.match(api, /!record\.subscriberReservation && installationCategory !== 'no-monitoreada'/)
-  assert.match(api, /allowEarlyCompletion: user\.roleCode === 'administrator'/)
+  assert.match(api, /allowEarlyCompletion: isGranular\(user\) \? canPermission\(user, 'history.completeEarly'\) : user\.roleCode === 'administrator'/)
   assert.match(help, /La reserva ocupa el turno sin crear un CLI/)
 })
 

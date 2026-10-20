@@ -101,3 +101,12 @@ test('advance request notice uses supplied instant, not the machine clock, and e
   assert.equal(advances(Date.parse('2026-10-13T18:00:00Z')).length, 0)
   assert.equal(advances(undefined).length, 0)
 })
+
+test('delegated password request readers see notices without gaining administrative actions', async () => {
+  const { selectDashboardNotifications } = await load()
+  const input = { today, now, passwordResetRequests: [{ id: 'delegated', email: 'solicitud@example.test' }], history: [{ id: 'advance', date: today, time: '15:00', advanceRequest: { status: 'pending' } }] }
+  const notices = selectDashboardNotifications({ ...input, permissions: { dashboard: true, 'employees.requests.read': true } })
+  assert.deepEqual(notices.map(notice => notice.id), ['password:delegated', 'pending:today'])
+  assert.equal(notices.some(notice => notice.target.type === 'advance-request'), false)
+  assert.equal(selectDashboardNotifications({ ...input, permissions: { dashboard: true } }).some(notice => notice.target.type === 'password-reset'), false)
+})

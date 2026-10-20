@@ -1,3 +1,4 @@
+import { useActionPermissions } from '../presentation/hooks/useActionPermissions.mjs'
 import React, { lazy, Suspense, useMemo, useState } from 'react'
 import ModuleIntroduction from './ModuleIntroduction.jsx'
 import Icon from './ui/Icon.jsx'
@@ -9,6 +10,7 @@ const options = (rows, field) => [...new Set(rows.map(row => row[field]))].sort(
 const initialFilters = { search: '', zone: '', city: '', neighborhood: '', quality: '' }
 
 export default function SubscriberMap({ customers, onOpenCustomer }) {
+  const { can } = useActionPermissions()
   const [filters, setFilters] = useState(initialFilters), [mode, setMode] = useState('heat'), [selectedKey, setSelectedKey] = useState(null), [page, setPage] = useState(1), [fitRequest, setFitRequest] = useState(0)
   const rows = useMemo(() => subscriberMapRows(customers), [customers])
   const scoped = useMemo(() => filterSubscriberMap(rows, { ...filters, quality: '' }), [rows, filters])
@@ -48,7 +50,7 @@ export default function SubscriberMap({ customers, onOpenCustomer }) {
       </div>
       <aside className="subscriber-map-results" aria-label="Abonados del mapa">
         <h2>{filtered.length} abonados <small>· {located.length} en mapa</small></h2>
-        {selected && <section className="subscriber-map-selection" aria-label="Abonado seleccionado"><button title="Cerrá la ficha de la ubicación seleccionada." className="subscriber-map-dismiss" type="button" aria-label="Cerrar selección" onClick={() => setSelectedKey(null)}><Icon name="close" size={16} /></button><b>{selected.customer.account} · {selected.customer.name}</b><p>{selected.address || 'Sin dirección informada'}</p><span>{MAP_QUALITY[selected.quality]}</span><p>{selected.reason}</p>{onOpenCustomer && <button title="Abrí la ficha completa del abonado seleccionado." type="button" className="secondary" onClick={() => onOpenCustomer(selected.customer)}><Icon name="eye" size={16} />Ver ficha del abonado</button>}</section>}
+        {selected && <section className="subscriber-map-selection" aria-label="Abonado seleccionado"><button title="Cerrá la ficha de la ubicación seleccionada." className="subscriber-map-dismiss" type="button" aria-label="Cerrar selección" onClick={() => setSelectedKey(null)}><Icon name="close" size={16} /></button><b>{selected.customer.account} · {selected.customer.name}</b><p>{selected.address || 'Sin dirección informada'}</p><span>{MAP_QUALITY[selected.quality]}</span><p>{selected.reason}</p>{can('map.customer') && onOpenCustomer && <button title="Abrí la ficha completa del abonado seleccionado." type="button" className="secondary" onClick={() => onOpenCustomer(selected.customer)}><Icon name="eye" size={16} />Ver ficha del abonado</button>}</section>}
         <ul>{filtered.slice((currentPage - 1) * 20, currentPage * 20).map(row => <li key={row.key}><button title={`Seleccioná la ubicación de ${row.customer.account} ${row.customer.name}.`} type="button" aria-pressed={selectedKey === row.key} onClick={() => selectRow(row)}><strong>{row.customer.account} · {row.customer.name}</strong><span>{row.city}{row.neighborhood !== 'Sin barrio informado' ? ` · ${row.neighborhood}` : ''}</span><small>{MAP_QUALITY[row.quality]}</small></button></li>)}</ul>
         {!filtered.length && <p>No hay resultados para estos filtros.</p>}
         {pages > 1 && <nav aria-label="Páginas de abonados del mapa"><button title="Consultá la página anterior de abonados." type="button" className="secondary" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Anterior</button><span>{currentPage} / {pages}</span><button title="Consultá la siguiente página de abonados." type="button" className="secondary" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)}>Siguiente</button></nav>}

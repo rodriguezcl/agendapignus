@@ -13,6 +13,7 @@ function harness(saturday = false) {
   const requests = [], notices = [], timers = [], deferred = []
   const context = {
     ...interactions,
+    requirePermission: () => true,
     afterInteractionPaint: () => new Promise(resolve => timers.push(resolve)),
     memberSelectionsRef: { current: selections },
     setMemberSelections: update => { selections = update(selections); context.memberSelectionsRef.current = selections },
@@ -166,4 +167,12 @@ test('a newer authoritative membership cancels queued intent without overwriting
   assert.equal(h.requests.length, 1)
   assert.deepEqual(h.team.memberIds, ['c'])
   assert.match(h.notices.at(-1), /equipo cambió.*asignación confirmada/)
+})
+
+test('revoking assignment permission prevents another optimistic change or request', async () => {
+  const h = harness()
+  h.context.requirePermission = () => false
+  await h.toggle(h.day, 0, 'B')
+  assert.equal(h.selection(), undefined)
+  assert.equal(h.requests.length, 0)
 })

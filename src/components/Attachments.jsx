@@ -1,3 +1,4 @@
+import { useActionPermissions } from '../presentation/hooks/useActionPermissions.mjs'
 import { captureCameraPhoto } from '../infrastructure/media/camera-capture.mjs'
 import React, { useRef, useState } from 'react'
 import { requestJson } from '../infrastructure/http/json-request.mjs'
@@ -24,13 +25,15 @@ export async function uploadAttachmentBatch(scope, id, files, onSaved = () => {}
   }
 }
 
-export function AttachmentDraftField({ files = [], onChange, disabled = false, cameraOnly = false, onPreparing = () => {} }) {
+export function AttachmentDraftField({ files = [], onChange, disabled = false, cameraOnly = false, onPreparing = () => {}, scope = 'service' }) {
+  const { can } = useActionPermissions()
+  const mayUpload = can(`${scope === 'vehicle' ? 'vehicle' : 'service'}.documents.upload`)
   const gallery = useRef(null), camera = useRef(null), processingRef = useRef(false)
   const [processing, setProcessing] = useState(false), [error, setError] = useState('')
   const captureRef = useRef(false)
   const [capturing, setCapturing] = useState(false)
   const select = async (selected, source = 'file') => {
-    if (disabled || processingRef.current) return
+    if (!mayUpload || disabled || processingRef.current) return
     processingRef.current = true; setProcessing(true); onPreparing(true); setError('')
     const next = [...files]
     try {
@@ -41,6 +44,7 @@ export function AttachmentDraftField({ files = [], onChange, disabled = false, c
     } catch (e) { setError(e.message) }
     finally { onChange(next); processingRef.current = false; setProcessing(false); onPreparing(false) }
   }
+  if (!mayUpload) return null
   return <section className="attachment-picker"><p>{cameraOnly ? 'Solo fotos tomadas con la cámara para este control vehicular. Podés sacar fotos sucesivas, hasta 20 adjuntos.' : 'Imágenes y PDF. Podés seleccionar varios archivos o sacar fotos sucesivas. Hasta 20 adjuntos; PDF de hasta 3 MB.'} Las fotos se comprimen automáticamente.</p>
     <div className="attachment-actions">{!cameraOnly && <button title="Seleccioná varias imágenes o archivos PDF para agregar." type="button" className="secondary small" disabled={disabled || processing || capturing} onClick={() => gallery.current.click()}>Agregar archivos</button>}<button title="Tomá otra foto sin reemplazar las anteriores." type="button" className="secondary small" disabled={disabled || processing || capturing} onClick={async () => {
       if (disabled || processingRef.current || captureRef.current) return
@@ -58,6 +62,12 @@ export function AttachmentDraftField({ files = [], onChange, disabled = false, c
 }
 
 export default function Attachments({ scope = 'service', entityId, readOnly = false, pendingFiles, onPendingFilesChange, onPreparingChange, disabled = false }) {
+  const { can, user } = useActionPermissions()
+  const mayRead = can(`${scope === 'vehicle' ? 'vehicle' : 'service'}.documents.read`)
+  const mayUpload = can(`${scope === 'vehicle' ? 'vehicle' : 'service'}.documents.upload`)
+  const mayDelete = file => scope === 'vehicle'
+    ? can('vehicle.documents.delete')
+    : can('service.documents.deleteAny') || (user?.id != null && file.uploadedBy != null && String(file.uploadedBy) === String(user.id) && can('service.documents.deleteOwn'))
   const [files, setFiles] = useState([]), [localPending, setLocalPending] = useState([]), [loaded, setLoaded] = useState(false)
   const pending = pendingFiles ?? localPending
   const pendingRef = useRef(pending)
@@ -73,6 +83,7 @@ export default function Attachments({ scope = 'service', entityId, readOnly = fa
   const [removing, setRemoving] = useState(null)
   const guard = useRef(false)
   const load = async () => {
+    if (!mayRead) return
     const result = await requestJson(endpoint(scope, entityId))
     setFiles(result.attachments); setCanWrite(result.canWrite); setCameraOnly(Boolean(result.cameraOnly)); setLoaded(true)
   }
@@ -81,18 +92,19 @@ export default function Attachments({ scope = 'service', entityId, readOnly = fa
     guard.current = true; setBusy(true); setError(''); onPreparingChange?.(true)
     try { await action() } catch (e) { setError(e.message) } finally { guard.current = false; setBusy(false); onPreparingChange?.(false) }
   }
+  if (!mayRead) return null
   if (!entityId) return <p>Guardá el registro para agregar adjuntos.</p>
   return <details className="attachments" onToggle={e => { if (e.currentTarget.open && !loaded) void perform(load) }} onClick={e => e.stopPropagation()} onKeyDown={e => {
     if (e.key === 'Escape' && removing) { e.preventDefault(); e.stopPropagation(); setRemoving(null) }
     else if (e.key === 'Enter' || e.key === ' ') e.stopPropagation()
   }}>
     <summary>Fotos y archivos adjuntos{loaded ? ` (${files.length})` : ''}</summary>
-    {loaded && <><button title="Consultá nuevamente los adjuntos de este registro." type="button" className="secondary small" disabled={busy || disabled} onClick={() => perform(load)}>Actualizar adjuntos</button><ul className="attachment-list">{files.map(file => <li key={file.id}><a href={`${endpoint(scope, entityId)}/${file.id}`} target="_blank" rel="noreferrer" title={`Abrí ${file.name}`}>{file.mime.startsWith('image/') ? 'Foto · ' : 'PDF · '}{file.name}</a><small>{Math.ceil(file.bytes / 1024)} KB</small>{file.canDelete && !readOnly && <button type="button" title="Solicitá quitar únicamente este adjunto." disabled={busy || disabled} onClick={() => setRemoving(file)}>Quitar</button>}</li>)}</ul>{!files.length && <p>No hay adjuntos adicionales.</p>}</>}
-    {loaded && canWrite && !readOnly && <><AttachmentDraftField cameraOnly={cameraOnly} files={pending} onChange={setPending} onPreparing={onPreparingChange} disabled={busy || disabled} />{pending.length > 0 && <button title="Guardá los archivos seleccionados; los demás adjuntos se conservan." type="button" className="primary" disabled={busy || disabled} onClick={() => perform(async () => {
+    {loaded && <><button title="Consultá nuevamente los adjuntos de este registro." type="button" className="secondary small" disabled={busy || disabled} onClick={() => perform(load)}>Actualizar adjuntos</button><ul className="attachment-list">{files.map(file => <li key={file.id}><a href={`${endpoint(scope, entityId)}/${file.id}`} target="_blank" rel="noreferrer" title={`Abrí ${file.name}`}>{file.mime.startsWith('image/') ? 'Foto · ' : 'PDF · '}{file.name}</a><small>{Math.ceil(file.bytes / 1024)} KB</small>{file.canDelete && mayDelete(file) && !readOnly && <button type="button" title="Solicitá quitar únicamente este adjunto." disabled={busy || disabled} onClick={() => setRemoving(file)}>Quitar</button>}</li>)}</ul>{!files.length && <p>No hay adjuntos adicionales.</p>}</>}
+    {loaded && canWrite && mayUpload && !readOnly && <><AttachmentDraftField scope={scope} cameraOnly={cameraOnly} files={pending} onChange={setPending} onPreparing={onPreparingChange} disabled={busy || disabled} />{pending.length > 0 && <button title="Guardá los archivos seleccionados; los demás adjuntos se conservan." type="button" className="primary" disabled={busy || disabled} onClick={() => perform(async () => {
       await uploadAttachmentBatch(scope, entityId, pending, id => setPending(previous => previous.filter(file => file.id !== id)))
       await load()
     })}>Guardar {pending.length} adjunto(s)</button>}<small>Los adjuntos se guardan con este botón, independientemente del formulario.</small></>}
-    {removing && <div role="alertdialog" aria-label="Quitar adjunto"><p>¿Quitar {removing.name}?</p><button title="Cancelá la eliminación y conservá este adjunto." type="button" disabled={busy || disabled} onClick={() => setRemoving(null)}>Cancelar</button><button title="Confirmá la eliminación de este adjunto." type="button" disabled={busy || disabled} onClick={() => perform(async () => { await requestJson(`${endpoint(scope, entityId)}/${removing.id}`, { method: 'DELETE' }); setRemoving(null); await load() })}>Quitar adjunto</button></div>}
+    {removing && mayDelete(removing) && <div role="alertdialog" aria-label="Quitar adjunto"><p>¿Quitar {removing.name}?</p><button title="Cancelá la eliminación y conservá este adjunto." type="button" disabled={busy || disabled} onClick={() => setRemoving(null)}>Cancelar</button><button title="Confirmá la eliminación de este adjunto." type="button" disabled={busy || disabled} onClick={() => perform(async () => { await requestJson(`${endpoint(scope, entityId)}/${removing.id}`, { method: 'DELETE' }); setRemoving(null); await load() })}>Quitar adjunto</button></div>}
     {busy && <p role="status">Procesando adjuntos…</p>}{error && <p role="alert" className="field-error">{error} <button title="Volvé a consultar los adjuntos de este registro." type="button" disabled={busy || disabled} onClick={() => perform(load)}>Reintentar</button></p>}
   </details>
 }

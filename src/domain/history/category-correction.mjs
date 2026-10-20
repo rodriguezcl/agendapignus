@@ -1,5 +1,6 @@
 import { serviceRecordFingerprint } from './service-concurrency.mjs'
 import { multiServicePatch, selectedServiceIds, serviceTypesFor } from '../services/multi-service.mjs'
+import { canPermission, isGranular } from '../access/permissions.mjs'
 
 // These display/default fields may be hydrated in the client for legacy rows.
 // The correction never writes them; customerId and all source data still take
@@ -8,7 +9,7 @@ const correctionBase = ({ clientAccount, clientNameAtService, estimatedMinutesCu
 
 export function correctServiceCategory(state, input, user, now = new Date().toISOString()) {
   const fail = (message, statusCode = 400) => { throw Object.assign(new Error(message), { statusCode }) }
-  if (user?.roleCode !== 'administrator') fail('Sólo Administración puede corregir la categoría de un servicio completado.', 403)
+  if (isGranular(user) ? !canPermission(user, 'history.category') : user?.roleCode !== 'administrator') fail('No tenés permiso para corregir la categoría de un servicio completado.', 403)
   const before = state.history.find(record => String(record.id) === String(input.recordId))
   if (!before) fail('El servicio ya no existe.', 404)
   if (!input.base || serviceRecordFingerprint(correctionBase(before)) !== serviceRecordFingerprint(correctionBase(input.base))) fail('El servicio cambió desde otra sesión. Cerrá y volvé a abrir el detalle antes de corregirlo.', 409)

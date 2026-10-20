@@ -1,5 +1,5 @@
 const normalized = value => String(value || '').trim().toLowerCase()
-const isOperator = user => user?.roleCode === 'operator' || normalized(user?.role || user?.name) === 'operador'
+const isOperator = user => !require('./permission-catalog.cjs').isGranular(user) && (user?.roleCode === 'operator' || normalized(user?.role || user?.name) === 'operador')
 
 // Deny by default: new endpoints must not grant the read-only role new powers.
 function operatorRouteAllowed(method, route) {

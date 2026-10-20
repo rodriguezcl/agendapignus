@@ -18,8 +18,18 @@ function decodeAttachment(body) {
   return { id: body.id, name: base + extension, mime, bytes: data.length, data, digest: crypto.createHash('sha256').update(data).digest('hex'), createdAt: new Date().toISOString() }
 }
 
-function attachmentAccess(user, scope, entity) {
+function attachmentAccess(user, scope, entity, state) {
   if (!entity) return { read: false, write: false }
+  const permissions = require('./permission-catalog.cjs')
+  if (permissions.isGranular(user)) {
+    const policy = require('./granular-read-policy.cjs')
+    const visible = scope === 'vehicle' ? policy.vehicleReadable(entity, user, state) : policy.serviceReadable(entity, user, state)
+    const writable = scope === 'vehicle' ? visible : visible && policy.serviceWritable(entity, user, state)
+    return {
+      read: visible && (permissions.can(user, `${scope}.documents.read`) || scope === 'service' && entity?.vehicleControl && permissions.can(user, 'vehicle.controls.read')),
+      write: writable && (scope === 'vehicle' ? ['vehicle.documents.upload', 'vehicle.documents.delete'] : ['service.documents.upload', 'service.documents.deleteOwn', 'service.documents.deleteAny']).some(key => permissions.can(user, key))
+    }
+  }
   if (user.roleCode === 'administrator') return { read: true, write: true }
   if (scope === 'vehicle') return { read: user.roleCode !== 'operator' && (user.roleCode === 'technician' || user.technicalEnabled || Boolean(user.permissions?.vehicles)), write: false }
   if (user.roleCode === 'operator') return { read: true, write: false }
@@ -30,16 +40,22 @@ function attachmentAccess(user, scope, entity) {
   return { read: manage || Boolean(assigned), write: manage || Boolean(assigned && user.technicalEnabled) }
 }
 
-async function handleAttachments({ req, res, body, user, scope, entityId, attachmentId, entity, store }) {
+async function handleAttachments({ req, res, body, user, scope, entityId, attachmentId, entity, store, state }) {
   if (!['service', 'vehicle'].includes(scope) || !entityId || entityId.length > 200) throw fail('Destino de adjuntos inválido.')
-  const access = attachmentAccess(user, scope, entity)
-  const cameraOnly = user.roleCode === 'technician' && Boolean(entity?.vehicleControl)
+  const access = attachmentAccess(user, scope, entity, state)
+  const permissions = require('./permission-catalog.cjs')
+  const granular = permissions.isGranular(user)
+  const cameraOnly = Boolean(entity?.vehicleControl) && (granular ? require('./technical-capability.cjs').canPerformTechnicalServices(user) && !['weekly.view', 'agenda.view', 'history.view'].some(key => permissions.can(user, key)) : user.roleCode === 'technician')
   if (!access.read || (req.method !== 'GET' && !access.write)) throw fail('No tenés permiso para acceder a estos adjuntos.', 403)
   const json = value => { res.statusCode = 200; res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'no-store'); res.end(JSON.stringify(value)) }
   await store.ensure()
-  const canDelete = file => access.write && (user.roleCode === 'administrator' || (user.roleCode !== 'technician' && ['weekly', 'agenda', 'history'].some(key => user.permissions?.[key])) || String(file.uploadedBy) === String(user.id))
-  if (req.method === 'GET' && !attachmentId) return json({ attachments: (await store.list(scope, entityId)).map(file => ({ ...file, canDelete: canDelete(file) })), canWrite: access.write, cameraOnly, limit: MAX_FILES })
+  const canDelete = file => access.write && (granular ? scope === 'vehicle'
+    ? permissions.can(user, 'vehicle.documents.delete')
+    : permissions.can(user, 'service.documents.deleteAny') || permissions.can(user, 'service.documents.deleteOwn') && String(file.uploadedBy) === String(user.id)
+    : user.roleCode === 'administrator' || (user.roleCode !== 'technician' && ['weekly', 'agenda', 'history'].some(key => user.permissions?.[key])) || String(file.uploadedBy) === String(user.id))
+  if (req.method === 'GET' && !attachmentId) return json({ attachments: (await store.list(scope, entityId)).map(file => ({ ...file, canDelete: canDelete(file) })), canWrite: access.write && (!granular || permissions.can(user, `${scope}.documents.upload`)), cameraOnly, limit: MAX_FILES })
   if (req.method === 'POST' && !attachmentId) {
+    if (granular && !permissions.can(user, `${scope}.documents.upload`)) throw fail('No tenés permiso para subir adjuntos.', 403)
     const file = decodeAttachment(body)
     if (cameraOnly && (!file.mime.startsWith('image/') || body.source !== 'camera')) throw fail('Los técnicos solo pueden cargar fotos desde la cámara en controles vehiculares.', 403)
     await store.add(scope, entityId, { ...file, uploadedBy: String(user.id) })

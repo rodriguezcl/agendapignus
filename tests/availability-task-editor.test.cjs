@@ -14,6 +14,7 @@ for (const persisted of [true, false]) {
     const saveGuard = { current: true }
     const editorStates = []
     const add = vm.runInNewContext(code + '\naddTask', {
+      requirePermission: () => true,
       structuredClone, taskHasContent: task => Boolean(task.serviceId || task.client), dayHasFinished: () => false, holidayStateForDay: () => ({ blocked: false }), advancedGuardForDay: () => null,
       blankTask: () => ({ taskId: 'new-task' }), dayPlan: () => plan,
       serviceGaps: () => [{ start: '11:30' }], taskWithServiceEstimate: task => task, historyRecordForTask: () => null, operationalHistory: [], serviceForWeeklyTask: () => null, hoursForDay: () => ({}),

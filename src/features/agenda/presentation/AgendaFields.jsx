@@ -1,3 +1,5 @@
+import { canWriteRecord } from '../../../domain/access/record-scope.mjs'
+import { usePermissions } from '../../../presentation/contexts/permissions-context.jsx'
 import ReschedulingHistory from "../../../components/ReschedulingHistory.jsx";
 import { technicalReporter, prettyReportDateTime, historyRecordForTask, agendaServiceProgress, taskStatus, statusClassName, taskForScheduleOccupancy } from "../application/agenda-model.mjs";
 import { completionLabel } from "../../../domain/agenda/completion-label.mjs";
@@ -17,6 +19,8 @@ import { Confirm } from "../../../presentation/components/Confirm.jsx";
 import { holidayDecisionLabel } from "../../../domain/agenda/holidays.mjs";
 
 export function HolidayDecisionPanel({ holiday, decision, canDecide, onDecision, compact = false }) {
+  const { can } = usePermissions()
+  canDecide = canDecide && can('weekly.holidays')
   const [pendingStatus, setPendingStatus] = useState(null)
   useEffect(() => setPendingStatus(null), [holiday?.date, decision?.status])
   if (!holiday) return null
@@ -25,6 +29,8 @@ export function HolidayDecisionPanel({ holiday, decision, canDecide, onDecision,
 }
 
 export function AgendaTechnicalNote({ record }) {
+  const { can } = usePermissions()
+  if (!can('service.documents.read')) return <ReschedulingHistory record={record} />
   if (!record?.technicalObservation && !record?.technicalReportedAt) return <ReschedulingHistory record={record} />
   return <><ReschedulingHistory record={record} /><div className="technician-report-detail agenda-technical-note"><b>{technicalReporter(record)} indicó · {record.technicalStatus || 'Estado informado'}</b><p>{record.technicalObservation || 'Servicio informado sin observaciones adicionales.'}</p>{record.technicalReportedAt && <small>Informado el {prettyReportDateTime(record.technicalReportedAt)}</small>}</div></>
 }
@@ -40,7 +46,11 @@ export function TaskStatusBadge({ task, date, history, weekly = false, statusOnl
 return <><div className={`agenda-task-status ${weekly ? 'weekly-agenda-task-status' : 'daily-agenda-task-status'}`}>{!weekly && <em className={`work-status ${statusClassName(status)}`}>{status}</em>}{startedLabel && <small className="service-started-label" title="Hora de inicio registrada al presionar Iniciar servicio">{startedLabel}</small>}{status === 'Sin guardar' && <small className="unsaved-service-help">Guardá la agenda para habilitarlo al técnico.</small>}{weekly && task?.subscriberReservation && <em className="role-chip subscriber-reservation-chip">Reserva · PIG pendiente</em>}{weekly && serviceTypesFor(task).map(type => <em key={type.id || type.name} className={`role-chip agenda-service-chip ${serviceColorClass(type.name)}`} title={type.name}>{type.name}</em>)}{releaseLabel && <small title="Hora de finalización; la demora se calcula respecto del tiempo estimado.">{releaseLabel}</small>}</div>{(!weekly && ['Completado', 'Avance registrado'].includes(status) || Boolean(record?.technicalStatus || record?.technicalObservation || record?.technicalReportedAt)) && <details className="agenda-report-disclosure" onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}><summary title="Desplegá u ocultá la observación de administración y el informe del técnico."><span className="report-show">Ver informe técnico</span><span className="report-hide">Ocultar informe técnico</span></summary><div className="agenda-admin-note"><b>Observación de agenda / Administración</b><p>{record?.detail || task.detail || 'Sin observaciones cargadas.'}</p></div><AgendaTechnicalNote record={record || task} /></details>}</>
 }
 
-export function CustomerAutocomplete({ value = '', customerId = '', customers = [], subscriberReservation = false, awaitingConfirmation = false, onTextCommit, onCustomerSelect, onAddCustomer, onReserveSubscriber, className = '', required = true }) {
+export function CustomerAutocomplete({ value = '', customerId = '', customers = [], subscriberReservation = false, awaitingConfirmation = false, onTextCommit, onCustomerSelect, onAddCustomer, onReserveSubscriber, className = '', required = true, disabled = false }) {
+  const { can } = usePermissions()
+  const canLink = !disabled && can(subscriberReservation ? 'planning.reservation.link' : 'planning.linkAccount')
+  const canCreate = !disabled && can('customers.create') && can('planning.linkAccount')
+  const canReserve = !disabled && can('planning.reservation.create')
   const [query, setQuery] = useState(value)
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
@@ -71,12 +81,14 @@ export function CustomerAutocomplete({ value = '', customerId = '', customers = 
   useEffect(() => setActiveIndex(-1), [normalizedQuery])
 
   const choose = customer => {
+    if (!canLink) return
     setQuery(`${customer.account} ${customer.name}`)
     setOpen(false)
     setActiveIndex(-1)
     onCustomerSelect(customer)
   }
   const commitText = () => {
+    if (!canLink) return
     const availableCustomers = subscriberReservation ? customers.filter(customer => customerKind(customer) === 'subscriber') : customers
     // El nombre por sí solo no identifica una cuenta: dos personas pueden ser
     // homónimas. La selección automática sólo es segura con el código o con la
@@ -107,7 +119,7 @@ export function CustomerAutocomplete({ value = '', customerId = '', customers = 
     }
   }
 
-  const showResults = open && normalizedQuery.length >= 2 && !selectionIsIntact
+  const showResults = (canLink || canCreate || canReserve) && open && normalizedQuery.length >= 2 && !selectionIsIntact
   return <div className={`customer-autocomplete ${className}`.trim()} onBlur={event => {
     if (event.currentTarget.contains(event.relatedTarget)) return
     commitText()
@@ -115,16 +127,16 @@ export function CustomerAutocomplete({ value = '', customerId = '', customers = 
   }}>
     <label><RequiredLabel required={required}>Abonado o cliente</RequiredLabel></label>
     <div className="customer-autocomplete-control">
-      <input autoComplete="off" spellCheck={false} role="combobox" aria-required={required} aria-autocomplete="list" aria-expanded={showResults} placeholder="Buscá por nombre, cuenta o teléfono" value={query} onFocus={() => setOpen(true)} onChange={event => { setQuery(event.target.value); setOpen(true) }} onKeyDown={handleKeyDown} />
+      <input disabled={disabled || !(canLink || canCreate || canReserve)} autoComplete="off" spellCheck={false} role="combobox" aria-required={required} aria-autocomplete="list" aria-expanded={showResults} placeholder="Buscá por nombre, cuenta o teléfono" value={query} onFocus={() => setOpen(true)} onChange={event => { setQuery(event.target.value); setOpen(true) }} onKeyDown={handleKeyDown} />
       <span aria-hidden="true">⌄</span>
     </div>
     {awaitingConfirmation && <span className="service-confirmation-label">(A CONFIRMAR)</span>}
     {showResults && <div className="customer-autocomplete-results" role="listbox">
-      {suggestions.map((customer, index) => <button title={`Seleccioná ${customer.account} · ${customer.name} como cliente de este servicio.`} type="button" role="option" aria-selected={index === activeIndex} className={index === activeIndex ? 'active' : ''} key={customer.customerId || customer.account} onClick={() => choose(customer)}><strong>{customer.account}</strong><span>{customer.name}</span></button>)}
+      {canLink && suggestions.map((customer, index) => <button title={`Seleccioná ${customer.account} · ${customer.name} como cliente de este servicio.`} type="button" role="option" aria-selected={index === activeIndex} className={index === activeIndex ? 'active' : ''} key={customer.customerId || customer.account} onClick={() => choose(customer)}><strong>{customer.account}</strong><span>{customer.name}</span></button>)}
       {!suggestions.length && <div className="customer-autocomplete-empty"><p>No encontramos coincidencias.</p></div>}
       {(onReserveSubscriber || onAddCustomer) && <div className="customer-autocomplete-actions">
-        {onReserveSubscriber && <button title="Reservá el servicio para un futuro abonado PIG sin crear un cliente CLI." type="button" disabled={!query.trim()} className="secondary customer-reservation-button" onClick={() => { if (!query.trim()) return; onReserveSubscriber(query.trim()); setOpen(false) }}><Icon name="calendar" size={15} />Reservar nuevo abonado</button>}
-        {onAddCustomer && !subscriberReservation && <button title="Completá los datos de un nuevo cliente CLI y vinculalo al servicio al guardar." type="button" disabled={!query.trim()} className="secondary customer-add-button" onClick={() => { if (!query.trim()) return; onAddCustomer(query.trim()); setOpen(false) }}><Icon name="plus" size={15} />Agregar cliente CLI</button>}
+        {canReserve && onReserveSubscriber && <button title="Reservá el servicio para un futuro abonado PIG sin crear un cliente CLI." type="button" disabled={!query.trim()} className="secondary customer-reservation-button" onClick={() => { if (!query.trim()) return; onReserveSubscriber(query.trim()); setOpen(false) }}><Icon name="calendar" size={15} />Reservar nuevo abonado</button>}
+        {canCreate && onAddCustomer && !subscriberReservation && <button title="Completá los datos de un nuevo cliente CLI y vinculalo al servicio al guardar." type="button" disabled={!query.trim()} className="secondary customer-add-button" onClick={() => { if (!query.trim()) return; onAddCustomer(query.trim()); setOpen(false) }}><Icon name="plus" size={15} />Agregar cliente CLI</button>}
       </div>}
     </div>}
     {subscriberReservation && <small className="subscriber-reservation-note">Reserva PIG pendiente: vinculala con el abonado importado cuando esté disponible.</small>}
@@ -136,7 +148,7 @@ export function LunchCard({ hours }) {
   return <aside className="lunch-break-card" style={{ margin: '8px 10px', padding: '8px 12px', border: '1px dashed #b9c7bd', borderRadius: 8, fontSize: 12 }}><strong>Almuerzo entre las {hours.breakStart} y las {hours.breakEnd} hs</strong></aside>
 }
 
-export function ServiceEstimatedDurationField({ value, onChange, className = '', required = true }) {
+export function ServiceEstimatedDurationField({ value, onChange, className = '', required = true, disabled = false }) {
   const duration = normalizeServiceEstimatedMinutes(value)
   const hours = Math.floor(duration / 60)
   const minutes = duration % 60
@@ -144,7 +156,7 @@ export function ServiceEstimatedDurationField({ value, onChange, className = '',
     const total = Number(nextHours) * 60 + Number(nextMinutes)
     onChange(Math.min(MAX_SERVICE_ESTIMATED_MINUTES, Math.max(15, total)))
   }
-  return <div className={`task-duration-field ${className}`.trim()}><span><RequiredLabel required={required}>Tiempo estimado</RequiredLabel></span><div><label><BufferedInput aria-label="Horas estimadas del servicio" type="number" inputMode="numeric" min="0" max="12" step="1" value={hours} onCommit={value => update(value, minutes)} /><small>h</small></label><label><select aria-label="Minutos estimados del servicio" value={minutes} onChange={event => update(hours, event.target.value)}><option value="0">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option></select><small>min</small></label></div></div>
+  return <div className={`task-duration-field ${className}`.trim()}><span><RequiredLabel required={required}>Tiempo estimado</RequiredLabel></span><div><label><BufferedInput disabled={disabled} aria-label="Horas estimadas del servicio" type="number" inputMode="numeric" min="0" max="12" step="1" value={hours} onCommit={value => update(value, minutes)} /><small>h</small></label><label><select disabled={disabled} aria-label="Minutos estimados del servicio" value={minutes} onChange={event => update(hours, event.target.value)}><option value="0">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option></select><small>min</small></label></div></div>
 }
 
 export function BufferedTextarea({ value, onCommit, delay = 500, ...textareaProps }) {
@@ -188,15 +200,20 @@ export function BufferedTextarea({ value, onCommit, delay = 500, ...textareaProp
 }
 
 export function InternalPreparationFields({ task, onChange, buffered = false, readOnly = false }) {
+  const { can } = usePermissions()
+  const notesDisabled = readOnly || !can('planning.notes')
+  const checklistDisabled = readOnly || !can('planning.checklist')
   const checklist = normalizeInternalChecklist(task?.internalChecklist)
   const changeChecklist = next => onChange({ internalChecklist: normalizeInternalChecklist(next) })
   const updateItem = (id, patch) => changeChecklist(checklist.map(item => item.id === id ? { ...item, ...patch } : item))
   const note = String(task?.internalNote || '')
-  if (readOnly) return <section className="internal-preparation internal-preparation-readonly"><div className="internal-preparation-heading"><div><b>Nota interna</b><small>Información operativa para Administración y usuarios</small></div></div><p className="internal-note-value">{note.trim() || 'Sin nota interna'}</p>{checklist.length > 0 && <div className="internal-checklist"><b>Checklist de preparación</b>{checklist.map(item => <label className="internal-checklist-item readonly" key={item.id}><input type="checkbox" checked={item.completed} readOnly /><span className={item.completed ? 'completed' : ''}>{item.text || 'Elemento sin descripción'}</span></label>)}</div>}</section>
-  return <section className="internal-preparation"><div className="internal-preparation-heading"><div><b>Nota interna</b><small>Visible sólo para Administración y usuarios. No se comparte con técnicos.</small></div>{checklist.length === 0 && <button title="Creá una lista interna de tareas de preparación para administración y usuarios." type="button" className="secondary compact" onClick={() => changeChecklist([createInternalChecklistItem()])}><Icon name="check" size={15} />Crear checklist</button>}</div><label className="internal-note-field">Anotaciones{buffered ? <BufferedTextarea maxLength={5000} value={note} onCommit={value => onChange({ internalNote: value })} placeholder="Ej.: No pedir al proveedor; hay stock disponible." /> : <textarea maxLength={5000} value={note} onChange={event => onChange({ internalNote: event.target.value })} placeholder="Ej.: No pedir al proveedor; hay stock disponible." />}</label>{checklist.length > 0 && <div className="internal-checklist"><div className="internal-checklist-heading"><b>Checklist de preparación</b><button title="Agregá una tarea a la lista interna de preparación." type="button" className="secondary compact" disabled={checklist.length >= 30} onClick={() => changeChecklist([...checklist, createInternalChecklistItem()])}><Icon name="plus" size={14} />Agregar elemento</button></div>{checklist.map(item => <div className="internal-checklist-item" key={item.id}><input type="checkbox" checked={item.completed} aria-label={`Marcar ${item.text || 'elemento'} como preparado`} onChange={event => updateItem(item.id, { completed: event.target.checked })} /><BufferedInput maxLength={500} value={item.text} onCommit={value => updateItem(item.id, { text: value })} placeholder="Elemento a preparar" /><button type="button" className="icon-btn delete" title="Quitá este elemento de la lista interna de preparación." aria-label="Eliminar elemento del checklist" onClick={() => changeChecklist(checklist.filter(current => current.id !== item.id))}><Icon name="trash" size={15} /></button></div>)}</div>}</section>
+  if (notesDisabled && checklistDisabled) return <section className="internal-preparation internal-preparation-readonly"><div className="internal-preparation-heading"><div><b>Nota interna</b><small>Información operativa para Administración y usuarios</small></div></div><p className="internal-note-value">{note.trim() || 'Sin nota interna'}</p>{checklist.length > 0 && <div className="internal-checklist"><b>Checklist de preparación</b>{checklist.map(item => <label className="internal-checklist-item readonly" key={item.id}><input type="checkbox" checked={item.completed} readOnly /><span className={item.completed ? 'completed' : ''}>{item.text || 'Elemento sin descripción'}</span></label>)}</div>}</section>
+  return <section className="internal-preparation"><div className="internal-preparation-heading"><div><b>Nota interna</b><small>Visible sólo para Administración y usuarios. No se comparte con técnicos.</small></div>{!checklistDisabled && checklist.length === 0 && <button title="Creá una lista interna de tareas de preparación para administración y usuarios." type="button" className="secondary compact" onClick={() => changeChecklist([createInternalChecklistItem()])}><Icon name="check" size={15} />Crear checklist</button>}</div><label className="internal-note-field">Anotaciones{buffered ? <BufferedTextarea readOnly={notesDisabled} maxLength={5000} value={note} onCommit={value => onChange({ internalNote: value })} placeholder="Ej.: No pedir al proveedor; hay stock disponible." /> : <textarea readOnly={notesDisabled} maxLength={5000} value={note} onChange={event => onChange({ internalNote: event.target.value })} placeholder="Ej.: No pedir al proveedor; hay stock disponible." />}</label>{checklist.length > 0 && <div className="internal-checklist"><div className="internal-checklist-heading"><b>Checklist de preparación</b><button title="Agregá una tarea a la lista interna de preparación." type="button" className="secondary compact" disabled={checklistDisabled || checklist.length >= 30} onClick={() => changeChecklist([...checklist, createInternalChecklistItem()])}><Icon name="plus" size={14} />Agregar elemento</button></div>{checklist.map(item => <div className="internal-checklist-item" key={item.id}><input disabled={checklistDisabled} type="checkbox" checked={item.completed} aria-label={`Marcar ${item.text || 'elemento'} como preparado`} onChange={event => updateItem(item.id, { completed: event.target.checked })} /><BufferedInput readOnly={checklistDisabled} maxLength={500} value={item.text} onCommit={value => updateItem(item.id, { text: value })} placeholder="Elemento a preparar" /><button disabled={checklistDisabled} type="button" className="icon-btn delete" title="Quitá este elemento de la lista interna de preparación." aria-label="Eliminar elemento del checklist" onClick={() => changeChecklist(checklist.filter(current => current.id !== item.id))}><Icon name="trash" size={15} /></button></div>)}</div>}</section>
 }
 
-export function ServiceExtraFields({ className, task, service, onChange, buffered = false }) {
+export function ServiceExtraFields({ className, task, service, onChange, buffered = false, readOnly = false }) {
+  const { can } = usePermissions()
+  const commercialDisabled = readOnly || !can('planning.commercial')
   const available = serviceTypesFor(task).reduce((all, type) => { const flags = serviceExtraAvailability(type, task?.installationZone); return Object.fromEntries(Object.keys(flags).map(key => [key, all[key] || flags[key]])) }, serviceExtraAvailability(service, task?.installationZone))
   const fields = [
     ['paymentMethod', 'Forma de pago'],
@@ -205,26 +222,27 @@ export function ServiceExtraFields({ className, task, service, onChange, buffere
     ['form', 'Formulario'],
     ['formEmail', 'Email']
   ]
-  return <><InternalPreparationFields task={task} onChange={onChange} buffered={buffered} /><div className={className}>{available.freezeMonthlyFee && <FrozenMonthsFields task={task} onChange={onChange} />}{fields.map(([key, label]) => {
+  return <><InternalPreparationFields task={task} onChange={onChange} buffered={buffered} readOnly={readOnly} /><div className={className}>{available.freezeMonthlyFee && <FrozenMonthsFields task={task} onChange={onChange} disabled={readOnly} />}{fields.map(([key, label]) => {
+    if (!can('records.financial')) return null
     const enabled = key === 'amount' ? available.paymentMethod && Boolean(task?.paymentMethod) && task.paymentMethod !== 'No aplica' : available[key]
     if (key === 'formEmail') {
       if (!available.form || normalizeFormValue(task?.form) !== FORM_OPTIONS[0]) return null
-      return <label className="service-extra-field" key={key}>{label}<input type="email" autoComplete="off" value={task?.formEmail || ''} placeholder="Correo utilizado para completar el formulario" onChange={event => onChange({ formEmail: event.target.value })} /></label>
+      return <label className="service-extra-field" key={key}>{label}<input disabled={commercialDisabled} type="email" autoComplete="off" value={task?.formEmail || ''} placeholder="Correo utilizado para completar el formulario" onChange={event => onChange({ formEmail: event.target.value })} /></label>
     }
     if ((key === 'amount' || key === 'monthlyFee') && !enabled) return null
     const props = {
       value: enabled ? task?.[key] || '' : '',
-      disabled: !enabled,
+      disabled: !enabled || commercialDisabled,
       placeholder: enabled ? '' : 'No aplica',
       title: enabled ? '' : 'Este campo no aplica para el tipo de servicio o la ubicación seleccionados.'
     }
     if (key === 'form') {
-      return <label className="service-extra-field service-extra-form" key={key}>{label}<select value={enabled ? normalizeFormValue(task?.form) : ''} disabled={!enabled} title={props.title} onChange={event => onChange({ form: event.target.value, ...(event.target.value !== FORM_OPTIONS[0] ? { formEmail: '' } : {}) })}><option value="">{enabled ? 'Seleccionar' : 'No aplica'}</option>{enabled && FORM_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
+      return <label className="service-extra-field service-extra-form" key={key}>{label}<select value={enabled ? normalizeFormValue(task?.form) : ''} disabled={!enabled || commercialDisabled} title={props.title} onChange={event => onChange({ form: event.target.value, ...(event.target.value !== FORM_OPTIONS[0] ? { formEmail: '' } : {}) })}><option value="">{enabled ? 'Seleccionar' : 'No aplica'}</option>{enabled && FORM_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
     }
     if (key === 'paymentMethod') {
       const paymentValue = enabled ? task?.paymentMethod || '' : ''
       const legacyValue = paymentValue && !PAYMENT_OPTIONS.includes(paymentValue) ? paymentValue : ''
-      return <label className="service-extra-field" key={key}>{label}<select value={paymentValue} disabled={!enabled} title={props.title} onChange={event => onChange({ paymentMethod: event.target.value, ...(!event.target.value || event.target.value === 'No aplica' ? { amount: '' } : {}) })}><option value="">{enabled ? 'Seleccionar' : 'No aplica'}</option>{legacyValue && <option value={legacyValue}>{legacyValue}</option>}{enabled && PAYMENT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
+      return <label className="service-extra-field" key={key}>{label}<select value={paymentValue} disabled={!enabled || commercialDisabled} title={props.title} onChange={event => onChange({ paymentMethod: event.target.value, ...(!event.target.value || event.target.value === 'No aplica' ? { amount: '' } : {}) })}><option value="">{enabled ? 'Seleccionar' : 'No aplica'}</option>{legacyValue && <option value={legacyValue}>{legacyValue}</option>}{enabled && PAYMENT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
     }
     if (key === 'amount') {
       const required = task?.paymentMethod !== 'A confirmar'
@@ -339,13 +357,15 @@ export function ConfigurationHistoryPanel({ history, type }) {
 }
 
 export function ServiceConfirmationButton({ task, day, history = [], persist, onDraftChange, compact = false, disabled = false }) {
+  const { can, user } = usePermissions()
   const [open, setOpen] = useState(false)
   const base = historyRecordForTask(task, day, history)
   const current = { ...task, ...base }
   const awaiting = task.awaitingConfirmation === true
-  if (!task.client || (!base && !onDraftChange) || !canChangeServiceConfirmation(current) || day < currentLocalDate()) return null
+  if (!can('planning.confirm') || (base && !canWriteRecord(base, user)) || !task.client || (!base && !onDraftChange) || !canChangeServiceConfirmation(current) || day < currentLocalDate()) return null
   const label = awaiting ? 'Confirmar servicio' : 'Servicio a confirmar'
   const action = async () => {
+    if (!can('planning.confirm')) throw new Error('No tenés permiso para cambiar la confirmación.')
     if (onDraftChange) onDraftChange({ awaitingConfirmation: !awaiting })
     else if (base && persist) await persist({ operation: 'service-confirmation', base, awaitingConfirmation: !awaiting })
     else throw new Error('Guardá primero el servicio para cambiar su confirmación.')

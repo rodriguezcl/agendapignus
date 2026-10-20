@@ -14,6 +14,7 @@ const FEATURE_PERMISSION_PARENTS = {
 }
 
 function userCan(user, permission) {
+  if (require('./permission-catalog.cjs').isGranular(user) || permission.includes('.')) return require('./permission-catalog.cjs').can(user, permission)
   if (isOperator(user)) return permission === 'weekly'
   if (user?.roleCode === 'administrator') return true
   if (user?.roleCode === 'supervisor' || normalizedRoleName(user?.role) === 'supervisor') return permission === 'history' || permission === 'accounts'
@@ -27,6 +28,7 @@ function userCan(user, permission) {
 }
 
 function assertVehicleControlOmissionAuthorized(incoming, current, user) {
+  if (require('./permission-catalog.cjs').isGranular(user)) return
   if (user?.roleCode === 'administrator') return
   const deny = () => {
     const error = new Error('Solamente un administrador puede omitir o eliminar un control vehicular.')

@@ -1,3 +1,4 @@
+import { useActionPermissions } from '../../../presentation/hooks/useActionPermissions.mjs'
 import ModuleIntroduction from '../../../components/ModuleIntroduction.jsx'
 import React, { useState } from 'react'
 import Icon from '../../../components/ui/Icon.jsx'
@@ -12,11 +13,14 @@ import { sortServicesAlphabetically } from '../../../domain/services/service-ord
 import {
   blankService,
   buildServiceRecord,
-  editableService
+  editableService,
+  serviceIsReferenced
 } from '../../../domain/services/service-catalog.mjs'
 import { serviceCatalogRepository } from '../../../infrastructure/repositories/service-catalog-repository.mjs'
 
-export default function ServiceTypes({ services, setServices, setNotice, ask, stateRevision, refreshRemoteState }) {
+export default function ServiceTypes({ services, setServices, setNotice, ask, stateRevision, refreshRemoteState, history = [], teams = [], weekly = {} }) {
+  const { can } = useActionPermissions()
+  const canEdit = can('services.edit') || can('services.duration')
   refreshRemoteState = refreshRemoteState || globalThis.__pignusRefreshRemoteState
   const [form, setForm] = useState(blankService)
   const [editing, setEditing] = useState(null)
@@ -32,6 +36,7 @@ export default function ServiceTypes({ services, setServices, setNotice, ask, st
 
   const save = event => {
     event.preventDefault()
+    if (editing ? !canEdit : !can('services.create')) return
     let record
     try {
       record = buildServiceRecord(form, editing)
@@ -53,6 +58,11 @@ export default function ServiceTypes({ services, setServices, setNotice, ask, st
   }
 
   const removeService = async service => {
+    if (!can('services.delete')) return
+    if (serviceIsReferenced(service.id, history, teams, weekly) && !can('services.status')) {
+      setNotice('Este tipo de servicio tiene registros vinculados. Necesitás permiso para desactivarlo.')
+      return
+    }
     const payload = await serviceCatalogRepository.remove(service, stateRevision)
     if (refreshRemoteState) await refreshRemoteState()
     else setServices(payload.services || [])
@@ -62,6 +72,7 @@ export default function ServiceTypes({ services, setServices, setNotice, ask, st
   }
 
   const toggleStatus = async service => {
+    if (!can('services.status')) return
     const payload = await serviceCatalogRepository.toggleStatus(service, stateRevision)
     if (refreshRemoteState) await refreshRemoteState()
     else setServices(payload.services || [])
@@ -83,14 +94,14 @@ export default function ServiceTypes({ services, setServices, setNotice, ask, st
   return <>
     <div className="module-intro">
       <ModuleIntroduction><p className="eyebrow">CATÁLOGO OPERATIVO</p><h1>Tipo de servicio</h1><p>Administrá los servicios disponibles para planificar en la agenda técnica.</p></ModuleIntroduction>
-      <button title="Creá un tipo de servicio para utilizarlo en la planificación." className="primary" onClick={startCreate}><Icon name="plus" />Nuevo servicio</button>
+      {can('services.create') && <button title="Creá un tipo de servicio para utilizarlo en la planificación." className="primary" onClick={startCreate}><Icon name="plus" />Nuevo servicio</button>}
     </div>
     {open && <EditorModal active={Boolean(editing)} title="Editar tipo de servicio" onClose={() => setOpen(false)}><form className="service-form" onSubmit={save}>
-      <label><RequiredLabel>Nombre del servicio</RequiredLabel><input required value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /></label>
-      <label>Descripción<input value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} /></label>
+      <label><RequiredLabel>Nombre del servicio</RequiredLabel><input disabled={Boolean(editing) && !can('services.edit')} required value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /></label>
+      <label>Descripción<input disabled={Boolean(editing) && !can('services.edit')} value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} /></label>
       <div className="service-duration-field"><span><RequiredLabel>Tiempo estimado</RequiredLabel></span><div className="service-duration-inputs">
-        <label><input aria-label="Horas estimadas" required type="number" inputMode="numeric" min="0" max="12" step="1" value={durationHours} onChange={event => updateDuration(event.target.value, durationMinutes)} /><small>h</small></label>
-        <label><select aria-label="Minutos estimados" value={durationMinutes} onChange={event => updateDuration(durationHours, event.target.value)}><option value="0">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option></select><small>min</small></label>
+        <label><input aria-label="Horas estimadas" disabled={Boolean(editing) && !can('services.duration')} required type="number" inputMode="numeric" min="0" max="12" step="1" value={durationHours} onChange={event => updateDuration(event.target.value, durationMinutes)} /><small>h</small></label>
+        <label><select aria-label="Minutos estimados" disabled={Boolean(editing) && !can('services.duration')} value={durationMinutes} onChange={event => updateDuration(durationHours, event.target.value)}><option value="0">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option></select><small>min</small></label>
       </div></div>
       <div className="service-form-actions">
       <button title="Guardá el nombre y la configuración de este tipo de servicio." className="primary"><Icon name="check" />{editing ? 'Guardar cambios' : 'Guardar servicio'}</button>
@@ -101,8 +112,8 @@ export default function ServiceTypes({ services, setServices, setNotice, ask, st
       <div className="table-head"><span>Servicio</span><span>Descripción</span><span>Tiempo estimado</span><span>Estado</span><span>Acciones</span></div>
       {sortServicesAlphabetically(services).map(service => <div className="service-row" key={service.id}>
         <b>{service.name}</b><span>{service.description || 'Sin descripción'}</span><strong className="service-duration-value">{formatServiceEstimatedTime(service.estimatedMinutes)}</strong>
-        <div><button disabled={service.system} aria-label={`${service.status === 'Activo' ? 'Desactivar' : 'Activar'} ${service.name}`} aria-pressed={service.status === 'Activo'} title={service.system ? 'Este servicio interno está administrado por el sistema y no se puede desactivar aquí.' : service.status === 'Activo' ? 'Desactivá este tipo de servicio para dejar de ofrecerlo en nuevas planificaciones.' : 'Activá este tipo de servicio para poder seleccionarlo al planificar.'} className={`status ${service.status === 'Activo' ? 'on' : ''}`} onClick={() => ask('Cambiar estado', `¿Querés marcar ${service.name} como ${service.status === 'Activo' ? 'inactivo' : 'activo'}?`, () => toggleStatus(service))}>{service.status}</button></div>
-        <div className="row-actions">{service.system ? <em className="system-service-chip">Servicio del sistema</em> : <><button title="Modificá el nombre y la configuración de este tipo de servicio." aria-label={`Editar ${service.name}`} onClick={() => startEdit(service)}><Icon name="edit" size={16} /></button><button className="delete" title="Solicitá eliminar este tipo de servicio del catálogo." aria-label={`Eliminar ${service.name}`} onClick={() => ask('Eliminar servicio', `¿Querés eliminar ${service.name}?`, () => removeService(service), true)}><Icon name="trash" size={16} /></button></>}</div>
+        <div><button disabled={service.system || !can('services.status')} aria-label={`${service.status === 'Activo' ? 'Desactivar' : 'Activar'} ${service.name}`} aria-pressed={service.status === 'Activo'} title={service.system ? 'Este servicio interno está administrado por el sistema y no se puede desactivar aquí.' : service.status === 'Activo' ? 'Desactivá este tipo de servicio para dejar de ofrecerlo en nuevas planificaciones.' : 'Activá este tipo de servicio para poder seleccionarlo al planificar.'} className={`status ${service.status === 'Activo' ? 'on' : ''}`} onClick={() => ask('Cambiar estado', `¿Querés marcar ${service.name} como ${service.status === 'Activo' ? 'inactivo' : 'activo'}?`, () => toggleStatus(service))}>{service.status}</button></div>
+        <div className="row-actions">{service.system ? <em className="system-service-chip">Servicio del sistema</em> : <>{canEdit && <button title="Modificá el nombre y la configuración de este tipo de servicio." aria-label={`Editar ${service.name}`} onClick={() => startEdit(service)}><Icon name="edit" size={16} /></button>}{can('services.delete') && <button className="delete" title="Solicitá eliminar este tipo de servicio del catálogo." aria-label={`Eliminar ${service.name}`} onClick={() => ask('Eliminar servicio', `¿Querés eliminar ${service.name}?`, () => removeService(service), true)}><Icon name="trash" size={16} /></button>}</>}</div>
       </div>)}
     </div>
   </>

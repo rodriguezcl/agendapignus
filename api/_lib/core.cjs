@@ -107,7 +107,7 @@ function userForEmployee(employee, roles) {
     name: employee.name,
     email: employee.email,
     roleId: role.id,
-    roleCode: normalizedRoleName(role.name) === 'operador' ? 'operator' : normalizedRoleName(role.name) === 'supervisor' ? 'supervisor' : role.code || legacyRoleCode(role),
+    roleCode: require('./permission-catalog.cjs').isGranular(role) ? require('./permission-catalog.cjs').roleCode(role) : normalizedRoleName(role.name) === 'operador' ? 'operator' : normalizedRoleName(role.name) === 'supervisor' ? 'supervisor' : role.code || legacyRoleCode(role),
     role: role.name,
     technicalEnabled: employee.technicalEnabled === true,
     permissions: role.permissions || {}
@@ -134,7 +134,28 @@ function internalPlanningIsValid(record = {}) {
     (checklist == null || (Array.isArray(checklist) && checklist.length <= 30 && checklist.every(item => item && typeof item === 'object' && String(item.text || '').length <= 500 && typeof item.completed === 'boolean')))
 }
 
+function stateSessionUser(state, user) {
+  const employee = (state.employees || []).find(item => String(item.id) === String(user.id))
+  const refreshed = employee ? userForEmployee(employee, state.roles) : null
+  const current = refreshed || user
+  const safe = Object.fromEntries(['id', 'name', 'email', 'roleId', 'roleCode', 'role', 'technicalEnabled', 'permissions'].filter(key => current[key] !== undefined).map(key => [key, current[key]]))
+  if (employee?.status === 'Inactivo') return { ...safe, roleCode: 'inactive', technicalEnabled: false, permissions: { __catalogV2: true } }
+  return safe
+}
+
 function visibleStateForUser(state, user) {
+  const sessionUser = stateSessionUser(state, user)
+  return { ...projectStateForUser(state, sessionUser), sessionUser }
+}
+
+function visibleTechnicianStateForUser(state, user) {
+  const sessionUser = stateSessionUser(state, user)
+  const projectionUser = require('./permission-catalog.cjs').isGranular(sessionUser) ? sessionUser : { ...sessionUser, roleCode: 'technician' }
+  return { ...projectStateForUser(state, projectionUser), sessionUser }
+}
+
+function projectStateForUser(state, user) {
+  if (require('./permission-catalog.cjs').isGranular(user)) return require('./granular-read-policy.cjs').granularVisibleState(state, user)
   if (isOperator(user)) return operatorState(state)
   if (user.roleCode === 'technician') {
     const journeyHistory = state.history
@@ -190,6 +211,7 @@ function visibleStateForUser(state, user) {
 }
 
 function authorizeIncomingState(incoming, current, user) {
+  if (require('./permission-catalog.cjs').isGranular(user)) return require('./granular-write-policy.cjs').authorizeGranularState(incoming, current, user)
   if (isOperator(user)) throw Object.assign(new Error('Operador tiene acceso de solo lectura.'), { statusCode: 403 })
   const administrator = user.roleCode === 'administrator'
   const canPlan = userCan(user, 'agenda') || userCan(user, 'weekly')
@@ -438,6 +460,7 @@ function secureEmployees(employees, previousEmployees) {
 }
 
 function validateState(state, previousState = null) {
+  require('./granular-write-policy.cjs').validateGranularRoles(state || {}, previousState)
   require('./workday.cjs').validateWorkday(state?.agenda?.weekly?._workday)
   require('./frozen-months.cjs').validateFrozenMonths(state, previousState)
   require('./multi-service.cjs').validateServiceTypes(state)
@@ -530,4 +553,4 @@ function auditChanges(previousRecords, nextRecords, key, entity, user) {
   return entries
 }
 
-module.exports = { assertNoAccidentalHistoryWipe, assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, deduplicateScheduledTasks, hashPassword, legacyRoleCode, normalizedServiceName, normalizeHistoryCompletionTimes, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml, publicEmployee, reportDate, secureEmployees, statePersistenceChanged, technicianSafeRecord, userCan, userForEmployee, validateState, verifyPassword, visibleStateForUser }
+module.exports = { assertNoAccidentalHistoryWipe, assertServiceCanBeCompleted, auditChanges, auditSafe, authorizeIncomingState, compareReportRecords, deduplicateScheduledTasks, hashPassword, legacyRoleCode, normalizedServiceName, normalizeHistoryCompletionTimes, normalizeRetirementCustomers, normalizeStateForSave, professionalExcelHtml, publicEmployee, reportDate, secureEmployees, statePersistenceChanged, stateSessionUser, technicianSafeRecord, userCan, userForEmployee, validateState, verifyPassword, visibleStateForUser, visibleTechnicianStateForUser }

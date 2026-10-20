@@ -18,7 +18,7 @@ test('service actions are above the weekly editor form and not duplicated in its
   const toolbar = source.slice(source.indexOf('const weeklyModalActions'), source.indexOf('const openWeeklyTaskMove'))
   for (const action of ['ServiceConfirmationButton', 'ServiceJourneys', 'Reasignar equipo o fecha', 'Eliminar servicio']) assert.ok(toolbar.includes(action))
   assert.match(toolbar, /requestWeeklyLeave\(proceed\)/)
-  assert.match(toolbar, /!persistedTask.vehicleControl \|\| isAdministrator/)
+  assert.match(toolbar, /persistedTask.vehicleControl \? allowOmit : can\('planning.remove'\)/)
   assert.match(toolbar, /!taskIsResolvedForPlanning/)
   assert.match(toolbar, /String\(task.taskId\) === String\(taskId\)/)
 })

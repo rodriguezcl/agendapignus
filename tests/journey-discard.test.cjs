@@ -12,7 +12,7 @@ test('cancelar jornadas usa modal, conserva el borrador y solo descarta al confi
   assert.doesNotMatch(source, /window\.confirm\(/)
   const bundle = buildSync({ entryPoints: [path.join(root, 'src/components/ServiceJourneys.jsx')], bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react', 'react-dom'], loader: { '.css': 'empty' } })
   const values = []; let cursor = 0
-  const context = { enabled: true, today: '2026-09-21', teamsForDate: () => [] }
+  const context = { can: () => true, user: null, enabled: true, today: '2026-09-21', teamsForDate: () => [] }
   const mock = { ...React, useContext: () => context, useEffect: () => {}, useId: () => 'title', useRef: () => ({ current: null }), useState: initial => {
     const index = cursor++; if (!(index in values)) values[index] = initial
     return [values[index], value => { values[index] = typeof value === 'function' ? value(values[index]) : value }]

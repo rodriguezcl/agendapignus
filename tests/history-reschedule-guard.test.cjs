@@ -38,6 +38,7 @@ test('confirmation closes only after successful persistence; failure keeps draft
   for (const fail of [false, true]) {
     let closed = false, error = '', saving = false
     const confirm = vm.runInNewContext(source.slice(start, end) + '\nconfirmReschedule', {
+      can: () => true,
       interactionBlocked: false, rescheduleReady: true, record: {}, rescheduleDate: '2096-09-11', rescheduleTeam: 'team', rescheduleTime: '14:00',
       setSaving: value => { saving = value }, setRescheduleError: value => { error = value }, close: () => { closed = true },
       historyScheduling: { save: async () => { if (fail) throw new Error('Conflicto de horarios') } }
@@ -47,6 +48,18 @@ test('confirmation closes only after successful persistence; failure keeps draft
     assert.equal(saving, false)
     assert.equal(error, fail ? 'Conflicto de horarios' : '')
   }
+})
+
+test('confirmation without reschedule permission never calls persistence', async () => {
+  const start = source.indexOf('  const confirmReschedule = async () => {')
+  const end = source.indexOf('  const minimumRescheduleDate', start)
+  let writes = 0
+  const confirm = vm.runInNewContext(source.slice(start, end) + '\nconfirmReschedule', {
+    can: () => false, interactionBlocked: false, rescheduleReady: true,
+    historyScheduling: { save: async () => { writes++ } }
+  })
+  await confirm()
+  assert.equal(writes, 0)
 })
 
 test('close routes through guard and explicit confirmation shows summary without saving directly', () => {

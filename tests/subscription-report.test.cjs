@@ -26,7 +26,13 @@ test('ambos servidores usan las mismas columnas y ocho anchos en Excel y PDF', (
     const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
     assert.ok(source.includes('includeSubscription ? subscriptionHeaders : []'))
     assert.ok(source.includes('includeSubscription ? subscriptionColumns(record,'))
-    assert.ok(source.includes("const includeSubscription = !['docta', 'nobu-town'].includes(category)"))
+    const expression = source.match(/const includeSubscription = (.+)/)?.[1]
+    assert.ok(expression, 'both adapters declare the subscription-column predicate')
+    const includes = new Function('user', 'category', 'isGranular', 'canPermission', `return ${expression}`)
+    for (const category of ['docta', 'nobu-town']) assert.equal(includes({}, category, () => false, () => true), false)
+    assert.equal(includes({}, 'residencial', () => false, () => false), true)
+    assert.equal(includes({}, 'residencial', () => true, () => false), false)
+    assert.equal(includes({}, 'residencial', () => true, (_, permission) => permission === 'records.financial'), true)
     assert.ok(source.includes('[60, 175, 235, 110, 189]'))
     assert.ok(source.includes('[55, 125, 160, 85, 100, 95, 80, 69]'))
   }

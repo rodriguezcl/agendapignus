@@ -1,0 +1,1815 @@
+{
+  "modules": [
+    [
+      "dashboard",
+      "Menú principal",
+      "Indicadores, evolución anual, altas, bajas y detalle por ubicación. Los filtros forman parte de consultar."
+    ],
+    [
+      "weekly",
+      "Agenda semanal",
+      "Planificación, equipos, reservas, jornadas, feriados y configuración mensual/anual."
+    ],
+    [
+      "agenda",
+      "Agenda del día",
+      "Operación diaria y equipos. Las acciones equivalentes comparten permiso con la agenda semanal."
+    ],
+    [
+      "history",
+      "Historial",
+      "Consulta, gestión administrativa, operaciones masivas, informes y archivos."
+    ],
+    [
+      "collections",
+      "Cobranzas",
+      "Pendientes, confirmados, búsqueda, filtros, importes y trazabilidad de cambios."
+    ],
+    [
+      "accounts",
+      "Abonados y clientes",
+      "Fichas, seguimiento CCTV, historial del cliente, importación y abonos."
+    ],
+    [
+      "map",
+      "Mapa",
+      "Mapa de calor, puntos, búsqueda, filtros, encuadre y calidad de ubicaciones."
+    ],
+    [
+      "employees",
+      "Empleados",
+      "Personal, datos de contacto, acceso, rol y habilitación técnica."
+    ],
+    [
+      "services",
+      "Tipo de servicio",
+      "Catálogo, duración predeterminada y disponibilidad para nuevas planificaciones."
+    ],
+    [
+      "vehicles",
+      "Vehículos",
+      "Flota, kilometraje, seguros, documentos y consulta de controles."
+    ],
+    [
+      "technical",
+      "Mis servicios / portal técnico",
+      "Trabajo sobre servicios asignados. Las reglas de horario, estado y asignación siguen vigentes."
+    ],
+    [
+      "settings",
+      "Configuración",
+      "Roles, permisos, jornada laboral y opciones de meses congelados."
+    ],
+    [
+      "audit",
+      "Auditoría",
+      "Acciones y accesos registrados; filtros y comparación de cambios."
+    ]
+  ],
+  "catalog": [
+    {
+      "id": "dashboard.view",
+      "label": "Consultar Menú principal",
+      "groups": [
+        "dashboard"
+      ],
+      "all": [],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "weekly.view",
+      "label": "Consultar Agenda semanal",
+      "groups": [
+        "weekly"
+      ],
+      "all": [],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "agenda.view",
+      "label": "Consultar Agenda del día",
+      "groups": [
+        "agenda"
+      ],
+      "all": [],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "history.view",
+      "label": "Consultar Historial",
+      "groups": [
+        "history"
+      ],
+      "all": [],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "collections.view",
+      "label": "Consultar Cobranzas",
+      "groups": [
+        "collections"
+      ],
+      "all": [],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "accounts.view",
+      "label": "Consultar Abonados y clientes",
+      "groups": [
+        "accounts"
+      ],
+      "all": [],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "map.view",
+      "label": "Consultar Mapa",
+      "groups": [
+        "map"
+      ],
+      "all": [],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "employees.view",
+      "label": "Consultar Empleados",
+      "groups": [
+        "employees"
+      ],
+      "all": [],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "services.view",
+      "label": "Consultar Tipo de servicio",
+      "groups": [
+        "services"
+      ],
+      "all": [],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "vehicles.view",
+      "label": "Consultar Vehículos",
+      "groups": [
+        "vehicles"
+      ],
+      "all": [],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "technical.view",
+      "label": "Consultar Mis servicios / portal técnico",
+      "groups": [
+        "technical"
+      ],
+      "all": [],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "settings.view",
+      "label": "Consultar Configuración",
+      "groups": [
+        "settings"
+      ],
+      "all": [],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "audit.view",
+      "label": "Consultar Auditoría",
+      "groups": [
+        "audit"
+      ],
+      "all": [],
+      "any": [],
+      "note": "",
+      "sensitive": true
+    },
+    {
+      "id": "records.read",
+      "label": "Consultar detalle de servicios",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history",
+        "technical",
+        "accounts",
+        "dashboard"
+      ],
+      "all": [],
+      "any": [
+        "weekly.view",
+        "agenda.view",
+        "history.view",
+        "technical.view",
+        "accounts.view",
+        "dashboard.view"
+      ],
+      "note": "Sólo los registros y campos incluidos en el alcance del rol.",
+      "sensitive": false
+    },
+    {
+      "id": "records.contact",
+      "label": "Consultar contacto, llamar y abrir indicaciones de llegada",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history",
+        "technical"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [],
+      "note": "El portal técnico conserva los bloqueos por orden de atención y controles pendientes.",
+      "sensitive": false
+    },
+    {
+      "id": "records.financial",
+      "label": "Ver importes, medios de pago y datos del abono",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history",
+        "collections",
+        "accounts",
+        "technical"
+      ],
+      "all": [],
+      "any": [
+        "weekly.view",
+        "agenda.view",
+        "history.view",
+        "collections.view",
+        "accounts.view",
+        "technical.view"
+      ],
+      "note": "También controla esos campos en detalles, respuestas del servidor y exportaciones.",
+      "sensitive": false
+    },
+    {
+      "id": "records.export",
+      "label": "Exportar informes en Excel o PDF",
+      "groups": [
+        "dashboard",
+        "history",
+        "technical"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "dashboard.view",
+        "history.view",
+        "technical.view"
+      ],
+      "note": "Sólo registros autorizados. Las columnas financieras requieren su permiso de lectura.",
+      "sensitive": false
+    },
+    {
+      "id": "customer.history",
+      "label": "Consultar historial del cliente",
+      "groups": [
+        "accounts",
+        "technical"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "accounts.view",
+        "technical.view"
+      ],
+      "note": "Limita la consulta al cliente autorizado; no habilita todo Historial.",
+      "sensitive": false
+    },
+    {
+      "id": "dashboard.detail",
+      "label": "Abrir detalle de altas, bajas y ubicaciones",
+      "groups": [
+        "dashboard"
+      ],
+      "all": [
+        "dashboard.view",
+        "records.read"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "planning.create",
+      "label": "Crear servicios y reservar horarios",
+      "groups": [
+        "weekly",
+        "agenda"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view"
+      ],
+      "note": "Incluye tipo, duración, cliente, detalle y horario. Crear un cliente nuevo requiere su permiso propio.",
+      "sensitive": false
+    },
+    {
+      "id": "planning.edit",
+      "label": "Editar un servicio planificado",
+      "groups": [
+        "weekly",
+        "agenda"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view"
+      ],
+      "note": "Sólo campos editables y servicios cuyo estado permita modificar la planificación.",
+      "sensitive": false
+    },
+    {
+      "id": "planning.remove",
+      "label": "Quitar un servicio de la agenda",
+      "groups": [
+        "weekly",
+        "agenda"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view"
+      ],
+      "note": "Conserva las restricciones por jornadas, controles y trazabilidad.",
+      "sensitive": false
+    },
+    {
+      "id": "planning.ready",
+      "label": "Marcar listo o quitar la marca de listo",
+      "groups": [
+        "weekly",
+        "agenda"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view"
+      ],
+      "note": "Independiente de crear servicios, editar sus datos o completar el trabajo.",
+      "sensitive": false
+    },
+    {
+      "id": "planning.teams.create",
+      "label": "Agregar equipos del día",
+      "groups": [
+        "weekly",
+        "agenda"
+      ],
+      "all": [],
+      "any": [
+        "weekly.view",
+        "agenda.view"
+      ],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "planning.teams.delete",
+      "label": "Quitar equipos del día",
+      "groups": [
+        "weekly",
+        "agenda"
+      ],
+      "all": [],
+      "any": [
+        "weekly.view",
+        "agenda.view"
+      ],
+      "note": "También valida los permisos y restricciones de los servicios y controles contenidos en el equipo.",
+      "sensitive": false
+    },
+    {
+      "id": "planning.technicians",
+      "label": "Asignar y desasignar técnicos del equipo",
+      "groups": [
+        "weekly",
+        "agenda"
+      ],
+      "all": [],
+      "any": [
+        "weekly.view",
+        "agenda.view"
+      ],
+      "note": "Usa una lista mínima de técnicos elegibles; no concede acceso al módulo Empleados.",
+      "sensitive": false
+    },
+    {
+      "id": "planning.notes",
+      "label": "Editar notas internas del servicio",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view",
+        "history.view"
+      ],
+      "note": "Las notas internas no se muestran al técnico.",
+      "sensitive": false
+    },
+    {
+      "id": "planning.checklist",
+      "label": "Crear, editar, marcar o eliminar ítems del checklist",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view",
+        "history.view"
+      ],
+      "note": "Preparación administrativa; independiente de poder cambiar el cliente o la fecha.",
+      "sensitive": false
+    },
+    {
+      "id": "planning.linkAccount",
+      "label": "Vincular o cambiar el cliente de un servicio",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "planning.create",
+        "planning.edit",
+        "history.edit"
+      ],
+      "note": "Usa búsqueda mínima de cuentas; protege la identidad compartida entre jornadas.",
+      "sensitive": false
+    },
+    {
+      "id": "planning.commercial",
+      "label": "Editar monto, pago, abono, formulario y correo del servicio",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history"
+      ],
+      "all": [
+        "records.financial"
+      ],
+      "any": [
+        "planning.create",
+        "planning.edit",
+        "history.edit"
+      ],
+      "note": "Sólo campos aplicables al servicio y a su estado. Rectificar una cobranza confirmada usa Cobranzas.",
+      "sensitive": false
+    },
+    {
+      "id": "planning.copy",
+      "label": "Vista previa y copia de agenda o servicio",
+      "groups": [
+        "weekly",
+        "agenda"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view"
+      ],
+      "note": "Copia la agenda visible sin guardar ni modificar servicios.",
+      "sensitive": false
+    },
+    {
+      "id": "planning.confirm",
+      "label": "Confirmar un servicio pendiente de confirmación",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view",
+        "history.view"
+      ],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "planning.reservation.create",
+      "label": "Crear una reserva sin cuenta PIG definitiva",
+      "groups": [
+        "weekly",
+        "agenda"
+      ],
+      "all": [],
+      "any": [
+        "planning.create",
+        "planning.edit"
+      ],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "planning.reservation.link",
+      "label": "Vincular reserva con la cuenta definitiva",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view",
+        "history.view"
+      ],
+      "note": "Respeta la identidad del cliente y el vínculo entre todas las jornadas.",
+      "sensitive": false
+    },
+    {
+      "id": "planning.freeze",
+      "label": "Definir meses congelados del abono al planificar",
+      "groups": [
+        "weekly",
+        "agenda"
+      ],
+      "all": [
+        "records.financial"
+      ],
+      "any": [
+        "planning.create",
+        "planning.edit"
+      ],
+      "note": "Sólo instalaciones aplicables; usa los plazos habilitados en Configuración.",
+      "sensitive": false
+    },
+    {
+      "id": "planning.journeys",
+      "label": "Agregar, distribuir o reorganizar jornadas",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view"
+      ],
+      "note": "Requiere acceso de planificación. No modifica avances cerrados ni saltea el orden de jornadas.",
+      "sensitive": false
+    },
+    {
+      "id": "planning.reschedule",
+      "label": "Reprogramar fecha, hora o equipo",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view",
+        "history.view"
+      ],
+      "note": "Consulta disponibilidad sin conceder configuración mensual de equipos u horarios.",
+      "sensitive": false
+    },
+    {
+      "id": "weekly.reorder",
+      "label": "Reordenar horarios de servicios de un equipo",
+      "groups": [
+        "weekly"
+      ],
+      "all": [
+        "weekly.view",
+        "records.read"
+      ],
+      "any": [],
+      "note": "Valida disponibilidad, horarios y todos los registros afectados.",
+      "sensitive": false
+    },
+    {
+      "id": "weekly.advanceGuard",
+      "label": "Adelantar una guardia de sábado al viernes",
+      "groups": [
+        "weekly"
+      ],
+      "all": [
+        "weekly.view",
+        "planning.reschedule"
+      ],
+      "any": [],
+      "note": "Respeta la franja reservada del viernes y la disponibilidad del sábado.",
+      "sensitive": false
+    },
+    {
+      "id": "weekly.daily",
+      "label": "Abrir la agenda del día desde la semana",
+      "groups": [
+        "weekly"
+      ],
+      "all": [
+        "weekly.view",
+        "agenda.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "weekly.monthlyTeams.read",
+      "label": "Consultar equipos del mes",
+      "groups": [
+        "weekly"
+      ],
+      "all": [
+        "weekly.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "weekly.monthlyTeams.manage",
+      "label": "Configurar equipos del mes",
+      "groups": [
+        "weekly"
+      ],
+      "all": [
+        "weekly.monthlyTeams.read"
+      ],
+      "any": [],
+      "note": "Conserva las asignaciones de vehículos existentes sin exigir permiso para modificarlas.",
+      "sensitive": false
+    },
+    {
+      "id": "weekly.monthlyHours.read",
+      "label": "Consultar horarios mensuales heredados",
+      "groups": [
+        "weekly"
+      ],
+      "all": [
+        "weekly.view"
+      ],
+      "any": [],
+      "note": "Consulta los períodos de horarios sugeridos para las franjas vacías del mes.",
+      "sensitive": false
+    },
+    {
+      "id": "weekly.monthlyHours.manage",
+      "label": "Modificar horarios mensuales heredados",
+      "groups": [
+        "weekly"
+      ],
+      "all": [
+        "weekly.monthlyHours.read"
+      ],
+      "any": [],
+      "note": "Permite agregar períodos actuales o futuros. Los servicios ya programados conservan sus horarios.",
+      "sensitive": false
+    },
+    {
+      "id": "weekly.monthlyVehicles.read",
+      "label": "Consultar vehículos y responsables del mes",
+      "groups": [
+        "weekly"
+      ],
+      "all": [
+        "weekly.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "weekly.monthlyVehicles.assign",
+      "label": "Asignar vehículos y responsables del mes",
+      "groups": [
+        "weekly"
+      ],
+      "all": [
+        "weekly.monthlyVehicles.read"
+      ],
+      "any": [],
+      "note": "Permite seleccionar vehículos existentes sin habilitar la gestión de toda la flota.",
+      "sensitive": false
+    },
+    {
+      "id": "weekly.controls.schedule",
+      "label": "Generar o programar controles vehiculares",
+      "groups": [
+        "weekly"
+      ],
+      "all": [
+        "weekly.monthlyVehicles.read"
+      ],
+      "any": [],
+      "note": "Depende de una asignación válida del vehículo, no de poder modificar esa asignación.",
+      "sensitive": false
+    },
+    {
+      "id": "weekly.guards.read",
+      "label": "Consultar guardias del año",
+      "groups": [
+        "weekly"
+      ],
+      "all": [
+        "weekly.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "weekly.guards.manage",
+      "label": "Configurar rotación anual de guardias",
+      "groups": [
+        "weekly"
+      ],
+      "all": [
+        "weekly.guards.read"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "weekly.holidays",
+      "label": "Definir feriado laboral o cerrado",
+      "groups": [
+        "weekly",
+        "agenda"
+      ],
+      "all": [],
+      "any": [
+        "weekly.view",
+        "agenda.view"
+      ],
+      "note": "",
+      "sensitive": true
+    },
+    {
+      "id": "agenda.clear",
+      "label": "Vaciar la agenda del día",
+      "groups": [
+        "agenda"
+      ],
+      "all": [
+        "agenda.view"
+      ],
+      "any": [],
+      "note": "Acción conjunta: debe validar también los permisos y restricciones de los registros afectados.",
+      "sensitive": true
+    },
+    {
+      "id": "history.edit",
+      "label": "Editar administrativamente un registro",
+      "groups": [
+        "history"
+      ],
+      "all": [
+        "history.view",
+        "records.read"
+      ],
+      "any": [],
+      "note": "Campos generales, categoría, duración y detalle permitidos. Notas, checklist, cuenta vinculada y datos comerciales usan sus permisos propios.",
+      "sensitive": false
+    },
+    {
+      "id": "history.complete",
+      "label": "Completar un servicio o registrar avance administrativamente",
+      "groups": [
+        "history"
+      ],
+      "all": [
+        "history.view",
+        "records.read"
+      ],
+      "any": [],
+      "note": "Respeta confirmación, horario y secuencia de jornadas.",
+      "sensitive": false
+    },
+    {
+      "id": "history.completeEarly",
+      "label": "Autorizar finalización antes del horario permitido",
+      "groups": [
+        "history"
+      ],
+      "all": [
+        "history.complete"
+      ],
+      "any": [],
+      "note": "Permite finalizar antes del horario previsto, conservando las demás validaciones del servicio.",
+      "sensitive": true
+    },
+    {
+      "id": "history.reopen",
+      "label": "Volver a pendiente un servicio finalizado",
+      "groups": [
+        "history"
+      ],
+      "all": [
+        "history.view",
+        "records.read"
+      ],
+      "any": [],
+      "note": "Puede quitar el informe y finalización actuales; conserva las validaciones de negocio.",
+      "sensitive": true
+    },
+    {
+      "id": "history.cancel",
+      "label": "Cancelar administrativamente un servicio",
+      "groups": [
+        "history"
+      ],
+      "all": [
+        "history.view",
+        "records.read"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "history.delete",
+      "label": "Eliminar un registro",
+      "groups": [
+        "history"
+      ],
+      "all": [
+        "history.view",
+        "records.read"
+      ],
+      "any": [],
+      "note": "No autoriza eliminar jornadas vinculadas ni registros con trazabilidad protegida.",
+      "sensitive": true
+    },
+    {
+      "id": "history.bulk",
+      "label": "Aplicar cambios a varios registros",
+      "groups": [
+        "history"
+      ],
+      "all": [
+        "history.view",
+        "records.read"
+      ],
+      "any": [
+        "history.edit",
+        "history.complete",
+        "history.reopen",
+        "history.cancel",
+        "planning.reschedule"
+      ],
+      "note": "Cada operación del lote exige además su permiso individual.",
+      "sensitive": false
+    },
+    {
+      "id": "history.category",
+      "label": "Corregir categoría de un servicio completado",
+      "groups": [
+        "history"
+      ],
+      "all": [
+        "history.view",
+        "records.read"
+      ],
+      "any": [],
+      "note": "Exige motivo y un registro compatible.",
+      "sensitive": true
+    },
+    {
+      "id": "collections.timeline",
+      "label": "Consultar trazabilidad de una cobranza",
+      "groups": [
+        "collections"
+      ],
+      "all": [
+        "collections.view",
+        "records.financial"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "collections.confirm",
+      "label": "Confirmar un pago",
+      "groups": [
+        "collections"
+      ],
+      "all": [
+        "collections.view",
+        "records.financial"
+      ],
+      "any": [],
+      "note": "No permite confirmar dos veces; conserva la cobranza compartida entre jornadas.",
+      "sensitive": false
+    },
+    {
+      "id": "collections.amount",
+      "label": "Rectificar el importe de un pago",
+      "groups": [
+        "collections"
+      ],
+      "all": [
+        "collections.view",
+        "records.financial"
+      ],
+      "any": [],
+      "note": "Registra el cambio y la nota de la rectificación.",
+      "sensitive": false
+    },
+    {
+      "id": "collections.method",
+      "label": "Rectificar el medio de pago",
+      "groups": [
+        "collections"
+      ],
+      "all": [
+        "collections.view",
+        "records.financial"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "customers.create",
+      "label": "Crear clientes o abonados manualmente",
+      "groups": [
+        "accounts",
+        "weekly",
+        "agenda"
+      ],
+      "all": [],
+      "any": [
+        "accounts.view",
+        "weekly.view",
+        "agenda.view"
+      ],
+      "note": "Mismo permiso para el alta desde una ficha o desde la planificación; campos según el flujo.",
+      "sensitive": false
+    },
+    {
+      "id": "customers.edit",
+      "label": "Editar identidad, contacto, dirección o categoría",
+      "groups": [
+        "accounts"
+      ],
+      "all": [
+        "accounts.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "customers.coordinates",
+      "label": "Editar coordenadas manuales",
+      "groups": [
+        "accounts",
+        "map"
+      ],
+      "all": [
+        "accounts.view"
+      ],
+      "any": [],
+      "note": "Desde Mapa requiere abrir la ficha; no implica poder editar todos sus datos.",
+      "sensitive": false
+    },
+    {
+      "id": "customers.cctv",
+      "label": "Activar o desactivar seguimiento CCTV",
+      "groups": [
+        "accounts"
+      ],
+      "all": [
+        "accounts.view"
+      ],
+      "any": [],
+      "note": "Modifica qué registros entran en el alcance de Supervisión.",
+      "sensitive": false
+    },
+    {
+      "id": "customers.delete",
+      "label": "Eliminar clientes o abonados",
+      "groups": [
+        "accounts"
+      ],
+      "all": [
+        "accounts.view"
+      ],
+      "any": [],
+      "note": "Sólo cuando las referencias existentes permiten la eliminación.",
+      "sensitive": true
+    },
+    {
+      "id": "customers.import",
+      "label": "Revisar y confirmar importación del padrón",
+      "groups": [
+        "accounts"
+      ],
+      "all": [
+        "accounts.view"
+      ],
+      "any": [],
+      "note": "Importación incremental; no requiere permisos de alta o edición manual.",
+      "sensitive": false
+    },
+    {
+      "id": "customers.backup",
+      "label": "Consultar respaldo de la última importación",
+      "groups": [
+        "accounts"
+      ],
+      "all": [
+        "accounts.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": true
+    },
+    {
+      "id": "customers.undo",
+      "label": "Deshacer la última importación",
+      "groups": [
+        "accounts"
+      ],
+      "all": [
+        "customers.backup"
+      ],
+      "any": [],
+      "note": "Sólo mientras el respaldo siga siendo reversible.",
+      "sensitive": true
+    },
+    {
+      "id": "subscriptions.read",
+      "label": "Consultar abono y vigencia",
+      "groups": [
+        "accounts"
+      ],
+      "all": [
+        "accounts.view",
+        "records.financial"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "subscriptions.correct",
+      "label": "Corregir abono, vigencia y congelamiento registrado",
+      "groups": [
+        "accounts"
+      ],
+      "all": [
+        "subscriptions.read"
+      ],
+      "any": [],
+      "note": "Sólo instalaciones completadas compatibles; no equivale a editar cualquier servicio.",
+      "sensitive": false
+    },
+    {
+      "id": "map.customer",
+      "label": "Abrir la ficha completa desde el mapa",
+      "groups": [
+        "map"
+      ],
+      "all": [
+        "map.view",
+        "accounts.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "employees.create",
+      "label": "Crear empleado con contraseña inicial",
+      "groups": [
+        "employees"
+      ],
+      "all": [
+        "employees.view"
+      ],
+      "any": [],
+      "note": "Debe asignarse un rol permitido; no concede capacidad de crear administradores.",
+      "sensitive": true
+    },
+    {
+      "id": "employees.edit",
+      "label": "Editar nombre, correo y contacto",
+      "groups": [
+        "employees"
+      ],
+      "all": [
+        "employees.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "employees.status",
+      "label": "Activar o desactivar empleados",
+      "groups": [
+        "employees"
+      ],
+      "all": [
+        "employees.view"
+      ],
+      "any": [],
+      "note": "Las cuentas administrativas requieren protección adicional.",
+      "sensitive": true
+    },
+    {
+      "id": "employees.delete",
+      "label": "Eliminar empleados",
+      "groups": [
+        "employees"
+      ],
+      "all": [
+        "employees.view"
+      ],
+      "any": [],
+      "note": "Si tiene referencias y corresponde inactivarlo, se exige también el permiso de cambiar estado.",
+      "sensitive": true
+    },
+    {
+      "id": "employees.role",
+      "label": "Asignar o cambiar el rol de un empleado",
+      "groups": [
+        "employees"
+      ],
+      "all": [
+        "employees.view"
+      ],
+      "any": [],
+      "note": "No permite elevar privilegios por encima de lo delegable.",
+      "sensitive": true
+    },
+    {
+      "id": "employees.password",
+      "label": "Cambiar contraseña de un empleado",
+      "groups": [
+        "employees"
+      ],
+      "all": [
+        "employees.view"
+      ],
+      "any": [],
+      "note": "Separado de editar datos de contacto. Cuentas administrativas protegidas.",
+      "sensitive": true
+    },
+    {
+      "id": "employees.technical",
+      "label": "Habilitar que un empleado realice servicios técnicos",
+      "groups": [
+        "employees"
+      ],
+      "all": [
+        "employees.view"
+      ],
+      "any": [],
+      "note": "no reemplaza asignación ni permisos de ejecución.",
+      "sensitive": true
+    },
+    {
+      "id": "employees.requests.read",
+      "label": "Consultar solicitudes de recuperación de acceso",
+      "groups": [
+        "employees",
+        "dashboard"
+      ],
+      "all": [],
+      "any": [
+        "employees.view",
+        "dashboard.view"
+      ],
+      "note": "",
+      "sensitive": true
+    },
+    {
+      "id": "employees.requests.resolve",
+      "label": "Marcar una solicitud de acceso como resuelta",
+      "groups": [
+        "employees",
+        "dashboard"
+      ],
+      "all": [
+        "employees.requests.read"
+      ],
+      "any": [],
+      "note": "No cambia la contraseña por sí misma.",
+      "sensitive": true
+    },
+    {
+      "id": "services.create",
+      "label": "Crear tipos de servicio",
+      "groups": [
+        "services"
+      ],
+      "all": [
+        "services.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "services.edit",
+      "label": "Editar nombre y descripción",
+      "groups": [
+        "services"
+      ],
+      "all": [
+        "services.view"
+      ],
+      "any": [],
+      "note": "Los tipos internos del sistema permanecen protegidos.",
+      "sensitive": false
+    },
+    {
+      "id": "services.duration",
+      "label": "Cambiar duración predeterminada",
+      "groups": [
+        "services"
+      ],
+      "all": [
+        "services.view"
+      ],
+      "any": [],
+      "note": "Respeta servicios cerrados y duraciones personalizadas.",
+      "sensitive": false
+    },
+    {
+      "id": "services.status",
+      "label": "Activar o desactivar tipos de servicio",
+      "groups": [
+        "services"
+      ],
+      "all": [
+        "services.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "services.delete",
+      "label": "Eliminar tipos de servicio",
+      "groups": [
+        "services"
+      ],
+      "all": [
+        "services.view"
+      ],
+      "any": [],
+      "note": "Si hay referencias y corresponde desactivar, se exige además cambiar estado.",
+      "sensitive": false
+    },
+    {
+      "id": "vehicles.create",
+      "label": "Crear vehículos",
+      "groups": [
+        "vehicles"
+      ],
+      "all": [
+        "vehicles.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "vehicles.edit",
+      "label": "Editar marca, modelo, año y matrícula",
+      "groups": [
+        "vehicles"
+      ],
+      "all": [
+        "vehicles.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "vehicles.mileage.edit",
+      "label": "Modificar kilometraje administrativamente",
+      "groups": [
+        "vehicles"
+      ],
+      "all": [
+        "vehicles.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "vehicles.mileage.read",
+      "label": "Consultar estadísticas de kilometraje",
+      "groups": [
+        "vehicles"
+      ],
+      "all": [
+        "vehicles.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "vehicles.delete",
+      "label": "Eliminar vehículos",
+      "groups": [
+        "vehicles"
+      ],
+      "all": [
+        "vehicles.view"
+      ],
+      "any": [],
+      "note": "La eliminación conserva las restricciones por referencias a servicios y controles.",
+      "sensitive": true
+    },
+    {
+      "id": "vehicle.controls.read",
+      "label": "Consultar controles y sus fotografías",
+      "groups": [
+        "vehicles",
+        "weekly",
+        "agenda",
+        "history",
+        "technical"
+      ],
+      "all": [],
+      "any": [
+        "vehicles.view",
+        "weekly.view",
+        "agenda.view",
+        "history.view",
+        "technical.view"
+      ],
+      "note": "Sólo controles incluidos en el alcance autorizado.",
+      "sensitive": false
+    },
+    {
+      "id": "vehicle.controls.omit",
+      "label": "Omitir un control vehicular",
+      "groups": [
+        "weekly",
+        "agenda"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view"
+      ],
+      "note": "se valida también al quitar un equipo.",
+      "sensitive": true
+    },
+    {
+      "id": "vehicle.controls.delete",
+      "label": "Eliminar un control vehicular",
+      "groups": [
+        "history",
+        "weekly",
+        "agenda"
+      ],
+      "all": [
+        "vehicle.controls.read"
+      ],
+      "any": [
+        "history.view",
+        "weekly.view",
+        "agenda.view"
+      ],
+      "note": "requiere trazabilidad de la acción.",
+      "sensitive": true
+    },
+    {
+      "id": "vehicle.insurance.read",
+      "label": "Consultar o descargar seguro",
+      "groups": [
+        "vehicles",
+        "technical"
+      ],
+      "all": [],
+      "any": [
+        "vehicles.view",
+        "technical.view"
+      ],
+      "note": "El alcance técnico debe limitar qué vehículos puede consultar.",
+      "sensitive": false
+    },
+    {
+      "id": "vehicle.insurance.write",
+      "label": "Cargar o reemplazar seguro y vencimiento",
+      "groups": [
+        "vehicles"
+      ],
+      "all": [
+        "vehicles.view",
+        "vehicle.insurance.read"
+      ],
+      "any": [],
+      "note": "PDF y vencimiento válidos.",
+      "sensitive": true
+    },
+    {
+      "id": "vehicle.documents.read",
+      "label": "Consultar y descargar documentos del vehículo",
+      "groups": [
+        "vehicles",
+        "technical"
+      ],
+      "all": [],
+      "any": [
+        "vehicles.view",
+        "technical.view"
+      ],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "vehicle.documents.upload",
+      "label": "Adjuntar documentos al vehículo",
+      "groups": [
+        "vehicles"
+      ],
+      "all": [
+        "vehicles.view",
+        "vehicle.documents.read"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": true
+    },
+    {
+      "id": "vehicle.documents.delete",
+      "label": "Eliminar documentos del vehículo",
+      "groups": [
+        "vehicles"
+      ],
+      "all": [
+        "vehicles.view",
+        "vehicle.documents.read"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": true
+    },
+    {
+      "id": "technical.start",
+      "label": "Iniciar un servicio asignado",
+      "groups": [
+        "technical"
+      ],
+      "all": [
+        "technical.view",
+        "records.read"
+      ],
+      "any": [],
+      "note": "Cuenta habilitada para trabajo técnico, asignación, confirmación y horario válidos.",
+      "sensitive": false
+    },
+    {
+      "id": "technical.history",
+      "label": "Consultar y buscar historial propio informado",
+      "groups": [
+        "technical"
+      ],
+      "all": [
+        "technical.view",
+        "records.read"
+      ],
+      "any": [],
+      "note": "Sólo servicios asignados y resueltos.",
+      "sensitive": false
+    },
+    {
+      "id": "technical.advance",
+      "label": "Adelantar e iniciar un servicio asignado",
+      "groups": [
+        "technical"
+      ],
+      "all": [
+        "technical.start"
+      ],
+      "any": [],
+      "note": "Conserva las reglas de día, guardia, horario y trabajos pendientes. Hoy no requiere aprobación administrativa.",
+      "sensitive": false
+    },
+    {
+      "id": "technical.progress",
+      "label": "Registrar avance y cerrar una jornada intermedia",
+      "groups": [
+        "technical"
+      ],
+      "all": [
+        "technical.view",
+        "records.read"
+      ],
+      "any": [],
+      "note": "Servicio iniciado y secuencia válida. No requiere permiso de iniciar: pudo hacerlo un compañero.",
+      "sensitive": false
+    },
+    {
+      "id": "technical.complete",
+      "label": "Completar trabajo y cargar informe técnico",
+      "groups": [
+        "technical"
+      ],
+      "all": [
+        "technical.view",
+        "records.read"
+      ],
+      "any": [],
+      "note": "Servicio iniciado, informe válido y jornada final cuando corresponda.",
+      "sensitive": false
+    },
+    {
+      "id": "technical.cancel",
+      "label": "Cancelar un servicio asignado",
+      "groups": [
+        "technical"
+      ],
+      "all": [
+        "technical.view",
+        "records.read"
+      ],
+      "any": [],
+      "note": "Respeta el estado y los motivos exigidos por el flujo técnico.",
+      "sensitive": false
+    },
+    {
+      "id": "technical.reschedule",
+      "label": "Solicitar reprogramación de un servicio",
+      "groups": [
+        "technical"
+      ],
+      "all": [
+        "technical.view",
+        "records.read"
+      ],
+      "any": [],
+      "note": "Solicitar no concede permiso para elegir y guardar una nueva fecha en la agenda.",
+      "sensitive": false
+    },
+    {
+      "id": "technical.vehicleControl",
+      "label": "Registrar control vehicular, kilometraje y foto",
+      "groups": [
+        "technical"
+      ],
+      "all": [
+        "technical.view",
+        "vehicle.controls.read"
+      ],
+      "any": [],
+      "note": "Control asignado; datos válidos e imagen obtenida desde cámara.",
+      "sensitive": false
+    },
+    {
+      "id": "service.documents.read",
+      "label": "Consultar fotos, informes y adjuntos del servicio",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history",
+        "technical"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view",
+        "history.view",
+        "technical.view"
+      ],
+      "note": "Unifica la autorización de archivos actuales y fotos antiguas.",
+      "sensitive": false
+    },
+    {
+      "id": "service.documents.upload",
+      "label": "Adjuntar archivos al servicio",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history",
+        "technical"
+      ],
+      "all": [
+        "service.documents.read"
+      ],
+      "any": [],
+      "note": "No depende de editar el servicio. Conserva límites y formatos válidos.",
+      "sensitive": false
+    },
+    {
+      "id": "service.documents.deleteOwn",
+      "label": "Eliminar adjuntos propios",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history",
+        "technical"
+      ],
+      "all": [
+        "service.documents.read"
+      ],
+      "any": [],
+      "note": "Se verifica el autor real del archivo.",
+      "sensitive": false
+    },
+    {
+      "id": "service.documents.deleteAny",
+      "label": "Eliminar adjuntos de otros usuarios",
+      "groups": [
+        "weekly",
+        "agenda",
+        "history"
+      ],
+      "all": [
+        "service.documents.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view",
+        "history.view"
+      ],
+      "note": "Separado de consultar y de subir archivos.",
+      "sensitive": true
+    },
+    {
+      "id": "settings.roles.read",
+      "label": "Consultar roles y su configuración",
+      "groups": [
+        "settings"
+      ],
+      "all": [
+        "settings.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "settings.roles.create",
+      "label": "Crear roles",
+      "groups": [
+        "settings"
+      ],
+      "all": [
+        "settings.roles.read"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": true
+    },
+    {
+      "id": "settings.roles.edit",
+      "label": "Editar nombre y descripción de roles",
+      "groups": [
+        "settings"
+      ],
+      "all": [
+        "settings.roles.read"
+      ],
+      "any": [],
+      "note": "El nombre no debe cambiar permisos ni alcance automáticamente.",
+      "sensitive": true
+    },
+    {
+      "id": "settings.roles.permissions",
+      "label": "Modificar permisos y alcance de roles",
+      "groups": [
+        "settings"
+      ],
+      "all": [
+        "settings.roles.read"
+      ],
+      "any": [],
+      "note": "Protege al último administrador activo y limita los privilegios que se pueden delegar.",
+      "sensitive": true
+    },
+    {
+      "id": "settings.workday.read",
+      "label": "Consultar jornada habitual y excepciones",
+      "groups": [
+        "settings"
+      ],
+      "all": [
+        "settings.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "settings.workday.manage",
+      "label": "Cambiar jornada, descansos y excepciones por día o equipo",
+      "groups": [
+        "settings"
+      ],
+      "all": [
+        "settings.workday.read"
+      ],
+      "any": [],
+      "note": "Incluye restablecer la jornada laboral predeterminada.",
+      "sensitive": true
+    },
+    {
+      "id": "settings.frozenMonths",
+      "label": "Configurar los plazos de abono congelado disponibles",
+      "groups": [
+        "settings"
+      ],
+      "all": [
+        "settings.view"
+      ],
+      "any": [],
+      "note": "Define los plazos disponibles sin modificar selecciones históricas.",
+      "sensitive": true
+    },
+    {
+      "id": "audit.detail",
+      "label": "Consultar valores anteriores y posteriores de una acción",
+      "groups": [
+        "audit"
+      ],
+      "all": [
+        "audit.view"
+      ],
+      "any": [],
+      "note": "Lectura sensible. No existe edición ni borrado de auditoría desde este módulo.",
+      "sensitive": true
+    }
+  ]
+}

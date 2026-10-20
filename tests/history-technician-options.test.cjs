@@ -13,7 +13,7 @@ test('history edit displays team and technicians read-only', () => {
 })
 
 test('saving preserves team and members even if draft contains different IDs', () => {
-  const line = source.split(/\r?\n/).find(line => line.includes('const patch = { ...draft,'))
+  const line = source.split(/\r?\n/).find(line => /(?:const|let) patch = \{ \.\.\.draft,/.test(line))
   const record = { teamId: 'team1', team: 'Equipo 1', technicianIds: ['tech1', 'tech2'], technicians: ['Uno', 'Dos'] }
   const patch = vm.runInNewContext(line + '\npatch', {
     record, identityLocked: false, draft: { teamId: 'team2', team: 'Equipo 2', technicianIds: ['admin'], estimatedMinutes: 90 },
