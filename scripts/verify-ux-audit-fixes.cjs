@@ -73,7 +73,7 @@ async function screenshot(page, name) { await page.screenshot({ path: path.join(
         return route.abort()
       })
       await page.goto('http://ux-fixes.test/review')
-      await page.locator('.stats-grid').first().waitFor()
+      await page.locator('.dashboard-overview').waitFor()
       assert.equal(await page.locator('.app-shell').getAttribute('data-theme'), theme)
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Dashboard fits ${width}/${theme}`)
       for (const value of await page.locator('.zone-summary > div > b, .projection-variation.positive').all()) {

@@ -415,7 +415,7 @@ test('la evolución anual oculta meses futuros y conserva años cerrados', async
   assert.deepEqual(visibleAnnualMonthLabels('2027', august2026), [])
 })
 
-test('el menú principal acumula instalaciones de alarma de Docta desde enero hasta hoy', async () => {
+test('los helpers de acumulado anual cuentan sólo registros completados desde enero hasta la fecha indicada', async () => {
   const { countYearToDateAlarmInstallations, countYearToDateCompletedRecords } = await import('../src/dashboard-metrics.mjs')
   const records = [
     { id: 'jan', date: '2026-01-10', status: 'Completado', alarm: true, zone: 'docta' },
@@ -437,13 +437,6 @@ test('el menú principal acumula instalaciones de alarma de Docta desde enero ha
     throughDate: '2026-08-27',
     matches: record => record.id === 'today' || record.id === 'future' || record.id === 'pending'
   }), 1)
-
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/features/dashboard/presentation/Dashboard.jsx'), 'utf8')
-  assert.match(source, /Desde el 1 de enero hasta hoy · \{currentYear\}/)
-  assert.match(source, /Instalaciones en Docta/)
-  assert.match(source, /Instalaciones en Nobu Town/)
-  assert.match(source, /Instalaciones residenciales/)
-  assert.match(source, /annualRetirements/)
 })
 
 test('las exportaciones usan una descarga compatible con navegadores móviles', async () => {

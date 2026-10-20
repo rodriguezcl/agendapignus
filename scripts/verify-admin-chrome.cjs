@@ -77,7 +77,7 @@ async function measureMenuSnapshotWork(page) {
 
 async function ready(page) {
   await page.locator('.app-shell .sidebar-toggle').waitFor()
-  await page.locator('.content .stats-grid').first().waitFor()
+  await page.locator('.content .dashboard-overview').waitFor()
 }
 async function navigate(page, label, width) {
   if (width <= 640 && !(await page.locator('.sidebar').evaluate(el => el.classList.contains('open')))) await page.locator('.sidebar-toggle').click()

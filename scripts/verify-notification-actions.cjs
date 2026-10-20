@@ -60,7 +60,7 @@ const html = '<!doctype html><html lang="es"><head><meta charset="UTF-8"><meta n
         return route.abort()
       })
       await page.goto('http://notification-actions.test/')
-      await page.locator('.stats-grid').first().waitFor()
+      await page.locator('.dashboard-overview').waitFor()
       assert.equal(await page.locator('.content :is(.pending-reminder,.subscriber-reservation-reminders,.service-advance-reminders,.password-reset-reminders,.vehicle-insurance-reminders)').count(), 0)
       const bell = page.locator('.notification-toggle')
       await bell.click()

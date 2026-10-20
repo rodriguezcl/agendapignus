@@ -141,7 +141,7 @@ async function feedback(locator, label, kind, expected) {
         await page.locator('.sidebar nav').getByRole('button', { name:label, exact:true }).click()
       }
       await page.goto('http://quick-agenda.test/')
-      await page.locator('.stats-grid').first().waitFor()
+      await page.locator('.dashboard-overview').waitFor()
       await navigate('Agenda semanal')
       await page.locator('[data-day="2026-10-14"] .week-team').first().waitFor()
       assert.equal(commands.length, 0, 'Hydration must not write the synthetic fixture')

@@ -63,9 +63,9 @@ const results=[]
   const nav=async name=>{if(width<=640)await page.locator('.sidebar-toggle').click();await page.locator('.sidebar nav').getByRole('button',{name,exact:true}).click()}
   const close=async()=>{for(let i=0;i<6&&await page.locator('.modal-layer,.modal-backdrop').count();i++){const modal=page.locator('.modal').last();if(await modal.getByRole('button',{name:'Cancelar carga',exact:true}).count()){await modal.getByRole('button',{name:'Cancelar carga',exact:true}).click();continue}const dismiss=modal.locator('.modal-close,.close-modal').first();if(await dismiss.count())await dismiss.click();else await modal.getByRole('button',{name:/Cancelar|Cerrar|Volver|Seguir editando/}).first().click()}}
   let currentView='Agenda semanal'
-  const fresh=async()=>{await page.reload();await page.locator('.stats-grid').first().waitFor();await nav(currentView);await page.locator(currentView==='Agenda semanal'?'.week-task-summary':'.history-row').first().waitFor()}
+  const fresh=async()=>{await page.reload();await page.locator('.dashboard-overview').waitFor();await nav(currentView);await page.locator(currentView==='Agenda semanal'?'.week-task-summary':'.history-row').first().waitFor()}
   const step=async(name,action)=>{try{await fresh();await action();events.push({step:name,result:'completed'})}catch(error){events.push({step:name,error:error.message});await snap(name+'-error').catch(()=>{});await close().catch(()=>{})}fs.writeFileSync(path.join(out,`progress-${theme}-${width}.json`),JSON.stringify({events,errors,writes},null,2))}
-  await page.goto('https://scheduling-audit.test/');await page.locator('.stats-grid').first().waitFor()
+  await page.goto('https://scheduling-audit.test/');await page.locator('.dashboard-overview').waitFor()
   await nav('Agenda semanal');await page.locator('.week-task-summary').first().waitFor();await snap('weekly')
   const openNew=()=>page.locator('[data-day="2026-10-14"] .weekly-time-gap').first().getByRole('button',{name:'Agregar servicio'}).click()
   await step('cancel-five-new-services',async()=>{
