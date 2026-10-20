@@ -5,6 +5,7 @@ import { usePermissions } from '../../../presentation/contexts/permissions-conte
 import WorkdaySettings from '../../../components/WorkdaySettings.jsx'
 import ModuleIntroduction from '../../../components/ModuleIntroduction.jsx'
 import Icon from '../../../components/ui/Icon.jsx'
+import RolePreview from './RolePreview.jsx'
 import './role-permissions.css'
 
 const blankPermissions = () => ({ __catalogV2: true, ...Object.fromEntries(CATALOG.map(item => [item.id, false])) })
@@ -25,6 +26,7 @@ export default function Settings({ roles, employees = [], setRoles, setNotice, a
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [impact, setImpact] = useState('')
+  const [preview, setPreview] = useState(null)
   const selected = roles.find(role => String(role.id) === String(active)) || roles[0]
   const displayed = draft || selected
   const permissions = useMemo(() => displayed ? toGranularPermissions({ ...displayed, technicalEnabled: employees.some(employee => String(employee.roleId) === String(displayed.id) && employee.technicalEnabled === true) }) : blankPermissions(), [displayed, employees])
@@ -36,6 +38,7 @@ export default function Settings({ roles, employees = [], setRoles, setNotice, a
   const identityChanged = draft && (!baseline || draft.name !== baseline.name || draft.description !== baseline.description)
   const policyChanged = draft && (draft.isNew ? CATALOG.some(item => draft.permissions?.[item.id] === true) : JSON.stringify(draft.permissions) !== JSON.stringify(baseline?.permissions))
   const canSaveDraft = Boolean(draft && (draft.isNew ? can('settings.roles.create') : !identityChanged || can('settings.roles.edit')) && (!policyChanged || can('settings.roles.permissions')))
+  const openPreview = () => setPreview({ role: clone({ ...displayed, permissions }), dirty })
 
   useEffect(() => {
     if (!dirty) return undefined
@@ -128,6 +131,7 @@ export default function Settings({ roles, employees = [], setRoles, setNotice, a
             <label>Descripción<input maxLength={500} value={displayed.description || ''} disabled={saving || !canChangeIdentity} onChange={event => edit({ description: event.target.value })} /></label>
           </div>
           {protectedRole && <p className="role-permission-hint">Administrador conserva acceso completo para garantizar la administración del sistema.</p>}
+          <div className="role-preview-launch"><p>Revisá el menú, las funciones y las notificaciones antes de guardar.</p><button type="button" className="secondary" disabled={saving} onClick={openPreview} title="Explorá los accesos de este rol con los cambios actuales, sin guardarlos."><Icon name="eye" />Vista previa del rol</button></div>
           <details className="role-scopes"><summary>Alcance de consultas y acciones</summary><div className="role-fields">
             {scopeFields.map(([prefix, label, options]) => <label key={prefix}>{label}<select aria-label={label} value={scope(prefix)} disabled={saving || !canChangePermissions} onChange={event => changeScope(prefix, event.target.value)}>{scope(prefix) === 'none' && <option value="none">{scopeLabels.none}</option>}{options.map(value => <option key={value} value={value} disabled={actorScope(prefix) !== 'all' && actorScope(prefix) !== value}>{scopeLabels[value]}</option>)}</select></label>)}
           </div><p className="role-permission-hint">Las acciones sólo alcanzan registros que también se pueden consultar. Los servicios técnicos siguen requiriendo asignación y habilitación del empleado.</p></details>
@@ -153,10 +157,12 @@ export default function Settings({ roles, employees = [], setRoles, setNotice, a
           {error && <p className="field-error" role="alert">{error}</p>}
           <div className="modal-actions role-save-actions">
             <button type="submit" className="primary" disabled={saving || !canSaveDraft} title="Guardá juntos los permisos, alcances y datos del rol.">{saving ? 'Guardando…' : 'Guardar rol'}</button>
+            <button type="button" className="secondary" disabled={saving} onClick={openPreview} title="Revisá cómo quedan los permisos y los avisos antes de guardar."><Icon name="eye" />Vista previa del rol</button>
             {dirty && <button type="button" className="secondary" disabled={saving} onClick={() => { setDraft(null); setBaseline(null); setError(''); setImpact('') }} title="Descartá los cambios que todavía no guardaste.">Descartar cambios</button>}
           </div>
         </form>}
       </div>
+      {preview && <RolePreview role={preview.role} dirty={preview.dirty} onClose={() => setPreview(null)} />}
     </div>}
   </>
 }
