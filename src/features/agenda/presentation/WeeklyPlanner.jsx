@@ -101,9 +101,9 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
         delete next[key]
         return next
       })
-      setNotice(membershipMatches(team, preview)
-        ? 'La asignación de técnicos se guardó correctamente.'
-        : 'El equipo cambió mientras se guardaba. Se muestra la asignación confirmada; revisala antes de volver a modificarla.')
+      if (!membershipMatches(team, preview)) {
+        setNotice('El equipo cambió mientras se guardaba. Se muestra la asignación confirmada; revisala antes de volver a modificarla.')
+      }
     }
   }, [memberSelections, weekly, confirmedRevision])
   useEffect(() => {

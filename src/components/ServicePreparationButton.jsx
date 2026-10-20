@@ -29,7 +29,6 @@ export default function ServicePreparationButton({ record, disabled, persist, on
       await afterInteractionPaint()
       const payload = await persist({ operation: 'service-preparation', base: record, ready: preview.ready })
       setPending(acknowledgedInteraction(preview, payload))
-      onNotice(preview.ready ? 'Servicio listo. Preparación registrada.' : 'Servicio desmarcado como listo.')
     } catch (error) {
       busy.current = false
       setPending(null)
