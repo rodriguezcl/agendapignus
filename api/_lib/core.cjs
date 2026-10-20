@@ -210,7 +210,15 @@ function projectStateForUser(state, user) {
   }
 }
 
+function persistentStateInput(state) {
+  // Match the root fields reconstructed by storage. Session/response metadata
+  // and request options must never enter the operational state or its hash.
+  return Object.fromEntries(['revision', 'roles', 'employees', 'services', 'vehicles', 'customers', 'history', 'reviews', 'agenda', 'preferences']
+    .filter(key => Object.hasOwn(state, key)).map(key => [key, state[key]]))
+}
+
 function authorizeIncomingState(incoming, current, user) {
+  incoming = persistentStateInput(incoming)
   if (require('./permission-catalog.cjs').isGranular(user)) return require('./granular-write-policy.cjs').authorizeGranularState(incoming, current, user)
   if (isOperator(user)) throw Object.assign(new Error('Operador tiene acceso de solo lectura.'), { statusCode: 403 })
   const administrator = user.roleCode === 'administrator'
@@ -294,6 +302,7 @@ function customerKind(customer) {
 }
 
 function normalizeStateForSave(state, current, { allowEarlyCompletion = false } = {}) {
+  state = persistentStateInput(state)
   require('./multi-service.cjs').validateServiceTypes(state)
   state = require('./service-schedule-sync.cjs').synchronizeServiceSchedules(state, current)
   state = require('./team-service-assignments.cjs').synchronizeTeamServiceAssignments(state, current)
