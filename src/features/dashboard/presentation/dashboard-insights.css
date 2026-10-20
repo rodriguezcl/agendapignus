@@ -11,6 +11,12 @@
   --insight-slice-7: #748699;
   min-width: 0;
 }
+.app-shell[data-theme] > main > .content:has(> .dashboard-overview) { padding-top: 14px; }
+.app-shell[data-theme] .content .dashboard-overview > .module-intro { gap: 12px; margin-bottom: 12px; }
+.app-shell[data-theme] .dashboard-overview > .module-intro:has(> .module-intro-placeholder) { flex-direction: row; align-items: center; }
+.app-shell[data-theme] .dashboard-overview .month-filter { flex-direction: row; align-items: center; gap: 10px; width: auto; max-width: 100%; }
+.dashboard-overview .month-filter > span { flex: 0 0 auto; white-space: nowrap; }
+.dashboard-overview .month-filter > input { flex: 0 1 180px; width: 180px; min-width: 0; }
 .app-shell[data-theme="dark"] .dashboard-overview {
   --insight-net: #69c6a2;
   --insight-estimate: #f2bf52;

@@ -53,7 +53,7 @@ export default function DashboardStatusView({ history = [], services = [] }) {
   return <div className="dashboard-overview">
     <div className="module-intro">
       <ModuleIntroduction><p className="eyebrow">RESUMEN GERENCIAL</p><h1>Indicadores operativos</h1><p>Las métricas contabilizan únicamente servicios completados.</p></ModuleIntroduction>
-      <label className="month-filter">Mes de análisis<input type="month" value={month} onChange={event => { if (event.target.value) setMonth(event.target.value) }} /></label>
+      <label className="month-filter"><span>Mes de análisis</span><input type="month" value={month} onChange={event => { if (event.target.value) setMonth(event.target.value) }} /></label>
     </div>
     <div className="dashboard-overview-charts">
       <NetProjectionChart model={projection} periodLabel={periodLabel} />
