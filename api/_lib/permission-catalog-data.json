@@ -2,7 +2,7 @@
   "modules": [
     [
       "dashboard",
-      "Menú principal",
+      "Resumen general",
       "Indicadores, evolución anual, altas, bajas y detalle por ubicación. Los filtros forman parte de consultar."
     ],
     [
@@ -37,17 +37,17 @@
     ],
     [
       "employees",
-      "Empleados",
+      "Colaboradores",
       "Personal, datos de contacto, acceso, rol y habilitación técnica."
     ],
     [
       "services",
-      "Tipo de servicio",
+      "Tipos de servicio",
       "Catálogo, duración predeterminada y disponibilidad para nuevas planificaciones."
     ],
     [
       "vehicles",
-      "Vehículos",
+      "Flota",
       "Flota, kilometraje, seguros, documentos y consulta de controles."
     ],
     [
@@ -69,7 +69,7 @@
   "catalog": [
     {
       "id": "dashboard.view",
-      "label": "Consultar Menú principal",
+      "label": "Consultar Resumen general",
       "groups": [
         "dashboard"
       ],
@@ -146,7 +146,7 @@
     },
     {
       "id": "employees.view",
-      "label": "Consultar Empleados",
+      "label": "Consultar Colaboradores",
       "groups": [
         "employees"
       ],
@@ -157,7 +157,7 @@
     },
     {
       "id": "services.view",
-      "label": "Consultar Tipo de servicio",
+      "label": "Consultar Tipos de servicio",
       "groups": [
         "services"
       ],
@@ -168,7 +168,7 @@
     },
     {
       "id": "vehicles.view",
-      "label": "Consultar Vehículos",
+      "label": "Consultar Flota",
       "groups": [
         "vehicles"
       ],
@@ -432,7 +432,7 @@
         "weekly.view",
         "agenda.view"
       ],
-      "note": "Usa una lista mínima de técnicos elegibles; no concede acceso al módulo Empleados.",
+      "note": "Usa una lista mínima de técnicos elegibles; no concede acceso al módulo Colaboradores.",
       "sensitive": false
     },
     {
@@ -1147,7 +1147,7 @@
     },
     {
       "id": "employees.create",
-      "label": "Crear empleado con contraseña inicial",
+      "label": "Crear colaborador con contraseña inicial",
       "groups": [
         "employees"
       ],
@@ -1173,7 +1173,7 @@
     },
     {
       "id": "employees.status",
-      "label": "Activar o desactivar empleados",
+      "label": "Activar o desactivar colaboradores",
       "groups": [
         "employees"
       ],
@@ -1186,7 +1186,7 @@
     },
     {
       "id": "employees.delete",
-      "label": "Eliminar empleados",
+      "label": "Eliminar colaboradores",
       "groups": [
         "employees"
       ],
@@ -1199,7 +1199,7 @@
     },
     {
       "id": "employees.role",
-      "label": "Asignar o cambiar el rol de un empleado",
+      "label": "Asignar o cambiar el rol de un colaborador",
       "groups": [
         "employees"
       ],
@@ -1212,7 +1212,7 @@
     },
     {
       "id": "employees.password",
-      "label": "Cambiar contraseña de un empleado",
+      "label": "Cambiar contraseña de un colaborador",
       "groups": [
         "employees"
       ],
@@ -1225,7 +1225,7 @@
     },
     {
       "id": "employees.technical",
-      "label": "Habilitar que un empleado realice servicios técnicos",
+      "label": "Habilitar que un colaborador realice servicios técnicos",
       "groups": [
         "employees"
       ],

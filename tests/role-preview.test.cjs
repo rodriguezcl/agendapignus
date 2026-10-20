@@ -57,7 +57,7 @@ test('technical preview requires employee eligibility and preserves per-service 
   assert.equal(standard.technical.visible, false)
   assert.equal(standard.portalOnly, false)
   assert.equal(previewModule(standard, 'technical').visible, false)
-  assert.match(capability(standard, 'technical', 'technical.start').reason, /ficha del empleado/)
+  assert.match(capability(standard, 'technical', 'technical.start').reason, /ficha del colaborador/)
   const technician = buildRolePreview(role, { technicalEnabled: true })
   assert.equal(technician.technical.visible, true)
   assert.equal(technician.portalOnly, true)
@@ -113,7 +113,7 @@ test('preview uses stable application navigation order and accurately distinguis
     'dashboard.view': true, 'weekly.view': true, 'agenda.view': true, 'history.view': true,
     'settings.view': true, 'audit.view': true, 'technical.view': true, 'records.read': true, 'planning.ready': true
   }), { technicalEnabled: true })
-  assert.deepEqual(manager.navigation.map(item => item.id), ['dashboard', 'weekly', 'agenda', 'history', 'settings', 'myServices', 'audit', 'help'])
+  assert.deepEqual(manager.navigation.map(item => item.id), ['dashboard', 'weekly', 'agenda', 'history', 'myServices', 'settings', 'audit', 'help'])
   assert.equal(manager.portalOnly, false)
   assert.equal(manager.helpVisible, true)
   const empty = buildRolePreview(custom({}))

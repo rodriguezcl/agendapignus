@@ -93,7 +93,7 @@ export default function ServiceTypes({ services, setServices, setNotice, ask, st
 
   return <>
     <div className="module-intro">
-      <ModuleIntroduction><p className="eyebrow">CATÁLOGO OPERATIVO</p><h1>Tipo de servicio</h1><p>Administrá los servicios disponibles para planificar en la agenda técnica.</p></ModuleIntroduction>
+      <ModuleIntroduction><p className="eyebrow">CATÁLOGO OPERATIVO</p><h1>Tipos de servicio</h1><p>Administrá los servicios disponibles para planificar en la agenda técnica.</p></ModuleIntroduction>
       {can('services.create') && <button title="Creá un tipo de servicio para utilizarlo en la planificación." className="primary" onClick={startCreate}><Icon name="plus" />Nuevo servicio</button>}
     </div>
     {open && <EditorModal active={Boolean(editing)} title="Editar tipo de servicio" onClose={() => setOpen(false)}><form className="service-form" onSubmit={save}>

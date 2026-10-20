@@ -61,7 +61,7 @@ test('empleados permite contraseña sin editar contacto, rol o capacidad técnic
   assert.match(html, /type="checkbox" disabled=""/)
   assert.doesNotMatch(html.match(/<input[^>]*type="password"[^>]*>/)[0], /disabled/)
   const readonly = render('src/features/employees/presentation/Employees.jsx', 'default', { employees: [], roles, history: [], teams: [], weekly: {}, setEmployees: noop, setNotice: noop, ask: noop }, userWith('employees.view'))
-  assert.doesNotMatch(readonly, /Nuevo empleado/)
+  assert.doesNotMatch(readonly, /Nuevo colaborador/)
 })
 
 test('catálogo permite editar duración sin crear, borrar ni cambiar estado', () => {

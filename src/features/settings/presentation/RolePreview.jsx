@@ -52,7 +52,7 @@ export default function RolePreview({ role, dirty, onClose }) {
       <header className="role-preview-heading"><div><p className="eyebrow">VISTA PREVIA DEL ROL</p><h2>{preview.roleName}</h2></div><span className="role-preview-badge">{dirty ? 'Borrador sin guardar' : 'Configuración guardada'}</span></header>
       <p id="role-preview-description">Recorré el menú y revisá las funciones y los avisos de este rol. Esta simulación no guarda cambios.</p>
       {preview.portalOnly && <p className="role-preview-context">Este perfil ingresa directamente al portal técnico para trabajar sobre sus servicios asignados.</p>}
-      {preview.technical.configured && preview.roleCode !== 'technician' && <label className="role-preview-technical"><input type="checkbox" checked={technicalEnabled} onChange={event => setTechnicalEnabled(event.target.checked)} /><span>Empleado habilitado como técnico<small>Probá cómo cambia el acceso a Mis servicios con esta habilitación individual.</small></span></label>}
+      {preview.technical.configured && preview.roleCode !== 'technician' && <label className="role-preview-technical"><input type="checkbox" checked={technicalEnabled} onChange={event => setTechnicalEnabled(event.target.checked)} /><span>Colaborador habilitado como técnico<small>Probá cómo cambia el acceso a Mis servicios con esta habilitación individual.</small></span></label>}
       <div className="role-preview-shell">
         <aside className="role-preview-sidebar">
           <p>MENÚ DEL ROL</p>

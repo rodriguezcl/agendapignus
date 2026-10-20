@@ -1,5 +1,6 @@
 import permissionPolicy from '../../../api/_lib/permission-catalog.cjs'
 import { CATALOG, MODULES, NOTIFICATION_IDS, canPermission, dependencyReason, hasAnyWrite, readScope, roleCode, toGranularPermissions, writeScope } from './permissions.mjs'
+import { navigationForModules } from './navigation.mjs'
 
 const notificationTitles = {
   'notifications.collections': 'Cobranza pendiente de pago',
@@ -14,15 +15,14 @@ const notificationTitles = {
 }
 const scopeDescriptions = {
   all: 'Todos los registros autorizados por los permisos del rol.',
-  assigned: 'Sólo servicios asignados al empleado.',
+  assigned: 'Sólo servicios asignados al colaborador.',
   cctv: 'Sólo registros de clientes con seguimiento CCTV.',
-  related: 'Sólo clientes vinculados a servicios asignados al empleado.',
+  related: 'Sólo clientes vinculados a servicios asignados al colaborador.',
   none: 'Sin acceso: hay más de un alcance seleccionado. Corregí la configuración.'
 }
-const menuOrder = ['dashboard', 'weekly', 'agenda', 'history', 'collections', 'accounts', 'map', 'employees', 'services', 'vehicles', 'settings', 'technical', 'audit']
 const technicalConditions = [
-  'La cuenta del empleado debe estar activa y habilitada para trabajo técnico, o tener el rol técnico.',
-  'El servicio o control debe estar asignado al empleado.',
+  'La cuenta del colaborador debe estar activa y habilitada para trabajo técnico, o tener el rol técnico.',
+  'El servicio o control debe estar asignado al colaborador.',
   'También se verifican la confirmación, el horario, el estado y la secuencia de jornadas del servicio.'
 ]
 
@@ -38,7 +38,7 @@ export function buildRolePreview(role, { technicalEnabled = false } = {}) {
   const can = id => canPermission(subject, id)
   const eligible = code === 'technician' || technicalEnabled === true
   const technicalConfigured = can('technical.view')
-  const missingTechnical = 'Requiere habilitar la función técnica en la ficha del empleado.'
+  const missingTechnical = 'Requiere habilitar la función técnica en la ficha del colaborador.'
   const denied = id => dependencyReason(id, permissions) || 'Este permiso está desactivado para el rol.'
   const modules = MODULES.map(([id, label, description]) => {
     const granted = can(`${id}.view`)
@@ -56,11 +56,10 @@ export function buildRolePreview(role, { technicalEnabled = false } = {}) {
   const portalOnly = technicalConfigured && eligible && visibleModules.every(module => module.id === 'technical')
   const readOnly = !hasAnyWrite(subject)
   const helpVisible = !readOnly && !portalOnly
-  const navigation = menuOrder.filter(id => visibleModules.some(module => module.id === id)).map(id => ({
-    id: id === 'technical' ? 'myServices' : id,
-    label: id === 'technical' ? 'Mis servicios' : modules.find(module => module.id === id).label
-  }))
-  if (helpVisible) navigation.push({ id: 'help', label: 'Centro de ayuda' })
+  const navigation = navigationForModules([
+    ...visibleModules.map(module => module.id === 'technical' ? 'myServices' : module.id),
+    ...(helpVisible ? ['help'] : [])
+  ]).map(({ id, label }) => ({ id, label }))
   const notifications = CATALOG.filter(item => NOTIFICATION_IDS.includes(item.id)).map(item => ({
     id: item.id,
     label: item.label,

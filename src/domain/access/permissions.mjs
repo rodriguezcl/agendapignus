@@ -5,16 +5,16 @@ export const canPermission = permissionPolicy.can
 
 // Single permission catalogue used by navigation and role administration.
 export const MODULE_PERMISSIONS = [
-  ['dashboard', 'Menú principal', 'Ver indicadores y resumen operativo'],
+  ['dashboard', 'Resumen general', 'Ver indicadores y resumen operativo'],
   ['weekly', 'Agenda semanal', 'Planificar los servicios de toda la semana'],
   ['agenda', 'Agenda del día', 'Crear y editar equipos y servicios'],
   ['collections', 'Cobranzas', 'Consultar pagos pendientes, confirmados y su historial'],
   ['history', 'Historial', 'Consultar y gestionar trabajos registrados'],
   ['accounts', 'Abonados y clientes', 'Consultar y administrar abonados y clientes'],
   ['map', 'Mapa', 'Consultar la distribución geográfica y concentración de abonados'],
-  ['employees', 'Empleados', 'Administrar técnicos y accesos'],
-  ['services', 'Tipo de servicio', 'Administrar el catálogo de servicios'],
-  ['vehicles', 'Vehículos', 'Administrar la flota de la empresa'],
+  ['employees', 'Colaboradores', 'Administrar técnicos y accesos'],
+  ['services', 'Tipos de servicio', 'Administrar el catálogo de servicios'],
+  ['vehicles', 'Flota', 'Administrar la flota de la empresa'],
   ['settings', 'Configuración', 'Modificar roles y permisos'],
   ['audit', 'Auditoría', 'Consultar acciones y accesos del sistema']
 ]

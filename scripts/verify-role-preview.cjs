@@ -110,6 +110,7 @@ async function checkFocusTrap(page, dialog) {
           await page.goto('http://role-preview.test/')
           await page.locator('.topbar').waitFor()
           if (width < 760) await page.locator('.sidebar-toggle').click()
+          await page.locator('.sidebar nav').getByRole('button', { name: 'Administración', exact: true }).click()
           await page.locator('.sidebar nav').getByRole('button', { name: 'Configuración', exact: true }).click()
           await page.locator('.role-picker').getByRole('button', { name: 'Operador QA', exact: true }).click()
           const checkbox = id => page.locator('.role-capability').filter({ has: page.locator(`[id="role-permission-${id}"]`) }).getByRole('checkbox')
@@ -166,7 +167,7 @@ async function checkFocusTrap(page, dialog) {
 
           await page.locator('.role-picker').getByRole('button', { name: 'Técnico QA', exact: true }).click()
           ;({ dialog } = await openPreview(page))
-          const technician = dialog.getByRole('checkbox', { name: /^Empleado habilitado como técnico/ })
+          const technician = dialog.getByRole('checkbox', { name: /^Colaborador habilitado como técnico/ })
           await technician.uncheck()
           assert.equal(await moduleButton(dialog, 'technical').count(), 0, 'Technical portal requires employee enablement')
           await technician.check()

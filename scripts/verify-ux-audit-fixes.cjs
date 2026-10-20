@@ -26,7 +26,13 @@ const js = built.outputFiles.find(f => f.path.endsWith('.js')).text
 const css = built.outputFiles.find(f => f.path.endsWith('.css')).text
 const html = '<!doctype html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/review.css"></head><body><div id="root"></div><script src="/review.js"></script></body></html>'
 async function navigate(page, label, width) {
-  if (width <= 640) await page.locator('.sidebar-toggle').click()
+  if (width <= 640 && !(await page.locator('.sidebar').evaluate(element => element.classList.contains('open')))) await page.locator('.sidebar-toggle').click()
+  const group = ['Colaboradores', 'Flota', 'Tipos de servicio'].includes(label) ? 'Recursos'
+    : ['Configuración', 'Auditoría'].includes(label) ? 'Administración' : null
+  if (group) {
+    const toggle = page.locator('.sidebar nav').getByRole('button', { name: group, exact: true })
+    if (await toggle.count() && await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click()
+  }
   await page.locator('.sidebar nav').getByRole('button', { name: label, exact: true }).click()
   await page.waitForFunction(label => document.querySelector('.sidebar [aria-current="page"]')?.getAttribute('aria-label') === label, label)
 }
@@ -100,18 +106,18 @@ async function screenshot(page, name) { await page.screenshot({ path: path.join(
       await navigate(page, 'Configuración', width)
       await page.locator('.workday-settings').waitFor()
       await screenshot(page, `settings-${theme}-${width}`)
-      await navigate(page, 'Empleados', width)
+      await navigate(page, 'Colaboradores', width)
       assert(await page.locator('.employee-row .status').first().isVisible(), 'Employee status available at every width')
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Employees fit ${width}`)
       await screenshot(page, `employees-${theme}-${width}`)
-      await navigate(page, 'Tipo de servicio', width)
+      await navigate(page, 'Tipos de servicio', width)
       await page.getByRole('button', { name: 'Nuevo servicio', exact: true }).click()
       for (const label of await page.locator('.service-duration-field > span, .service-duration-inputs small, .system-service-chip').all()) {
         if (await label.isVisible()) assert(await textContrast(label) >= 4.5, 'Service label contrast')
       }
       await screenshot(page, `service-form-${theme}-${width}`)
       await page.keyboard.press('Escape')
-      await navigate(page, 'Vehículos', width)
+      await navigate(page, 'Flota', width)
       await page.locator('.vehicle-row .row-actions button').first().click()
       const plateInput = page.locator('.vehicle-form').getByLabel('Matrícula', { exact: false })
       const currentPlate = await plateInput.inputValue()

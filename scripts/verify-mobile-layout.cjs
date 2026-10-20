@@ -43,7 +43,7 @@ async function main() {
       await page.locator(view==='modal'?'.confirm-modal':'.module-intro').waitFor()
       if(view==='weekly' && await page.locator('.monthly-teams-modal .modal-close').count()) await page.locator('.monthly-teams-modal .modal-close').click()
       if(view==='history') await page.locator('.history-date-filters').waitFor()
-      if(view==='employee-modal') {await page.getByRole('button',{name:'Nuevo empleado'}).click();await page.locator('.employee-form').waitFor()}
+      if(view==='employee-modal') {await page.getByRole('button',{name:'Nuevo colaborador'}).click();await page.locator('.employee-form').waitFor()}
       const metrics=await page.evaluate(() => ({width:innerWidth,scroll:document.documentElement.scrollWidth,search:document.querySelector('.weekly-service-search')?.getBoundingClientRect().height,actions:document.querySelector('.weekly-actions')?.getBoundingClientRect().height,card:document.querySelector('.history-row')?.getBoundingClientRect().height}))
       if(width<=640) assert.ok(metrics.scroll<=width+1,`${view}/${width}: horizontal overflow ${metrics.scroll}`)
       if(width<=640&&view==='weekly') {assert.ok(metrics.search<150,JSON.stringify(metrics));assert.ok(metrics.actions<330,JSON.stringify(metrics))}

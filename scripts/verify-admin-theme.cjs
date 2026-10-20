@@ -70,7 +70,7 @@ const themeReviewHistory = [
 const themeReviewTeams = [{id:'team-1',teamId:'team-1',label:'Equipo 1',name:'Equipo 1',memberIds:['tech-1','tech-2'],members:['Mariano Ejemplo','Rodrigo Ejemplo'],tasks:[]},{id:'team-2',teamId:'team-2',label:'Equipo 2',name:'Equipo 2',memberIds:['tech-3'],members:['Pascual Ejemplo'],tasks:[]}];
 const themeReviewWeekly = {_monthlyTeams:{'2026-10':{teams:themeReviewTeams,confirmed:true,vehicleAssignments:[{vehicleId:'v-1',technicianId:'tech-1'},{vehicleId:'v-2',technicianId:'tech-2'}]}},_frozenMonthOptions:[4,6]};
 for(const day of ['2026-10-13','2026-10-14','2026-10-15','2026-10-16','2026-10-17']) themeReviewWeekly[day] = {teams:themeReviewTeams.map(team=>({...team,tasks:themeReviewHistory.filter(record=>record.date===day && record.teamId===team.id).map(record=>({...record,id:'task-'+record.id,historyId:record.id}))}))};
-const themeReviewNavigation = [['dashboard','dashboard','Menú principal'],['weekly','calendar','Agenda semanal'],['history','history','Historial'],['accounts','accounts','Abonados y clientes'],['employees','users','Empleados'],['services','tools','Tipo de servicio'],['vehicles','car','Vehículos'],['settings','settings','Configuración'],['audit','audit','Auditoría'],['help','help','Centro de ayuda']];
+const themeReviewNavigation = [['dashboard','dashboard','Resumen general'],['weekly','calendar','Agenda semanal'],['history','history','Historial'],['accounts','accounts','Abonados y clientes'],['employees','users','Colaboradores'],['services','tools','Tipos de servicio'],['vehicles','car','Flota'],['settings','settings','Configuración'],['audit','audit','Auditoría'],['help','help','Centro de ayuda']];
 function ThemeReviewFixture() {
  const [view,setView]=useState(window.__themeReviewView||'dashboard');
  const [theme,setTheme]=useState(window.__themeReviewTheme||'light');
@@ -209,7 +209,7 @@ async function openAndCapture(page, label, theme, trigger, ready, closeAfter = t
       await inspect(page,label+'-service-options',theme);
      }
     }
-    if(view==='employees')await openAndCapture(page,label+'-editor',theme,page.getByRole('button',{name:'Nuevo empleado',exact:true}),'.employee-form');
+    if(view==='employees')await openAndCapture(page,label+'-editor',theme,page.getByRole('button',{name:'Nuevo colaborador',exact:true}),'.employee-form');
     if(view==='vehicles'){
      await openAndCapture(page,label+'-editor',theme,page.locator('.vehicle-row .row-actions button').first(),'.vehicle-form');
      await openAndCapture(page,label+'-photos',theme,page.getByRole('button',{name:'Historial de fotos',exact:true}).first(),'.vehicle-photo-history');

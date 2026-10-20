@@ -1024,11 +1024,11 @@ test('el editor semanal aprovecha un ancho mayor sólo en pantallas de escritori
   assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.weekly-task-modal \.week-task-top/)
 })
 
-test('el técnico dispone del módulo Vehículos como tabla de solo lectura y puede descargar seguros', () => {
+test('el técnico dispone del módulo Flota como tabla de solo lectura y puede descargar seguros', () => {
   const source = frontendSource()
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/style.css'), 'utf8')
   const technicianPortal = source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function History('))
-  assert.match(technicianPortal, /data-view="vehicles"[\s\S]*?<span>Vehículos<\/span>/)
+  assert.match(technicianPortal, /data-view="vehicles"[\s\S]*?<span>Flota<\/span>/)
   assert.match(technicianPortal, /data-view="help"[\s\S]*?<span>Centro de ayuda<\/span>/)
   assert.match(technicianPortal, /<TechnicianHelpCenter onNavigate=\{next => \{[\s\S]*?can\('technical.history'\)[\s\S]*?setView\(next\)/)
   assert.match(technicianPortal, /technician-vehicle-head[\s\S]*?<span>Vehículo<\/span><span>Año<\/span><span>Matrícula<\/span><span>Seguro<\/span>/)
@@ -1245,7 +1245,7 @@ test('la interfaz ofrece equipos semanales editables, permisos por función e im
   assert.match(source, /Deshacer última importación/)
 })
 
-test('el ABM de vehículos integra estado, permisos, seguro privado y campos requeridos', () => {
+test('el ABM de vehículos integra estado, permisos, seguro privado y campos requeridos', async () => {
   const source = [
     frontendSource(),
     fs.readFileSync(path.resolve(__dirname, '../src/domain/access/permissions.mjs'), 'utf8')
@@ -1255,8 +1255,10 @@ test('el ABM de vehículos integra estado, permisos, seguro privado y campos req
   const database = fs.readFileSync(path.resolve(__dirname, '../api/_lib/database.cjs'), 'utf8')
   const icon = fs.readFileSync(path.resolve(__dirname, '../src/components/ui/Icon.jsx'), 'utf8')
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
-  assert.match(source, /\['vehicles', 'Vehículos', 'Administrar la flota de la empresa'\]/)
-  assert.match(source, /\['vehicles', 'vehicle', 'Vehículos'\]/)
+  const { NAVIGATION_ITEMS } = await import('../src/domain/access/navigation.mjs')
+  assert.match(source, /\['vehicles', 'Flota', 'Administrar la flota de la empresa'\]/)
+  assert.equal(NAVIGATION_ITEMS.find(item => item.id === 'vehicles')?.label, 'Flota')
+  assert.equal(NAVIGATION_ITEMS.find(item => item.id === 'vehicles')?.icon, 'vehicle')
   assert.match(source, /function Vehicles\(\{ history = \[\], vehicles, setVehicles, setNotice, ask, isAdministrator, stateRevision, refreshRemoteState, editRequest, onEditRequestHandled \}\)/)
   for (const label of ['Marca', 'Modelo', 'Año', 'Kilometraje', 'Matrícula']) assert.match(source, new RegExp(`<RequiredLabel>${label}<\\/RequiredLabel>`))
   assert.match(source, /Ya existe un vehículo con esa matrícula/)

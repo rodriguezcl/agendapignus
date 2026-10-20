@@ -28,12 +28,12 @@ test('alta y edición usan el modal y el éxito ocurre después de la respuesta 
   for (const editing of [null, 'existing']) {
     const html = renderToString(React.createElement(compiled.exports.EmployeeForm, { form: { roleId: 'operator', password: '' }, roles: [{ id: 'operator', name: 'Operador', code: 'operator' }], editing, canEnableTechnical: true, setForm() {}, save() {}, cancel() {} }))
     assert.match(html, /catalog-editor-modal/)
-    assert.match(html, editing ? /Editar empleado/ : /Nuevo empleado/)
+    assert.match(html, editing ? /Editar colaborador/ : /Nuevo colaborador/)
     assert.match(html, /Este rol es de solo lectura/)
     assert.match(html, /type="checkbox" disabled=""/)
   }
   const save = source.slice(source.indexOf('  const save = event =>', source.indexOf('function Employees(')), source.indexOf('  const removeEmployee', source.indexOf('function Employees(')))
-  assert.ok(save.indexOf('await persistEmployee(baseline, record)') < save.indexOf("setNotice('El empleado fue guardado correctamente.')"))
+  assert.ok(save.indexOf('await persistEmployee(baseline, record)') < save.indexOf("setNotice('El colaborador fue guardado correctamente.')"))
   assert.ok(save.indexOf('await persistEmployee(baseline, record)') < save.indexOf('setOpen(false)'))
   assert.doesNotMatch(save, /setEmployees\(/)
 })

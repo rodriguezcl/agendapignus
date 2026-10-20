@@ -921,7 +921,7 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
   const openMonthlyVehicleSetup = () => {
     if (!canReadConfiguration('weeklyVehicles')) { setNotice('No tenés permiso para consultar los vehículos mensuales.'); return }
     if (pastMonthSelected) { setNotice(pastMonthConfigurationMessage); return }
-    if (!vehicles.length) { setNotice('Primero cargá los vehículos de la flota en el módulo Vehículos.'); return }
+    if (!vehicles.length) { setNotice('Primero cargá los vehículos de la flota en el módulo Flota.'); return }
     const teams = monthlyTeams[monthKey]?.teams || suggestedMonthlyTeams()
     const saved = monthlyTeams[monthKey]?.vehicleAssignments
     const savedMatchesFleet = saved?.length === vehicles.length && vehicles.every(vehicle => saved.some(item => String(item.vehicleId) === String(vehicle.id)))

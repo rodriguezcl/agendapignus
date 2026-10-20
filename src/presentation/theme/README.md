@@ -21,6 +21,27 @@ diálogos montados con portales hereden la misma paleta. Las reglas `!important`
 de compatibilidad sustituyen colores de los módulos heredados; no deben usarse
 como patrón para componentes nuevos.
 
+## Navegación lateral
+
+`domain/access/navigation.mjs` define el orden compartido por la aplicación y la
+vista previa de roles; los nombres de módulos provienen del catálogo de permisos.
+Resumen general queda como acceso directo. Operación y Clientes y cobranzas
+mantienen sus accesos visibles. Recursos reúne Colaboradores, Flota y Tipos de
+servicio; Administración reúne Configuración y Auditoría. Estos dos grupos son
+desplegables, sin niveles adicionales. Centro de ayuda permanece al pie.
+
+`SidebarNavigation` recibe únicamente los módulos autorizados por la aplicación.
+Los grupos vacíos desaparecen y un grupo desplegable con un solo acceso se
+presenta como botón directo. El navegador recuerda por usuario los grupos
+abiertos; cambiar al módulo de un grupo lo abre automáticamente. En modo compacto,
+activar un grupo expande la barra. Las acciones de navegación siguen pasando
+por las protecciones de formularios sin guardar. El portal técnico conserva su
+navegación propia.
+
+La verificación integrada se ejecuta con
+`node scripts/verify-sidebar-navigation.cjs` y Playwright disponible en `NODE_PATH`.
+Monta `App` con datos sintéticos y todas las solicitudes interceptadas.
+
 Validación visual reproducible: `node scripts/verify-admin-theme.cjs`, con
 Playwright disponible en `NODE_PATH` y Microsoft Edge instalado. Usa datos de
 prueba locales y bloquea solicitudes externas. Las capturas quedan en
@@ -46,7 +67,7 @@ pantalla. `node scripts/verify-annual-evolution.cjs` revisa ambos temas y tamañ
 de pantalla con datos sintéticos; las capturas quedan en
 `tmp/visual-qa/annual-evolution/`.
 
-## Gráficos del Menú principal
+## Gráficos del Resumen general
 
 El selector de mes es común a los gráficos y a los detalles. La primera fila
 distribuye proyección neta y composición en proporción 55/45; la evolución anual

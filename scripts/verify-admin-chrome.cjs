@@ -81,6 +81,12 @@ async function ready(page) {
 }
 async function navigate(page, label, width) {
   if (width <= 640 && !(await page.locator('.sidebar').evaluate(el => el.classList.contains('open')))) await page.locator('.sidebar-toggle').click()
+  const parent = ['Colaboradores', 'Flota', 'Tipos de servicio'].includes(label) ? 'Recursos'
+    : ['Configuración', 'Auditoría'].includes(label) ? 'Administración' : null
+  if (parent) {
+    const toggle = page.locator('.sidebar nav').getByRole('button', { name: parent, exact: true })
+    if (await toggle.count() && await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click()
+  }
   await page.locator('.sidebar nav').getByRole('button', { name: label, exact: true }).click()
   await page.waitForFunction(expected => document.querySelector('.sidebar nav [aria-current="page"]')?.getAttribute('aria-label') === expected, label)
   assert.equal(await page.locator('.topbar').count(), 1, `${label} must retain one shared header`)
@@ -134,7 +140,7 @@ async function notifications(page, width, theme) {
   await page.getByText('CLIENTE PENDIENTE DE HOY', { exact: false }).first().waitFor()
   await toggle.click()
   await page.keyboard.press('Escape')
-  await navigate(page, 'Menú principal', width)
+  await navigate(page, 'Resumen general', width)
   assert.equal(await panel.count(), 0)
   assert.equal(await page.locator('.notification-badge').textContent(), '2')
 }
@@ -162,9 +168,9 @@ async function inspectDeferredScreens(page, width) {
     ['Agenda semanal', '.weekly-board'],
     ['Historial', '.history-row'],
     ['Abonados y clientes', '.account-row'],
-    ['Empleados', '.employee-row'],
-    ['Tipo de servicio', '.service-row'],
-    ['Vehículos', '.vehicle-row'],
+    ['Colaboradores', '.employee-row'],
+    ['Tipos de servicio', '.service-row'],
+    ['Flota', '.vehicle-row'],
     ['Configuración', '.roles-card']
   ]
   const controls = async label => {
@@ -204,7 +210,7 @@ async function inspectDeferredScreens(page, width) {
       await serviceDialog.waitFor({ state: 'hidden' })
     }
   }
-  await navigate(page, 'Menú principal', width)
+  await navigate(page, 'Resumen general', width)
   await ready(page)
 }
 
@@ -276,7 +282,7 @@ async function inspectDeferredScreens(page, width) {
         assert.equal(await page.locator('.sidebar.open').count(), 0)
         await navigate(page, 'Centro de ayuda', width)
         assert.equal(await page.locator('.sidebar.open').count(), 0)
-        await navigate(page, 'Menú principal', width)
+        await navigate(page, 'Resumen general', width)
       }
       await page.locator('.theme-toggle').click()
       await page.waitForFunction(() => document.querySelector('.app-shell')?.dataset.theme === 'dark')
