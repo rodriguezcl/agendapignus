@@ -80,6 +80,14 @@ const MODULES = [
     ]
   },
   {
+    id: 'map', module: 'map', icon: 'map', title: 'Mapa', summary: 'Consultá abonados, concentración y zonas rojas de referencia.',
+    articles: [
+      { title: 'Mapa de calor y puntos', body: 'El mapa de calor muestra la concentración de abonados vigentes con ubicación disponible. Puntos por abonado permite seleccionar una cuenta; los números agrupan cuentas que comparten coordenadas. Los filtros de búsqueda, zona, localidad, barrio y calidad modifican los abonados mostrados. Encuadrar ajusta la vista a las ubicaciones filtradas.' },
+      { title: 'Zonas rojas', body: 'Elegí una de las tres vistas: Mapa de calor, Puntos por abonado o Zonas rojas. Se muestra únicamente la vista seleccionada. Zonas rojas presenta las áreas del mapa comunitario compartido con sus límites, nombres y colores originales. Tocá un área para consultar su nombre, o recorré las áreas con Tab y abrí el detalle con Enter o Espacio. Encuadrar zonas muestra todas las áreas. Los filtros y el listado de abonados vuelven a aparecer al elegir calor o puntos y conservan tu búsqueda.' },
+      { title: 'Fuente de las zonas', body: 'Ver mapa original abre la fuente en Google My Maps. La fecha visible corresponde a la copia incorporada a la app; no se sincroniza automáticamente. Se incluyen las áreas delimitadas en la fuente, sin transformar los marcadores de incidentes en zonas. Consultar esta capa requiere el mismo permiso de acceso a Mapa.' }
+    ]
+  },
+  {
     id: 'accounts', module: 'accounts', icon: 'accounts', title: 'Abonados y clientes', summary: 'Administrá datos comerciales y evitá registros duplicados.',
     articles: [
       { title: 'Crear un registro', body: 'Usá Nuevo cliente para cargar una persona sin abono. Código, nombre, calle o dirección y teléfono o contacto son obligatorios y están identificados con un asterisco rojo. El sistema asignará un código CLI.' },

@@ -2,10 +2,13 @@ import React, { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { groupMapLocations, MAP_QUALITY } from '../domain/customers/subscriber-map.mjs'
+import redZones from '../domain/maps/red-zones.json'
+import { createRedZonesLayer } from '../infrastructure/browser/red-zones-layer.mjs'
 
 export default function SubscriberMapCanvas({ rows, mode, selected, onSelect, fitRequest }) {
   const element = useRef(null), instance = useRef(null), layers = useRef(null), onSelectRef = useRef(onSelect)
   const markers = useRef(new Map()), highlightedMarker = useRef(null)
+  const zoneLayer = useRef(null)
   const [ready, setReady] = useState(false), [error, setError] = useState('')
   onSelectRef.current = onSelect
   useEffect(() => {
@@ -16,6 +19,7 @@ export default function SubscriberMapCanvas({ rows, mode, selected, onSelect, fi
       if (disposed) return
       const map = L.map(element.current, { center: [-31.4167, -64.1833], zoom: 11, minZoom: 3, maxZoom: 18, scrollWheelZoom: true, zoomAnimation: false })
       instance.current = map
+      map.createPane('redZones').style.zIndex = 450
       const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
         referrerPolicy: 'strict-origin-when-cross-origin'
@@ -26,14 +30,28 @@ export default function SubscriberMapCanvas({ rows, mode, selected, onSelect, fi
       layers.current = L.layerGroup().addTo(map)
       setReady(true)
     }).catch(() => { if (!disposed) setError('No se pudo iniciar el mapa. Recargá la página para reintentar; el listado sigue disponible.') })
-    return () => { disposed = true; instance.current?.remove(); instance.current = null }
+    return () => { disposed = true; instance.current?.remove(); instance.current = null; zoneLayer.current = null }
   }, [])
   useEffect(() => {
     if (!ready) return
-    const observer = new ResizeObserver(() => instance.current?.invalidateSize({ pan: false }))
+    const observer = new ResizeObserver(() => {
+      // Suspense can temporarily hide the map while opening a lazy customer detail.
+      // Keep the last usable size so Leaflet.heat never redraws a zero-sized canvas.
+      if (element.current?.clientWidth && element.current?.clientHeight) instance.current?.invalidateSize({ pan: false })
+    })
     observer.observe(element.current)
     return () => observer.disconnect()
   }, [ready])
+  useEffect(() => {
+    if (!ready) return
+    const map = instance.current
+    if (mode === 'zones') {
+      zoneLayer.current ??= createRedZonesLayer(L, redZones)
+      zoneLayer.current.addTo(map)
+    } else {
+      zoneLayer.current?.remove()
+    }
+  }, [mode, ready])
   useEffect(() => {
     if (!ready) return
     const group = layers.current
@@ -41,7 +59,7 @@ export default function SubscriberMapCanvas({ rows, mode, selected, onSelect, fi
     markers.current.clear()
     if (mode === 'heat') {
       L.heatLayer(rows.map(row => [...row.coordinates, 1]), { radius: 25, blur: 20, maxZoom: 12, max: 5, minOpacity: 0.25, gradient: { 0.2: '#418bcc', 0.45: '#77c8cb', 0.65: '#f3cf58', 0.85: '#ef8536', 1: '#c62e39' } }).addTo(group)
-    } else {
+    } else if (mode === 'points') {
       for (const item of groupMapLocations(rows)) {
         const approximate = item.rows.some(row => row.quality !== 'coordinates')
         const marker = L.marker(item.coordinates, { icon: L.divIcon({ className: `subscriber-map-pin ${approximate ? 'is-approximate' : ''}`, html: `<span>${item.rows.length > 1 ? item.rows.length : '•'}</span>`, iconSize: [32, 32], iconAnchor: [16, 16] }), title: item.rows.length === 1 ? `${item.rows[0].customer.account} · ${item.rows[0].customer.name}` : `${item.rows.length} abonados en esta referencia`, keyboard: true })
@@ -75,13 +93,24 @@ export default function SubscriberMapCanvas({ rows, mode, selected, onSelect, fi
   }, [selected?.key, rows, mode, ready])
   useEffect(() => {
     if (!ready) return
-    if (rows.length) instance.current.fitBounds(rows.map(row => row.coordinates), { padding: [32, 32], maxZoom: 14, animate: false })
-  }, [rows, fitRequest, ready])
+    if (mode !== 'zones' && rows.length) {
+      instance.current.invalidateSize({ pan: false })
+      instance.current.fitBounds(rows.map(row => row.coordinates), { padding: [32, 32], maxZoom: 14, animate: false })
+    }
+  }, [rows, mode, fitRequest, ready])
   useEffect(() => {
-    if (ready && selected?.coordinates) instance.current.setView(selected.coordinates, 16, { animate: false })
-  }, [selected, ready])
+    if (ready && mode === 'points' && selected?.coordinates) instance.current.setView(selected.coordinates, 16, { animate: false })
+  }, [selected, mode, ready])
+  // Zone framing is independent of subscriber filters and the previous selection.
+  useEffect(() => {
+    if (ready && mode === 'zones' && zoneLayer.current) {
+      // This view fills the space previously occupied by the subscriber list.
+      instance.current.invalidateSize({ pan: false })
+      instance.current.fitBounds(zoneLayer.current.getBounds(), { padding: [32, 32], maxZoom: 14, animate: false })
+    }
+  }, [mode, fitRequest, ready])
   return <div className="subscriber-map-canvas-wrap">
-    <div ref={element} className="subscriber-map-canvas" aria-label="Mapa de distribución de abonados. Usá la rueda del mouse, las flechas y los controles de zoom para explorar." />
+    <div ref={element} className="subscriber-map-canvas" aria-label="Mapa de distribución de abonados y zonas de referencia. Usá la rueda del mouse, las flechas y los controles de zoom para explorar." />
     {error && <div role="alert" className="subscriber-map-load-error">{error}{ready && <button title="Volvé a cargar las imágenes del mapa." type="button" onClick={() => { setError(''); instance.current.baseTiles.redraw() }}>Reintentar mapa</button>}</div>}
     {!ready && !error && <div className="subscriber-map-loading" role="status">Cargando mapa…</div>}
   </div>
