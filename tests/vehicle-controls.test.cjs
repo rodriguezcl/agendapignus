@@ -198,6 +198,19 @@ test('un control vehicular completado no bloquea la agenda siguiente', async () 
   assert.equal(blockingOverdueVehicleControl(records, 1, '2026-09-07'), null)
 })
 
+test('controles cancelados o reprogramados no quedan pendientes ni bloquean contactos', async () => {
+  const { technicianRecordResolved, technicianAgendaServices, overdueVehicleControls, blockingOverdueVehicleControl } = await import('../src/technician-history.mjs')
+  for (const status of ['Cancelado', 'Reprogramado']) {
+    const control = { id: 'control', date: '2026-10-16', vehicleControl: true, status }
+    const service = { id: 'servicio', date: '2026-10-21', status: 'Pendiente' }
+    const records = [control, service]
+    assert.equal(technicianRecordResolved(control), true)
+    assert.deepEqual(technicianAgendaServices(records, '2026-10-21'), [service])
+    assert.deepEqual(overdueVehicleControls(records, '2026-10-21'), [])
+    assert.equal(blockingOverdueVehicleControl(records, 1, '2026-10-21'), null)
+  }
+})
+
 test('el servidor no permite omitir un control cancelándolo o reprogramándolo', () => {
   const fs = require('node:fs')
   const path = require('node:path')

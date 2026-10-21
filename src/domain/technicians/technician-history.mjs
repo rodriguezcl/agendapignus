@@ -46,6 +46,8 @@ export function technicianTeamLabel(record) {
 }
 
 export function technicianRecordResolved(record) {
+  // Una cancelación o reprogramación administrativa cierra también el control.
+  if (['Cancelado', 'Reprogramado'].includes(record?.status)) return true
   if (record?.vehicleControl) return record?.technicalStatus === 'Completado' || record?.status === 'Completado'
   if (record?.status === 'Requiere revisión' && record?.technicianRequest === 'Reprogramación solicitada') return true
   return Boolean(record?.technicalStatus || ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(record?.status))
