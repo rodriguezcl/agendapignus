@@ -21,6 +21,11 @@
       "Consulta, gestión administrativa, operaciones masivas, informes y archivos."
     ],
     [
+      "followups",
+      "Seguimientos",
+      "Solicitudes de acción sobre clientes, responsables y cronología de gestión."
+    ],
+    [
       "collections",
       "Cobranzas",
       "Pendientes, confirmados, búsqueda, filtros, importes y trazabilidad de cambios."
@@ -219,7 +224,8 @@
         "history",
         "technical",
         "accounts",
-        "dashboard"
+        "dashboard",
+        "followups"
       ],
       "all": [],
       "any": [
@@ -228,7 +234,8 @@
         "history.view",
         "technical.view",
         "accounts.view",
-        "dashboard.view"
+        "dashboard.view",
+        "followups.view"
       ],
       "note": "Sólo los registros y campos incluidos en el alcance del rol.",
       "sensitive": false
@@ -1028,8 +1035,12 @@
     {
       "id": "customers.softguard.resolve",
       "label": "Registrar baja realizada en SoftGuard",
-      "groups": ["accounts"],
-      "all": ["accounts.view"],
+      "groups": [
+        "accounts"
+      ],
+      "all": [
+        "accounts.view"
+      ],
       "any": [],
       "note": "Confirma la gestión externa de una baja pendiente y conserva su fecha y responsable. No realiza la baja en SoftGuard ni habilita importaciones.",
       "sensitive": false
@@ -1823,8 +1834,14 @@
     {
       "id": "notifications.collections",
       "label": "Recibir avisos de cobranzas pendientes",
-      "groups": ["notifications", "collections"],
-      "all": ["collections.view", "records.financial"],
+      "groups": [
+        "notifications",
+        "collections"
+      ],
+      "all": [
+        "collections.view",
+        "records.financial"
+      ],
       "any": [],
       "note": "Requiere acceso a Cobranzas y a los importes. No permite confirmar ni modificar pagos.",
       "sensitive": false
@@ -1832,53 +1849,114 @@
     {
       "id": "notifications.reservations",
       "label": "Recibir avisos de reservas pendientes de vincular",
-      "groups": ["notifications", "weekly", "agenda", "history"],
-      "all": ["records.read"],
-      "any": ["weekly.view", "agenda.view", "history.view"],
+      "groups": [
+        "notifications",
+        "weekly",
+        "agenda",
+        "history"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view",
+        "history.view"
+      ],
       "note": "Sólo incluye reservas visibles dentro del alcance del rol.",
       "sensitive": false
     },
     {
       "id": "notifications.pendingToday",
       "label": "Recibir avisos de servicios pendientes de hoy",
-      "groups": ["notifications", "weekly", "agenda", "history"],
-      "all": ["records.read"],
-      "any": ["weekly.view", "agenda.view", "history.view"],
+      "groups": [
+        "notifications",
+        "weekly",
+        "agenda",
+        "history"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view",
+        "history.view"
+      ],
       "note": "Sólo cuenta servicios visibles dentro del alcance del rol.",
       "sensitive": false
     },
     {
       "id": "notifications.confirmation",
       "label": "Recibir avisos de servicios pendientes de confirmar",
-      "groups": ["notifications", "weekly", "agenda", "history"],
-      "all": ["records.read"],
-      "any": ["weekly.view", "agenda.view", "history.view"],
+      "groups": [
+        "notifications",
+        "weekly",
+        "agenda",
+        "history"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view",
+        "history.view"
+      ],
       "note": "No habilita la confirmación de servicios.",
       "sensitive": false
     },
     {
       "id": "notifications.rescheduling",
       "label": "Recibir avisos de servicios pendientes de reprogramar",
-      "groups": ["notifications", "weekly", "agenda", "history"],
-      "all": ["records.read"],
-      "any": ["weekly.view", "agenda.view", "history.view"],
+      "groups": [
+        "notifications",
+        "weekly",
+        "agenda",
+        "history"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view",
+        "history.view"
+      ],
       "note": "No habilita la reprogramación de servicios.",
       "sensitive": false
     },
     {
       "id": "notifications.overdue",
       "label": "Recibir avisos de servicios atrasados",
-      "groups": ["notifications", "weekly", "agenda", "history"],
-      "all": ["records.read"],
-      "any": ["weekly.view", "agenda.view", "history.view"],
+      "groups": [
+        "notifications",
+        "weekly",
+        "agenda",
+        "history"
+      ],
+      "all": [
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "agenda.view",
+        "history.view"
+      ],
       "note": "Sólo incluye servicios visibles dentro del alcance del rol.",
       "sensitive": false
     },
     {
       "id": "notifications.insurance",
       "label": "Recibir avisos de vencimiento de seguros",
-      "groups": ["notifications", "vehicles"],
-      "all": ["vehicles.view", "vehicle.insurance.read"],
+      "groups": [
+        "notifications",
+        "vehicles"
+      ],
+      "all": [
+        "vehicles.view",
+        "vehicle.insurance.read"
+      ],
       "any": [],
       "note": "Avisos de gestión de la flota. No amplía el acceso a vehículos desde el portal técnico.",
       "sensitive": false
@@ -1886,8 +1964,13 @@
     {
       "id": "notifications.softguard",
       "label": "Recibir avisos de actualización de abonados",
-      "groups": ["notifications", "accounts"],
-      "all": ["accounts.view"],
+      "groups": [
+        "notifications",
+        "accounts"
+      ],
+      "all": [
+        "accounts.view"
+      ],
       "any": [],
       "note": "Permite recibir avisos de bajas pendientes y verificación de SoftGuard. No habilita resolverlos ni importar abonados.",
       "sensitive": false
@@ -1895,10 +1978,82 @@
     {
       "id": "notifications.passwordRequests",
       "label": "Recibir avisos de recuperación de acceso",
-      "groups": ["notifications", "employees", "dashboard"],
-      "all": ["employees.requests.read"],
+      "groups": [
+        "notifications",
+        "employees",
+        "dashboard"
+      ],
+      "all": [
+        "employees.requests.read"
+      ],
       "any": [],
       "note": "No permite resolver solicitudes ni cambiar contraseñas.",
+      "sensitive": false
+    },
+    {
+      "id": "followups.view",
+      "label": "Consultar seguimientos",
+      "groups": [
+        "followups"
+      ],
+      "all": [],
+      "any": [],
+      "note": "Respeta el alcance de servicios del rol. Abrir el aviso no resuelve el caso.",
+      "sensitive": false
+    },
+    {
+      "id": "followups.create",
+      "label": "Solicitar seguimiento desde el informe técnico",
+      "groups": [
+        "followups",
+        "technical"
+      ],
+      "all": [
+        "followups.view",
+        "technical.view"
+      ],
+      "any": [],
+      "note": "Respeta el alcance de servicios del rol. Abrir el aviso no resuelve el caso.",
+      "sensitive": false
+    },
+    {
+      "id": "followups.assign",
+      "label": "Tomar, asignar y registrar avances",
+      "groups": [
+        "followups"
+      ],
+      "all": [
+        "followups.view"
+      ],
+      "any": [],
+      "note": "Respeta el alcance de servicios del rol. Abrir el aviso no resuelve el caso.",
+      "sensitive": false
+    },
+    {
+      "id": "followups.resolve",
+      "label": "Resolver con resultado obligatorio",
+      "groups": [
+        "followups"
+      ],
+      "all": [
+        "followups.view"
+      ],
+      "any": [],
+      "note": "Respeta el alcance de servicios del rol. Abrir el aviso no resuelve el caso.",
+      "sensitive": false
+    },
+    {
+      "id": "notifications.followups",
+      "label": "Recibir avisos de seguimientos pendientes",
+      "groups": [
+        "notifications",
+        "followups"
+      ],
+      "all": [
+        "followups.view"
+      ],
+      "any": [],
+      "note": "Respeta el alcance de servicios del rol. Abrir el aviso no resuelve el caso.",
       "sensitive": false
     }
   ]

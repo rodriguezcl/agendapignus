@@ -18,6 +18,14 @@ const MODULES = [
     ]
   },
   {
+    id: 'followups', module: 'followups', icon: 'check', title: 'Seguimientos', summary: 'Convertí recomendaciones técnicas en acciones con responsable y resultado.',
+    articles: [
+      { title: 'Solicitar una acción', body: 'En el informe técnico, marcá Requiere seguimiento, elegí Cotizar adicional, Coordinar visita, Gestionar problema u Otra acción y describí qué se necesita. Se guarda junto con el informe: un reintento no duplica el caso. Completar el servicio no cierra el seguimiento.' },
+      { title: 'Gestionar casos', body: 'En Operación, Seguimientos, consultá Pendientes, En gestión o Resueltos. Buscá por cliente, acción o técnico y filtrá por tipo y responsable. Abrí el detalle para leer el informe y su cronología. Tomá o asigná el caso a un colaborador habilitado, registrá avances y resolvelo indicando obligatoriamente el resultado. Los casos resueltos conservan su historial.' },
+      { title: 'Avisos y permisos', body: 'La campana mantiene el aviso hasta resolver el caso; leerlo no lo elimina. Configuración permite habilitar por rol Consultar seguimientos, Solicitar seguimiento, Tomar/asignar/registrar avances, Resolver y Recibir avisos. Los roles existentes necesitan habilitar estas nuevas funciones; Administrador tiene acceso completo. El alcance de servicios limita los casos visibles y gestionables. El técnico puede consultar la evolución desde Seguimientos en su portal, y el mismo caso se muestra en el servicio y la ficha del cliente.' }
+    ]
+  },
+  {
     id: 'start', module: 'dashboard', icon: 'dashboard', title: 'Primeros pasos', summary: 'Conocé el recorrido completo desde la planificación hasta el cierre del servicio.',
     articles: [
       { title: 'Recorrido recomendado', intro: 'Para mantener la información ordenada, conviene trabajar en este orden:', steps: ['Revisá que el abonado o cliente exista y que sus datos estén actualizados.', 'Planificá equipos y servicios desde Agenda semanal. Si la fecha es feriado, definí primero si será laboral o no operativa.', 'Abrí el servicio en Agenda semanal para completar o ajustar la planificación.', 'Guardá cada servicio. Los servicios quedarán disponibles en Historial y en la agenda del técnico asignado.', 'Cuando el técnico informe el resultado, revisá el estado y sus observaciones desde Historial o desde la ficha del cliente.'] },

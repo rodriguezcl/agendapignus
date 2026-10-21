@@ -45,6 +45,7 @@ function serviceReadable(record, user, state) {
   if (!serviceInReadScope(record, user, state)) return false
   if (record.vehicleControl && permissions.can(user, 'vehicle.controls.read')) return true
   if (permissions.can(user, 'collections.view') && permissions.can(user, 'records.financial')) return true
+  if (record.followup && permissions.can(user, 'followups.view')) return true
   if (!permissions.can(user, 'records.read')) return false
   if (any(user, ['weekly.view', 'agenda.view', 'history.view', 'dashboard.detail'])) return true
   const customer = customerForRecord(record, state)
@@ -71,6 +72,7 @@ function customerReadable(customer, user, state) {
 function sanitizeService(record, user, state) {
   if (!record) return record
   let result = scrubFields(record, permissions.can(user, 'records.financial'), permissions.can(user, 'records.contact'))
+  if (!permissions.can(user, 'followups.view')) delete result.followup
   if (state) result.supervisorVisible = customerForRecord(record, state)?.cctvService === true
   if (!permissions.can(user, 'records.financial')) for (const key of FINANCIAL_FIELDS) delete result[key]
   if (!permissions.can(user, 'records.contact')) for (const key of CONTACT_FIELDS) delete result[key]

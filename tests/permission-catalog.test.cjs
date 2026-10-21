@@ -5,9 +5,9 @@ const custom = permissions => ({ roleCode: 'role-test', role: 'Prueba', permissi
 
 test('catalogue contains unique capabilities with known acyclic prerequisites', () => {
   assert.equal(policy.validateCatalog(), true)
-  assert.equal(policy.CATALOG.length, 131)
-  assert.equal(policy.MODULES.length, 13)
-  assert.equal(policy.PERMISSION_GROUPS.length, 14)
+  assert.equal(policy.CATALOG.length, 136)
+  assert.equal(policy.MODULES.length, 14)
+  assert.equal(policy.PERMISSION_GROUPS.length, 15)
   assert.equal(policy.MODULES.some(([id]) => id === 'notifications'), false)
   assert.equal(policy.PERMISSION_GROUPS.some(([id]) => id === 'notifications'), true)
   assert.equal(policy.BY_ID['notifications.view'], undefined)
@@ -115,6 +115,7 @@ test('request snapshots are immutable without caching subsequent revocations', (
 })
 
 const noticePrerequisites = {
+  'followups.view': true,
   'weekly.view': true,
   'records.read': true,
   'collections.view': true,
@@ -127,7 +128,7 @@ const noticePrerequisites = {
 }
 
 test('existing granular roles inherit only notices supported by their effective reading permissions', () => {
-  assert.equal(policy.NOTIFICATION_IDS.length, 9)
+  assert.equal(policy.NOTIFICATION_IDS.length, 10)
   const role = custom(noticePrerequisites)
   for (const id of policy.NOTIFICATION_IDS) assert.equal(policy.can(role, id), true, id)
   const noAccess = custom(Object.fromEntries(policy.NOTIFICATION_IDS.map(id => [id, true])))
@@ -152,7 +153,7 @@ test('legacy notification defaults follow actual capabilities instead of role na
   assert.equal(policy.can(coordinator, 'notifications.collections'), false)
   const technician = { code: 'technician', permissions: {} }
   assert.equal(policy.can(technician, 'vehicle.insurance.read'), true)
-  for (const id of policy.NOTIFICATION_IDS) assert.equal(policy.can(technician, id), false, id)
+  for (const id of policy.NOTIFICATION_IDS) assert.equal(policy.can(technician, id), id === 'notifications.followups', id)
 })
 
 test('explicit notification preferences prevail over defaults and require strict booleans', () => {

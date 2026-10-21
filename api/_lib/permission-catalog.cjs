@@ -52,6 +52,7 @@ function legacySelection(subject) {
   const result = Object.fromEntries(CATALOG.map(item => [item.id, admin]))
   const grant = (keys, enabled) => keys.split(' ').filter(Boolean).forEach(key => { if (BY_ID[key]) result[key] = admin || Boolean(enabled) })
   MODULES.forEach(([id]) => { result[`${id}.view`] = id === 'technical' ? admin || technical : moduleOn(id) })
+  grant('followups.view followups.create', technical)
   grant('records.read records.contact', operator || supervisor || technical || plan || moduleOn('history') || moduleOn('accounts') || moduleOn('collections'))
   grant('records.financial', financial)
   grant('records.export', technical || (!operator && !supervisor && moduleOn('history')))

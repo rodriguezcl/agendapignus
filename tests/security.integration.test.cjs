@@ -1722,3 +1722,33 @@ test('corrección comercial autorizada actualiza historial y exportación sin ab
   auditDb.close()
   assert.ok(entries.some(entry => entry.action === 'Corrigió datos del abono' && entry.entityId === record.id))
 })
+
+test('Seguimientos: informe crea un caso único, gestión con control de versión y cierre auditado', async () => {
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const record = { id: 'qa-followup-service', customerId: 'qa-customer-a', clientAccount: 'PIG-9001', client: 'CLIENTE SEGUIMIENTO QA', date: '2020-01-01', time: '08:30', serviceId: 'qa-service', service: 'Service técnico', status: 'Pendiente', technicianIds: ['qa-tech'], technicians: ['QA Técnico'] }
+  upsertJson(db, 'work_history', 'id', record)
+  db.close()
+  const admin = await login('qa-admin@pignus.test'), tech = await login('qa-tech@pignus.test')
+  assert.equal((await api('/api/followups', null)).status, 401)
+  const report = { recordId: record.id, type: 'Reprogramación solicitada', observation: 'Cliente solicita presupuesto', followup: { type: 'Cotizar adicional', description: 'Cotizar cámara extra' } }
+  const first = await api('/api/technician/status', tech, { method:'POST', body:JSON.stringify(report) })
+  assert.equal(first.status,200,await first.clone().text())
+  assert.equal((await api('/api/technician/status', tech, { method:'POST', body:JSON.stringify(report) })).status,200)
+  const listed = (await (await api('/api/followups',admin)).json()).cases.filter(item=>item.recordId===record.id)
+  assert.equal(listed.length,1)
+  assert.equal(listed[0].followup.events.length,1)
+  const assign = { recordId: record.id, action:'assign',version:1,commandId:'qa-followup-assign' }
+  assert.equal((await api('/api/followups',tech,{method:'POST',body:JSON.stringify(assign)})).status,403)
+  const assigned = await api('/api/followups',admin,{method:'POST',body:JSON.stringify(assign)})
+  assert.equal(assigned.status,200,await assigned.clone().text())
+  assert.equal((await api('/api/followups',admin,{method:'POST',body:JSON.stringify(assign)})).status,200)
+  assert.equal((await api('/api/followups',admin,{method:'POST',body:JSON.stringify({...assign,commandId:'qa-followup-stale'})})).status,409)
+  const resolve = {recordId:record.id,action:'resolve',version:2,commandId:'qa-followup-resolve',note:'Presupuesto enviado y aceptado'}
+  assert.equal((await api('/api/followups',admin,{method:'POST',body:JSON.stringify(resolve)})).status,200)
+  const saved=(await state(admin)).history.find(item=>item.id===record.id)
+  assert.equal(saved.followup.status,'Resuelto')
+  assert.equal(saved.followup.events.length,3)
+  assert.equal(saved.technicalObservation,report.observation)
+  const tampered=await api('/api/history/'+record.id,admin,{method:'PATCH',body:JSON.stringify({base:saved,record:{...saved,followup:undefined}})})
+  assert.equal(tampered.status,409)
+})

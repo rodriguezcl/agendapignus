@@ -2028,6 +2028,30 @@ const server = http.createServer((req, res) => {
       store: require('./api/_lib/collection-receipt-store.cjs').sqliteCollectionReceiptStore(db)
     }).catch(error => send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo consultar el comprobante.' }))
   }
+  if (['GET', 'POST'].includes(req.method) && url.pathname === '/api/followups') {
+    const user = requireSession(req, res)
+    if (!user) return
+    const domain = require('./api/_lib/followups.cjs')
+    if (req.method === 'GET') {
+      try { return send(res, 200, { cases: domain.listFollowups(readState(), user) }) }
+      catch (error) { return send(res, error.statusCode || 400, { error: error.message }) }
+    }
+    return readJson(req, 20_000).then(input => {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const current = readState()
+        const change = domain.manageFollowup(current, input, user)
+        const revision = currentStateRevision() + (change.unchanged ? 0 : 1)
+        if (!change.unchanged) {
+          db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(change.after), String(change.before.id))
+          writeAudit(user, 'Gestionó seguimiento', 'Servicio / historial', String(change.before.id), change.before.followup, change.after.followup)
+          db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
+        }
+        db.exec('COMMIT')
+        return send(res, 200, { ok: true, revision })
+      } catch (error) { db.exec('ROLLBACK'); throw error }
+    }).catch(error => send(res, error.statusCode || 400, { error: error.message }))
+  }
   if (req.method === 'POST' && url.pathname === '/api/customers/softguard-retirement') {
     const user = requireSession(req, res)
     if (!user) return
@@ -2311,7 +2335,7 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
-    return readJson(req, 1_600_000).then(({ recordId, type, observation, vehicleMileage, vehiclePhoto }) => {
+    return readJson(req, 1_600_000).then(({ recordId, type, observation, vehicleMileage, vehiclePhoto, followup }) => {
       const record = rows('work_history').find(item => item.id === recordId)
       const allowed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramación solicitada']
       if (!record) return send(res, 404, { error: 'El servicio no existe.' })
@@ -2357,6 +2381,7 @@ const server = http.createServer((req, res) => {
       }
       const now = new Date().toISOString()
       const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? type : 'Requiere revisión', technicianRequest: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
+      if (followup != null) updated.followup = require('./api/_lib/followups.cjs').createFollowup(record, followup, user, readState(), now)
       db.exec('BEGIN')
       try {
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(updated), String(record.id))

@@ -1,3 +1,4 @@
+import { useActionPermissions } from '../presentation/hooks/useActionPermissions.mjs'
 import React, { useEffect, useRef, useState } from 'react'
 import Attachments, { uploadAttachmentBatch } from './Attachments.jsx'
 import Icon from './ui/Icon.jsx'
@@ -6,11 +7,16 @@ import { captureCameraPhoto } from '../infrastructure/media/camera-capture.mjs'
 import { compactVehiclePhoto } from '../infrastructure/media/image-upload.mjs'
 import { requestJson } from '../infrastructure/http/json-request.mjs'
 import './technician-report.css'
+import '../features/followups/followups.css'
 
 const attachmentUrl = (recordId, fileId) => `/api/attachments/service/${encodeURIComponent(String(recordId))}${fileId ? `/${encodeURIComponent(String(fileId))}` : ''}`
 const supportedImage = file => /^image\/(jpeg|png|webp)$/.test(file?.mime || '')
 
 export default function TechnicianReportModal({ record, type, serviceLabel, pendingAttachments = [], onPendingAttachmentsChange, attachmentsPreparing = false, onPreparingChange, onClose, onSubmit }) {
+  const { can } = useActionPermissions()
+  const [needsFollowup, setNeedsFollowup] = useState(false)
+  const [followupType, setFollowupType] = useState('Cotizar adicional')
+  const [followupDescription, setFollowupDescription] = useState('')
   const vehicleControl = Boolean(record.vehicleControl && type === 'Completado')
   const [observation, setObservation] = useState('')
   const [mileage, setMileage] = useState('')
@@ -31,11 +37,11 @@ export default function TechnicianReportModal({ record, type, serviceLabel, pend
   const photoRequestRef = useRef(null)
   const pendingRef = useRef(pendingAttachments)
   pendingRef.current = pendingAttachments
-  const dirty = Boolean(observation.trim() || mileage || photo || pendingAttachments.length)
+  const dirty = Boolean(needsFollowup || observation.trim() || mileage || photo || pendingAttachments.length)
   const busy = saving || photoBusy || attachmentsPreparing
   const valid = vehicleControl
     ? Boolean(photo) && /^\d+$/.test(mileage) && Number(mileage) > Number(record.vehicleMileageAtScheduling || 0)
-    : Boolean(observation.trim())
+    : Boolean(observation.trim()) && (!needsFollowup || Boolean(followupDescription.trim()))
   const requestClose = () => { if (!busy) dirty ? setDiscarding(true) : onClose() }
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; photoRequestRef.current?.abort() } }, [])
@@ -97,7 +103,7 @@ export default function TechnicianReportModal({ record, type, serviceLabel, pend
         pendingRef.current = pendingRef.current.filter(file => file.id !== savedId)
         onPendingAttachmentsChange(pendingRef.current)
       })
-      await onSubmit({ observation, vehicleMileage: mileage, vehiclePhoto: photo })
+      await onSubmit({ observation, vehicleMileage: mileage, vehiclePhoto: photo, ...(needsFollowup ? { followup: { type: followupType, description: followupDescription } } : {}) })
     } catch (failure) {
       if (alive.current) setError(failure.message || 'No se pudo guardar el informe. Los datos siguen disponibles para reintentar.')
     } finally {
@@ -132,6 +138,7 @@ export default function TechnicianReportModal({ record, type, serviceLabel, pend
           </div>
         </> : <>
           <label><RequiredLabel>Observación</RequiredLabel><textarea required value={observation} disabled={saving} onChange={event => setObservation(event.target.value)} placeholder="Detallá el trabajo realizado, el resultado y cualquier recomendación para futuras visitas." /></label>
+          {can('followups.create') && <fieldset className="followup-request"><legend>Acciones posteriores</legend><label><input type="checkbox" checked={needsFollowup} disabled={saving} onChange={event => setNeedsFollowup(event.target.checked)} />Requiere seguimiento</label><small>Genera un caso pendiente de gestión. No impide completar el servicio.</small>{needsFollowup && <><label>Tipo de seguimiento<select value={followupType} disabled={saving} onChange={event => setFollowupType(event.target.value)}>{['Cotizar adicional', 'Coordinar visita', 'Gestionar problema', 'Otra acción'].map(type => <option key={type}>{type}</option>)}</select></label><label>Acción solicitada<textarea required maxLength={2000} value={followupDescription} disabled={saving} onChange={event => setFollowupDescription(event.target.value)} placeholder="Por ejemplo: cotizar dos cámaras adicionales para el patio." /></label></>}</fieldset>}
           <Attachments entityId={record.id} pendingFiles={pendingAttachments} onPendingFilesChange={onPendingAttachmentsChange} onPreparingChange={onPreparingChange} disabled={saving} />
         </>}
         {pendingAttachments.length > 0 && <p className="technician-report-pending" role="status">Se guardarán {pendingAttachments.length} adjunto(s) pendiente(s) junto con el informe.</p>}

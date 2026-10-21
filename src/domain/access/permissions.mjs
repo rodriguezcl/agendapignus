@@ -9,6 +9,7 @@ export const MODULE_PERMISSIONS = [
   ['weekly', 'Agenda semanal', 'Planificar los servicios de toda la semana'],
   ['agenda', 'Agenda del día', 'Crear y editar equipos y servicios'],
   ['collections', 'Cobranzas', 'Consultar pagos pendientes, confirmados y su historial'],
+  ['followups', 'Seguimientos', 'Consultar solicitudes y gestionar acciones sobre clientes'],
   ['history', 'Historial', 'Consultar y gestionar trabajos registrados'],
   ['accounts', 'Abonados y clientes', 'Consultar y administrar abonados y clientes'],
   ['map', 'Mapa', 'Consultar la distribución geográfica y concentración de abonados'],

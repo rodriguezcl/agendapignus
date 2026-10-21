@@ -85,6 +85,13 @@ export function selectDashboardNotifications({ history = [], vehicles = [], cust
     detail: `${record.client || 'Servicio'} · ${dateLabel(collectionDate(record))} · ${collectionMoney(record.amount)} · ${record.paymentMethod}.`,
     target: { type: 'collection', recordId: String(record.id) }
   })) : []
+  if (receives('followups') && can('followups.view')) {
+    for (const record of history.filter(item => item.followup && item.followup.status !== 'Resuelto')) notices.push({
+      id: `followup:${record.id}`, title: `Seguimiento ${record.followup.status.toLowerCase()}: ${record.followup.type}`, tone: 'warning',
+      detail: `${record.client || 'Cliente'} · ${record.followup.description} · Responsable: ${record.followup.assigneeName || 'Sin asignar'}`,
+      target: { type: 'followup', recordId: String(record.id) }
+    })
+  }
   const dashboard = (section, id) => ({ type: 'dashboard', section, ...(id == null ? {} : { id: String(id) }) })
 
   if (administrator) {

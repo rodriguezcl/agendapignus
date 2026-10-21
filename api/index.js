@@ -729,7 +729,7 @@ async function handleTechnicianStart(req, res, sql, user) {
 
 async function handleTechnicianStatus(req, res, sql, user) {
   if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
-  const { recordId, type, observation, vehicleMileage, vehiclePhoto } = requestBody(req)
+  const { recordId, type, observation, vehicleMileage, vehiclePhoto, followup } = requestBody(req)
   const allowed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramación solicitada']
   if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
   try {
@@ -792,6 +792,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
       }
       const now = new Date().toISOString()
       const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? type : 'Requiere revisión', technicianRequest: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
+      if (followup != null) next.followup = require('./_lib/followups.cjs').createFollowup(record, followup, user, currentState, now)
       const entries = [auditEntry(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, next)]
       if (vehicleChange) entries.push(auditEntry(user, 'Actualizó kilometraje por control semanal', 'Vehículo', String(record.vehicleId), vehicleChange.before, vehicleChange.after))
       workingState.history = workingState.history.map(item => String(item.id) === String(next.id) ? next : item)
@@ -804,7 +805,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
           normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, after.kind === 'subscriber' ? 'Restituyó abonado al corregir retiro' : 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
         }
       }
-      await persistStateCollections(transaction, currentState, nextState, currentRevision + 1)
+      await persistStateCollections(transaction, currentState, nextState, currentRevision + 1, undefined, { followupRecordId: record.id })
       if (photo) await upsertVehicleControlPhoto(transaction, photo)
       await appendAudit(transaction, entries)
       return next
@@ -1081,6 +1082,29 @@ async function handleCollectionManagement(req, res, sql, user) {
   }
 }
 
+async function handleFollowups(req, res, sql, user) {
+  try {
+    const domain = require('./_lib/followups.cjs')
+    if (req.method === 'GET') return send(res, 200, { cases: domain.listFollowups(await readState(sql), user) })
+    const input = requestBody(req)
+    const result = await sql.begin(async transaction => {
+      await transaction`set local lock_timeout = '5s'`
+      await transaction`set local statement_timeout = '25s'`
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      const locked = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const current = await readState(transaction)
+      const change = domain.manageFollowup(current, input, user)
+      const revision = Number(locked[0]?.value || 0) + (change.unchanged ? 0 : 1)
+      if (!change.unchanged) {
+        await persistStateCollections(transaction, current, change.state, revision, undefined, { followupRecordId: change.before.id })
+        await appendAudit(transaction, [auditEntry(user, 'Gestionó seguimiento', 'Servicio / historial', String(change.before.id), change.before.followup, change.after.followup)])
+      }
+      return { revision }
+    })
+    return send(res, 200, { ok: true, ...result })
+  } catch (error) { return send(res, error.statusCode || 400, { error: error.message || 'No se pudo gestionar el seguimiento.' }) }
+}
+
 async function handleSoftguardRetirement(req, res, sql, user) {
   try {
     const input = requestBody(req)
@@ -1312,6 +1336,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST' && route === '/admin/advance-request/approve') return await handleServiceAdvance(req, res, sql, session.user, 'approved')
     if (req.method === 'POST' && route === '/admin/advance-request/deny') return await handleServiceAdvance(req, res, sql, session.user, 'denied')
     if (req.method === 'POST' && route === '/history/category-correction') return await handleCategoryCorrection(req, res, sql, session.user)
+    if (['GET', 'POST'].includes(req.method) && route === '/followups') return await handleFollowups(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/collections/manage') return await handleCollectionManagement(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/customers/softguard-retirement') return await handleSoftguardRetirement(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/customers/subscription-correction') return await handleSubscriptionCorrection(req, res, sql, session.user)
