@@ -1,52 +1,114 @@
 AGENDA TÉCNICA PIGNUS
 =====================
 
-Aplicación para planificar agendas, administrar clientes, empleados, servicios
-e historial técnico. La interfaz usa React/Vite. En desarrollo local persiste
-en SQLite; la versión desplegada en Vercel utiliza PostgreSQL de Supabase.
+Plataforma web para coordinar la operación técnica de Pignus: planificación,
+ejecución de servicios, gestión de abonados y clientes, cobranzas y seguimiento.
+La información se comparte entre usuarios según sus permisos y alcance.
 
-INICIO
-------
+Aplicación publicada: https://agendapignus.vercel.app
+Responsable del proyecto: Cristian Leonardo Rodriguez.
+Revisión documental: 21 de octubre de 2026.
 
-La forma recomendada en Windows es ejecutar `Iniciar_Agenda_Tecnica.bat`.
-También puede usarse `npm run dev` desde una terminal. El sistema queda
-disponible en http://localhost:5173.
+FUNCIONALIDADES
+---------------
+
+- Resumen general: proyección neta de abonados, composición del período,
+  evolución anual, cobranzas y consultas con exportaciones específicas.
+- Agenda semanal: equipos, colaboradores, disponibilidad horaria, preparación
+  de servicios, reservas, confirmación, reprogramación y trabajos de varias
+  jornadas. La disponibilidad considera la ocupación de los integrantes en
+  otros equipos del mismo día, el almuerzo y las reglas de jornada y guardia.
+- Portal técnico: servicios asignados, inicio, adelanto, informes de avance,
+  finalización, cancelación y adjuntos, según las capacidades habilitadas.
+- Historial: consulta y trazabilidad de los servicios y sus informes técnicos.
+- Abonados y clientes: importación, identificación, datos de contacto,
+  ubicaciones e historial relacionado.
+- Cobranzas: segmentos actuales/pasados y futuros, correcciones, confirmación
+  de pagos y comprobantes obligatorios para medios distintos de efectivo.
+- Mapa: vistas independientes de mapa de calor, puntos por abonado y zonas rojas.
+- Recursos: Colaboradores, tipos de servicio y Flota, con asignaciones,
+  controles vehiculares y guardias.
+- Configuración: roles y permisos por función, dependencias entre capacidades,
+  vista previa por rol y selección de notificaciones.
+- Auditoría y Centro de ayuda: seguimiento de acciones y orientación de uso.
+
+La planificación visible se concentra en Agenda semanal. La implementación
+de Agenda del día se conserva internamente por compatibilidad.
+
+Los recordatorios de baja en SoftGuard requieren que una persona realice la
+gestión externa y registre su resolución. No ejecutan una baja automática.
 
 ESTRUCTURA
 ----------
 
-- `src/`: aplicación React.
+- `src/App.jsx`: composición de la aplicación, sesión y coordinación compartida.
+- `src/domain/`: reglas de negocio y políticas independientes de la interfaz.
+- `src/features/`: módulos de negocio y sus casos de uso.
+- `src/infrastructure/`: adaptadores HTTP, repositorios, archivos y navegador.
+- `src/presentation/`: componentes y comportamiento visual compartidos.
 - `src/components/ui/`: componentes visuales reutilizables.
-- `src/features/`: módulos de negocio; cada funcionalidad nueva debe vivir aquí.
-- `src/services/`: cliente de API y servicios compartidos.
-- `server.cjs`: API local, reglas de persistencia y SQLite.
-- `api/`: API serverless de Vercel y acceso a PostgreSQL/Supabase.
+- `api/index.js`: entrada HTTP de producción en Vercel.
+- `api/_lib/`: autorización, casos de uso y persistencia del servidor.
+- `server.cjs`: adaptador de servidor para ejecución local.
 - `supabase/`: migraciones reproducibles del esquema PostgreSQL.
-- `data/`: base de datos e importaciones; no se versiona.
+- `scripts/`: herramientas de verificación, diagnóstico y mantenimiento.
+- `tests/`: pruebas de reglas operativas, permisos, persistencia e integración.
 - `public/`: imágenes y recursos estáticos.
-- `docs/ARQUITECTURA.md`: decisiones técnicas y convenciones de desarrollo.
+- `docs/`: arquitectura, concurrencia, despliegue y decisiones técnicas.
 
-DESARROLLO
-----------
+PLATAFORMA Y PERSISTENCIA
+------------------------
 
-1. Ejecutar `npm install` al clonar el proyecto.
-2. Ejecutar `npm run dev`.
-3. Antes de entregar cambios, ejecutar `npm run build`.
+La interfaz utiliza React y Vite. Vercel publica el cliente y ejecuta la API;
+PostgreSQL en Supabase conserva los datos productivos. El navegador se comunica
+con la API y no recibe credenciales de conexión a la base de datos.
 
-PERSISTENCIA
-------------
+El proyecto mantiene un adaptador SQLite para entornos locales. Esa base no
+representa por sí sola el estado de producción ni sustituye su respaldo.
+La persistencia incluye un modelo normalizado y mecanismos de compatibilidad;
+antes de una migración o recuperación debe comprobarse el modelo activo.
 
-Los datos operativos se guardan en `data/agenda-tecnica.db`. No eliminar esta
-carpeta si se desea conservar clientes, agendas e historial. Las copias de
-seguridad deben hacerse con la aplicación detenida.
+Los cambios concurrentes utilizan revisiones y validaciones de disponibilidad.
+Los adjuntos y comprobantes requieren controles de acceso y deben incluirse
+en las verificaciones de integridad y recuperación.
 
-Para publicar la aplicación y migrar los datos actuales, seguir
-`docs/DESPLIEGUE-VERCEL-SUPABASE.md`.
+No versionar credenciales, archivos .env, bases operativas ni datos de clientes.
+Los respaldos, migraciones y restauraciones deben planificarse para el entorno
+correspondiente; una migración inicial no es un paso rutinario de despliegue.
 
-MANTENIMIENTO
--------------
+MANTENIMIENTO Y VALIDACIÓN
+--------------------------
 
-Las pantallas se organizan en `src/features/` y se cargan al abrir cada módulo.
-`App.jsx` coordina sesión, navegación y guardados compartidos. Mantener las reglas
-de negocio fuera de esa raíz y verificar las garantías de persistencia al cambiarlas.
-Después de compilar, `npm run analyze:build` mide la carga inicial real.
+La línea base declara Node.js 22.x en package.json. Utilizar `npm ci` para
+instalar las dependencias del lockfile de forma reproducible.
+
+- `npm test`: suite automatizada.
+- `npm run test:ux`: controles de experiencia e interfaz.
+- `npm run test:concurrency`: pruebas de concurrencia y seguridad.
+- `npm run build`: compilación de producción.
+- `npm run analyze:build`: análisis de la carga del cliente compilado.
+
+Las pantallas se cargan por módulo. Mantener las reglas de negocio fuera de
+App.jsx y verificar permisos, conflictos de edición y persistencia al cambiar
+flujos operativos. Las actualizaciones visuales optimistas deben recuperar el
+estado correcto si el servidor rechaza una escritura.
+
+Antes de publicar, ejecutar las verificaciones pertinentes y revisar el alcance
+del commit. Después del despliegue, comprobar la versión servida, el acceso
+autenticado y los flujos afectados. No usar datos productivos como fixtures.
+
+DOCUMENTACIÓN TÉCNICA
+---------------------
+
+- `docs/ARQUITECTURA.md`: organización del código y límites entre capas.
+- `docs/CONCURRENCIA.md`: revisiones, escrituras compartidas y conflictos.
+- `docs/save-performance.md`: guardado y respuesta de acciones frecuentes.
+- `docs/service-journeys.md`: servicios con varias jornadas.
+- `docs/DESPLIEGUE-VERCEL-SUPABASE.md`: infraestructura y verificaciones de
+  publicación; distingue preparación inicial y migración de datos.
+- `docs/database-normalization.md`: antecedentes del modelo normalizado.
+- `docs/database-cutover-plan.md`: controles para cambios de almacenamiento.
+- `docs/UX-UI-CONSTITUTION.md`: criterios de experiencia de usuario.
+
+Leer los documentos históricos junto con su fecha y la versión del código:
+un ensayo o certificado anterior no acredita el estado actual de producción.
