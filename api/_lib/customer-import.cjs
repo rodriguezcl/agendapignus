@@ -20,8 +20,8 @@ function preserveCustomerTrackingFlags(currentCustomers = [], importedCustomers 
   return preserveSoftguardRetirementCustomers(currentCustomers, importedCustomers).map(customer => {
     const current = byId.get(String(customer?.customerId || '')) || byAccount.get(String(customer?.account || '').trim().toUpperCase())
     // Coordinates belong to the local record, never to the imported spreadsheet.
-    const { locationOverride, ...imported } = customer
-    return { ...imported, ...(current && Object.hasOwn(current, 'locationOverride') ? { locationOverride: current.locationOverride } : {}), cctvService: Boolean(current?.cctvService) }
+    const { locationOverride, excludeFromSubscriberCount, ...imported } = customer
+    return { ...imported, ...(typeof current?.excludeFromSubscriberCount === 'boolean' ? { excludeFromSubscriberCount: current.excludeFromSubscriberCount } : {}), ...(current && Object.hasOwn(current, 'locationOverride') ? { locationOverride: current.locationOverride } : {}), cctvService: Boolean(current?.cctvService) }
   })
 }
 

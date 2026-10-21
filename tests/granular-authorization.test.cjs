@@ -356,3 +356,15 @@ test('rescheduling to an inherited virtual team preserves prior private evidence
   assert.equal(next.agenda.weekly['2099-01-06'].teams[0].tasks[0].historyId, 'work')
   assert.equal(visibleStateForUser(next, actor).history.find(row => row.id === 'work').reschedulingHistory.at(-1).technicalObservation, undefined)
 })
+
+
+test('excluir una cuenta del padrón requiere editar clientes, no alcanza CCTV', () => {
+  const state = fixture()
+  for (const allowed of [false, true]) {
+    const actor = user(['accounts.view', 'scope.customers.read.all', allowed ? 'customers.edit' : 'customers.cctv'])
+    const incoming = visibleStateForUser(state, actor)
+    incoming.customers[0].excludeFromSubscriberCount = true
+    if (allowed) assert.equal(authorizeIncomingState(incoming, state, actor).customers[0].excludeFromSubscriberCount, true)
+    else assert.throws(() => authorizeIncomingState(incoming, state, actor), /customers.edit/)
+  }
+})

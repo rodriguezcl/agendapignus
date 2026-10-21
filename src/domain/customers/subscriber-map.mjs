@@ -1,3 +1,4 @@
+import { isActiveSubscriber } from './subscriber-policy.mjs'
 import { doctaLocation, customerMapAddress } from './customer-location.mjs'
 import { customerCoordinates, validCoordinates } from './customer-coordinates.mjs'
 import { isNobuTown, nobuTownLocation } from './nobu-town-location.mjs'
@@ -26,7 +27,7 @@ export function subscriberMapRows(customers = []) {
   for (const customer of customers) {
     const account = mapText(customer.account).replace(/\s/g, '')
     const id = String(customer.customerId || '')
-    const active = customer.kind !== 'client' && (customer.kind === 'subscriber' || account.startsWith('pig-')) && !customer.subscriptionEndedAt && !['inactivo', 'baja', 'cancelado'].includes(mapText(customer.status))
+    const active = isActiveSubscriber(customer)
     if (!active || (!account && !id) || (account && seenAccounts.has(account)) || (id && seenIds.has(id))) continue
     if (account) seenAccounts.add(account)
     if (id) seenIds.add(id)

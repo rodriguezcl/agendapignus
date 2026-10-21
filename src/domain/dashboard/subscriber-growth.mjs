@@ -1,3 +1,5 @@
+import { isActiveSubscriber } from '../customers/subscriber-policy.mjs'
+
 /** Percentages require an explicit, positive subscriber base. Unknown is not zero. */
 export function activeSubscriberCount(customers = []) {
   const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
@@ -6,7 +8,7 @@ export function activeSubscriberCount(customers = []) {
   for (const customer of customers) {
     const account = normalize(customer.account).replace(/\s/g, '')
     const id = String(customer.customerId || '')
-    if (customer.kind === 'client' || !(customer.kind === 'subscriber' || account.startsWith('pig-')) || customer.subscriptionEndedAt || ['inactivo', 'baja', 'cancelado'].includes(normalize(customer.status))) continue
+    if (!isActiveSubscriber(customer)) continue
     if ((!account && !id) || (account && accounts.has(account)) || (id && ids.has(id))) continue
     if (account) accounts.add(account)
     if (id) ids.add(id)

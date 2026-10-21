@@ -158,7 +158,7 @@ function granularVisibleState(state, user) {
   else if (can('map.view')) customers = customers.map(require('./subscriber-map-access.cjs').mapCustomer)
   else if (customerLookup) customers = customers.map(customer => {
     const safe = sanitizeCustomer(customer, user, true)
-    return Object.fromEntries(['customerId', 'account', 'name', 'kind', 'status', 'cctvService', 'address', 'phone', 'email', 'location'].filter(key => safe[key] !== undefined).map(key => [key, safe[key]]))
+    return Object.fromEntries(['customerId', 'account', 'name', 'kind', 'status', 'cctvService', 'excludeFromSubscriberCount', 'address', 'phone', 'email', 'location'].filter(key => safe[key] !== undefined).map(key => [key, safe[key]]))
   })
   else customers = []
   const employeeLookup = any(user, ['planning.technicians', 'planning.create', 'planning.reschedule', 'weekly.monthlyTeams.read', 'weekly.monthlyVehicles.read', 'weekly.guards.read'])

@@ -7,7 +7,7 @@ const { prepareNormalizedStateWrite, readNormalizedState, synchronizeNormalizedS
 
 function fixture() {
   return { revision: 1, roles: [{ id: 'r', name: 'Rol', permissions: { agenda: true } }], employees: [{ id: 'e', roleId: 'r', name: 'Técnico', passwordHash: 'SECRET' }],
-    customers: [{ customerId: 'c', account: 'CLI-1', name: 'Cliente', fields: { Campo: 'Valor' } }], services: [{ id: 's', code: 'service', name: 'Servicio', estimatedMinutes: 60 }], vehicles: [], reviews: [],
+    customers: [{ customerId: 'c', account: 'CLI-1', name: 'Cliente', excludeFromSubscriberCount: true, fields: { Campo: 'Valor' } }], services: [{ id: 's', code: 'service', name: 'Servicio', estimatedMinutes: 60 }], vehicles: [], reviews: [],
     history: [{ id: 'h', sourceTaskId: 't', date: '2026-09-09', time: '09:00', scheduledTime: '09:00', estimatedMinutes: 60, estimatedMinutesCustomized: false,
       status: 'Pendiente', customerId: 'c', serviceId: 's', teamId: 'team', technicianIds: ['e'], technicians: ['Técnico'], client: 'Cliente', service: 'Servicio', detail: 'Antes', address: '', phone: '', team: 'Equipo 1' }],
     agenda: { date: '2026-09-09', teams: [], weekly: { '': { legacy: true }, '2026-09-09': { teams: [] } } }, preferences: { theme: 'light' } }

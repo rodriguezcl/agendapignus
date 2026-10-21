@@ -1,3 +1,4 @@
+import { excludedFromSubscriberCount } from '../../../domain/customers/subscriber-policy.mjs'
 import { normalizeCustomerName } from "../../../domain/shared/normalization.mjs";
 import { createCustomerId } from "../../../infrastructure/browser/identity.mjs";
 
@@ -7,7 +8,7 @@ export const normalizeAccountKey = value => String(value || '').trim().toUpperCa
 
 export const customerKind = customer => customer?.kind === 'subscriber' || String(customer?.account || '').toUpperCase().startsWith('PIG-') ? 'subscriber' : 'client'
 
-export const customerKindLabel = customer => customerKind(customer) === 'subscriber' ? 'Abonado' : 'Cliente'
+export const customerKindLabel = customer => customerKind(customer) === 'subscriber' ? (excludedFromSubscriberCount(customer) ? 'Cuenta PIG sin abono' : 'Abonado') : 'Cliente'
 
 export const nextCustomerCode = (customers, kind) => {
   const prefix = kind === 'subscriber' ? 'PIG' : 'CLI'
