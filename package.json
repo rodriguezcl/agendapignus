@@ -5,10 +5,8 @@
     "node": "22.x"
   },
   "scripts": {
-    "dev": "node start-dev.cjs",
-    "server": "node server.cjs",
-    "start": "node server.cjs",
-    "start:production": "npm run build && node server.cjs",
+    "dev": "vite --host 127.0.0.1",
+    "dev:api": "node server.cjs",
     "config:local": "node scripts/configure-local-env.cjs",
     "check:supabase": "node --env-file-if-exists=.env.local scripts/check-supabase-connection.cjs",
     "schema:supabase": "node --env-file-if-exists=.env.local scripts/apply-supabase-schema.cjs",

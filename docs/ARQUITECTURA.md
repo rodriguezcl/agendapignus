@@ -53,7 +53,7 @@ El backend conserva su frontera independiente:
 api/                # Entradas HTTP/serverless
 api/_lib/           # Casos de uso y persistencia del backend
 supabase/            # Esquema y migraciones PostgreSQL
-server.cjs           # Adaptador de ejecución local
+server.cjs           # Adaptador de desarrollo y pruebas de integración
 ```
 
 ## Comprobantes de cobranzas

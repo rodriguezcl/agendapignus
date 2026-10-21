@@ -1,5 +1,5 @@
 # La base SQLite contiene datos operativos y debe permanecer fuera de Git.
-# Cada instalación la conserva en su directorio de datos (PIGNUS_DATA_DIR).
+# Desarrollo y pruebas usan su directorio de datos (PIGNUS_DATA_DIR).
 data/*
 tmp/visual-qa/*.db
 tmp/visual-qa/*.db-wal

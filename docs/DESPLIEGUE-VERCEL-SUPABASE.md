@@ -109,7 +109,9 @@ Ejecutar el comando dos veces y guardar cada resultado en una variable diferente
 
 ## Desarrollo local
 
-`npm run dev` continúa usando SQLite y la API de `server.cjs`. Esto permite trabajar sin conexión a Supabase. Vercel utiliza exclusivamente la función bajo `api/`.
+Estas herramientas son exclusivas de desarrollo y pruebas; los usuarios acceden a la plataforma web publicada. No se distribuyen instaladores ni lanzadores de escritorio.
+
+`npm run dev` ejecuta solamente Vite. Cuando se necesite probar la interfaz junto con la API de desarrollo, ejecutar `npm run dev:api` en otra terminal; este adaptador usa SQLite y también sirve a las pruebas de integración. Ya no se inicia automáticamente el servidor ni se abre un navegador. Vercel utiliza exclusivamente la función bajo `api/` y PostgreSQL en Supabase.
 
 ## Copias de seguridad
 

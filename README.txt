@@ -49,7 +49,7 @@ ESTRUCTURA
 - `src/components/ui/`: componentes visuales reutilizables.
 - `api/index.js`: entrada HTTP de producción en Vercel.
 - `api/_lib/`: autorización, casos de uso y persistencia del servidor.
-- `server.cjs`: adaptador de servidor para ejecución local.
+- `server.cjs`: adaptador de desarrollo y pruebas de integración.
 - `supabase/`: migraciones reproducibles del esquema PostgreSQL.
 - `scripts/`: herramientas de verificación, diagnóstico y mantenimiento.
 - `tests/`: pruebas de reglas operativas, permisos, persistencia e integración.
@@ -63,7 +63,7 @@ La interfaz utiliza React y Vite. Vercel publica el cliente y ejecuta la API;
 PostgreSQL en Supabase conserva los datos productivos. El navegador se comunica
 con la API y no recibe credenciales de conexión a la base de datos.
 
-El proyecto mantiene un adaptador SQLite para entornos locales. Esa base no
+El proyecto mantiene un adaptador SQLite para desarrollo y pruebas. Esa base no
 representa por sí sola el estado de producción ni sustituye su respaldo.
 La persistencia incluye un modelo normalizado y mecanismos de compatibilidad;
 antes de una migración o recuperación debe comprobarse el modelo activo.
