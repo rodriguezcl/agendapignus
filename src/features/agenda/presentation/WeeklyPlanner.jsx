@@ -31,7 +31,7 @@ import { ServiceJourneys, journeyLabel } from "../../../components/ServiceJourne
 import Icon from "../../../components/ui/Icon.jsx";
 import { fridayAdvanceDestination } from "../../../domain/agenda/friday-advance.mjs";
 import { vehicleControlResponsible, vehicleControlSwapCandidate } from "../../state/application/weekly-service-save.mjs";
-import { planningHoursForDay, serviceGaps } from "../../../domain/agenda/service-gaps.mjs";
+import { planningHoursForDay, teamServiceGaps } from "../../../domain/agenda/service-gaps.mjs";
 import { monthlyTeamRotation, monthlyEligibleTechnicians } from "../../../domain/agenda/monthly-team-rotation.mjs";
 import { synchronizeMonthlyTeams } from "../../../domain/agenda/monthly-team-sync.mjs";
 import { synchronizeMonthlyVehicles } from "../../../domain/vehicles/monthly-vehicle-sync.mjs";
@@ -825,10 +825,14 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
     return conflict
   }
   const teamGapCache = useMemo(() => new Map(), [weekly, activeTechs, operationalHistory, services, planningClock])
+  const availableGapsForTeam = (day, teamIndex, now) => {
+    const teams = dayPlan(day).teams.map(team => ({ ...team, tasks: team.tasks.map(task => taskWithServiceEstimate({ ...task, ...historyRecordForTask(task, day, operationalHistory), date: day }, serviceForWeeklyTask(task))) }))
+    return teamServiceGaps(teams, teamIndex, { ...hoursForDay(day, teams[teamIndex]?.teamId), fullAvailability: true, day, now }, team => hoursForDay(day, team.teamId))
+  }
   const gapsForTeam = (day, team, teamIndex, hours) => {
     const key = weeklyTeamInteractionKey(day, team.teamId, teamIndex)
     if (!teamGapCache.has(key)) {
-      teamGapCache.set(key, withLunchNotice(team.tasks, serviceGaps(team.tasks.map(task => taskWithServiceEstimate({ ...task, ...historyRecordForTask(task, day, operationalHistory), date: day }, serviceForWeeklyTask(task))), { ...hours, fullAvailability: true, day, now: planningClock }), hours))
+      teamGapCache.set(key, withLunchNotice(team.tasks, availableGapsForTeam(day, teamIndex, planningClock), hours))
     }
     return teamGapCache.get(key)
   }
@@ -852,7 +856,7 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
     const task = taskWithServiceEstimate({ ...blankTask(), time: startTime }, null)
     const teamSnapshot = dayPlan(day).teams[teamIndex]
     if (!teamSnapshot) { setNotice('El equipo ya no está disponible. Revisá la planificación.'); return }
-    const available = serviceGaps(teamSnapshot.tasks.map(item => taskWithServiceEstimate({ ...item, ...historyRecordForTask(item, day, operationalHistory), date: day }, serviceForWeeklyTask(item))), { ...hoursForDay(day, teamSnapshot.teamId), fullAvailability: true, day, now: new Date() })
+    const available = availableGapsForTeam(day, teamIndex, new Date())
     if (!startTime || !available.some(gap => gap.start === startTime)) { setNotice('La disponibilidad cambió. Elegí una franja horaria disponible para agregar el servicio.'); return }
     const taskIndex = teamSnapshot.tasks.length
     // New services live only in the editor until the explicit save succeeds.

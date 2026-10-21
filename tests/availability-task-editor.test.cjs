@@ -17,7 +17,7 @@ for (const persisted of [true, false]) {
       requirePermission: () => true,
       structuredClone, taskHasContent: task => Boolean(task.serviceId || task.client), dayHasFinished: () => false, holidayStateForDay: () => ({ blocked: false }), advancedGuardForDay: () => null,
       blankTask: () => ({ taskId: 'new-task' }), dayPlan: () => plan,
-      serviceGaps: () => [{ start: '11:30' }], taskWithServiceEstimate: task => task, historyRecordForTask: () => null, operationalHistory: [], serviceForWeeklyTask: () => null, hoursForDay: () => ({}),
+      availableGapsForTeam: () => [{ start: '11:30' }], taskWithServiceEstimate: task => task, historyRecordForTask: () => null, operationalHistory: [], serviceForWeeklyTask: () => null, hoursForDay: () => ({}),
       weekly: persisted ? { [day]: structuredClone(plan) } : {},
       updateDay: () => { throw new Error('Opening the editor must not mutate the persisted plan') },
       taskEditorSaveGuardRef: saveGuard,

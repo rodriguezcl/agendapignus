@@ -8,7 +8,7 @@ export function planningHoursForDay(day, weekly = {}, teamId = '') {
 }
 
 // Empty placeholders do not reserve working time. Include the final stretch when closing hours are known.
-export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:00', breakEnd = '14:00', fullAvailability = false, day, now = new Date() } = {}) {
+export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:00', breakEnd = '14:00', fullAvailability = false, day, now = new Date(), blockedIntervals = [] } = {}) {
   const minutes = value => /^\d{2}:\d{2}$/.test(value || '') ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : null
   let lower = minutes(fullAvailability ? bookable || min : min) ?? 0
   const lunchStart = minutes(breakStart), lunchEnd = minutes(breakEnd)
@@ -36,6 +36,7 @@ export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:00', b
     .filter(card => card.start !== null).sort((a, b) => a.start - b.start)
   const occupied = tasks.map((task, index) => ({ task, index, interval: taskOccupiedInterval(task, { breakStart, breakEnd }) }))
     .filter(({ task, interval }) => interval && hasService(task))
+    .concat(blockedIntervals.filter(Boolean).map(interval => ({ index: tasks.length, interval })))
     .sort((a, b) => a.interval.start - b.interval.start)
   const gaps = []
   // A cancelled first/only visit still provides an anchor for the released slot.
@@ -68,4 +69,22 @@ export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:00', b
     }
   }
   return gaps
+}
+
+// Only this day's teams are supplied. External services block time without
+// becoming cards (or changing the local beforeIndex anchors).
+export function teamServiceGaps(teams, teamIndex, options = {}, hoursForTeam = () => options) {
+  const team = teams[teamIndex]
+  if (!team) return []
+  const members = new Set((team.memberIds || []).map(String))
+  const blockedIntervals = teams.flatMap((other, index) => {
+    if (index === teamIndex) return []
+    return (other.tasks || []).flatMap(task => {
+      const assigned = task.vehicleControl && task.technicianIds?.length ? task.technicianIds : other.memberIds || []
+      if (!assigned.some(id => members.has(String(id))) || !(task.serviceId || task.service || task.client || task.vehicleControl)) return []
+      const interval = taskOccupiedInterval(task, hoursForTeam(other) || {})
+      return interval ? [interval] : []
+    })
+  })
+  return serviceGaps(team.tasks || [], { ...options, blockedIntervals })
 }
