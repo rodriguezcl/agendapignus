@@ -8,7 +8,9 @@ const monthName = month => new Date(`${month}-01T12:00:00`).toLocaleDateString('
 const dayLabel = point => new Date(`${point.date}T12:00:00`).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
 const linePath = (points, x, y) => points.map((point, index) => `${index ? 'L' : 'M'}${x(point.day)},${y(point.value)}`).join(' ')
 
-export function NetProjectionChart({ model, periodLabel }) {
+const growthPercent = value => `${value > 0 ? '+' : ''}${new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} %`
+
+export function NetProjectionChart({ model, periodLabel, growthReference = null }) {
   const id = `net-${useId().replaceAll(':', '')}`
   const plot = useRef(null)
   const [width, setWidth] = useState(560)
@@ -66,8 +68,9 @@ export function NetProjectionChart({ model, periodLabel }) {
       <div className="net-projection-headline">
         <strong className={headline < 0 ? 'is-negative' : ''}>{headline === null ? '—' : signed(headline)}</strong>
         <span>{period === 'past' ? 'abonados netos al cierre' : 'abonados netos estimados'}</span>
+        {growthReference?.projectedPercent != null && <span className="subscriber-growth-reference">{growthPercent(growthReference.projectedPercent)} sobre la cartera actual</span>}
       </div>
-      {showChart && <div className="net-projection-current"><span>{period === 'past' ? 'Balance del mes' : 'Neto confirmado'}</span><b>{signed(model.netGrowth)}</b><small>{quantity(model.installations)} altas − {quantity(model.retirements)} bajas</small></div>}
+      {showChart && <div className="net-projection-current"><span>{period === 'past' ? 'Balance del mes' : 'Neto confirmado'}</span><b>{signed(model.netGrowth)}</b><small>{quantity(model.installations)} altas − {quantity(model.retirements)} bajas</small>{growthReference?.confirmedPercent != null && <small className="subscriber-growth-reference">{growthPercent(growthReference.confirmedPercent)} sobre la cartera actual</small>}</div>}
     </div>
     <div className="net-projection-plot" ref={plot} onPointerLeave={() => {
       if (!plot.current?.contains(document.activeElement)) setActiveDay(null)
@@ -96,6 +99,7 @@ export function NetProjectionChart({ model, periodLabel }) {
     </div>
     <div className="net-projection-legend" aria-label="Referencias de la proyección"><span><i />Neto confirmado</span>{period !== 'past' && <span><i className="estimated" />Estimación al cierre</span>}</div>
     <footer className="dashboard-chart-footer">
+      {growthReference && <p>{growthReference.baseCount !== null ? `Referencia: ${quantity(growthReference.baseCount)} abonados activos actuales. Porcentaje orientativo; no representa la tasa mensual sobre la cartera inicial.` : 'Porcentaje no disponible: no hay una base positiva de abonados activos.'}</p>}
       <p>{period === 'past' ? 'Mes cerrado · resultado confirmado.' : period === 'current'
         ? model.elapsedBusinessDays ? `${model.elapsedBusinessDays} de ${model.businessDays} días hábiles · promedio neto: ${decimal(model.dailyAverage)} por día.`
           : 'La estimación estará disponible después del primer día hábil.'

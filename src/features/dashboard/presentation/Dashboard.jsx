@@ -5,6 +5,7 @@ import { isAlarmInstallationRecord } from '../../../domain/services/installation
 import { isEquipmentRetirementRecord } from '../../../domain/services/equipment-retirement.mjs'
 import { annualChartMonths } from '../../../domain/dashboard/annual-chart-model.mjs'
 import { dashboardNetProjection, buildWorkComposition } from '../../../domain/dashboard/dashboard-insights.mjs'
+import { activeSubscriberCount, subscriberGrowthPercentages } from '../../../domain/dashboard/subscriber-growth.mjs'
 import { buildCollectionOverview } from '../../../domain/dashboard/collection-chart-model.mjs'
 import { triggerBrowserDownload, reportDownloadName } from '../../../infrastructure/browser/browser-download.mjs'
 import { serviceTypesLabel } from '../../../domain/services/multi-service.mjs'
@@ -30,6 +31,7 @@ export default function DashboardStatusView({ history = [], services = [], custo
   const [retirementModalOpen, setRetirementModalOpen] = useState(false)
   const [month, setMonth] = useState(() => currentLocalDate().slice(0, 7))
   const todayKey = currentLocalDate()
+  const subscriberCount = useMemo(() => activeSubscriberCount(customers), [customers])
   const year = month.slice(0, 4)
   const periodLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
   const { alarms, retirements, months, projection, composition } = useMemo(() => {
@@ -64,7 +66,7 @@ export default function DashboardStatusView({ history = [], services = [], custo
       <label className="month-filter"><span>Mes de análisis</span><input type="month" value={month} onChange={event => { if (event.target.value) setMonth(event.target.value) }} /></label>
     </div>
     <div className={`dashboard-block-grid${canViewCollections ? '' : ' without-collections'}`}>
-      <NetProjectionChart model={projection} periodLabel={periodLabel} />
+      <NetProjectionChart model={projection} periodLabel={periodLabel} growthReference={projection.period === 'current' && hasPermission('accounts.view') ? subscriberGrowthPercentages({ baseCount: subscriberCount, netGrowth: projection.netGrowth, projectedNetGrowth: projection.projectedNetGrowth }) : null} />
       <WorkCompositionChart model={composition} periodLabel={periodLabel} />
       <AnnualEvolutionChart months={months} year={year} subtitle="Servicios completados por mes" />
       {collections && <CollectionsOverviewChart model={collections} periodLabel={periodLabel} onOpenCollections={onOpenCollections} />}
