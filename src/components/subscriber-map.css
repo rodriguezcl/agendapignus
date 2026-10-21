@@ -1,14 +1,14 @@
 .subscriber-map-module { color: var(--ap-text); }
-.subscriber-map-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
+.subscriber-map-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: var(--ap-section-gap); }
 .subscriber-map-metrics article { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px 18px; background: var(--ap-surface); border: 1px solid var(--ap-border); border-top: 3px solid var(--ap-accent); border-radius: 8px; box-shadow: var(--ap-shadow); }
 .subscriber-map-metrics strong { font-size: 1.8rem; line-height: 1.2; }
 .subscriber-map-metrics small, .subscriber-map-results small, .subscriber-map-note { color: var(--ap-muted); }
 .subscriber-map-metrics button { background: transparent; border: 0; padding: 0; color: var(--ap-accent); text-decoration: underline; min-height: 28px; text-align: left; }
-.subscriber-map-filters { display: grid; grid-template-columns: 1.4fr repeat(4, minmax(0, 1fr)) auto; align-items: end; gap: 12px; margin-bottom: 20px; }
+.subscriber-map-filters { display: grid; grid-template-columns: 1.4fr repeat(4, minmax(0, 1fr)) auto; align-items: end; gap: 12px; margin-bottom: var(--ap-section-gap); }
 .subscriber-map-filters label { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; }
 .subscriber-map-filters :is(input, select) { width: 100%; min-width: 0; height: 44px; }
 .subscriber-map-filters > button { min-height: 44px; }
-.subscriber-map-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+.subscriber-map-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--ap-section-gap); align-items: start; }
 .subscriber-map-workspace.is-zones { grid-template-columns: minmax(0, 1fr); }
 .subscriber-map-main, .subscriber-map-results { min-width: 0; background: var(--ap-surface); border: 1px solid var(--ap-border); border-radius: 8px; box-shadow: var(--ap-shadow); overflow: hidden; }
 .subscriber-map-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 12px; border-bottom: 1px solid var(--ap-border); }

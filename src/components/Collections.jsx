@@ -66,13 +66,12 @@ export default function Collections({ history, customers = [], canManage, onSave
   if (!canView) return <div className="collections-page"><ModuleIntroduction><h1>Cobranzas</h1><p>La consulta de cobranzas requiere acceso al módulo y permiso para ver importes y medios de pago.</p></ModuleIntroduction></div>
   return <div className="collections-page">
     <ModuleIntroduction><h1>Cobranzas</h1><p>Revisá los pagos de cada servicio y confirmá su recepción.</p></ModuleIntroduction>
-    <p className="collections-help">Seguimiento desde el 14/10/2026. Los servicios cancelados dejan de generar cobranzas pendientes. Los avisos comienzan en la fecha del servicio o de su primera jornada vigente.</p>
     <div className="collections-filters collections-filters-compact">
       <label>Buscar<input type="search" placeholder="Cliente, servicio o forma de pago" value={query} onChange={event => setQuery(event.target.value)} /></label>
       <label>Estado del pago<select value={status} onChange={event => setStatus(event.target.value)}><option value="pending">Pendientes</option><option value="confirmed">Confirmados</option><option value="all">Todos</option></select></label>
       <label>Servicio desde<input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label>
       <label>Servicio hasta<input type="date" value={through} min={from || undefined} onChange={event => setThrough(event.target.value)} /></label>
-      <p className="collections-filter-summary" role="status"><b>{filtered.length}</b> cobranza(s) · ambos segmentos<small>Importes y cantidades según los filtros seleccionados.</small></p>
+      <p className="collections-filter-summary" role="status"><b>{filtered.length}</b> cobranza(s) · ambos segmentos</p>
     </div>
     <div className="collections-segments">{segments.map(segment => <CollectionSegment key={`${segment.id}:${filterKey}`} segment={segment} today={today} schedule={schedule} mayManage={mayManage} onSelect={setSelection} focusRecordId={selection?.id} />)}</div>
     {selectedVisibleRecord && <CollectionEditor key={selection.id} record={selection} currentRecord={selectedVisibleRecord} effectiveRecord={schedule(selectedVisibleRecord)} customers={customers} serviceDate={schedule(selection).date} canManage={mayManage(selectedVisibleRecord)} onSave={onSave} close={() => setSelection(null)} onSaved={message => { setSelection(null); setNotice(message) }} />}

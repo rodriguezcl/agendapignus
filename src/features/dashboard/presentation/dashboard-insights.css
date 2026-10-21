@@ -29,7 +29,7 @@
   --insight-slice-6: #d7a36b;
   --insight-slice-7: #a0b0c3;
 }
-.dashboard-block-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; gap: 20px; }
+.dashboard-block-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; gap: var(--ap-section-gap); }
 .app-shell[data-theme] .dashboard-block-grid > article { min-width: 0; margin: 0; }
 .dashboard-block-grid.without-collections > .annual-evolution-card { grid-column: 1 / -1; }
 .dashboard-block-grid > .annual-evolution-card { display: flex; flex-direction: column; }

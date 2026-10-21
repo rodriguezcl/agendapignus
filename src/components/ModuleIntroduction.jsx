@@ -8,5 +8,5 @@ export default function ModuleIntroduction({ children }) {
   useEffect(() => { setTarget(document.getElementById('module-description-slot')) }, [])
   if (!target) return <div>{children}</div>
   const description = React.Children.toArray(children).find(child => child.type === 'p' && child.props.className !== 'eyebrow')
-  return <><span className="module-intro-placeholder" hidden />{createPortal(<div className="topbar-module-description">{description?.props.children}</div>, target)}</>
+  return <><span className="module-intro-placeholder" hidden />{description && createPortal(<div className="topbar-module-description">{description.props.children}</div>, target)}</>
 }

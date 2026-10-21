@@ -80,7 +80,7 @@ function EmployeeForm({ form, setForm, roles, save, cancel, editing, canEnableTe
           <input type="checkbox" checked={!restrictedRole && form.technicalEnabled === true} disabled={saving || !can('employees.technical', canEnableTechnical) || restrictedRole} aria-describedby="employee-technical-help" onChange={event => setForm({ ...form, technicalEnabled: event.target.checked })} />
           <span>Puede realizar servicios técnicos</span>
         </label>
-        <p id="employee-technical-help">{restrictedRole ? 'Este rol es de solo lectura y no admite servicios técnicos.' : granular ? 'La habilitación requiere el permiso correspondiente y no reemplaza los permisos de ejecución.' : 'Conserva su rol y agrega el acceso a Mis servicios. Solo Administración puede cambiar esta habilitación.'}</p>
+        <p id="employee-technical-help">{restrictedRole ? 'Este rol es de solo lectura y no admite servicios técnicos.' : granular ? 'Su rol también debe permitir realizar servicios técnicos.' : 'Conserva su rol y agrega el acceso a Mis servicios. Solo Administración puede cambiar esta habilitación.'}</p>
       </div>
       <div className="employee-form-actions">
         <button title="Guardá los datos y la configuración del colaborador." className="primary" disabled={saving}><Icon name="check" />{saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Guardar colaborador'}</button>

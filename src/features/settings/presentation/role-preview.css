@@ -1,5 +1,4 @@
-.role-preview-launch { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; padding: 14px; background: var(--ap-surface-alt); border: 1px solid var(--ap-border); border-radius: 8px; }
-.role-preview-launch p { margin: 0; color: var(--ap-muted); line-height: 1.5; }
+.role-preview-launch { display: flex; align-items: center; justify-content: flex-end; gap: 16px; margin-top: 16px; }
 .role-preview-launch button, .role-save-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .role-preview-modal.modal { --ap-modal-width: 1120px; width: min(1120px, calc(100vw - 32px)); max-width: 1120px; max-height: calc(100dvh - 32px); overflow-y: auto; box-sizing: border-box; padding: 24px; color: var(--ap-text); background: var(--ap-surface); }
 .role-preview-modal :is(h2, h3, h4) { color: var(--ap-text); }
@@ -58,6 +57,7 @@
 .role-preview-hidden small { display: block; margin-top: 4px; color: var(--ap-muted); line-height: 1.5; }
 .role-preview-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 18px; }
 .role-preview-footer > span { color: var(--ap-muted); font-size: 12px; line-height: 1.5; }
+.role-preview-footer > button:only-child { margin-left: auto; }
 @media (max-width: 760px) {
   .role-preview-launch { align-items: stretch; flex-direction: column; }
   .role-preview-modal.modal { padding: 18px; }

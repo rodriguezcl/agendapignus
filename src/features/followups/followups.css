@@ -1,9 +1,9 @@
 .followups-tabs { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0; }
 .followups-filters { display:grid; grid-template-columns:2fr 1fr 1fr; gap:16px; margin-bottom:20px; }
 .followups-filters label,.followup-management label { display:flex; flex-direction:column; gap:8px; }
-.followups-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.followups-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--ap-section-gap); }
 .followups-list article,.followup-detail { padding:22px; overflow-wrap:anywhere; }
-.followup-detail { margin-top:24px; }
+.followup-detail { margin-top:var(--ap-section-gap); }
 .followup-detail li,.followup-summary li { margin-bottom:12px; }
 .followup-summary { padding:14px; border:1px solid var(--ap-border,#d5e1d8); border-radius:8px; margin:12px 0; overflow-wrap:anywhere; }
 .followup-management { display:grid; gap:14px; }

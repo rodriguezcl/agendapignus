@@ -54,7 +54,7 @@
 
 .app-shell[data-theme] :is(.accounts-bar, .audit-filters) {
   padding: 16px;
-  margin-block: 0 20px;
+  margin-block: 0 var(--ap-section-gap);
   background: var(--ap-surface);
   border: 1px solid var(--ap-border);
   border-radius: var(--ap-radius);
@@ -369,7 +369,9 @@ body .configuration-history > summary span { background: var(--ap-surface) !impo
 .app-shell[data-theme] .weekly-board .weekly-day-preview-trigger:focus-visible { outline: 2px solid var(--ap-accent); outline-offset: -3px; }
 
 /* Configuration shares the same card language as operational modules. */
-.app-shell[data-theme] .settings-section { padding: 24px; gap: 18px; }
+.app-shell[data-theme] .settings-section { padding: 24px; gap: 18px; margin-bottom: var(--ap-section-gap); }
+.app-shell[data-theme] .settings-grid { gap: var(--ap-section-gap); }
+.app-shell[data-theme] :is(.help-center, .help-layout, .role-permission-layout) { gap: var(--ap-section-gap); }
 .app-shell[data-theme] .settings-section.data-card > h2 { border-bottom: 1px solid var(--ap-border); padding: 0 0 16px; }
 .app-shell[data-theme] .settings-section > p { color: var(--ap-muted) !important; }
 .app-shell[data-theme] .settings-grid .roles-card > h2 { background: var(--ap-surface-alt); }
@@ -435,7 +437,7 @@ body .configuration-history > summary span { background: var(--ap-surface) !impo
 :is(.app-shell[data-theme], .technician-page) .help-tip > span { background: var(--ap-text); color: var(--ap-surface); }
 
 /* Cards in the field keep large touch targets and the same neutral surfaces. */
-.technician-page .technician-service { padding: 22px; margin-bottom: 20px; }
+.technician-page .technician-service { padding: 22px; margin-bottom: var(--ap-section-gap); }
 .technician-page :is(.technician-content h1, .technician-service h2, .tech-client, .technician-service-head > div > b) { color: var(--ap-text) !important; }
 .technician-page :is(.technician-help, .technician-service-head small, .reported-at, .technician-history-search small) { color: var(--ap-muted) !important; }
 .technician-page .technician-service-head > span { background: var(--ap-accent-soft); color: var(--ap-accent); border-radius: 6px; }
@@ -513,15 +515,17 @@ body .configuration-history > summary span { background: var(--ap-surface) !impo
 .app-shell[data-theme] .audit-filters-compact > label { flex: 1 1 200px; min-width: 0; }
 .app-shell[data-theme] .audit-filters-compact > .audit-search { flex-grow: 2; }
 .app-shell[data-theme] .audit-filters-compact > span { align-self: center; }
-.followups-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 20px; margin: 0 0 20px; }
+.followups-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 20px; margin: 0 0 var(--ap-section-gap); }
 .followups-toolbar > .followups-tabs { flex: 0 1 auto; margin: 0; }
 .followups-toolbar > .followups-filters { flex: 1 1 540px; min-width: 0; margin: 0; }
 .collections-page .collections-filters-compact { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 16px; }
 .collections-filters-compact > label { flex: 1 1 150px; }
 .collections-filters-compact > label:first-child { flex: 2 1 240px; }
 .collections-filters-compact > .collections-filter-summary { flex: 1 1 200px; margin: 0; align-self: center; color: var(--ap-muted); font-size: 13px; }
-.collections-filter-summary small { display: block; margin-top: 4px; }
 .weekly-intro .weekly-actions > .weekly-date-navigation { flex: 0 1 auto; margin: 0; gap: 8px; }
+.monthly-team-help { margin: 0 0 16px; color: var(--ap-muted); }
+.monthly-team-help > summary { cursor: pointer; color: var(--ap-text); }
+.monthly-team-help > p { margin: 8px 0 0; line-height: 1.5; }
 @media (max-width: 700px) {
   .weekly-intro .weekly-actions > .weekly-date-navigation { grid-column: 1 / -1; order: 3; }
   .followups-toolbar > .followups-tabs { width: 100%; }

@@ -65,7 +65,7 @@ export default function RolePreview({ role, dirty, onClose }) {
       </div>
       <details className="role-preview-scope"><summary>Alcance de los datos</summary><dl>{preview.scopes.map(scope => <div key={scope.id}><dt>{scope.label}</dt><dd>{scope.description}</dd></div>)}</dl><p>Las acciones sólo alcanzan registros que también se pueden consultar. Se mantienen las reglas de estado, horario y asignación de cada servicio.</p></details>
       {!!preview.hiddenModules.length && <details className="role-preview-hidden"><summary>Módulos no disponibles ({preview.hiddenModules.length})</summary><ul>{preview.hiddenModules.map(item => <li key={item.id}><Icon name="lock" size={16} /><div><b>{item.label}</b><small>{item.reason}</small></div></li>)}</ul></details>}
-      <footer className="role-preview-footer"><span>{dirty ? 'El borrador se conserva. Guardá el rol cuando termines de revisarlo.' : 'Podés volver a la configuración para ajustar este rol.'}</span><button type="button" className="secondary" title="Volvé a configurar el rol sin perder el borrador." onClick={onClose}>Volver a configurar</button></footer>
+      <footer className="role-preview-footer">{dirty && <span>El borrador se conserva. Guardá el rol cuando termines de revisarlo.</span>}<button type="button" className="secondary" title="Volvé a configurar el rol sin perder el borrador." onClick={onClose}>Volver a configurar</button></footer>
     </section>
   </div>
 }

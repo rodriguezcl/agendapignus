@@ -23,8 +23,13 @@ body,
   --ap-topbar: #ffffff;
   --ap-sidebar-text: #d0d4da;
   --ap-control-height: 44px;
+  --ap-section-gap: 20px;
   --ap-overlay: rgb(18 24 32 / 44%);
   color-scheme: light;
+}
+
+@media (max-width: 700px) {
+  :root, body, .app-shell[data-theme], .technician-page[data-theme] { --ap-section-gap: 16px; }
 }
 
 body.dark,

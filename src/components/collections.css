@@ -1,6 +1,6 @@
 .collections-page { min-width: 0; color: var(--ap-text); }
 .collections-help, .collections-table small, .collection-trace small { color: var(--ap-muted); }
-.collections-segments { display: grid; gap: 24px; }
+.collections-segments { display: grid; gap: var(--ap-section-gap); }
 .collections-segment { min-width: 0; border: 1px solid var(--ap-border); border-top: 3px solid var(--ap-accent); border-radius: 8px; background: var(--ap-surface); box-shadow: var(--ap-shadow); overflow: hidden; }
 .collections-segment[data-segment="future"] { border-top-color: var(--ap-info); }
 .collections-segment-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; padding: 18px 20px 14px; }
@@ -22,7 +22,7 @@
 .collections-segment > .collections-table-wrap { border-width: 1px 0 0; border-radius: 0; }
 .collections-segment > .collections-pagination { padding: 0 20px 16px; flex-wrap: wrap; }
 .collections-help { font-size: 13px; line-height: 1.5; }
-.collections-filters { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(140px, 1fr)); gap: 12px; align-items: end; margin-top: 20px; }
+.collections-filters { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(140px, 1fr)); gap: 12px; align-items: end; margin: 0 0 var(--ap-section-gap); }
 .collections-filters label, .collection-fields label, .collections-editor form label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .collections-filters input, .collections-filters select, .collections-editor input, .collections-editor select, .collections-editor textarea { width: 100%; min-width: 0; box-sizing: border-box; color: var(--ap-text); background: var(--ap-input); border: 1px solid var(--ap-border); }
 .collections-table-wrap { border: 1px solid var(--ap-border); border-radius: 8px; overflow: auto; background: var(--ap-surface); }
