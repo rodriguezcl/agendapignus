@@ -1,20 +1,7 @@
-import { isActiveSubscriber } from '../customers/subscriber-policy.mjs'
+import { activeSubscribers } from '../customers/subscriber-policy.mjs'
 
-/** Percentages require an explicit, positive subscriber base. Unknown is not zero. */
 export function activeSubscriberCount(customers = []) {
-  const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
-  const accounts = new Set(), ids = new Set()
-  let count = 0
-  for (const customer of customers) {
-    const account = normalize(customer.account).replace(/\s/g, '')
-    const id = String(customer.customerId || '')
-    if (!isActiveSubscriber(customer)) continue
-    if ((!account && !id) || (account && accounts.has(account)) || (id && ids.has(id))) continue
-    if (account) accounts.add(account)
-    if (id) ids.add(id)
-    count++
-  }
-  return count
+  return activeSubscribers(customers).length
 }
 
 export function subscriberGrowthPercentages({ baseCount, netGrowth, projectedNetGrowth } = {}) {
