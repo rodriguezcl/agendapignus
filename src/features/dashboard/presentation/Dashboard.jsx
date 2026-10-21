@@ -10,13 +10,11 @@ import { dashboardNetProjection, buildWorkComposition } from '../../../domain/da
 import { activeSubscriberCount, subscriberGrowthPercentages } from '../../../domain/dashboard/subscriber-growth.mjs'
 import { buildCollectionOverview } from '../../../domain/dashboard/collection-chart-model.mjs'
 import { triggerBrowserDownload, reportDownloadName } from '../../../infrastructure/browser/browser-download.mjs'
-import { serviceTypesLabel } from '../../../domain/services/multi-service.mjs'
 import ModuleIntroduction from '../../../components/ModuleIntroduction.jsx'
 import AnnualEvolutionChart from '../../../components/AnnualEvolutionChart.jsx'
 import Icon from '../../../components/ui/Icon.jsx'
 import LocationInstallationsModal from '../../../components/LocationInstallationsModal.jsx'
-import { retirementClientLabel } from '../../../domain/customers/retirement-label.mjs'
-import { currentLocalDate, prettyDate } from '../../../presentation/formatting.mjs'
+import { currentLocalDate } from '../../../presentation/formatting.mjs'
 import { NetProjectionChart, WorkCompositionChart } from './DashboardInsights.jsx'
 import CollectionsOverviewChart from './CollectionsOverviewChart.jsx'
 
@@ -82,12 +80,6 @@ export default function DashboardStatusView({ history = [], services = [], custo
       {distribution && <SubscriberDistributionChart model={distribution} />}
     </div>
     {canDetail && locationDetail && <LocationInstallationsModal records={alarms} category={locationDetail} label={locationDetail === 'all' ? 'Todas las instalaciones' : zones.find(([key]) => key === locationDetail)?.[1]} month={month} zoneOf={zoneOf} close={() => setLocationDetail(null)} />}
-    {canDetail && retirementModalOpen && <RetirementDetailsModal records={retirements} month={month} close={() => setRetirementModalOpen(false)} download={download} />}
+    {canDetail && retirementModalOpen && <LocationInstallationsModal records={retirements} retirements label="Retiros de alarma" month={month} close={() => setRetirementModalOpen(false)} />}
   </div>
-}
-
-function RetirementDetailsModal({ records, month, close, download }) {
-  const { can } = useActionPermissions()
-  const monthName = new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
-  return <div className="modal-layer" role="dialog" aria-modal="true" aria-label="Detalle de bajas de servicio"><div className="modal alarm-details-modal retirement-details-modal"><button title="Cerrá esta ventana y volvé a la pantalla anterior." className="close-modal" onClick={close} aria-label="Cerrar"><Icon name="close" /></button><p className="eyebrow">BAJAS DE SERVICIO</p><h2>{records.length} retiro{records.length === 1 ? '' : 's'} de alarma en {monthName}</h2><p>Estos registros se descuentan de las nuevas instalaciones para calcular el crecimiento neto real.</p><div className="alarm-details-list">{records.length ? records.map(record => <article key={record.id}><div><b>{retirementClientLabel(record)}</b><small>{prettyDate(record.date)}{record.time ? ` · ${record.time} Hs` : ''}</small></div><div className="alarm-detail-data"><span><b>Servicio:</b> {serviceTypesLabel(record)}</span>{can('records.contact') && <span><b>Dirección:</b> {record.address || 'Sin dirección'}</span>}<span><b>Técnicos:</b> {record.technicians?.join(' / ') || 'Sin asignar'}</span>{record.detail && <span><b>Detalle:</b> {record.detail}</span>}</div></article>) : <div className="empty-state">No hay bajas de servicio completadas para este período.</div>}</div><div className="modal-actions">{can('records.export') && <button title="Descargá el listado completo de retiros de equipo en Excel." className="secondary" onClick={() => download('retirements')}><Icon name="upload" size={16} />Descargar Excel completo</button>}{can('records.export') && <button title="Descargá el listado completo de retiros de equipo en PDF." className="secondary" onClick={() => download('retirements', 'pdf')}><Icon name="upload" size={16} />Descargar PDF completo</button>}<button title="Cerrá esta ventana y volvé a la pantalla anterior." className="primary" onClick={close}><Icon name="close" size={16} />Cerrar</button></div></div></div>
 }

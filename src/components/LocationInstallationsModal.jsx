@@ -1,13 +1,15 @@
+import { retirementClientLabel } from '../domain/customers/retirement-label.mjs'
+import { serviceTypesLabel } from '../domain/services/multi-service.mjs'
 import { useActionPermissions } from '../presentation/hooks/useActionPermissions.mjs'
 import React, { useEffect, useRef } from 'react'
 import './location-installations-modal.css'
 
-export default function LocationInstallationsModal({ records, category, label, month, zoneOf, close }) {
+export default function LocationInstallationsModal({ records, category, label, month, zoneOf, close, retirements = false }) {
   const { can } = useActionPermissions()
   const modal = useRef(null)
   const closeButton = useRef(null)
-  const showSubscription = can('records.financial') && !['docta', 'nobu-town'].includes(category)
-  const rows = records.filter(record => category === 'all' || zoneOf(record) === category)
+  const showSubscription = !retirements && can('records.financial') && !['docta', 'nobu-town'].includes(category)
+  const rows = records.filter(record => retirements || category === 'all' || zoneOf(record) === category)
     .slice().sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.time || '').localeCompare(String(b.time || '')) || String(a.client || '').localeCompare(String(b.client || ''), 'es'))
   useEffect(() => {
     const previous = document.activeElement
@@ -31,18 +33,19 @@ export default function LocationInstallationsModal({ records, category, label, m
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
       }
     }}>
-      <button title="Cerrá el detalle de instalaciones de esta ubicación." ref={closeButton} type="button" className="close-modal" aria-label="Cerrar detalle por ubicación" onClick={close}>×</button>
-      <p className="eyebrow">ALTAS DE SERVICIO · DETALLE POR UBICACIÓN</p>
+      <button title="Cerrá el detalle y volvé al resumen." ref={closeButton} type="button" className="close-modal" aria-label="Cerrar detalle" onClick={close}>×</button>
+      <p className="eyebrow">{retirements ? 'BAJAS DE SERVICIO' : 'ALTAS DE SERVICIO · DETALLE POR UBICACIÓN'}</p>
       <h2 id="location-installations-title">{label}</h2>
-      <p>{new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} · {rows.length} instalación(es) completada(s)</p>
-      {rows.length ? <div className="location-installations-table" tabIndex={0} role="region" aria-label="Listado de instalaciones">
-        <table><thead><tr>{['Fecha', 'Cliente', ...(can('records.contact') ? ['Dirección', 'Contacto'] : []), 'Técnicos asignados', ...(showSubscription ? ['Abono mensual', 'Meses congelados', 'Cantidad de meses'] : [])].map(header => <th scope="col" key={header}>{header}</th>)}</tr></thead>
-          <tbody>{rows.map(record => { const applies = !['docta', 'nobu-town'].includes(zoneOf(record)); return <tr key={record.id}>
-            <td>{record.date?.split('-').reverse().join('/')}</td><td>{record.client || 'Sin cliente'}</td>{can('records.contact') && <td>{record.address || '—'}</td>}{can('records.contact') && <td>{record.phone || '—'}</td>}<td>{record.technicians?.join(' / ') || '—'}</td>
+      <p>{new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} · {rows.length} {retirements ? 'retiro(s) de alarma completado(s)' : 'instalación(es) completada(s)'}</p>
+      {rows.length ? <div className="location-installations-table" tabIndex={0} role="region" aria-label={retirements ? 'Listado de bajas de servicio' : 'Listado de instalaciones'}>
+        <table><thead><tr>{['Fecha', 'Cliente', ...(can('records.contact') ? ['Dirección', 'Contacto'] : []), 'Técnicos asignados', ...(retirements ? ['Servicio', 'Detalle'] : []), ...(showSubscription ? ['Abono mensual', 'Meses congelados', 'Cantidad de meses'] : [])].map(header => <th scope="col" key={header}>{header}</th>)}</tr></thead>
+          <tbody>{rows.map(record => { const applies = !retirements && !['docta', 'nobu-town'].includes(zoneOf(record)); return <tr key={record.id}>
+            <td>{record.date?.split('-').reverse().join('/')}</td><td>{retirements ? retirementClientLabel(record) : record.client || 'Sin cliente'}</td>{can('records.contact') && <td>{record.address || '—'}</td>}{can('records.contact') && <td>{record.phone || '—'}</td>}<td>{record.technicians?.join(' / ') || '—'}</td>
+            {retirements && <><td>{serviceTypesLabel(record)}</td><td>{record.detail || '—'}</td></>}
             {showSubscription && <><td>{applies ? money(record.monthlyFee) : 'No aplica'}</td><td>{!applies ? 'No aplica' : record.freezeMonthlyFee === true ? 'Sí' : record.freezeMonthlyFee === false ? 'No' : 'Sin registrar'}</td><td>{!applies ? 'No aplica' : record.freezeMonthlyFee ? record.frozenMonths || 'Sin registrar' : '—'}</td></>}
           </tr> })}</tbody></table>
-      </div> : <p className="empty-state">No hay instalaciones completadas para esta ubicación en el mes seleccionado.</p>}
-      <div className="modal-actions"><button title="Cerrá el detalle y volvé al resumen de instalaciones." type="button" className="secondary" onClick={close}>Cerrar</button></div>
+      </div> : <p className="empty-state">{retirements ? 'No hay bajas de servicio completadas en el mes seleccionado.' : 'No hay instalaciones completadas para esta ubicación en el mes seleccionado.'}</p>}
+      <div className="modal-actions"><button title="Cerrá el detalle y volvé al resumen general." type="button" className="secondary" onClick={close}>Cerrar</button></div>
     </section>
   </div>
 }
