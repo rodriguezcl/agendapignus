@@ -308,6 +308,27 @@ body .configuration-history > summary span { background: var(--ap-surface) !impo
 }
 
 .app-shell[data-theme] .weekly-board .week-team-header { min-height: 52px; padding: 10px 12px; }
+.app-shell[data-theme] .weekly-team-actions {
+  --weekly-team-action-size: 30px;
+  flex-shrink: 0;
+}
+.app-shell[data-theme] .weekly-team-actions .weekly-technicians-picker { flex-shrink: 0; }
+.app-shell[data-theme] .weekly-team-actions :is(.weekly-remove-team, .weekly-add-tech-button) {
+  box-sizing: border-box;
+  flex: 0 0 var(--weekly-team-action-size);
+  width: var(--weekly-team-action-size);
+  height: var(--weekly-team-action-size);
+  min-width: var(--weekly-team-action-size);
+  min-height: var(--weekly-team-action-size);
+  max-width: var(--weekly-team-action-size);
+  max-height: var(--weekly-team-action-size);
+  padding: 0 !important;
+  display: inline-grid;
+  place-items: center;
+}
+@media (pointer: coarse), (max-width: 640px) {
+  .app-shell[data-theme] .weekly-team-actions { --weekly-team-action-size: 44px; }
+}
 .app-shell[data-theme] .weekly-board .week-task-summary,
 .app-shell[data-theme] .weekly-board .week-task-summary.available-slot {
   background: var(--ap-surface) !important;
