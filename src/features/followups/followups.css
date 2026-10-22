@@ -2,6 +2,7 @@
 .followups-filters { display:grid; grid-template-columns:2fr 1fr 1fr; gap:16px; margin-bottom:20px; }
 .followups-filters label,.followup-management label { display:flex; flex-direction:column; gap:8px; }
 .followups-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--ap-section-gap); }
+.followups-list > .empty-state { grid-column:1 / -1; margin:0; }
 .followups-list article,.followup-detail { padding:22px; overflow-wrap:anywhere; }
 .followup-detail { margin-top:var(--ap-section-gap); }
 .followup-detail li,.followup-summary li { margin-bottom:12px; }
