@@ -3,13 +3,18 @@ const { validateAttachments } = require('./tickets-attachments.cjs')
 
 function createImapAdapter(config) {
   const { ImapFlow } = require('imapflow')
-  const client = new ImapFlow({ host: config.imapHost, port: config.imapPort, secure: true,
-    auth: { user: config.user, pass: config.password }, logger: false, disableAutoIdle: true,
-    connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000,
-    tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' } })
-  client.on('error', () => {})
+  let client
   return {
-    async connect() { await client.connect(); await client.mailboxOpen(config.mailbox, { readOnly: true }) },
+    async connect() {
+      const endpoint = await require('./ticket-mail-network.cjs').resolveMailEndpoint('imap', config.imapHost, config.imapPort)
+      client = new ImapFlow({ host: endpoint.host, port: endpoint.port, servername: endpoint.servername,
+        secure: config.imapSecurity !== 'starttls', doSTARTTLS: config.imapSecurity === 'starttls',
+        auth: { user: config.user, pass: config.password }, logger: false, disableAutoIdle: true,
+        connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000,
+        tls: { servername: endpoint.servername, rejectUnauthorized: true, minVersion: 'TLSv1.2' } })
+      client.on('error', () => {})
+      await client.connect(); await client.mailboxOpen(config.mailbox, { readOnly: true })
+    },
     snapshot() { return { uidValidity: String(client.mailbox.uidValidity), uidNext: Number(client.mailbox.uidNext) } },
     async metadata(start, end) { return client.fetchAll(`${start}:${end}`, { uid: true, size: true, envelope: true }, { uid: true }) },
     async read(uid, limit) {
@@ -22,26 +27,33 @@ function createImapAdapter(config) {
       }
       return Buffer.concat(chunks)
     },
-    async close() { try { await client.logout() } catch { client.close() } }
+    async close() { if (client) { try { await client.logout() } catch { client.close() } } }
   }
 }
 
 function createSmtpAdapter(config) {
   const nodemailer = require('nodemailer')
-  const transport = nodemailer.createTransport({ host: config.smtpHost, port: config.smtpPort, secure: true,
-    auth: { user: config.user, pass: config.password }, connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000,
-    tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' }, disableFileAccess: true, disableUrlAccess: true, logger: false, debug: false })
+  let transport
   return {
     async send(row) {
+      if (!transport) {
+        const endpoint = await require('./ticket-mail-network.cjs').resolveMailEndpoint('smtp', config.smtpHost, config.smtpPort)
+        transport = nodemailer.createTransport({ host: endpoint.host, port: endpoint.port,
+          secure: config.smtpSecurity !== 'starttls', requireTLS: config.smtpSecurity === 'starttls',
+          auth: { user: config.smtpUser || config.user, pass: config.smtpPassword || config.password },
+          connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000,
+          tls: { servername: endpoint.servername, rejectUnauthorized: true, minVersion: 'TLSv1.2' },
+          disableFileAccess: true, disableUrlAccess: true, logger: false, debug: false })
+      }
       const payload = row.payload
       const attachments = validateAttachments(payload.attachments || []).map(file => ({ filename: file.fileName, content: Buffer.from(file.data, 'base64'), contentType: file.mimeType }))
-      return transport.sendMail({ from: { name: 'Tickets · Agentec', address: config.address }, to: payload.to,
+      return transport.sendMail({ from: { name: config.senderName || 'Tickets · Agentec', address: config.address }, to: payload.to,
         envelope: { from: config.address, to: [payload.to] }, subject: payload.subject, text: payload.text,
         messageId: row.message_id, inReplyTo: payload.inReplyTo || undefined, references: payload.references || [], attachments,
         headers: { 'X-Agentec-Ticket': row.ticket_id, 'X-Auto-Response-Suppress': 'All' },
         disableFileAccess: true, disableUrlAccess: true })
     },
-    close() { transport.close() }
+    close() { transport?.close() }
   }
 }
 
@@ -127,7 +139,7 @@ async function runTicketMail({ config, mailStore, ticketStore, imapFactory = cre
           await mailStore.skip(config.mailboxKey, snapshot.uidValidity, item.uid, message.loop ? 'loop' : message.bounce ? 'bounce' : 'automated')
           summary.skipped++
         } else {
-          const result = await ticketStore.ingestMail({ ...message, mailboxKey: config.mailboxKey, uidValidity: String(snapshot.uidValidity), uid: item.uid, mode: config.mode })
+          const result = await ticketStore.ingestMail({ ...message, areaId: config.areaId, mailboxKey: config.mailboxKey, uidValidity: String(snapshot.uidValidity), uid: item.uid, mode: config.mode })
           if (result.duplicate) summary.duplicates++; else summary.received++
         }
         // Persistimos después del ticket: ante una interrupción ingestMail se puede repetir sin duplicar.

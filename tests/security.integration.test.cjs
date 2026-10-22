@@ -471,7 +471,7 @@ test.beforeEach(async () => {
   const publicDirectory = path.join(temporaryDirectory, 'public')
   fs.mkdirSync(publicDirectory)
   fs.writeFileSync(path.join(publicDirectory, 'index.html'), '<!doctype html><html><body><div id="root"></div></body></html>')
-  serverProcess = spawn(process.execPath, ['server.cjs'], { cwd: root, env: { ...process.env, PIGNUS_PORT: String(port), PIGNUS_HOST: '127.0.0.1', PIGNUS_DATA_DIR: temporaryDirectory, PIGNUS_PUBLIC_DIR: publicDirectory }, stdio: ['ignore', 'pipe', 'pipe'] })
+  serverProcess = spawn(process.execPath, ['server.cjs'], { cwd: root, env: { ...process.env, TICKETS_MAIL_ENABLED: 'false', TICKETS_MAIL_ENCRYPTION_KEY: 'clave-ficticia-de-correo-para-pruebas-http', TICKETS_MAIL_WORKER_SECRET: 'clave-ficticia-del-proceso-para-pruebas-http', PIGNUS_PORT: String(port), PIGNUS_HOST: '127.0.0.1', PIGNUS_DATA_DIR: temporaryDirectory, PIGNUS_PUBLIC_DIR: publicDirectory }, stdio: ['ignore', 'pipe', 'pipe'] })
   serverErrorOutput = ''
   serverProcess.stderr.on('data', chunk => { serverErrorOutput = (serverErrorOutput + chunk).slice(-8000) })
   await waitForServer()
@@ -1745,4 +1745,36 @@ test('Tickets: informe técnico se incorpora una vez y se gestiona fuera del est
   const saved=(await resolved.json()).ticket;assert.equal(saved.status,'Resuelto');assert.equal(saved.messages.length+saved.events.length,3)
   const service=(await state(admin)).history.find(r=>r.id===record.id);assert.equal(service.technicalObservation,report.observation)
   const tampered=await api('/api/history/'+record.id,admin,{method:'PATCH',body:JSON.stringify({base:service,record:{...service,followup:undefined}})});assert.equal(tampered.status,409)
+})
+
+test('Tickets: administración del correo protege credenciales y proceso automático por HTTP', async () => {
+  const admin = await login('qa-admin@pignus.test'), tech = await login('qa-tech@pignus.test')
+  assert.equal((await api('/api/tickets/mail', null)).status, 401)
+  assert.equal((await api('/api/tickets/mail', tech)).status, 403)
+  assert.equal((await api('/api/tickets/mail/process', admin, { method: 'POST' })).status, 401)
+  const first = await api('/api/tickets/mail', admin)
+  assert.equal(first.status, 200, await first.clone().text())
+  const initial = await first.json()
+  const settings = { ...initial.settings, address: 'soporte@example.com', senderName: 'Soporte QA', areaId: 'technical',
+    incoming: { ...initial.settings.incoming, user: 'soporte@example.com', password: 'contraseña-ficticia-http-privada' } }
+  const input = { action: 'save', version: initial.version, settings }
+  const forbidden = await api('/api/tickets/mail', tech, { method: 'POST', body: JSON.stringify(input) })
+  assert.equal(forbidden.status, 403)
+  const saved = await api('/api/tickets/mail', admin, { method: 'POST', body: JSON.stringify(input) })
+  assert.equal(saved.status, 200, await saved.clone().text())
+  const data = await saved.json()
+  assert.equal(data.enabled, false)
+  assert.equal(data.settings.incoming.passwordConfigured, true)
+  assert.doesNotMatch(JSON.stringify(data), /contraseña-ficticia-http-privada|ciphertext|"password":/)
+  const stale = await api('/api/tickets/mail', admin, { method: 'POST', body: JSON.stringify(input) })
+  assert.equal(stale.status, 409)
+  const active = await api('/api/tickets/mail', admin, { method: 'POST', body: JSON.stringify({ action: 'activate', version: data.version }) })
+  assert.equal(active.status, 409, 'No activar sin pruebas guardadas')
+  const fixture = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const raw = fixture.prepare("SELECT data FROM pignus_ticket_settings WHERE id='mail-channel'").get().data
+  fixture.close()
+  assert.doesNotMatch(raw, /contraseña-ficticia-http-privada/)
+  const response = await fetch(origin + '/api/tickets/mail/process', { method: 'POST', headers: { Authorization: 'Bearer clave-ficticia-del-proceso-para-pruebas-http' } })
+  assert.equal(response.status, 200, await response.clone().text())
+  assert.equal((await response.json()).enabled, false)
 })

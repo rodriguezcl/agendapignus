@@ -36,7 +36,8 @@ FUNCIONALIDADES
   guardias anuales, con acceso según los permisos del rol.
 - Configuración: roles y permisos por función, dependencias entre capacidades,
   vista previa por rol y selección de notificaciones; categorías y prioridades
-  de Tickets, áreas responsables e integrantes.
+  de Tickets, áreas responsables e integrantes; formularios de correo entrante
+  y saliente con pruebas de conexión y activación controlada.
 - Auditoría y Centro de ayuda: seguimiento de acciones y orientación de uso.
 
 Agenda semanal concentra la programación diaria de servicios e incluye un
@@ -46,9 +47,12 @@ La implementación de Agenda del día se conserva internamente por compatibilida
 Los recordatorios de baja en SoftGuard requieren que una persona realice la
 gestión externa y registre su resolución. No ejecutan una baja automática.
 
-El correo de Tickets está desactivado por defecto. Su recepción y respuesta
-requieren configurar el buzón y programar el worker del servidor. El modo de
-prueba no envía correos y la primera activación omite los mensajes anteriores.
+El correo de Tickets está desactivado por defecto. El buzón se configura en
+Administración > Configuración > Tickets > Correo de soporte, con formularios
+separados de entrada IMAP y salida SMTP. Las contraseñas se guardan cifradas
+y las pruebas de conexión no envían mensajes. El procesamiento puede ejecutarse
+manualmente o programarse mediante el worker/endpoint protegido del servidor.
+El modo de prueba no envía correos y la primera activación omite los anteriores.
 Zammad puede seguir operativo en paralelo: no se importa su historial ni su
 numeración. Ver `docs/TICKETS.md` antes de habilitar el canal de correo.
 

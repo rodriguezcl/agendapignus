@@ -35,18 +35,69 @@ Los permisos previos de Seguimientos se conservan como compatibilidad y se tradu
 
 Para que dos operadores detecten los reclamos cargados por sus compañeros, habilitar en su rol consulta, creación, observaciones y alcance de área; incorporarlos al área responsable de esas categorías en Configuración de Tickets. El aviso de coincidencias respeta ese alcance. Los roles granulares existentes requieren habilitar explícitamente las nuevas capacidades. La lectura de notas internas y la gestión administrativa se conceden por separado.
 
-## Correo y convivencia con Zammad
+## Correo: formulario de entrada y salida
 
-La conexión queda **desactivada por defecto**. Las credenciales sólo se guardan en variables del servidor, nunca en el repositorio o navegador. Los hosts de GoDaddy utilizados son IMAP TLS 993 y SMTP TLS 465. Confirmar que el plan contratado utiliza estos servidores; una cuenta Microsoft 365 requiere su propia configuración.
+Administración → Configuración → Tickets → Correo de soporte permite configurar un canal de correo desde Agentec. La cuenta inicia desactivada. El acceso al formulario y a sus operaciones exige el permiso de configuración de Tickets; una persona autorizada a responder casos no obtiene por ello acceso a las credenciales del canal.
 
-1. Preparar una cuenta/carpeta de prueba que reciba copias, sin interferir con la recepción de Zammad. Agentec no cambia flags ni elimina mensajes, pero no puede impedir que otro sistema los elimine del buzón compartido.
-2. Configurar las variables `TICKETS_MAIL_*` de `.env.example`. Para probar: `ENABLED=true`, `MODE=test`, `TEST_SOURCE_CONFIRMED=true` y datos de esa fuente aislada.
-3. Ejecutar `npm run mail:tickets`. La **primera ejecución guarda UIDNEXT como punto de partida y omite todo el correo anterior**. Enviar los mensajes de prueba después de esa activación.
-4. Programar el comando en un proceso con conexión PostgreSQL y salida IMAP/SMTP, con la frecuencia requerida. El proceso es acotado, usa una reserva del buzón para evitar ejecuciones superpuestas y guarda cursor/errores. No se añadió un cron a Vercel ni se contrató infraestructura automáticamente.
-5. Verificar recepción, vinculación manual de cuentas, adjuntos, duplicados, respuestas y alertas. El modo `test` nunca crea el transporte SMTP. Los tickets de prueba tampoco pueden responder al cliente después de cambiar el entorno a `live`.
-6. Activar `MODE=live` sólo al validar el canal real. El cambio de modo tiene su propio punto de activación, sin recuperar historia anterior. Mantener Zammad paralelo hasta aceptar la operación de Agentec; coordinar cuál sistema responde para evitar respuestas humanas duplicadas.
+El formulario separa **Correo entrante** de **Correo saliente** siguiendo la organización de la [configuración de cuentas de Zammad](https://admin-docs.zammad.org/en/latest/channels/email/accounts/account-setup.html). En Agentec se utiliza un único buzón de soporte, con área de destino, dirección y nombre de remitente; no se implementan POP3, Sendmail, archivo histórico ni múltiples cuentas.
 
-`npm run mail:tickets -- --status` consulta el estado sin descargar ni enviar mensajes. La pantalla Configuración muestra última ejecución correcta, error y estados de la cola. Un cambio de UIDVALIDITY requiere revisar el punto de activación: no se reinicia automáticamente ni importa mensajes históricos.
+| Sección | Datos y comportamiento |
+| --- | --- |
+| Identidad y destino | Dirección de soporte, nombre mostrado al responder y área responsable de los nuevos tickets recibidos. |
+| Correo entrante | IMAP: servidor, puerto, SSL/TLS o STARTTLS, usuario, contraseña y carpeta. La carpeta predeterminada es `INBOX`. Se verifica el certificado. |
+| Correo saliente | SMTP: servidor, puerto, SSL/TLS o STARTTLS, usuario y contraseña; admite reutilizar las credenciales de entrada mediante una opción explícita. |
+| Contraseñas | Una contraseña vacía conserva la ya guardada. El formulario indica si existe una credencial, sin volver a mostrarla. Para reemplazarla se ingresa el nuevo valor. |
+| Conservación | Los mensajes se conservan siempre: IMAP se abre en sólo lectura, sin borrar, mover ni marcar como leído. |
+| Operación | Guardar, probar conexión, activar en prueba u operativo, pausar y procesar una ejecución manual. El estado muestra ejecuciones y errores de forma resumida. |
+
+Para **GoDaddy Professional Email**, la configuración oficial es `imap.secureserver.net`, puerto `993`, SSL/TLS, y `smtpout.secureserver.net`, puerto `465`, SSL/TLS; el usuario suele ser la dirección completa. Verificar el producto contratado: estas instrucciones no configuran una cuenta Microsoft 365. [Configuración oficial de GoDaddy](https://www.godaddy.com/en-ph/help/use-imap-settings-to-add-my-professional-email-to-a-client-32204).
+
+Guardar datos deja el canal pausado e invalida las pruebas anteriores. Se verifica la misma revisión guardada antes de permitir la activación; las dos pruebas deben haber resultado correctas durante las últimas 24 horas. Probar entrada autentica y abre la carpeta en sólo lectura; probar salida usa `SMTP.verify`, **sin enviar un mensaje**. Esta última prueba no acredita entrega, aceptación de un remitente específico ni recepción por el cliente. Ese alcance coincide con lo documentado para [verificación de Nodemailer](https://nodemailer.com/smtp#verifying-the-configuration).
+
+Zammad también ofrece conservar mensajes, pero esa opción marca los importados como leídos; su verificación de cuenta envía correos de prueba. Agentec mantiene la lectura por UID sin modificar flags y no envía correos durante la prueba de conexión. La distinción permite conservar la convivencia acordada con Zammad. [Conservación y verificación en Zammad](https://admin-docs.zammad.org/en/latest/channels/email/accounts/account-setup.html#keep-messages-on-server).
+
+### Protección y persistencia de las credenciales
+
+Las contraseñas se reciben mediante HTTPS y se cifran en el servidor antes de persistir. No se incluyen en las respuestas de consulta, en la configuración general de la aplicación, en el almacenamiento del navegador ni en los registros de diagnóstico. Las credenciales de IMAP y SMTP son independientes cuando no se selecciona reutilizar las de entrada.
+
+Cambiar el servidor, usuario o dirección de correo exige volver a ingresar la contraseña correspondiente. La conexión admite servidores públicos con certificados válidos y los puertos estándar de IMAP/SMTP; no permite utilizar el formulario para conectarse a servicios de la red privada.
+
+El cifrado usa una clave derivada de `PIGNUS_SESSION_SECRET` mediante HKDF, con contexto propio del canal. Puede utilizarse una clave dedicada mediante `TICKETS_MAIL_ENCRYPTION_KEY`, de al menos 32 caracteres aleatorios. Debe existir la misma clave en la API y en cualquier worker externo que lea la base. La clave se mantiene en secretos del servidor, separada de la base de datos y de sus respaldos.
+
+Cambiar la clave de cifrado —incluido cambiar la clave de sesión cuando se usa como origen— puede impedir leer credenciales existentes. La rotación debe planificarse: pausar el canal, conservar la clave anterior para recuperación, definir la nueva clave en todos los procesos, volver a cargar las contraseñas, probar y activar nuevamente. No existe una recuperación de contraseñas desde la interfaz. No copiar secretos a tickets, commits ni mensajes de soporte.
+
+La configuración guardada en Agentec prevalece sobre la configuración histórica `TICKETS_MAIL_*` del entorno. Esas variables se conservan como compatibilidad para instalaciones anteriores; una vez guardado el canal, no son una segunda fuente para modificarlo. El estado activo o pausado también se conserva en la base.
+
+### Prueba inicial y convivencia con Zammad
+
+1. Preparar un **buzón o carpeta aislada de prueba** que reciba copias. Puede usarse `INBOX` de una cuenta exclusiva para pruebas; no usar el buzón operativo completo como fuente de prueba. Agentec no elimina mensajes, pero no puede impedir que otro sistema los elimine del buzón compartido.
+2. Cargar los datos en Correo de soporte, seleccionar la carpeta de prueba, guardar y probar entrada y salida. Confirmar que se trata de una fuente aislada antes de activar el modo Prueba.
+3. Activar y ejecutar el procesamiento manual. La **primera ejecución guarda UIDNEXT como punto de partida y omite todo el correo anterior**. Enviar los mensajes de prueba después de ese punto. Una conexión verificada por sí sola no inicia la recepción.
+4. Comprobar creación del ticket, clasificación en el área elegida, vinculación manual de cuentas, adjuntos, duplicados y errores. El modo Prueba no envía respuestas; los tickets creados como prueba tampoco pueden responder al cliente al cambiar luego a Operativo.
+5. Configurar y probar el programador periódico si se requiere recepción automática. El botón de procesamiento manual ejecuta un ciclo acotado y no crea una tarea periódica.
+6. Para pasar al buzón operativo, guardar la configuración final, repetir las pruebas y activar Operativo. El cambio de modo o identidad de buzón tiene su propio punto de activación; no recupera historia anterior. Coordinar qué sistema responde mientras Zammad continúa en paralelo.
+
+Una pausa conserva el cursor. Al reanudar la misma fuente y modo se continúa desde ese punto; no equivale a recrear un canal. Una carpeta o cuenta diferente necesita revisar el nuevo punto de activación. No cambiar de buzón con respuestas pendientes sin revisar primero la cola: los envíos conservan su vínculo con el canal de origen.
+
+### Ejecución automática y diagnóstico
+
+Hay tres formas de ejecutar el mismo procesamiento: desde el formulario con una sesión autorizada; mediante `npm run mail:tickets` en un proceso con acceso a PostgreSQL y a IMAP/SMTP; o mediante un programador externo que llame al endpoint protegido:
+
+```http
+POST /api/tickets/mail/process
+Authorization: Bearer <TICKETS_MAIL_WORKER_SECRET>
+Content-Type: application/json
+
+{}
+```
+
+`TICKETS_MAIL_WORKER_SECRET` es un secreto aleatorio de al menos 32 caracteres, diferente de la contraseña del buzón. Debe configurarse tanto en el servidor como en el almacén secreto del programador. No colocarlo en la URL, el repositorio, capturas ni logs. Sin un secreto válido, el endpoint no permite ejecuciones anónimas. El programador debe usar HTTPS, conservar el resultado de cada ejecución y alertar ante errores persistentes. La frecuencia y el servicio de ejecución se eligen según el volumen y el tiempo de atención esperado; no se contrata infraestructura al guardar el formulario.
+
+El CLI resuelve la configuración desde la misma base que la API. `npm run mail:tickets -- --status` consulta el estado sin descargar ni enviar mensajes. Se necesitan `DATABASE_URL` y la clave de cifrado correspondiente en el entorno del proceso. Los límites `TICKETS_MAIL_BATCH_SIZE` y `TICKETS_MAIL_MAX_RUN_MS` acotan el lote; las reservas de buzón impiden superposición entre las distintas formas de ejecución.
+
+No se agrega automáticamente un cron en Vercel. La documentación de Vercel limita Hobby a una ejecución diaria y rechaza durante el despliegue frecuencias mayores; por eso no se presupone suficiente para una bandeja de soporte. Un scheduler externo o un plan compatible debe configurarse expresamente. [Límites oficiales de Vercel Cron](https://vercel.com/docs/cron-jobs/usage-and-pricing).
+
+La pantalla muestra última ejecución correcta, error y estados de la cola. Un cambio de UIDVALIDITY requiere revisar el punto de activación: no se reinicia automáticamente ni importa mensajes históricos. Las pruebas de conexión no sustituyen la supervisión de las ejecuciones periódicas ni del espacio disponible en el buzón.
 
 La recepción deduplica por Message-ID (o huella del contenido cuando falta). Las respuestas se vinculan por encabezados y por `Ticket#`, comprobando que el remitente ya participa en el caso. Conocer un número no permite agregar mensajes a un caso ajeno. Una dirección no identificada abre un caso para clasificación y vinculación manual, sin inventar una cuenta.
 
@@ -67,10 +118,12 @@ Las respuestas salen de una cola transaccional. `queued`, `retry`, `sending`, `s
 
 ## Verificación y operación pendiente
 
-Pruebas de dominio, SQLite, PostgreSQL con PGlite y correo con adaptadores simulados: `node --test tests/tickets-store.test.cjs tests/ticket-mail.test.cjs`. La integración HTTP se verifica en `tests/security.integration.test.cjs`. Los datos usados en verificación visual son ficticios.
+Pruebas de dominio, SQLite, PostgreSQL con PGlite y correo con adaptadores simulados: `node --test tests/tickets-store.test.cjs tests/ticket-mail.test.cjs tests/ticket-mail-channel.test.cjs tests/ticket-mail-service.test.cjs`. La integración HTTP se verifica en `tests/security.integration.test.cjs`. Los datos usados en verificación visual son ficticios.
 
 Validación del 22/10/2026: compilación de producción aprobada; 32 pruebas del almacenamiento de Tickets y 18 de correo aprobadas; 43 comprobaciones de interfaz, permisos y compatibilidad aprobadas; 11 controles UX aprobados. La prueba en navegador cubrió alta, revisión y aporte a un duplicado, asignación, prioridad, resolución, reapertura y guardado de configuración, además de escritorio, móvil y tema oscuro.
 
 La suite general no queda completamente verde: conserva cinco fallos reproducidos también sobre `HEAD 6d6c5af`, anteriores a Tickets (descripción de botón en horarios mensuales, historial de configuración, selector de equipos mensuales y dos pruebas de controles vehiculares). La aserción de compatibilidad que aún esperaba el texto «Seguimientos» se actualizó a «Tickets» y sus cuatro pruebas volvieron a pasar. Estos fallos anteriores no se ocultan ni se modifican como parte del módulo.
 
-La conexión real a GoDaddy, el scheduler, las pruebas con mensajes reales y la decisión de habilitar correo operativo requieren configuración del entorno. No se hicieron envíos reales ni cambios en Zammad. La publicación requiere el despliegue normal del proyecto y revisión de permisos de los roles que participarán.
+La conexión real a GoDaddy se configura desde el formulario; la clave de cifrado y el secreto del programador permanecen en el entorno del servidor. El scheduler y la habilitación operativa deben configurarse expresamente. Las verificaciones automatizadas usan adaptadores de correo simulados: no acreditan credenciales reales ni entregabilidad. No se hicieron envíos reales ni cambios en Zammad como parte de este ajuste. La publicación requiere el despliegue normal del proyecto y revisión de permisos de los roles que participarán.
+
+Validación del formulario de correo (22/10/2026): 84 pruebas de Tickets, correo, canal y proceso aprobadas; 2 pruebas HTTP de Tickets aprobadas (incluyen permisos, credenciales y autenticación del proceso); 11 controles UX aprobados. Revisión visual con API simulada en escritorio, móvil de 390 px y tema oscuro, sin desbordamientos ni errores React. Las pruebas de conexión usaron adaptadores ficticios, sin acceder a GoDaddy.

@@ -14,7 +14,7 @@ function assertEndpointPermission(user, method, route) {
     if (!catalog.hasAnyWrite(user)) write.fail('state.write')
     return
   }
-  if (route === '/tickets/config') return require('tickets.configure')
+  if (route === '/tickets/config' || route === '/tickets/mail') return require('tickets.configure')
   if (route === '/tickets' || route.startsWith('/tickets/')) return write.requireAny(user, ['tickets.view', 'tickets.configure'])
   if (route === '/followups') return write.requireAny(user, ['followups.view', 'tickets.view'])
   if (route === '/technician/state') return require('technical.view')

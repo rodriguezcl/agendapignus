@@ -108,10 +108,11 @@ function ticketParticipantEmails(ticket) {
 }
 
 function prepareTicketReply(ticket, input, user, env = process.env) {
-  const config = ticketMailConfig(env)
+  const config = env.mailboxKey ? env : ticketMailConfig(env)
   if(ticket.mailMode==='test')throw error('Los tickets de prueba no pueden enviar respuestas al cliente.', 'MAIL_TEST_NO_SEND',409)
   if (!config.enabled) throw error('El correo de Tickets todavía no está habilitado.', 'MAIL_DISABLED', 409)
   if (config.mode !== 'live') throw error('El modo de prueba no permite enviar correos. Podés registrar una nota interna.', 'MAIL_TEST_NO_SEND', 409)
+  if (ticket.mailboxKey && ticket.mailboxKey !== config.mailboxKey) throw error('Este ticket pertenece a otra configuración de correo. Revisá la cuenta antes de responder.', 'MAIL_ACCOUNT_MISMATCH', 409)
   const text = String(input?.text || input?.body || input?.note || '').trim()
   if (!text || text.length > MAX_TEXT_LENGTH) throw error('La respuesta debe contener entre 1 y 40000 caracteres.', 'MAIL_INVALID_REPLY')
   const allowed = ticketParticipantEmails(ticket)

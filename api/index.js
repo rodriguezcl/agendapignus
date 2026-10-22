@@ -1217,6 +1217,15 @@ module.exports = async function handler(req, res) {
     if (process.env.VERCEL && !productionSecretsAreValid()) return send(res, 500, { error: 'La API no tiene configurados secretos de seguridad válidos.' })
     const sql = database()
     const route = routePath(req)
+    if (route === '/tickets/mail/process') {
+      const { createMailService, workerAuthorized } = require('./_lib/ticket-mail-service.cjs')
+      if (!workerAuthorized(req)) return send(res, 401, { error: 'Acceso no autorizado al proceso de correo.' })
+      if (req.method !== 'POST') return send(res, 405, { error: 'Método no permitido.' })
+      try {
+        const ticketStore = require('./_lib/tickets-http.cjs').storeFor(sql, 'sql')
+        return send(res, 200, await createMailService({ sql, ticketStore }).process())
+      } catch (error) { return send(res, error.statusCode || 500, { error: require('./_lib/ticket-mail.cjs').safeMailError(error).message }) }
+    }
     if (req.method === 'POST' && route === '/auth/login') return await handleLogin(req, res, sql)
     if (req.method === 'POST' && route === '/auth/password-reset-requests') return await handlePasswordResetRequest(req, res, sql)
     if (req.method === 'POST' && route === '/auth/logout') return await handleLogout(req, res, sql)

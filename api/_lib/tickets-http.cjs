@@ -6,6 +6,10 @@ function storeFor(connection, kind) {
 }
 async function ticketRequest({ connection, kind, user, state, method, route, query = {}, input = {} }) {
   const store = storeFor(connection, kind)
+  if (route === '/tickets/mail') {
+    const service = require('./ticket-mail-service.cjs').createMailService({ [kind]: connection, ticketStore: store })
+    return { body: await service.request({ method, input, user, state }) }
+  }
   if (!can(user, 'tickets.view') && !can(user, 'tickets.configure')) throw Object.assign(new Error('No tenés permiso para consultar tickets.'), { statusCode: 403 })
   await store.syncLegacy(state)
   if (route === '/tickets/attachments' && method === 'GET') {

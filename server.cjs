@@ -1697,6 +1697,13 @@ function handleCustomerImport(req, res, user) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${host}:${port}`)
+  if (url.pathname === '/api/tickets/mail/process') {
+    const { createMailService, workerAuthorized } = require('./api/_lib/ticket-mail-service.cjs')
+    if (!workerAuthorized(req)) return send(res, 401, { error: 'Acceso no autorizado al proceso de correo.' })
+    if (req.method !== 'POST') return send(res, 405, { error: 'Método no permitido.' })
+    const ticketStore = require('./api/_lib/tickets-http.cjs').storeFor(db, 'db')
+    return createMailService({ db, ticketStore }).process().then(result => send(res, 200, result)).catch(error => send(res, error.statusCode || 500, { error: require('./api/_lib/ticket-mail.cjs').safeMailError(error).message }))
+  }
   if (req.method === 'GET' && url.pathname === '/api/auth/session') {
     const user = sessionUser(req)
     const hadSessionCookie = Boolean(parseCookies(req.headers.cookie).pignus_session)
