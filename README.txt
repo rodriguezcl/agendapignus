@@ -2,12 +2,12 @@ AGENDA TÉCNICA PIGNUS
 =====================
 
 Plataforma web para coordinar la operación técnica de Pignus: planificación,
-ejecución de servicios, gestión de abonados y clientes, cobranzas y seguimiento.
+ejecución de servicios, gestión de abonados y clientes, cobranzas y tickets.
 La información se comparte entre usuarios según sus permisos y alcance.
 
-Aplicación publicada: https://agendapignus.vercel.app
+Aplicación publicada: https://agenda.pignusarg.com
 Responsable del proyecto: Cristian Leonardo Rodriguez.
-Revisión documental: 21 de octubre de 2026.
+Revisión documental: 22 de octubre de 2026.
 
 FUNCIONALIDADES
 ---------------
@@ -21,6 +21,11 @@ FUNCIONALIDADES
 - Portal técnico: servicios asignados, inicio, adelanto, informes de avance,
   finalización, cancelación y adjuntos, según las capacidades habilitadas.
 - Historial: consulta y trazabilidad de los servicios y sus informes técnicos.
+- Tickets: reclamos de abonados, solicitudes internas y pedidos técnicos,
+  con referencias Ticket#, prioridades por categoría, responsables y cronología.
+  Incluye aviso de casos abiertos por cuenta, aportes al mismo caso, fusión
+  explícita, adjuntos y vinculación de servicios. Reemplaza Seguimientos y
+  conserva los casos que ya existían en Agentec.
 - Abonados y clientes: importación, identificación, datos de contacto,
   ubicaciones e historial relacionado.
 - Cobranzas: segmentos actuales/pasados y futuros, correcciones, confirmación
@@ -30,7 +35,8 @@ FUNCIONALIDADES
   Esta última reúne horarios mensuales, equipos, responsables de flota y
   guardias anuales, con acceso según los permisos del rol.
 - Configuración: roles y permisos por función, dependencias entre capacidades,
-  vista previa por rol y selección de notificaciones.
+  vista previa por rol y selección de notificaciones; categorías y prioridades
+  de Tickets, áreas responsables e integrantes.
 - Auditoría y Centro de ayuda: seguimiento de acciones y orientación de uso.
 
 Agenda semanal concentra la programación diaria de servicios e incluye un
@@ -39,6 +45,12 @@ La implementación de Agenda del día se conserva internamente por compatibilida
 
 Los recordatorios de baja en SoftGuard requieren que una persona realice la
 gestión externa y registre su resolución. No ejecutan una baja automática.
+
+El correo de Tickets está desactivado por defecto. Su recepción y respuesta
+requieren configurar el buzón y programar el worker del servidor. El modo de
+prueba no envía correos y la primera activación omite los mensajes anteriores.
+Zammad puede seguir operativo en paralelo: no se importa su historial ni su
+numeración. Ver `docs/TICKETS.md` antes de habilitar el canal de correo.
 
 ESTRUCTURA
 ----------
@@ -89,6 +101,8 @@ instalar las dependencias del lockfile de forma reproducible.
 - `npm run test:concurrency`: pruebas de concurrencia y seguridad.
 - `npm run build`: compilación de producción.
 - `npm run analyze:build`: análisis de la carga del cliente compilado.
+- `npm run mail:tickets -- --status`: estado del canal de correo de Tickets,
+  sin descargar ni enviar mensajes; requiere la configuración del servidor.
 
 Las pantallas se cargan por módulo. Mantener las reglas de negocio fuera de
 App.jsx y verificar permisos, conflictos de edición y persistencia al cambiar
@@ -106,6 +120,8 @@ DOCUMENTACIÓN TÉCNICA
 - `docs/CONCURRENCIA.md`: revisiones, escrituras compartidas y conflictos.
 - `docs/save-performance.md`: guardado y respuesta de acciones frecuentes.
 - `docs/service-journeys.md`: servicios con varias jornadas.
+- `docs/TICKETS.md`: casos, permisos, numeración, concurrencia y activación
+  controlada del correo, sin migración del historial de Zammad.
 - `docs/DESPLIEGUE-VERCEL-SUPABASE.md`: infraestructura y verificaciones de
   publicación; distingue preparación inicial y migración de datos.
 - `docs/database-normalization.md`: antecedentes del modelo normalizado.

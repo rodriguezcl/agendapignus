@@ -10,17 +10,19 @@ function visible(record, user, state) {
 }
 function createFollowup(record, input, user, state, now) {
   if (input == null) return record.followup
-  if (!can(user, 'followups.create') || !assigned(record, user) || !read.serviceWritable(record, user, state)) fail('No tenés permiso para solicitar seguimiento de este servicio.', 403)
+  if (!(can(user, 'followups.create') || can(user, 'tickets.fromService')) || !assigned(record, user) || !read.serviceWritable(record, user, state)) fail('No tenés permiso para solicitar seguimiento de este servicio.', 403)
   if (record.vehicleControl) fail('El seguimiento corresponde a servicios de abonados o clientes.')
   if (record.followup) return record.followup
   const description = String(input.description || '').trim()
   if (!TYPES.includes(input.type) || !description || description.length > 2000) fail('Seleccioná el tipo e indicá la acción solicitada (hasta 2000 caracteres).')
-  return { id: `followup:${record.id}`, type: input.type, description, status: 'Pendiente', version: 1,
+  const relatedTicketId=String(input.relatedTicketId||'')
+  if(relatedTicketId&&!/^[a-zA-Z0-9-]{1,100}$/.test(relatedTicketId))fail('La referencia del ticket no es válida.')
+  return { relatedTicketId, id: `followup:${record.id}`, type: input.type, description, status: 'Pendiente', version: 1,
     createdAt: now, createdById: user.id, createdByName: user.name || 'Técnico',
     events: [{ action: 'Creó la solicitud', at: now, byId: user.id, byName: user.name || 'Técnico', note: description }] }
 }
 function assertFollowupChange(before, after, authorized = false) {
-  if (!authorized && !isDeepStrictEqual(before?.followup, after?.followup)) fail('Gestioná el seguimiento desde Seguimientos para conservar su trazabilidad.', 409)
+  if (!authorized && !isDeepStrictEqual(before?.followup, after?.followup)) fail('Gestioná el seguimiento desde Tickets para conservar su trazabilidad.', 409)
 }
 function assignees(state, record) {
   return (state.employees || []).filter(employee => {

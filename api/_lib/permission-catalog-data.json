@@ -26,6 +26,11 @@
       "Solicitudes de acción sobre clientes, responsables y cronología de gestión."
     ],
     [
+      "tickets",
+      "Tickets",
+      "Reclamos, solicitudes internas, aportes técnicos y conversaciones por correo."
+    ],
+    [
       "collections",
       "Cobranzas",
       "Pendientes, confirmados, búsqueda, filtros, importes y trazabilidad de cambios."
@@ -1994,18 +1999,19 @@
       "id": "followups.view",
       "label": "Consultar seguimientos",
       "groups": [
-        "followups"
+        "tickets"
       ],
       "all": [],
       "any": [],
       "note": "Respeta el alcance de servicios del rol. Abrir el aviso no resuelve el caso.",
-      "sensitive": false
+      "sensitive": false,
+      "hidden": true
     },
     {
       "id": "followups.create",
       "label": "Solicitar seguimiento desde el informe técnico",
       "groups": [
-        "followups",
+        "tickets",
         "technical"
       ],
       "all": [
@@ -2014,46 +2020,278 @@
       ],
       "any": [],
       "note": "Respeta el alcance de servicios del rol. Abrir el aviso no resuelve el caso.",
-      "sensitive": false
+      "sensitive": false,
+      "hidden": true
     },
     {
       "id": "followups.assign",
       "label": "Tomar, asignar y registrar avances",
       "groups": [
-        "followups"
+        "tickets"
       ],
       "all": [
         "followups.view"
       ],
       "any": [],
       "note": "Respeta el alcance de servicios del rol. Abrir el aviso no resuelve el caso.",
-      "sensitive": false
+      "sensitive": false,
+      "hidden": true
     },
     {
       "id": "followups.resolve",
       "label": "Resolver con resultado obligatorio",
       "groups": [
-        "followups"
+        "tickets"
       ],
       "all": [
         "followups.view"
       ],
       "any": [],
       "note": "Respeta el alcance de servicios del rol. Abrir el aviso no resuelve el caso.",
-      "sensitive": false
+      "sensitive": false,
+      "hidden": true
     },
     {
       "id": "notifications.followups",
       "label": "Recibir avisos de seguimientos pendientes",
       "groups": [
         "notifications",
-        "followups"
+        "tickets"
       ],
       "all": [
         "followups.view"
       ],
       "any": [],
       "note": "Respeta el alcance de servicios del rol. Abrir el aviso no resuelve el caso.",
+      "sensitive": false,
+      "hidden": true
+    },
+    {
+      "id": "tickets.view",
+      "label": "Consultar tickets propios",
+      "groups": [
+        "tickets"
+      ],
+      "all": [],
+      "any": [],
+      "note": "El acceso a otras áreas y casos se habilita por separado.",
+      "sensitive": false
+    },
+    {
+      "id": "tickets.create",
+      "label": "Crear reclamos y solicitudes internas",
+      "groups": [
+        "tickets"
+      ],
+      "all": [
+        "tickets.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "tickets.comment",
+      "label": "Agregar observaciones",
+      "groups": [
+        "tickets"
+      ],
+      "all": [
+        "tickets.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "tickets.assign",
+      "label": "Tomar y asignar tickets",
+      "groups": [
+        "tickets"
+      ],
+      "all": [
+        "tickets.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "tickets.classify",
+      "label": "Cambiar clasificación y prioridad",
+      "groups": [
+        "tickets"
+      ],
+      "all": [
+        "tickets.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "tickets.resolve",
+      "label": "Resolver con resultado",
+      "groups": [
+        "tickets"
+      ],
+      "all": [
+        "tickets.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "tickets.reopen",
+      "label": "Reabrir tickets",
+      "groups": [
+        "tickets"
+      ],
+      "all": [
+        "tickets.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "tickets.merge",
+      "label": "Fusionar casos",
+      "groups": [
+        "tickets"
+      ],
+      "all": [
+        "tickets.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": true
+    },
+    {
+      "id": "tickets.reply",
+      "label": "Responder por correo",
+      "groups": [
+        "tickets"
+      ],
+      "all": [
+        "tickets.view",
+        "records.contact"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": true
+    },
+    {
+      "id": "tickets.internal",
+      "label": "Consultar y registrar notas internas",
+      "groups": [
+        "tickets"
+      ],
+      "all": [
+        "tickets.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": true
+    },
+    {
+      "id": "tickets.fromService",
+      "label": "Solicitar una acción desde un servicio",
+      "groups": [
+        "tickets",
+        "technical"
+      ],
+      "all": [
+        "tickets.view",
+        "technical.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "tickets.linkService",
+      "label": "Vincular visitas y servicios",
+      "groups": [
+        "tickets"
+      ],
+      "all": [
+        "tickets.view",
+        "records.read"
+      ],
+      "any": [
+        "weekly.view",
+        "history.view"
+      ],
+      "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "tickets.scope.assigned",
+      "label": "Consultar tickets asignados a mí",
+      "groups": [
+        "tickets"
+      ],
+      "all": [
+        "tickets.view"
+      ],
+      "any": [],
+      "note": "Se suma al acceso a solicitudes propias. Las notas internas requieren su permiso específico.",
+      "sensitive": false
+    },
+    {
+      "id": "tickets.scope.area",
+      "label": "Consultar tickets de mis áreas",
+      "groups": [
+        "tickets"
+      ],
+      "all": [
+        "tickets.view"
+      ],
+      "any": [],
+      "note": "Se suma al acceso a solicitudes propias. Las notas internas requieren su permiso específico.",
+      "sensitive": false
+    },
+    {
+      "id": "tickets.scope.all",
+      "label": "Consultar todos los tickets",
+      "groups": [
+        "tickets"
+      ],
+      "all": [
+        "tickets.view"
+      ],
+      "any": [],
+      "note": "Se suma al acceso a solicitudes propias. Las notas internas requieren su permiso específico.",
+      "sensitive": true
+    },
+    {
+      "id": "tickets.configure",
+      "label": "Configurar categorías, prioridades y áreas",
+      "groups": [
+        "tickets",
+        "settings"
+      ],
+      "all": [
+        "settings.view"
+      ],
+      "any": [],
+      "note": "",
+      "sensitive": true
+    },
+    {
+      "id": "notifications.tickets",
+      "label": "Recibir avisos de tickets pendientes",
+      "groups": [
+        "tickets",
+        "notifications"
+      ],
+      "all": [
+        "tickets.view"
+      ],
+      "any": [],
+      "note": "Sólo incluye tickets visibles para el rol.",
       "sensitive": false
     }
   ]

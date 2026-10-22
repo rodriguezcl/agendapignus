@@ -2028,30 +2028,16 @@ const server = http.createServer((req, res) => {
       store: require('./api/_lib/collection-receipt-store.cjs').sqliteCollectionReceiptStore(db)
     }).catch(error => send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo consultar el comprobante.' }))
   }
-  if (['GET', 'POST'].includes(req.method) && url.pathname === '/api/followups') {
+  if (url.pathname === '/api/tickets' || url.pathname.startsWith('/api/tickets/')) {
     const user = requireSession(req, res)
     if (!user) return
-    const domain = require('./api/_lib/followups.cjs')
-    if (req.method === 'GET') {
-      try { return send(res, 200, { cases: domain.listFollowups(readState(), user) }) }
-      catch (error) { return send(res, error.statusCode || 400, { error: error.message }) }
-    }
-    return readJson(req, 20_000).then(input => {
-      db.exec('BEGIN IMMEDIATE')
-      try {
-        const current = readState()
-        const change = domain.manageFollowup(current, input, user)
-        const revision = currentStateRevision() + (change.unchanged ? 0 : 1)
-        if (!change.unchanged) {
-          db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(change.after), String(change.before.id))
-          writeAudit(user, 'Gestionó seguimiento', 'Servicio / historial', String(change.before.id), change.before.followup, change.after.followup)
-          db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
-        }
-        db.exec('COMMIT')
-        return send(res, 200, { ok: true, revision })
-      } catch (error) { db.exec('ROLLBACK'); throw error }
-    }).catch(error => send(res, error.statusCode || 400, { error: error.message }))
+    const { ticketRequest, ticketError, attachmentHeaders } = require('./api/_lib/tickets-http.cjs')
+    return (req.method === 'GET' ? Promise.resolve({}) : readJson(req, 4_000_000)).then(input => ticketRequest({ connection: db, kind: 'db', user, state: readState(), method: req.method, route: url.pathname.replace(/^\/api/, ''), query: Object.fromEntries(url.searchParams), input })).then(result => {
+      if (result.file) { res.writeHead(200, attachmentHeaders(result.file)); return res.end(result.file.data) }
+      return send(res, 200, result.body)
+    }).catch(error => { const failure = ticketError(error); return send(res, failure.status, failure.body) })
   }
+  if (['GET', 'POST'].includes(req.method) && url.pathname === '/api/followups') { if (!requireSession(req, res)) return; return send(res, 410, { error: 'Los seguimientos se gestionan desde Tickets. Actualizá la plataforma.' }) }
   if (req.method === 'POST' && url.pathname === '/api/customers/softguard-retirement') {
     const user = requireSession(req, res)
     if (!user) return

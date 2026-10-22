@@ -15,7 +15,7 @@ export const NAVIGATION_ITEMS = [
   ['weekly', 'calendar', 'operation'],
   ['agenda', 'calendar', 'operation'],
   ['history', 'history', 'operation'],
-  ['followups', 'check', 'operation'],
+  ['tickets', 'check', 'operation'],
   ['myServices', 'tools', 'operation'],
   ['accounts', 'accounts', 'customers'],
   ['collections', 'wallet', 'customers'],

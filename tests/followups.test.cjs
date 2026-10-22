@@ -31,7 +31,7 @@ test('asignación, avances y resolución conservan autoría y servicio completad
  assert.equal(result.after.followup.assigneeName,'Gestor')
  assert.equal(result.after.status,'Completado')
  assertCompletedServices(state,fixture(),{followupRecordId:'service'})
- assert.throws(()=>assertCompletedServices(state,fixture()),/Seguimientos/)
+ assert.throws(()=>assertCompletedServices(state,fixture()),/Tickets/)
  assert.equal(domain.manageFollowup(state,command('assign',1),manager).unchanged,true)
  assert.throws(()=>domain.manageFollowup(state,command('note',1,{note:'Avance'}),manager),/otra sesión/)
  assert.throws(()=>domain.manageFollowup(state,command('resolve',2),manager),/resultado/)
@@ -40,7 +40,7 @@ test('asignación, avances y resolución conservan autoría y servicio completad
  assert.equal(state.history[0].followup.status,'Resuelto')
  assert.equal(state.history[0].followup.events.length,4)
  assert.throws(()=>domain.manageFollowup(state,command('note',4,{note:'Alterar'}),manager),/resuelto/)
- assert.throws(()=>assertCompletedServices({...state,history:[]},state),/Seguimientos/)
+ assert.throws(()=>assertCompletedServices({...state,history:[]},state),/Tickets/)
 })
 test('lectura y mutación respetan permisos y alcance; no modifica el caso abrirlo', () => {
  const state=fixture(), before=structuredClone(state)

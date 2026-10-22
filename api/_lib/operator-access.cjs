@@ -3,6 +3,7 @@ const isOperator = user => !require('./permission-catalog.cjs').isGranular(user)
 
 // Deny by default: new endpoints must not grant the read-only role new powers.
 function operatorRouteAllowed(method, route) {
+  if (['GET', 'POST'].includes(method) && (route === '/tickets' || route === '/tickets/attachments')) return true
   if (method === 'POST') return ['/auth/activity', '/auth/logout'].includes(route)
   return method === 'GET' && (
     ['/auth/session', '/auth/session-status', '/state', '/state/revision', '/holidays', '/weather'].includes(route) ||

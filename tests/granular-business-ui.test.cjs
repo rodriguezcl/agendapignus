@@ -39,6 +39,17 @@ const customer = { customerId: 'c1', account: 'CLI-1', name: 'CLIENTE QA', kind:
 const service = { id: 's1', name: 'Servicio QA', description: '', estimatedMinutes: 60, status: 'Activo' }
 const record = { id: 'r1', date: '2020-01-01', time: '09:00', client: 'CLI-1 CLIENTE QA', customerId: 'c1', serviceId: 's1', service: service.name, status: 'Pendiente', technicianIds: ['viewer'], technicians: ['Técnico QA'], estimatedMinutes: 60, address: customer.address, phone: customer.phone, amount: 12345, paymentMethod: 'Efectivo', monthlyFee: 98765, formEmail: 'privado@example.test' }
 
+test('configuración conserva permisos compartidos al reemplazar Seguimientos por Tickets', () => {
+  const html = render('src/features/settings/presentation/Settings.jsx', 'default', {
+    roles: [{ id: 'admin-role', name: 'Administrador', code: 'administrator', permissions: {} }],
+    employees: [], weekly: {}, setRoles: noop, setNotice: noop, ask: noop
+  }, { id: 'admin', roleCode: 'administrator' })
+  assert.match(html, /value="tickets"/)
+  assert.doesNotMatch(html, /value="followups"/)
+  assert.match(html, /Compartido con/)
+  assert.doesNotMatch(html, /Compartido con[^<]*undefined/)
+})
+
 test('clientes separa crear, editar coordenadas, CCTV, borrar e historial', () => {
   const props = { customers: [customer], history: [], services: [], teams: [], weekly: {}, setCustomers: noop, setNotice: noop, ask: noop }
   const read = render('src/features/customers/presentation/Accounts.jsx', 'Accounts', props, userWith('accounts.view'))

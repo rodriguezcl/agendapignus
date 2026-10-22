@@ -33,7 +33,7 @@ export default function Settings({ roles, employees = [], setRoles, setNotice, a
   const protectedRole = roleCode(displayed) === 'administrator'
   const canChangePermissions = can('settings.roles.permissions') && !protectedRole
   const canChangeIdentity = draft?.isNew ? can('settings.roles.create') : can('settings.roles.edit')
-  const items = CATALOG.filter(item => item.groups.includes(module))
+  const items = CATALOG.filter(item => !item.hidden && item.groups.includes(module))
   const dirty = Boolean(draft)
   const identityChanged = draft && (!baseline || draft.name !== baseline.name || draft.description !== baseline.description)
   const policyChanged = draft && (draft.isNew ? CATALOG.some(item => draft.permissions?.[item.id] === true) : JSON.stringify(draft.permissions) !== JSON.stringify(baseline?.permissions))
@@ -148,7 +148,7 @@ export default function Settings({ roles, employees = [], setRoles, setNotice, a
                 {reason && <p>{reason}</p>}
                 {!reason && delegationBlocked && <p>No podés conceder un permiso que tu rol no tiene.</p>}
                 {item.note && <small>{item.note}</small>}
-                {item.groups.length > 1 && <small>Compartido con {item.groups.filter(id => id !== module).map(id => PERMISSION_GROUPS.find(row => row[0] === id)[1]).join(', ')}.</small>}
+                {item.groups.some(id => id !== module && PERMISSION_GROUPS.some(row => row[0] === id)) && <small>Compartido con {item.groups.filter(id => id !== module).map(id => PERMISSION_GROUPS.find(row => row[0] === id)?.[1]).filter(Boolean).join(', ')}.</small>}
               </div>
             </div>
           })}</div>

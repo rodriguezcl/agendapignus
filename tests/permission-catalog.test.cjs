@@ -5,8 +5,8 @@ const custom = permissions => ({ roleCode: 'role-test', role: 'Prueba', permissi
 
 test('catalogue contains unique capabilities with known acyclic prerequisites', () => {
   assert.equal(policy.validateCatalog(), true)
-  assert.equal(policy.CATALOG.length, 136)
-  assert.equal(policy.MODULES.length, 14)
+  assert.equal(policy.CATALOG.length, 153)
+  assert.equal(policy.MODULES.length, 15)
   assert.equal(policy.PERMISSION_GROUPS.length, 16)
   assert.equal(policy.MODULES.some(([id]) => id === 'notifications'), false)
   assert.equal(policy.PERMISSION_GROUPS.some(([id]) => id === 'notifications'), true)
@@ -156,7 +156,7 @@ test('legacy notification defaults follow actual capabilities instead of role na
   assert.equal(policy.can(coordinator, 'notifications.collections'), false)
   const technician = { code: 'technician', permissions: {} }
   assert.equal(policy.can(technician, 'vehicle.insurance.read'), true)
-  for (const id of policy.NOTIFICATION_IDS) assert.equal(policy.can(technician, id), id === 'notifications.followups', id)
+  for (const id of policy.NOTIFICATION_IDS) assert.equal(policy.can(technician, id), id === 'notifications.tickets', id)
 })
 
 test('explicit notification preferences prevail over defaults and require strict booleans', () => {

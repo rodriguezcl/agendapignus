@@ -20,7 +20,7 @@ test('Supervisor abre Historial desde el primer render, incluso con navegación 
   const fs = require('node:fs')
   const path = require('node:path')
   const app = frontendSource()
-  assert.match(app, /const module = isOperator \? 'weekly' : isSupervisor && requestedModule !== 'accounts' \? 'history' : granularAccess/)
+  assert.match(app, /const module = isOperator && requestedModule !== 'tickets' \? 'weekly' : isSupervisor && !\['accounts','tickets'\].includes\(requestedModule\) \? 'history' : granularAccess/)
   assert.match(app, /const isSupervisor = !granularAccess &&/)
   const { resolvedRolePermissions } = await import('../src/domain/access/permissions.mjs')
   const permissions = resolvedRolePermissions({ name: 'Supervisor', permissions: { dashboard: true, historyManage: true } })

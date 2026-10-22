@@ -1336,7 +1336,15 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST' && route === '/admin/advance-request/approve') return await handleServiceAdvance(req, res, sql, session.user, 'approved')
     if (req.method === 'POST' && route === '/admin/advance-request/deny') return await handleServiceAdvance(req, res, sql, session.user, 'denied')
     if (req.method === 'POST' && route === '/history/category-correction') return await handleCategoryCorrection(req, res, sql, session.user)
-    if (['GET', 'POST'].includes(req.method) && route === '/followups') return await handleFollowups(req, res, sql, session.user)
+    if (route === '/tickets' || route.startsWith('/tickets/')) {
+      const { ticketRequest, ticketError, attachmentHeaders } = require('./_lib/tickets-http.cjs')
+      try {
+        const result = await ticketRequest({ connection: sql, kind: 'sql', user: session.user, state: await readState(sql), method: req.method, route, query: req.query, input: requestBody(req) })
+        if (result.file) { securityHeaders(res); for (const [key, value] of Object.entries(attachmentHeaders(result.file))) res.setHeader(key, value); return res.status(200).send(result.file.data) }
+        return send(res, 200, result.body)
+      } catch (error) { const failure = ticketError(error); return send(res, failure.status, failure.body) }
+    }
+    if (['GET', 'POST'].includes(req.method) && route === '/followups') return send(res, 410, { error: 'Los seguimientos se gestionan desde Tickets. Actualizá la plataforma.' })
     if (req.method === 'POST' && route === '/collections/manage') return await handleCollectionManagement(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/customers/softguard-retirement') return await handleSoftguardRetirement(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/customers/subscription-correction') return await handleSubscriptionCorrection(req, res, sql, session.user)

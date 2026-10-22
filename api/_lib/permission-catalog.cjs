@@ -1,12 +1,12 @@
 const data = require('./permission-catalog-data.json')
 
 const MODULES = data.modules
-const PERMISSION_GROUPS = [...MODULES, ['operationalPlanning', 'Planificación operativa'], ['notifications', 'Notificaciones']]
+const PERMISSION_GROUPS = [...MODULES.filter(([id]) => id !== 'followups'), ['operationalPlanning', 'Planificación operativa'], ['notifications', 'Notificaciones']]
 const CATALOG = data.catalog
 const VERSION_KEY = '__catalogV2'
 const SNAPSHOT = Symbol('resolved-permissions')
 const BY_ID = Object.fromEntries(CATALOG.map(item => [item.id, item]))
-const NOTIFICATION_IDS = CATALOG.filter(item => item.id.startsWith('notifications.')).map(item => item.id)
+const NOTIFICATION_IDS = CATALOG.filter(item => !item.hidden && item.id.startsWith('notifications.')).map(item => item.id)
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key)
 const SCOPE_KEYS = [
   'scope.services.read.assigned', 'scope.services.read.cctv',
@@ -53,6 +53,9 @@ function legacySelection(subject) {
   const grant = (keys, enabled) => keys.split(' ').filter(Boolean).forEach(key => { if (BY_ID[key]) result[key] = admin || Boolean(enabled) })
   MODULES.forEach(([id]) => { result[`${id}.view`] = id === 'technical' ? admin || technical : moduleOn(id) })
   grant('followups.view followups.create', technical)
+  grant('tickets.view tickets.create tickets.comment', operator || supervisor || technical || moduleOn('followups'))
+  grant('tickets.fromService', technical)
+  grant('tickets.scope.assigned', operator || supervisor || technical || moduleOn('followups'))
   grant('records.read records.contact', operator || supervisor || technical || plan || moduleOn('history') || moduleOn('accounts') || moduleOn('collections'))
   grant('records.financial', financial)
   grant('records.export', technical || (!operator && !supervisor && moduleOn('history')))
@@ -89,6 +92,7 @@ function legacySelection(subject) {
   grant('settings.workday.read', moduleOn('settings') && feature('weeklyHours', 'weekly'))
   // Existing roles inherit notices from their effective reading capabilities,
   // while a saved notification preference must remain explicit.
+  if(!hasOwn(source,'notifications.followups'))delete result['notifications.followups']
   NOTIFICATION_IDS.forEach(id => {
     if (hasOwn(source, id)) result[id] = source[id] === true
     else delete result[id]
@@ -99,6 +103,10 @@ function dependenciesMet(item, permissions) {
   return item.all.every(key => permissions[key] === true) && (!item.any.length || item.any.some(key => permissions[key] === true))
 }
 function normalizePermissions(selection) {
+  selection = { ...selection }
+  const ticketAliases = { 'tickets.view': 'followups.view', 'tickets.fromService': 'followups.create', 'tickets.assign': 'followups.assign', 'tickets.comment': 'followups.assign', 'tickets.internal': 'followups.assign', 'tickets.resolve': 'followups.resolve', 'notifications.tickets': 'notifications.followups' }
+  for (const [next, previous] of Object.entries(ticketAliases)) if (!hasOwn(selection, next) && hasOwn(selection, previous)) selection[next] = selection[previous] === true
+
   const result = Object.fromEntries(CATALOG.map(item => [
     item.id,
     selection?.[item.id] === true || (NOTIFICATION_IDS.includes(item.id) && !hasOwn(selection, item.id))

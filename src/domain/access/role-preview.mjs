@@ -41,12 +41,12 @@ export function buildRolePreview(role, { technicalEnabled = false } = {}) {
   const technicalConfigured = can('technical.view')
   const missingTechnical = 'Requiere habilitar la función técnica en la ficha del colaborador.'
   const denied = id => dependencyReason(id, permissions) || 'Este permiso está desactivado para el rol.'
-  const modules = [...MODULES, [OPERATIONAL_PLANNING_ID, OPERATIONAL_PLANNING_LABEL, OPERATIONAL_PLANNING_DESCRIPTION]].map(([id, label, description]) => {
+  const modules = [...MODULES.filter(([id])=>id!=='followups'), [OPERATIONAL_PLANNING_ID, OPERATIONAL_PLANNING_LABEL, OPERATIONAL_PLANNING_DESCRIPTION]].map(([id, label, description]) => {
     const planning = id === OPERATIONAL_PLANNING_ID
     const granted = planning ? canAccessOperationalPlanning(subject) : can(`${id}.view`)
     const visible = granted && (id !== 'technical' || eligible)
     const reason = visible ? '' : granted ? missingTechnical : planning ? 'Requiere consultar horarios, equipos, asignación de flota o guardias.' : denied(`${id}.view`)
-    const capabilities = CATALOG.filter(item => item.groups.includes(id) && !NOTIFICATION_IDS.includes(item.id)).map(item => {
+    const capabilities = CATALOG.filter(item => !item.hidden && item.groups.includes(id) && !NOTIFICATION_IDS.includes(item.id)).map(item => {
       const granted = can(item.id)
       const allowed = visible && granted
       return { id: item.id, label: item.label, note: item.note, granted, allowed, reason: allowed ? '' : !visible ? reason : denied(item.id) }
@@ -55,14 +55,14 @@ export function buildRolePreview(role, { technicalEnabled = false } = {}) {
   })
   const visibleModules = modules.filter(module => module.visible)
   const hiddenModules = modules.filter(module => !module.visible)
-  const portalOnly = technicalConfigured && eligible && visibleModules.every(module => ['technical', 'followups'].includes(module.id))
+  const portalOnly = technicalConfigured && eligible && visibleModules.every(module => ['technical', 'tickets', 'followups'].includes(module.id))
   const readOnly = !hasAnyWrite(subject)
   const helpVisible = !readOnly && !portalOnly
   const navigation = navigationForModules([
     ...visibleModules.map(module => module.id === 'technical' ? 'myServices' : module.id),
     ...(helpVisible ? ['help'] : [])
   ]).map(({ id, label }) => ({ id, label }))
-  const notifications = CATALOG.filter(item => NOTIFICATION_IDS.includes(item.id)).map(item => ({
+  const notifications = CATALOG.filter(item => !item.hidden && NOTIFICATION_IDS.includes(item.id)).map(item => ({
     id: item.id,
     label: item.label,
     title: notificationTitles[item.id] || item.label,

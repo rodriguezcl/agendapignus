@@ -35,7 +35,7 @@ test('la creación de Operador es idempotente y no cambia empleados ni agenda', 
   assert.deepEqual((await plan(next)).next.roles, next.roles)
 })
 
-test('la Agenda semanal del Operador no ofrece acciones de modificación ni otros módulos', () => {
+test('la Agenda semanal del Operador no ofrece acciones de modificación y permite el acceso independiente a Tickets', () => {
   const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
   const React = require('react'), { renderToString } = require('react-dom/server')
   const root = path.resolve(__dirname, '..')
@@ -54,6 +54,6 @@ test('la Agenda semanal del Operador no ofrece acciones de modificación ni otro
   assert.match(html, /week-team-header/)
   assert.doesNotMatch(html, /Agregar servicio|Agregar otro equipo|Abrir día|Ver día|Agregar técnicos|Quitar Equipo|Guardar servicio|Equipos del mes/)
   assert.doesNotMatch(html, /weekly-planning-link|Planificación<\/button>/)
-  assert.match(source, /const module = isOperator \? 'weekly'/)
+  assert.match(source, /const module = isOperator && requestedModule !== 'tickets' \? 'weekly'/)
   assert.match(source, /if \(isReadOnly \|\| saveDraftConflictRef.current\) return/)
 })

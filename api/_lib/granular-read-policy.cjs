@@ -72,7 +72,7 @@ function customerReadable(customer, user, state) {
 function sanitizeService(record, user, state) {
   if (!record) return record
   let result = scrubFields(record, permissions.can(user, 'records.financial'), permissions.can(user, 'records.contact'))
-  if (!permissions.can(user, 'followups.view')) delete result.followup
+  if (!permissions.can(user, 'followups.view') && !permissions.can(user, 'tickets.view')) delete result.followup
   if (state) result.supervisorVisible = customerForRecord(record, state)?.cctvService === true
   if (!permissions.can(user, 'records.financial')) for (const key of FINANCIAL_FIELDS) delete result[key]
   if (!permissions.can(user, 'records.contact')) for (const key of CONTACT_FIELDS) delete result[key]
@@ -203,4 +203,4 @@ function sanitizeAudit(value, user) {
   return permissions.can(user, 'service.documents.read') ? safe : omitFields(safe, DOCUMENT_FIELDS)
 }
 
-module.exports = { granularVisibleState, serviceReadable, serviceWritable, serviceExportable, serviceInReadScope, customerReadable, vehicleReadable, sanitizeService, sanitizeCustomer, sanitizeVehicle, sanitizeAudit, FINANCIAL_FIELDS, CONTACT_FIELDS }
+module.exports = { customerForRecord, granularVisibleState, serviceReadable, serviceWritable, serviceExportable, serviceInReadScope, customerReadable, vehicleReadable, sanitizeService, sanitizeCustomer, sanitizeVehicle, sanitizeAudit, FINANCIAL_FIELDS, CONTACT_FIELDS }

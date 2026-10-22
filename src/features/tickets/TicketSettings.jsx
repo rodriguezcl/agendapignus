@@ -1,0 +1,71 @@
+import React, { useEffect, useRef, useState } from 'react'
+import { requestJson } from '../../infrastructure/http/json-request.mjs'
+import { usePermissions } from '../../presentation/contexts/permissions-context.jsx'
+import useDiscardGuard from '../../components/ui/useDiscardGuard.jsx'
+import { newCommandId, TICKET_PRIORITIES, ticketDate } from './ticket-ui.mjs'
+import './tickets.css'
+
+const clone = value => JSON.parse(JSON.stringify(value))
+const identifier = prefix => `${prefix}-${newCommandId()}`
+
+function RuleFields({ item, parent, areas, onChange, disabled }) {
+  const inherited = key => item[key] ?? parent?.[key]
+  return <div className="tickets-fields tickets-rule-fields">
+    <label>Prioridad predeterminada<select value={item.priority || parent?.priority || 'Media'} disabled={disabled} onChange={event => onChange({ priority: event.target.value })}>{TICKET_PRIORITIES.map(value => <option key={value}>{value}</option>)}</select></label>
+    <label>Área responsable<select value={inherited('areaId') || ''} disabled={disabled} onChange={event => onChange({ areaId: event.target.value })}><option value="">Sin área predeterminada</option>{areas.map(area => <option value={area.id} key={area.id}>{area.name}{area.active === false ? ' (inactiva)' : ''}</option>)}</select></label>
+    <label>Cuenta de abonado o cliente<select value={inherited('customerPolicy') || 'optional'} disabled={disabled} onChange={event => onChange({ customerPolicy: event.target.value })}><option value="required">Obligatoria</option><option value="optional">Opcional</option><option value="none">No corresponde</option></select></label>
+    <div className="tickets-rule-checkboxes"><label className="tickets-checkbox"><input type="checkbox" checked={Boolean(inherited('showEvent'))} disabled={disabled} onChange={event => onChange({ showEvent: event.target.checked })} />Mostrar evento</label><label className="tickets-checkbox"><input type="checkbox" checked={Boolean(inherited('showZone'))} disabled={disabled} onChange={event => onChange({ showZone: event.target.checked })} />Mostrar zona</label></div>
+  </div>
+}
+
+export default function TicketSettings({ onChanged }) {
+  const { can } = usePermissions()
+  const [metadata, setMetadata] = useState(null), [draft, setDraft] = useState(null), [baseline, setBaseline] = useState(''), [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
+  const command = useRef(null), lock = useRef(false)
+  const dirty = Boolean(draft && JSON.stringify(draft) !== baseline)
+  const reset = () => { if (baseline) setDraft(JSON.parse(baseline)); setError(''); setNotice(''); command.current = null }
+  const guard = useDiscardGuard({ dirty, busy, onDiscard: reset, title: 'Configuración de tickets sin guardar' })
+  const load = async () => {
+    setLoading(true); setError('')
+    try { const result = await requestJson('/api/tickets/config'); const config = clone(result.config); delete config.mail; delete config.numbering; setMetadata(result); setDraft(config); setBaseline(JSON.stringify(config)) }
+    catch (failure) { setError(failure.message) } finally { setLoading(false) }
+  }
+  useEffect(() => { if (can('tickets.configure')) load(); else setLoading(false) }, [can])
+  const update = patch => { setDraft(previous => ({ ...previous, ...patch })); setError(''); setNotice(''); command.current = null }
+  const updateList = (key, id, patch) => update({ [key]: draft[key].map(item => item.id === id ? { ...item, ...patch } : item) })
+  const updateSubcategory = (categoryId, id, patch) => update({ categories: draft.categories.map(category => category.id === categoryId ? { ...category, subcategories: category.subcategories.map(item => item.id === id ? { ...item, ...patch } : item) } : category) })
+  const save = async event => {
+    event.preventDefault()
+    if (lock.current || !dirty) return
+    lock.current = true; setBusy(true); setError(''); setNotice('')
+    const payload = { action: 'configure', config: draft, configVersion: metadata.configVersion }
+    const signature = JSON.stringify(payload)
+    if (command.current?.signature !== signature) command.current = { signature, id: newCommandId() }
+    try {
+      const result = await requestJson('/api/tickets/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, commandId: command.current.id }) })
+      const config = clone(result.config || draft); delete config.mail; delete config.numbering
+      setMetadata(previous => ({ ...previous, config: { ...config, mail: previous.config.mail }, configVersion: result.configVersion ?? previous.configVersion + 1 })); setDraft(config); setBaseline(JSON.stringify(config)); command.current = null; setNotice('Configuración guardada. Las reglas se aplicarán a los nuevos tickets.'); onChanged?.()
+    } catch (failure) { setError(failure.message) } finally { lock.current = false; setBusy(false) }
+  }
+  if (!can('tickets.configure')) return null
+  const employees = metadata?.employees || metadata?.assignees || []
+  const mail = metadata?.config?.mail || {}
+  return <section className="data-card tickets-settings" aria-label="Configuración de tickets"><header><p className="eyebrow">ADMINISTRACIÓN</p><h2>Tickets</h2><p>Categorías, prioridades y equipos responsables.</p></header>
+    {error && <p className="field-error" role="alert">{error} <button title="Consultá la configuración actual; podrás confirmar si querés descartar el borrador." type="button" className="secondary" disabled={busy} onClick={() => guard.requestClose(load)}>Actualizar configuración</button></p>}
+    {loading ? <p role="status">Cargando configuración…</p> : draft && <form onSubmit={save} className="tickets-settings-form">
+      <section className="tickets-settings-section"><h3>Numeración</h3><div className="tickets-fields"><label>Prefijo<input readOnly value="Ticket#" /></label><label>Primer número de Agentec<input type="number" min="1" max="999999999999" step="1" required value={draft.startingNumber} disabled={busy || metadata.numberingLocked} onChange={event => update({ startingNumber: event.target.value })} /></label><div className="tickets-rule-summary"><span>Formato</span><strong>Ticket#{String(draft.startingNumber || '').padStart(5,'0')}</strong></div></div><small>{metadata.numberingLocked ? 'La numeración ya comenzó y no se puede reiniciar. Los números se conservan al resolver, reabrir o fusionar casos.' : 'Secuencia propia de Agentec. No se importará el historial de Zammad.'}</small></section>
+      <section className="tickets-settings-section"><div className="tickets-section-heading"><h3>Categorías y subcategorías</h3><button title="Agregá una categoría para definir su prioridad, área y campos del formulario." type="button" className="secondary" disabled={busy || draft.categories.length >= 100} onClick={() => update({ categories: [...draft.categories, { id: identifier('category'), name: '', priority: 'Media', customerPolicy: 'optional', areaId: '', showEvent: false, showZone: false, active: true, subcategories: [] }] })}>Agregar categoría</button></div>
+        {draft.categories.map(category => <details key={category.id} className="tickets-settings-category" open={!category.name}><summary><strong>{category.name || 'Nueva categoría'}</strong><span>{category.active === false ? 'Inactiva' : category.priority} · {category.subcategories?.length || 0} subcategorías</span></summary><div className="tickets-settings-category-body"><div className="tickets-fields"><label>Nombre de la categoría<input required maxLength={120} value={category.name} disabled={busy} onChange={event => updateList('categories', category.id, { name: event.target.value })} /></label><label className="tickets-checkbox"><input type="checkbox" checked={category.active !== false} disabled={busy} onChange={event => updateList('categories', category.id, { active: event.target.checked })} />Categoría activa</label></div>
+          <RuleFields item={category} areas={draft.areas} disabled={busy} onChange={patch => updateList('categories', category.id, patch)} />
+          <div className="tickets-subcategories">{(category.subcategories || []).map(item => <fieldset key={item.id} className="tickets-subcategory"><legend>{item.name || 'Nueva subcategoría'}</legend><div className="tickets-fields"><label>Nombre de la subcategoría<input required maxLength={120} value={item.name} disabled={busy} onChange={event => updateSubcategory(category.id, item.id, { name: event.target.value })} /></label><label className="tickets-checkbox"><input type="checkbox" checked={item.active !== false} disabled={busy} onChange={event => updateSubcategory(category.id, item.id, { active: event.target.checked })} />Subcategoría activa</label></div><button title="Usá las reglas de la categoría y quitá las excepciones de esta subcategoría." type="button" className="secondary" disabled={busy} onClick={() => updateSubcategory(category.id, item.id, { priority: undefined, areaId: undefined, customerPolicy: undefined, showEvent: undefined, showZone: undefined })}>Heredar reglas de la categoría</button><RuleFields item={item} parent={category} areas={draft.areas} disabled={busy} onChange={patch => updateSubcategory(category.id, item.id, patch)} /></fieldset>)}</div>
+          <button title="Agregá una subcategoría dentro de esta categoría para precisar la solicitud." type="button" className="secondary" disabled={busy || (category.subcategories?.length || 0) >= 100} onClick={() => updateList('categories', category.id, { subcategories: [...(category.subcategories || []), { id: identifier('subcategory'), name: '', active: true }] })}>Agregar subcategoría</button>
+        </div></details>)}
+        <small>Las subcategorías pueden heredar las reglas de la categoría o definir excepciones. Desactivar una opción conserva los tickets que ya la utilizaron.</small>
+      </section>
+      <section className="tickets-settings-section"><div className="tickets-section-heading"><h3>Áreas responsables</h3><button title="Creá un área responsable y elegí los colaboradores que la integran." className="secondary" type="button" disabled={busy || draft.areas.length >= 100} onClick={() => update({ areas: [...draft.areas, { id: identifier('area'), name: '', memberIds: [], active: true }] })}>Agregar área</button></div><div className="tickets-areas">{draft.areas.map(area => <fieldset key={area.id} className="tickets-subcategory"><legend>{area.name || 'Nueva área'}</legend><label>Nombre del área<input required maxLength={120} disabled={busy} value={area.name} onChange={event => updateList('areas', area.id, { name: event.target.value })} /></label><label className="tickets-checkbox"><input type="checkbox" disabled={busy} checked={area.active !== false} onChange={event => updateList('areas', area.id, { active: event.target.checked })} />Área activa</label><p className="tickets-muted">Integrantes</p><div className="tickets-members">{employees.map(person => <label className="tickets-checkbox" key={person.id}><input type="checkbox" disabled={busy} checked={(area.memberIds || []).map(String).includes(String(person.id))} onChange={event => updateList('areas', area.id, { memberIds: event.target.checked ? [...(area.memberIds || []), String(person.id)] : area.memberIds.filter(id => String(id) !== String(person.id)) })} />{person.name}</label>)}</div></fieldset>)}</div><small>La pertenencia al área se combina con los permisos del rol para determinar qué tickets puede consultar cada persona.</small></section>
+      <section className="tickets-settings-section"><div className="tickets-section-heading"><h3>Eventos</h3><button title="Agregá un evento disponible al registrar reclamos de abonados." type="button" className="secondary" disabled={busy || draft.events.length >= 100} onClick={() => update({ events: [...draft.events, { id: identifier('event'), name: '', active: true }] })}>Agregar evento</button></div><div className="tickets-event-list">{draft.events.map(item => <div className="tickets-event-row" key={item.id}><label>Nombre del evento<input required maxLength={120} disabled={busy} value={item.name} onChange={event => updateList('events', item.id, { name: event.target.value })} /></label><label className="tickets-checkbox"><input type="checkbox" disabled={busy} checked={item.active !== false} onChange={event => updateList('events', item.id, { active: event.target.checked })} />Activo</label></div>)}</div></section>
+      <section className="tickets-settings-section tickets-mail-status"><h3>Correo de soporte</h3><dl className="tickets-facts"><div><dt>Recepción</dt><dd>{mail.enabled ? 'Habilitada' : 'Pendiente de configuración'}</dd></div><div><dt>Modo</dt><dd>{mail.mode === 'live' ? 'Operativo' : 'Prueba'}</dd></div><div><dt>Envío de respuestas</dt><dd>{mail.enabled && mail.outboundEnabled ? 'Habilitado' : 'Deshabilitado'}</dd></div>{(mail.lastSuccessAt || mail.lastReceivedAt) && <div><dt>Última recepción correcta</dt><dd>{ticketDate(mail.lastSuccessAt || mail.lastReceivedAt)}</dd></div>}{mail.outbound && <div><dt>Envíos pendientes / con error</dt><dd>{(mail.outbound.queued || 0) + (mail.outbound.retry || 0)} / {(mail.outbound.failed || 0) + (mail.outbound.uncertain || 0)}</dd></div>}</dl>{(mail.error || mail.lastError) && <p className="field-error">{mail.error || mail.lastError?.message || String(mail.lastError)}</p>}<p className="tickets-muted">El acceso al buzón y las credenciales se configuran en el servidor. El modo de prueba evita enviar respuestas automáticas al cliente mientras Zammad continúa operativo.</p></section>
+      {notice && <p role="status" className="tickets-feedback">{notice}</p>}<div className="tickets-form-footer tickets-settings-save"><button title="Descartá las modificaciones pendientes y recuperá la configuración guardada." className="secondary" type="button" disabled={!dirty || busy} onClick={() => guard.requestClose(reset)}>Descartar cambios</button><button title="Guardá las categorías, prioridades, áreas y eventos que utilizarán los nuevos tickets." className="primary" type="submit" disabled={!dirty || busy}>{busy ? 'Guardando…' : 'Guardar configuración de tickets'}</button></div>
+    </form>}{guard.discardDialog}
+  </section>
+}
