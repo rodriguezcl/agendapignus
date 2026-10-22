@@ -1,7 +1,7 @@
 const data = require('./permission-catalog-data.json')
 
 const MODULES = data.modules
-const PERMISSION_GROUPS = [...MODULES, ['notifications', 'Notificaciones']]
+const PERMISSION_GROUPS = [...MODULES, ['operationalPlanning', 'Planificación operativa'], ['notifications', 'Notificaciones']]
 const CATALOG = data.catalog
 const VERSION_KEY = '__catalogV2'
 const SNAPSHOT = Symbol('resolved-permissions')

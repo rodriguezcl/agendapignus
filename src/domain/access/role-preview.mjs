@@ -1,6 +1,7 @@
 import permissionPolicy from '../../../api/_lib/permission-catalog.cjs'
 import { CATALOG, MODULES, NOTIFICATION_IDS, canPermission, dependencyReason, hasAnyWrite, readScope, roleCode, toGranularPermissions, writeScope } from './permissions.mjs'
 import { navigationForModules } from './navigation.mjs'
+import { canAccessOperationalPlanning, OPERATIONAL_PLANNING_ID, OPERATIONAL_PLANNING_LABEL, OPERATIONAL_PLANNING_DESCRIPTION } from './operational-planning.mjs'
 
 const notificationTitles = {
   'notifications.collections': 'Cobranza pendiente de pago',
@@ -40,10 +41,11 @@ export function buildRolePreview(role, { technicalEnabled = false } = {}) {
   const technicalConfigured = can('technical.view')
   const missingTechnical = 'Requiere habilitar la función técnica en la ficha del colaborador.'
   const denied = id => dependencyReason(id, permissions) || 'Este permiso está desactivado para el rol.'
-  const modules = MODULES.map(([id, label, description]) => {
-    const granted = can(`${id}.view`)
+  const modules = [...MODULES, [OPERATIONAL_PLANNING_ID, OPERATIONAL_PLANNING_LABEL, OPERATIONAL_PLANNING_DESCRIPTION]].map(([id, label, description]) => {
+    const planning = id === OPERATIONAL_PLANNING_ID
+    const granted = planning ? canAccessOperationalPlanning(subject) : can(`${id}.view`)
     const visible = granted && (id !== 'technical' || eligible)
-    const reason = visible ? '' : granted ? missingTechnical : denied(`${id}.view`)
+    const reason = visible ? '' : granted ? missingTechnical : planning ? 'Requiere consultar horarios, equipos, asignación de flota o guardias.' : denied(`${id}.view`)
     const capabilities = CATALOG.filter(item => item.groups.includes(id) && !NOTIFICATION_IDS.includes(item.id)).map(item => {
       const granted = can(item.id)
       const allowed = visible && granted
@@ -53,7 +55,7 @@ export function buildRolePreview(role, { technicalEnabled = false } = {}) {
   })
   const visibleModules = modules.filter(module => module.visible)
   const hiddenModules = modules.filter(module => !module.visible)
-  const portalOnly = technicalConfigured && eligible && visibleModules.every(module => module.id === 'technical')
+  const portalOnly = technicalConfigured && eligible && visibleModules.every(module => ['technical', 'followups'].includes(module.id))
   const readOnly = !hasAnyWrite(subject)
   const helpVisible = !readOnly && !portalOnly
   const navigation = navigationForModules([

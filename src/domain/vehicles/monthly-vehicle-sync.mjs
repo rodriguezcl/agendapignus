@@ -23,7 +23,7 @@ export function synchronizeMonthlyVehicles(state, { month, teams, vehicles, tech
     if (!assignment) return record
     const id = assignment.weeklyOverrides?.[vehicleControlFriday(record)] || assignment.technicianId
     const technician = technicians.find(item => same(item.id, id))
-    if (!technician) throw new Error('Un reemplazo vehicular ya no corresponde a un técnico activo. Revisá Vehículos del mes.')
+    if (!technician) throw new Error('Un reemplazo vehicular ya no corresponde a un técnico activo. Revisá Asignación de flota en Planificación operativa.')
     return { ...record, technicianIds: [technician.id], technicians: [technician.name] }
   })
   for (const record of targets) {
@@ -62,7 +62,7 @@ export function synchronizeMonthlyVehicles(state, { month, teams, vehicles, tech
   const slots = new Set()
   for (const record of controls) {
     const key = `${record.date}:${record.time}:${record.technicianIds?.[0]}`
-    if (slots.has(key)) throw new Error('Un reemplazo por fecha se superpone con la nueva rotación. Revisá Vehículos del mes antes de guardar.')
+    if (slots.has(key)) throw new Error('Un reemplazo por fecha se superpone con la nueva rotación. Revisá Asignación de flota en Planificación operativa antes de guardar.')
     slots.add(key)
   }
   weekly._monthlyTeams = { ...weekly._monthlyTeams, [month]: { ...previous, teams, vehicleAssignments: assignments } }

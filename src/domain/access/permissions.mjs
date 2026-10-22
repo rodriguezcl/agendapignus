@@ -25,7 +25,7 @@ export const DEFAULT_MODULE_PERMISSIONS = Object.fromEntries(MODULE_PERMISSIONS.
 export const FEATURE_PERMISSIONS = [
   ['weekly', 'weeklyTeams', 'Equipos del mes', 'Definir la conformación mensual de los equipos'],
   ['weekly', 'weeklyHours', 'Horarios del mes', 'Modificar los horarios predeterminados del mes'],
-  ['weekly', 'weeklyVehicles', 'Vehículos del mes', 'Asignar responsables y generar controles vehiculares'],
+  ['weekly', 'weeklyVehicles', 'Asignación de flota', 'Asignar responsables y generar controles vehiculares'],
   ['weekly', 'weeklyGuards', 'Guardias del año', 'Configurar la rotación anual de guardias'],
   ['collections', 'collectionsManage', 'Gestionar cobranzas', 'Confirmar pagos y rectificar monto y forma de pago'],
   ['history', 'historyManage', 'Gestionar historial', 'Editar, completar, cancelar, reprogramar o eliminar registros'],

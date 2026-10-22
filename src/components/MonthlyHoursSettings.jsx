@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import EditorModal from './ui/EditorModal.jsx'
 import { usePermissions } from '../presentation/contexts/permissions-context.jsx'
 import { currentLocalDate } from '../presentation/formatting.mjs'
@@ -6,7 +6,7 @@ import { defaultServiceTimesForDate, monthlyDefaultTimePeriods } from '../featur
 import hoursPolicy from '../../api/_lib/monthly-hours.cjs'
 
 const hoursFields = config => JSON.stringify({ defaultTimes: config?.defaultTimes, defaultTimePeriods: config?.defaultTimePeriods })
-export default function MonthlyHoursSettings({ month, weekly, persistWeeklyConfiguration, onClose, setNotice }) {
+export default function MonthlyHoursSettings({ month, weekly, persistWeeklyConfiguration, onClose, setNotice, embedded = false, onDraftStateChange, onDiscard }) {
   const { can } = usePermissions()
   const today = currentLocalDate()
   const editable = can('weekly.monthlyHours.manage') && month >= today.slice(0, 7)
@@ -18,6 +18,9 @@ export default function MonthlyHoursSettings({ month, weekly, persistWeeklyConfi
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const originalFields = useRef(JSON.stringify({ from, times }))
+  const hasDraft = dirty || originalFields.current !== JSON.stringify({ from, times })
+  useEffect(() => { onDraftStateChange?.({ dirty: hasDraft, saving }) }, [hasDraft, saving, onDraftStateChange])
   if (!can('weekly.monthlyHours.read')) return null
   const addPeriod = event => {
     event.preventDefault()
@@ -36,7 +39,7 @@ export default function MonthlyHoursSettings({ month, weekly, persistWeeklyConfi
       await persistWeeklyConfiguration(snapshot => {
         const oldWeekly = snapshot.agenda?.weekly || {}
         const latest = oldWeekly._monthlyTeams?.[month] || {}
-        if (hoursFields(latest) !== baseline) throw new Error('Otra persona modificó los horarios de este mes. Cerrá y volvé a abrir para revisar la versión actual.')
+        if (hoursFields(latest) !== baseline) throw new Error('Otra persona modificó los horarios de este mes. Descartá el borrador para revisar la versión actual.')
         const { defaultTimes: previousDefaults, ...rest } = latest
         const nextMonth = { ...rest, defaultTimePeriods: periods }
         return { ...snapshot, agenda: { ...snapshot.agenda, weekly: { ...oldWeekly, _monthlyTeams: { ...oldWeekly._monthlyTeams, [month]: nextMonth } } } }
@@ -45,7 +48,8 @@ export default function MonthlyHoursSettings({ month, weekly, persistWeeklyConfi
     } catch (saveError) { setError(saveError.message || 'No se pudieron guardar los horarios.') }
     finally { setSaving(false) }
   }
-  return <EditorModal active title={`Horarios del mes · ${month}`} eyebrow="PLANIFICACIÓN" onClose={onClose} busy={saving} dirty={dirty}>
+  const content = <>
+    {embedded && <header className="planning-panel-heading"><h2>Horarios del mes</h2></header>}
     <p>Horarios sugeridos para las franjas vacías. Los servicios que ya tienen un horario conservan su programación.</p>
     {periods.length ? <ul>{periods.map(period => <li key={period.from}>
       Desde {period.from}: {period.times.join(' y ')}
@@ -59,6 +63,7 @@ export default function MonthlyHoursSettings({ month, weekly, persistWeeklyConfi
       <button type="submit" className="secondary" disabled={saving} title="Agregá este período al borrador de horarios.">Agregar o actualizar período</button>
     </form>}
     {error && <p role="alert" className="field-error">{error}</p>}
-    {editable && <div className="modal-actions"><button type="button" className="primary" onClick={save} disabled={saving || !dirty} title="Guardá los períodos de horarios de este mes.">{saving ? 'Guardando…' : 'Guardar horarios'}</button></div>}
-  </EditorModal>
+    {editable && <div className={embedded ? 'planning-form-actions' : 'modal-actions'}>{embedded && hasDraft && onDiscard && <button type="button" className="secondary" disabled={saving} onClick={onDiscard}>Descartar cambios</button>}<button type="button" className="primary" onClick={save} disabled={saving || !dirty} title="Guardá los períodos de horarios de este mes.">{saving ? 'Guardando…' : 'Guardar horarios'}</button></div>}
+  </>
+  return embedded ? <div className="planning-hours">{content}</div> : <EditorModal active title={`Horarios del mes · ${month}`} eyebrow="PLANIFICACIÓN" onClose={onClose} busy={saving} dirty={hasDraft}>{content}</EditorModal>
 }

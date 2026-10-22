@@ -725,6 +725,11 @@
     "file": "src/features/agenda/presentation/WeeklyPlanner.jsx"
   },
   {
+    "name": "OperationalPlanning",
+    "order": 288650,
+    "file": "src/features/planning/presentation/OperationalPlanning.jsx"
+  },
+  {
     "name": "NotificationActionDialog",
     "order": 408890,
     "file": "src/App.jsx"

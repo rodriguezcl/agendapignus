@@ -26,14 +26,16 @@ FUNCIONALIDADES
 - Cobranzas: segmentos actuales/pasados y futuros, correcciones, confirmación
   de pagos y comprobantes obligatorios para medios distintos de efectivo.
 - Mapa: vistas independientes de mapa de calor, puntos por abonado y zonas rojas.
-- Recursos: Colaboradores, tipos de servicio y Flota, con asignaciones,
-  controles vehiculares y guardias.
+- Recursos: Colaboradores, tipos de servicio, Flota y Planificación operativa.
+  Esta última reúne horarios mensuales, equipos, responsables de flota y
+  guardias anuales, con acceso según los permisos del rol.
 - Configuración: roles y permisos por función, dependencias entre capacidades,
   vista previa por rol y selección de notificaciones.
 - Auditoría y Centro de ayuda: seguimiento de acciones y orientación de uso.
 
-La planificación visible se concentra en Agenda semanal. La implementación
-de Agenda del día se conserva internamente por compatibilidad.
+Agenda semanal concentra la programación diaria de servicios e incluye un
+acceso a Planificación operativa para organizar los recursos del mes consultado.
+La implementación de Agenda del día se conserva internamente por compatibilidad.
 
 Los recordatorios de baja en SoftGuard requieren que una persona realice la
 gestión externa y registre su resolución. No ejecutan una baja automática.

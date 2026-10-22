@@ -1,4 +1,5 @@
 import { MODULES } from './permissions.mjs'
+import { OPERATIONAL_PLANNING_ID, OPERATIONAL_PLANNING_LABEL } from './operational-planning.mjs'
 
 const sections = {
   operation: { section: 'operation', sectionLabel: 'Operación' },
@@ -21,6 +22,7 @@ export const NAVIGATION_ITEMS = [
   ['map', 'map', 'customers'],
   ['employees', 'users', 'resources'],
   ['vehicles', 'vehicle', 'resources'],
+  [OPERATIONAL_PLANNING_ID, 'calendar', 'resources'],
   ['services', 'tools', 'resources'],
   ['settings', 'settings', 'administration'],
   ['audit', 'audit', 'administration'],
@@ -28,7 +30,7 @@ export const NAVIGATION_ITEMS = [
 ].map(([id, icon, section]) => ({
   id,
   icon,
-  label: id === 'myServices' ? 'Mis servicios' : id === 'help' ? 'Centro de ayuda' : MODULES.find(([moduleId]) => moduleId === id)[1],
+  label: id === 'myServices' ? 'Mis servicios' : id === 'help' ? 'Centro de ayuda' : id === OPERATIONAL_PLANNING_ID ? OPERATIONAL_PLANNING_LABEL : MODULES.find(([moduleId]) => moduleId === id)[1],
   ...sections[section]
 }))
 

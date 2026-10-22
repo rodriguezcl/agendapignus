@@ -3,7 +3,7 @@ import { buildRolePreview } from '../../../domain/access/role-preview.mjs'
 import Icon from '../../../components/ui/Icon.jsx'
 import './role-preview.css'
 
-const icons = { dashboard: 'dashboard', weekly: 'calendar', agenda: 'agenda', history: 'history', collections: 'wallet', accounts: 'accounts', map: 'map', employees: 'users', services: 'tools', vehicles: 'vehicle', technical: 'tools', settings: 'settings', audit: 'audit' }
+const icons = { dashboard: 'dashboard', weekly: 'calendar', agenda: 'agenda', history: 'history', followups: 'check', collections: 'wallet', accounts: 'accounts', map: 'map', employees: 'users', services: 'tools', vehicles: 'vehicle', operationalPlanning: 'calendar', technical: 'tools', settings: 'settings', audit: 'audit' }
 
 function CapabilityList({ items, enabled }) {
   return <ul className="role-preview-capabilities">{items.map(item => <li key={item.id} data-permission-id={item.id} data-enabled={String(enabled)}>

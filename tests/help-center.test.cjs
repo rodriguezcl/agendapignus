@@ -41,7 +41,7 @@ test('la búsqueda incluye módulos y preguntas frecuentes', () => {
 })
 
 test('la fecha visible de actualización corresponde a esta revisión', () => {
-  assert.match(helpSource, /Actualizado · 15 de septiembre de 2026/)
+  assert.match(helpSource, /Actualizado · 21 de octubre de 2026/)
 })
 
 test('el perfil técnico recibe ayuda propia y los demás roles sólo ven módulos permitidos', () => {

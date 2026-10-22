@@ -49,10 +49,11 @@ test('la Agenda semanal del Operador no ofrece acciones de modificación ni otro
   compiled.paths = module.paths
   compiled._compile(bundle.outputFiles[0].text, path.join(root, 'operator-render.cjs'))
   const noop = () => {}
-  const html = renderToString(React.createElement(compiled.exports.WeeklyPlanner, { weekly: {}, customers: [], services: [], activeTechs: [], history: [], vehicles: [], permissions: { weeklyTeams: true }, authUser: { roleCode: 'operator', role: 'Operador' }, setWeekly: noop, setHistory: noop, setNotice: noop, openDaily: noop }))
+  const html = renderToString(React.createElement(compiled.exports.WeeklyPlanner, { weekly: {}, customers: [], services: [], activeTechs: [], history: [], vehicles: [], permissions: { weeklyTeams: true, weeklyHours: true, weeklyVehicles: true, weeklyGuards: true }, authUser: { roleCode: 'operator', role: 'Operador' }, setWeekly: noop, setHistory: noop, setNotice: noop, openDaily: noop, onOpenPlanning: noop }))
   assert.match(html, /Consulta de solo lectura/)
   assert.match(html, /week-team-header/)
   assert.doesNotMatch(html, /Agregar servicio|Agregar otro equipo|Abrir día|Ver día|Agregar técnicos|Quitar Equipo|Guardar servicio|Equipos del mes/)
+  assert.doesNotMatch(html, /weekly-planning-link|Planificación<\/button>/)
   assert.match(source, /const module = isOperator \? 'weekly'/)
   assert.match(source, /if \(isReadOnly \|\| saveDraftConflictRef.current\) return/)
 })

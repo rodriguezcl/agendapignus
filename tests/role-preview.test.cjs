@@ -78,7 +78,7 @@ test('role names never impersonate the administrator and administrative previews
   assert.equal(renamed.notifications.find(item => item.id === 'administrator.advanceRequests').enabled, false)
   const administrator = buildRolePreview({ ...custom({}), code: 'administrator', name: 'Dirección' })
   assert.equal(administrator.enabledNotifications.length, policy.NOTIFICATION_IDS.length + 1)
-  assert.equal(administrator.modules.filter(module => module.visible).length, policy.MODULES.length - 1, 'Technical work still depends on employee eligibility')
+  assert.equal(administrator.modules.filter(module => module.visible).length, policy.MODULES.length, 'The virtual planning screen is included; technical work still depends on employee eligibility')
   assert.equal(administrator.readOnly, false)
   assert.equal(administrator.helpVisible, true)
   assert.equal(administrator.notifications.find(item => item.id === 'administrator.advanceRequests').enabled, true)
@@ -118,7 +118,7 @@ test('preview uses stable application navigation order and accurately distinguis
   assert.equal(manager.helpVisible, true)
   const empty = buildRolePreview(custom({}))
   assert.deepEqual(empty.visibleModules, [])
-  assert.equal(empty.hiddenModules.length, policy.MODULES.length)
+  assert.equal(empty.hiddenModules.length, policy.MODULES.length + 1)
   assert.deepEqual(empty.enabledNotifications, [])
   assert.deepEqual(empty.navigation, [])
 })
@@ -134,5 +134,36 @@ test('legacy preview migration preserves role identity, technical scopes and not
   assert.equal(technician.technical.visible, true)
   assert.equal(technician.portalOnly, true)
   assert.deepEqual(technician.scopes.map(scope => scope.value), ['assigned', 'assigned', 'related'])
-  assert.deepEqual(technician.enabledNotifications, [])
+  assert.deepEqual(technician.visibleModules.map(module => module.id), ['followups', 'technical'])
+  assert.deepEqual(technician.enabledNotifications.map(item => item.id), ['notifications.followups'])
+})
+
+test('planning preview groups existing capabilities and reacts to unsaved prerequisite revocations', async () => {
+  const { buildRolePreview } = await import('../src/domain/access/role-preview.mjs')
+  const role = custom({
+    'weekly.view': true,
+    'weekly.monthlyTeams.read': true,
+    'weekly.monthlyTeams.manage': true,
+    'weekly.guards.read': true
+  })
+  const before = JSON.stringify(role)
+  const preview = buildRolePreview(role)
+  assert.equal(previewModule(preview, 'operationalPlanning').visible, true)
+  assert.equal(capability(preview, 'operationalPlanning', 'weekly.monthlyTeams.manage').allowed, true)
+  assert.equal(capability(preview, 'operationalPlanning', 'weekly.guards.manage').allowed, false)
+  assert.equal(capability(preview, 'weekly', 'weekly.monthlyTeams.manage'), undefined)
+  assert.deepEqual(preview.navigation.map(item => item.id), ['weekly', 'operationalPlanning', 'help'])
+  assert.equal(JSON.stringify(role), before)
+
+  const draft = structuredClone(role)
+  draft.permissions['weekly.monthlyTeams.read'] = false
+  const partial = buildRolePreview(draft)
+  assert.equal(previewModule(partial, 'operationalPlanning').visible, true)
+  assert.equal(capability(partial, 'operationalPlanning', 'weekly.monthlyTeams.manage').allowed, false)
+  assert.match(capability(partial, 'operationalPlanning', 'weekly.monthlyTeams.manage').reason, /Requiere/)
+  draft.permissions['weekly.view'] = false
+  const revoked = buildRolePreview(draft)
+  assert.equal(previewModule(revoked, 'operationalPlanning').visible, false)
+  assert.ok(!revoked.navigation.some(item => item.id === 'operationalPlanning'))
+  assert.equal(JSON.stringify(role), before)
 })

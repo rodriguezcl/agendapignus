@@ -1,10 +1,9 @@
-import MonthlyHoursSettings from '../../../components/MonthlyHoursSettings.jsx'
+import { vehicleLabel } from '../../../domain/vehicles/vehicle-controls.mjs'
 import { canReadRecord, canWriteRecord } from '../../../domain/access/record-scope.mjs'
 import { usePermissions } from '../../../presentation/contexts/permissions-context.jsx'
 import { permittedPlanningPatch, canEditPlanningFields, canSavePlanningFields, serviceCopyRecord } from '../application/planning-permissions.mjs'
-import { prepareVehicleControlGeneration, sameGeneratedVehicleControl } from '../application/vehicle-control-generation.mjs'
 import { serviceScheduleConflicts, normalizeServiceEstimatedMinutes, taskOccupiedInterval } from "../../../domain/agenda/service-scheduling.mjs";
-import { taskHasContent, default2026GuardRotationFor, defaultServiceTasksForDate, isSaturday, assignGuardToEmptySaturday, defaultServiceTimesForDate, alignDefaultServiceTimes, fallbackDefaultServiceTimesForDate, mergeStoredTeamsWithDefaults, renumberVisibleWeeklyTeams, applyRemovedWeeklyTeams, applyRemovedWeeklySlots, applyRemovedWeeklyTasks, normalizeSaturdayTeams, removeUnavailableDefaultSlots, sortPlanTasksByTime, taskStatus, historyRecordForTask, blankTask, serviceTimeInMinutes, nextLiveScheduleMinute, taskForScheduleOccupancy, planningConflictMessage, stampServiceRecord, taskIsResolvedForPlanning, taskMoveScheduleState, teamLabelNumber, removedWeeklyTeamMatches, technicianTimeConflicts, weeklyTaskRemovalAliases, sortTasksByTime, serviceTrace, scheduleConflictMessage, taskOccupiedTimeLabel, scheduleConflictForTaskMessage, dayAgendaPreview, recordHolidayDecision } from "../application/agenda-model.mjs";
+import { taskHasContent, defaultServiceTasksForDate, isSaturday, assignGuardToEmptySaturday, defaultServiceTimesForDate, alignDefaultServiceTimes, fallbackDefaultServiceTimesForDate, mergeStoredTeamsWithDefaults, renumberVisibleWeeklyTeams, applyRemovedWeeklyTeams, applyRemovedWeeklySlots, applyRemovedWeeklyTasks, normalizeSaturdayTeams, removeUnavailableDefaultSlots, sortPlanTasksByTime, taskStatus, historyRecordForTask, blankTask, serviceTimeInMinutes, nextLiveScheduleMinute, taskForScheduleOccupancy, planningConflictMessage, stampServiceRecord, taskIsResolvedForPlanning, taskMoveScheduleState, teamLabelNumber, removedWeeklyTeamMatches, technicianTimeConflicts, weeklyTaskRemovalAliases, sortTasksByTime, serviceTrace, scheduleConflictMessage, taskOccupiedTimeLabel, scheduleConflictForTaskMessage, dayAgendaPreview, recordHolidayDecision } from "../application/agenda-model.mjs";
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useWeeklyWeather, WeatherCredit, WeatherArt, WeeklyWeather } from "../../../components/WeeklyWeather.jsx";
 import { createServiceLocalityLookup } from "../../../domain/agenda/service-locality.mjs";
@@ -26,23 +25,14 @@ import { createQuickClient } from "../../customers/application/customer-model.mj
 import { uploadAttachmentBatch } from "../../../components/Attachments.jsx";
 import { servicePhotoRepository } from "../../../infrastructure/repositories/service-photo-repository.mjs";
 import { canReorderService, reorderServices } from "../../../domain/agenda/reorder-services.mjs";
-import { ServiceConfirmationButton, ServiceEstimatedDurationField, ConfigurationHistoryPanel, BufferedInput, CustomerAutocomplete, BufferedTextarea, AgendaTechnicalNote, ServiceExtraFields, HolidayDecisionPanel, LunchCard, TaskStatusBadge } from "./AgendaFields.jsx";
+import { ServiceConfirmationButton, ServiceEstimatedDurationField, BufferedInput, CustomerAutocomplete, BufferedTextarea, AgendaTechnicalNote, ServiceExtraFields, HolidayDecisionPanel, LunchCard, TaskStatusBadge } from "./AgendaFields.jsx";
 import { ServiceJourneys, journeyLabel } from "../../../components/ServiceJourneys.jsx";
 import Icon from "../../../components/ui/Icon.jsx";
 import { fridayAdvanceDestination } from "../../../domain/agenda/friday-advance.mjs";
 import { vehicleControlResponsible, vehicleControlSwapCandidate } from "../../state/application/weekly-service-save.mjs";
 import { planningHoursForDay, teamServiceGaps } from "../../../domain/agenda/service-gaps.mjs";
-import { monthlyTeamRotation, monthlyEligibleTechnicians } from "../../../domain/agenda/monthly-team-rotation.mjs";
-import { synchronizeMonthlyTeams } from "../../../domain/agenda/monthly-team-sync.mjs";
-import { synchronizeMonthlyVehicles } from "../../../domain/vehicles/monthly-vehicle-sync.mjs";
-import { appendConfigurationHistory, teamConfigurationSnapshot, vehicleConfigurationSnapshot, guardConfigurationSnapshot } from "../../../domain/configuration/configuration-history.mjs";
-import { suggestedVehicleAssignments, monthFridays, buildVehicleControlRecords, vehicleControlTask, vehicleLabel } from "../../../domain/vehicles/vehicle-controls.mjs";
-import { firstSaturdayOfYear } from "../../../domain/agenda/annual-guards.mjs";
 import { Confirm } from "../../../presentation/components/Confirm.jsx";
 import ReorderServicesModal from "../../../components/ReorderServicesModal.jsx";
-import VehicleResponsibilitySwap from "../../../components/VehicleResponsibilitySwap.jsx";
-import { swapVehicleResponsibilities } from "../../state/application/vehicle-responsibility-swap.mjs";
-import TeamTechniciansField from "../../../components/TeamTechniciansField.jsx";
 import ModuleIntroduction from "../../../components/ModuleIntroduction.jsx";
 import WeeklyServiceSearch from "../../../components/WeeklyServiceSearch.jsx";
 import { HistoryDetail } from "../../history/presentation/HistoryDetail.jsx";
@@ -56,7 +46,7 @@ import { withLunchNotice } from "../../../domain/agenda/lunch-placement.mjs";
 import ServicePreparationButton from "../../../components/ServicePreparationButton.jsx";
 import { acknowledgedInteraction, afterInteractionPaint, interactionIsConfirmed, membershipMatches, weeklyTeamInteractionKey } from "../../../presentation/pending-interaction.mjs";
 
-export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGuardRef, persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, openDaily, authUser, vehicles, permissions = {}, confirmedRevision }) {
+export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, openRequest, onOpenRequestHandled, navigationGuardRef, persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, openDaily, authUser, vehicles, permissions = {}, confirmedRevision }) {
   const { can, user: permissionUser } = usePermissions()
   const minimumServiceGapConflicts = teams => serviceScheduleConflicts(teams, taskHasContent, weekly)
 
@@ -86,13 +76,9 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
   const localToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   const [today, setToday] = useState(localToday)
   const [planningClock, setPlanningClock] = useState(Date.now)
-  const [anchor, setAnchor] = useState(defaultWeeklyAnchor)
-  const weeklyAnchorFollowsCurrentRef = useRef(true)
-  const [monthlySetup, setMonthlySetup] = useState(null)
-  const [monthlyHours, setMonthlyHours] = useState(null)
-  const [monthlyVehicleSetup, setMonthlyVehicleSetup] = useState(null)
-  const [vehicleSwapSaving, setVehicleSwapSaving] = useState(false)
-  const [annualGuardSetup, setAnnualGuardSetup] = useState(null)
+  const [anchor, setAnchor] = useState(() => initialAnchor || defaultWeeklyAnchor())
+  useEffect(() => { onAnchorChange?.(anchor) }, [anchor, onAnchorChange])
+  const weeklyAnchorFollowsCurrentRef = useRef(!initialAnchor || initialAnchor === defaultWeeklyAnchor())
   const [techPicker, setTechPicker] = useState(null)
   const [techFilter, setTechFilter] = useState('')
   const [memberSelections, setMemberSelectionState] = useState({})
@@ -164,27 +150,6 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
   }
   const weeklyTechnicianName = fullName => activeTechs.find(tech => tech.name === fullName)?.firstName || String(fullName || '').split(' ')[0]
   const monthKey = anchor.slice(0, 7)
-  const anchorYear = anchor.slice(0, 4)
-  const currentMonthKey = today.slice(0, 7)
-  const pastMonthSelected = monthKey < currentMonthKey
-  const pastMonthConfigurationMessage = 'La configuración mensual sólo está disponible para el mes vigente y los meses futuros. Los meses finalizados son de solo lectura.'
-  const monthlyTeams = weekly._monthlyTeams || {}
-  const priorVehicleAssignmentHistory = useMemo(() => Object.entries(monthlyTeams)
-    .filter(([configuredMonth, config]) => configuredMonth < monthKey && config?.vehicleAssignments?.length)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([, config]) => config.vehicleAssignments), [monthlyTeams, monthKey])
-  const suggestedAnnualGuardRotation = (year, source = weekly) => {
-    const configured = source?._annualGuards?.[year]?.rotation
-    if (configured?.length) return configured.map(item => ({ ...item }))
-    if (String(year) === '2026') {
-      const preset = default2026GuardRotationFor(activeTechs)
-      if (preset.length) return preset
-    }
-    const previous = source?._annualGuards?.[String(Number(year) - 1)]?.rotation
-    return previous?.length ? previous.map(item => ({ ...item })) : []
-  }
-  const previousMonthKey = (() => { const value = new Date(`${monthKey}-01T12:00:00`); value.setMonth(value.getMonth() - 1); return value.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).slice(0, 7) })()
-  const baseTeams = monthlyTeams[monthKey]?.teams
   const createTeam = (index, source, day) => ({ teamId: source?.teamId || createTeamId(), memberIds: source?.memberIds || [], members: source?.members || [], tasks: defaultServiceTasksForDate(day, weekly), label: source?.label || `Equipo ${index + 1}` })
   const createDay = (day, sourceWeekly = weekly) => {
     const sources = sourceWeekly?._monthlyTeams?.[day.slice(0, 7)]?.teams || [null, null, null]
@@ -215,7 +180,7 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
         appendTraceElement(node, task)
         if (task?.vehicleControl) {
           node.classList.add('weekly-vehicle-control')
-          node.title = 'Control semanal generado desde Vehículos del mes'
+          node.title = 'Control semanal generado desde Planificación operativa'
           const select = node.querySelector('.week-task-top select')
           if (select?.options?.[0]) { select.options[0].textContent = task.service; select.disabled = true }
         }
@@ -880,222 +845,6 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
       setNotice(`No se eliminó el servicio. ${error.message || 'Revisá la versión actual e intentá nuevamente.'}`)
     }
   }
-  const suggestedMonthlyTeams = () => {
-    const rotation = monthlyTeamRotation(monthlyEligibleTechnicians(activeTechs), monthKey, '2026-01', vehicles.length || 3)
-    if (rotation.length) return rotation.map((members, index) => ({ teamId: createTeamId(), label: `Equipo ${index + 1}`, memberIds: members.map(tech => tech.id), members: members.map(tech => tech.name) }))
-    return (monthlyTeams[previousMonthKey]?.teams || [null, null, null]).map((team, index) => ({ teamId: team?.teamId || createTeamId(), label: team?.label || `Equipo ${index + 1}`, memberIds: team?.memberIds || [], members: team?.members || [] }))
-  }
-  const openMonthlySetup = () => {
-    if (!canReadConfiguration('weeklyTeams')) { setNotice('No tenés permiso para consultar los equipos mensuales.'); return }
-    if (pastMonthSelected) { setNotice(pastMonthConfigurationMessage); return }
-    setMonthlySetup({ month: monthKey, teams: baseTeams ? baseTeams.map(team => ({ teamId: team.teamId || createTeamId(), label: team.label, memberIds: team.memberIds || [], members: team.members || [] })) : suggestedMonthlyTeams() })
-  }
-  const updateMonthlyTeam = (index, memberIds) => { const selected = activeTechs.filter(tech => memberIds.some(id => String(id) === String(tech.id))); setMonthlySetup(previous => ({ ...previous, teams: previous.teams.map((team, teamIndex) => teamIndex === index ? { ...team, memberIds: selected.map(tech => tech.id), members: selected.map(tech => tech.name) } : team) })) }
-  const addMonthlyTeam = () => setMonthlySetup(previous => ({ ...previous, teams: [...previous.teams, { teamId: createTeamId(), label: `Equipo ${previous.teams.length + 1}`, memberIds: [], members: [] }] }))
-  const saveMonthlySetup = async () => {
-    if (!canConfigureWeekly('weeklyTeams')) return
-    const eligibleIds = new Set(monthlyEligibleTechnicians(activeTechs).map(tech => String(tech.id)))
-    const assignedIds = monthlySetup.teams.flatMap(team => (team.memberIds || []).map(String))
-    if (assignedIds.some(id => !eligibleIds.has(id))) { setNotice('Los equipos mensuales solo pueden incluir empleados activos con rol Técnico.'); return }
-    if (new Set(assignedIds).size !== assignedIds.length) { setNotice('Cada técnico debe integrar un único equipo mensual.'); return }
-    if (!granular && vehicles.length && !canConfigureWeekly('weeklyVehicles')) { setNotice('Para sincronizar equipos y vehículos necesitás también el permiso Vehículos del mes.'); return }
-    const month = monthlySetup.month
-    const teams = structuredClone(monthlySetup.teams)
-    try {
-      await persistWeeklyConfiguration(snapshot => {
-        const current = snapshot.agenda?.weekly?._monthlyTeams?.[month] || {}
-        const signature = value => JSON.stringify((value || []).map(team => (team.memberIds || []).map(String).sort()))
-        const changed = signature(current.teams) !== signature(teams)
-        let next = synchronizeMonthlyTeams(snapshot, { month, teams, fromDate: today })
-        if (vehicles.length && (!granular || (can('weekly.monthlyVehicles.assign') && can('weekly.controls.schedule')))) next = synchronizeMonthlyVehicles(next, { month, teams, vehicles, technicians: activeTechs, fromDate: today, holidays: holidayCalendar.records })
-        const config = next.agenda.weekly._monthlyTeams?.[month] || {}
-        let configurationHistory = appendConfigurationHistory(current.configurationHistory, {
-          type: 'teams', period: month, before: teamConfigurationSnapshot(current.teams), after: teamConfigurationSnapshot(teams), user: authUser
-        })
-        if (changed && vehicles.length && (!granular || (can('weekly.monthlyVehicles.assign') && can('weekly.controls.schedule')))) configurationHistory = appendConfigurationHistory(configurationHistory, {
-          type: 'vehicles', period: month, before: vehicleConfigurationSnapshot(current.vehicleAssignments, vehicles, activeTechs), after: vehicleConfigurationSnapshot(config.vehicleAssignments, vehicles, activeTechs), user: authUser
-        })
-        next.agenda.weekly._monthlyTeams = { ...next.agenda.weekly._monthlyTeams, [month]: { ...config, teams, configurationHistory } }
-        return next
-      })
-      setMonthlySetup(null)
-      setNotice('Equipos guardados. Los responsables vehiculares se sincronizaron con la rotación mensual; se conservaron controles realizados y reemplazos por fecha.')
-    } catch (error) { setNotice(`No se guardaron los equipos. ${error.message || 'Revisá la configuración e intentá nuevamente.'}`) }
-  }
-  const openMonthlyVehicleSetup = () => {
-    if (!canReadConfiguration('weeklyVehicles')) { setNotice('No tenés permiso para consultar los vehículos mensuales.'); return }
-    if (pastMonthSelected) { setNotice(pastMonthConfigurationMessage); return }
-    if (!vehicles.length) { setNotice('Primero cargá los vehículos de la flota en el módulo Flota.'); return }
-    const teams = monthlyTeams[monthKey]?.teams || suggestedMonthlyTeams()
-    const saved = monthlyTeams[monthKey]?.vehicleAssignments
-    const savedMatchesFleet = saved?.length === vehicles.length && vehicles.every(vehicle => saved.some(item => String(item.vehicleId) === String(vehicle.id)))
-    setMonthlyVehicleSetup({ month: monthKey, assignments: savedMatchesFleet ? saved.map(item => ({ ...item })) : suggestedVehicleAssignments(vehicles, teams, { month: monthKey, assignmentHistory: priorVehicleAssignmentHistory }) })
-  }
-  const updateMonthlyVehicleAssignment = (vehicleId, technicianId) => setMonthlyVehicleSetup(previous => ({
-    ...previous,
-    assignments: previous.assignments.map(item => String(item.vehicleId) === String(vehicleId) ? { ...item, technicianId } : item)
-  }))
-  const updateVehicleControlOverride = (vehicleId, friday, technicianId) => setMonthlyVehicleSetup(previous => ({
-    ...previous,
-    assignments: previous.assignments.map(item => {
-      if (String(item.vehicleId) !== String(vehicleId)) return item
-      const weeklyOverrides = { ...(item.weeklyOverrides || {}) }
-      if (!technicianId || String(technicianId) === String(item.technicianId)) delete weeklyOverrides[friday]
-      else weeklyOverrides[friday] = technicianId
-      return { ...item, weeklyOverrides }
-    })
-  }))
-  const saveMonthlyVehicleSetup = async (scheduleOnly = false) => {
-    if (scheduleOnly ? !requirePermission('weekly.controls.schedule') : !canConfigureWeekly('weeklyVehicles')) return
-    const generateControls = !granular || scheduleOnly
-    if (scheduleOnly && !monthlyTeams[monthlyVehicleSetup?.month]?.vehicleAssignments?.length) { setNotice('Guardá primero una asignación mensual válida antes de generar controles.'); return }
-    const assignments = (scheduleOnly ? monthlyTeams[monthlyVehicleSetup?.month]?.vehicleAssignments : monthlyVehicleSetup?.assignments) || []
-    const teams = monthlyTeams[monthlyVehicleSetup?.month]?.teams || suggestedMonthlyTeams()
-    if (assignments.length !== vehicles.length || vehicles.some(vehicle => !assignments.some(item => String(item.vehicleId) === String(vehicle.id) && item.technicianId))) { setNotice('Asigná un técnico responsable a cada vehículo.'); return }
-    if (activeTechs.length >= vehicles.length && new Set(assignments.map(item => String(item.technicianId))).size !== assignments.length) { setNotice('Cada vehículo debe tener un técnico responsable diferente.'); return }
-    const duplicatedOverride = monthFridays(monthlyVehicleSetup.month).filter(friday => friday >= today).find(friday => {
-      const technicians = assignments.map(item => String(item.weeklyOverrides?.[friday] || item.technicianId || '')).filter(Boolean)
-      return activeTechs.length >= vehicles.length && new Set(technicians).size !== technicians.length
-    })
-    if (duplicatedOverride) { setNotice(`El ${prettyDate(duplicatedOverride)} un técnico quedó asignado a más de un control a las 15:45. Elegí responsables diferentes.`); return }
-    const soloTechnicianIds = teams.filter(team => (team.memberIds || []).length === 1).map(team => String(team.memberIds[0]))
-    const fordKa = vehicles.find(vehicle => String(vehicle.brand || '').toLowerCase().includes('ford') && /(^|\s)ka($|\s)/i.test(String(vehicle.model || '')))
-    const fordAssignment = fordKa && assignments.find(item => String(item.vehicleId) === String(fordKa.id))
-    if (fordKa && soloTechnicianIds.length && !soloTechnicianIds.includes(String(fordAssignment?.technicianId || ''))) { setNotice('El Ford Ka debe quedar asignado a uno de los técnicos que trabaja solo durante el mes.'); return }
-    const assignmentSnapshot = vehicleConfigurationSnapshot(assignments, vehicles, activeTechs)
-    const persistedAssignments = assignments.map(assignment => {
-      const snapshot = assignmentSnapshot.find(item => String(item.vehicleId) === String(assignment.vehicleId))
-      return { ...assignment, vehicle: snapshot?.vehicle || '', technician: snapshot?.technician || '' }
-    })
-    const records = buildVehicleControlRecords({ month: monthlyVehicleSetup.month, assignments: persistedAssignments, vehicles, technicians: activeTechs, teams, fromDate: today, holidays: holidayCalendar.records, holidayOverrides: weekly._holidayOverrides || {} })
-      .filter(record => !weeklyTaskRemovalAliases(vehicleControlTask(record)).some(alias => (weekly?.[record.date]?.removedTaskIds || []).includes(alias)))
-    const updateWeekly = (previous, generatedControls = []) => {
-      let next = { ...previous }
-      if (generateControls) Object.entries(next).forEach(([day, plan]) => {
-        if (day.startsWith('_') || !plan?.teams) return
-        next[day] = {
-          ...plan,
-          teams: plan.teams.map(team => ({
-            ...team,
-            tasks: (team.tasks || []).filter(task => !generatedControls.some(record => sameGeneratedVehicleControl(task, record, day)))
-          }))
-        }
-      })
-      if (generateControls) generatedControls.forEach(record => {
-        const plan = next[record.date] || createDay(record.date, next)
-        let teamIndex = plan.teams.findIndex(team => (team.memberIds || []).some(id => String(id) === String(record.technicianIds[0])))
-        if (teamIndex < 0) teamIndex = 0
-        next[record.date] = {
-          ...plan,
-          teams: plan.teams.map((team, index) => index === teamIndex
-            ? { ...team, tasks: sortTasksByTime([...(team.tasks || []).filter(task => String(task.historyId || '') !== String(record.id)), vehicleControlTask(record)]) }
-            : team)
-        }
-      })
-      if (scheduleOnly) return next
-      return {
-        ...next,
-        _monthlyTeams: {
-          ...(next._monthlyTeams || {}),
-          [monthlyVehicleSetup.month]: (() => {
-            const current = next._monthlyTeams?.[monthlyVehicleSetup.month] || {}
-            const configurationHistory = appendConfigurationHistory(current.configurationHistory, {
-              type: 'vehicles',
-              period: monthlyVehicleSetup.month,
-              before: vehicleConfigurationSnapshot(current.vehicleAssignments, vehicles, activeTechs),
-              after: assignmentSnapshot,
-              user: authUser
-            })
-            return { ...current, ...(!granular ? { teams } : {}), vehicleAssignments: persistedAssignments, configurationHistory }
-          })()
-        }
-      }
-    }
-    try {
-      await persistWeeklyConfiguration(snapshot => {
-        const generated = generateControls ? prepareVehicleControlGeneration(snapshot, records, today) : { records: [], history: snapshot.history || [] }
-        return {
-          ...snapshot,
-          history: generated.history,
-          agenda: { ...snapshot.agenda, weekly: updateWeekly(snapshot.agenda?.weekly || {}, generated.records) }
-        }
-      })
-      setMonthlyVehicleSetup(null)
-      setNotice(generateControls ? 'Se generaron los controles con los responsables confirmados.' : 'Se guardaron los responsables mensuales.')
-    } catch (error) {
-      setNotice(`No se guardaron los responsables. ${error.message || 'Revisá la versión actual e intentá nuevamente.'}`)
-    }
-  }
-  const annualGuardDraft = year => ({ year: String(year), rotation: /^\d{4}$/.test(String(year)) ? suggestedAnnualGuardRotation(String(year)) : [] })
-  const openAnnualGuardSetup = () => {
-    if (!canReadConfiguration('weeklyGuards')) { setNotice('No tenés permiso para consultar las guardias anuales.'); return }
-    setAnnualGuardSetup(annualGuardDraft(anchorYear))
-  }
-  const changeAnnualGuardYear = year => setAnnualGuardSetup(annualGuardDraft(year))
-  const updateAnnualGuardTechnician = (index, technicianId) => {
-    const technician = activeTechs.find(item => String(item.id) === String(technicianId))
-    if (!technician) return
-    setAnnualGuardSetup(previous => ({ ...previous, rotation: previous.rotation.map((item, itemIndex) => itemIndex === index ? { technicianId: technician.id, name: technician.name } : item) }))
-  }
-  const addAnnualGuardTechnician = () => {
-    const available = activeTechs.find(tech => !annualGuardSetup.rotation.some(item => String(item.technicianId) === String(tech.id))) || activeTechs[0]
-    if (!available) return
-    setAnnualGuardSetup(previous => ({ ...previous, rotation: [...previous.rotation, { technicianId: available.id, name: available.name }] }))
-  }
-  const moveAnnualGuardTechnician = (index, direction) => setAnnualGuardSetup(previous => {
-    const destination = index + direction
-    if (destination < 0 || destination >= previous.rotation.length) return previous
-    const rotation = [...previous.rotation]
-    ;[rotation[index], rotation[destination]] = [rotation[destination], rotation[index]]
-    return { ...previous, rotation }
-  })
-  const removeAnnualGuardTechnician = index => setAnnualGuardSetup(previous => ({ ...previous, rotation: previous.rotation.filter((_, itemIndex) => itemIndex !== index) }))
-  const saveAnnualGuardSetup = () => {
-    if (!canConfigureWeekly('weeklyGuards')) return
-    const rotation = annualGuardSetup?.rotation || []
-    const duplicated = new Set(rotation.map(item => String(item.technicianId || item.name))).size !== rotation.length
-    if (!/^\d{4}$/.test(annualGuardSetup?.year || '') || !rotation.length || duplicated) return
-    const year = annualGuardSetup.year
-    setWeekly(previous => {
-      const current = previous._annualGuards?.[year] || {}
-      const configurationHistory = appendConfigurationHistory(current.configurationHistory, {
-        type: 'guards',
-        period: year,
-        before: guardConfigurationSnapshot(current.rotation),
-        after: guardConfigurationSnapshot(rotation),
-        user: authUser
-      })
-      return {
-        ...previous,
-        _annualGuards: {
-          ...(previous._annualGuards || {}),
-          [year]: { ...current, startDate: firstSaturdayOfYear(year), rotation, configurationHistory }
-        }
-      }
-    })
-    setAnnualGuardSetup(null)
-    setNotice(`El cronograma de guardias de ${year} fue guardado y se repetirá automáticamente cada sábado.`)
-  }
-  useEffect(() => {
-    // Al comenzar un mes el administrador confirma primero los equipos y luego
-    // los dos turnos que se usarán como horarios predeterminados.
-    if (!isAdministrator) return
-    if (pastMonthSelected) {
-      setMonthlySetup(null)
-      setMonthlyVehicleSetup(null)
-      return
-    }
-    const config = monthlyTeams[monthKey]
-    const expectedTeamCount = Math.min(activeTechs.length, vehicles.length || 3)
-    if ((!config?.teams?.length || config.teams.length !== expectedTeamCount) && monthlySetup?.month !== monthKey) {
-      setMonthlySetup({ month: monthKey, teams: suggestedMonthlyTeams() })
-      return
-    }
-    const assignmentsMatchFleet = config?.vehicleAssignments?.length === vehicles.length && vehicles.every(vehicle => config.vehicleAssignments.some(item => String(item.vehicleId) === String(vehicle.id)))
-    if (config?.teams?.length && vehicles.length && !assignmentsMatchFleet && !monthlySetup && monthlyVehicleSetup?.month !== monthKey) {
-      setMonthlyVehicleSetup({ month: monthKey, assignments: suggestedVehicleAssignments(vehicles, config.teams, { month: monthKey, assignmentHistory: priorVehicleAssignmentHistory }) })
-    }
-  }, [isAdministrator, monthKey, pastMonthSelected, monthlyTeams[monthKey], monthlySetup, monthlyVehicleSetup, vehicles, activeTechs.length, priorVehicleAssignmentHistory])
   const openDay = day => {
     if (!requirePermission('weekly.daily')) return
     if (readOnly) return
@@ -1211,22 +960,7 @@ export function WeeklyPlanner({ openRequest, onOpenRequestHandled, navigationGua
       const sameDayWithoutAlternative = taskMove.destinationDay === taskMove.day && !destinationOptions.length
       return <div className="modal-backdrop weekly-editor-backdrop" onMouseDown={() => { if (!taskMoveSaving) setTaskMove(null) }}><section className="modal task-move-modal weekly-move-modal" role="dialog" aria-modal="true" aria-labelledby="weekly-move-title" onMouseDown={event => event.stopPropagation()}><button title="Cerrá esta ventana y volvé a la pantalla anterior." className="modal-close" disabled={taskMoveSaving} onClick={() => { if (!taskMoveSaving) setTaskMove(null) }}><Icon name="close" /></button><p className="eyebrow">REASIGNAR SERVICIO</p><h2 id="weekly-move-title">{taskMove.advanceToFriday ? 'Adelantar al viernes' : 'Cambiar equipo, horario o fecha'}</h2>{taskMove.advanceToFriday && <p>Se conservará el técnico del sábado y se creará su equipo individual si hace falta. Elegí una franja entre las 16:00 y las 20:00. Los demás servicios del sábado se conservarán.</p>}<p>Revisá el destino, el horario y la duración antes de confirmar.</p><label>Origen<input value={`${prettyDate(taskMove.day)} · ${sourceTeam?.label || `Equipo ${taskMove.sourceTeamIndex + 1}`}`} readOnly /></label><label>Nueva fecha<input type="date" min={today} required disabled={taskMove.advanceToFriday} value={taskMove.destinationDay} onChange={event => selectWeeklyTaskMoveDate(event.target.value)} /></label><label>Equipo de destino<select value={selectedDestination ? selectedDestination.index : ''} disabled={taskMove.advanceToFriday || !validDestinationDay || destinationIsSunday || !destinationOptions.length} onChange={event => setTaskMove(previous => ({ ...previous, destinationTeamIndex: Number(event.target.value), responsibleId: '' }))}><option value="" disabled>Seleccionar equipo</option>{destinationOptions.map(({ team, index }) => <option key={team.teamId || index} value={index}>{team.label || `Equipo ${index + 1}`} · {team.members?.join(' / ') || 'Sin técnicos'}</option>)}</select></label>{movingControl?.vehicleControl && <label>Responsable del control<select required value={controlResponsible?.id || ''} disabled={!selectedDestination || taskMoveSaving} onChange={event => setTaskMove(previous => ({ ...previous, responsibleId: event.target.value }))}><option value="" disabled>Seleccionar técnico</option>{(selectedDestination?.team.memberIds || []).map((id, index) => <option key={id} value={id}>{selectedDestination.team.members[index]}</option>)}</select><small>El control se asigna únicamente a esta persona.</small></label>}<label>Hora de inicio<input type="time" required min={taskMove.advanceToFriday ? '16:00' : moveSchedule.hours?.min} max={moveSchedule.hours?.max} value={taskMove.time || ''} onChange={event => setTaskMove(previous => ({ ...previous, time: event.target.value }))} /></label>{movingControl?.vehicleControl ? <label>Tiempo estimado<input value="15 minutos" readOnly /></label> : <ServiceEstimatedDurationField className="task-move-duration" value={taskMove.estimatedMinutes} onChange={estimatedMinutes => setTaskMove(previous => ({ ...previous, estimatedMinutes }))} />}{moveSchedule.interval && <p className="task-occupied-range task-move-range">Franja estimada: {moveSchedule.interval.startTime}–{moveSchedule.interval.serviceEndTime}</p>}{destinationIsSunday && <p className="field-error">Los domingos no están habilitados para programar servicios.</p>}{!destinationIsSunday && moveSchedule.message && <p className="field-error task-move-schedule-error" role="alert">{moveSchedule.message}</p>}{moveConflict && <p className="field-error task-move-schedule-error" role="alert">No se puede reasignar porque {scheduleConflictMessage(moveConflict)}.</p>}{sameDayWithoutAlternative && <p className="weekly-move-help">Este día no tiene otro equipo. Elegí una fecha diferente para reprogramar el servicio.</p>}{swapPreview && <p className="weekly-move-help" role="status">Se intercambiarán los controles: {movingControl.client} pasará a {selectedDestination.team.label} ({controlResponsible?.name}) y {swapPreview.client} pasará a {sourceTeam.label} ({movingControl.technicians?.[0]}). Solo para esta fecha.</p>}<div className="modal-actions"><button title="Cancelá esta operación sin aplicar los cambios del formulario." className="secondary" disabled={taskMoveSaving} onClick={() => setTaskMove(null)}><Icon name="close" size={16} />Cancelar</button><button title="Guardá el traslado al equipo, fecha y horario elegidos; si corresponde, intercambiá los controles indicados." className="primary" disabled={taskMoveSaving || (movingControl?.vehicleControl && !controlResponsible) || !validDestinationDay || destinationIsSunday || !selectedDestination || holidayCalendar.loading || !moveSchedule.valid || Boolean(moveConflict) || (taskMove.advanceToFriday && taskMove.time < '16:00')} onClick={confirmWeeklyTaskMove}><span aria-hidden="true">⇄</span>{taskMoveSaving ? 'Guardando…' : swapPreview ? 'Intercambiar controles' : taskMove.destinationDay === taskMove.day ? 'Reasignar servicio' : 'Reprogramar servicio'}</button></div></section></div>
     })()}
-    {monthlyVehicleSetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal monthly-vehicles-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-vehicles-title"><button title="Cerrá esta ventana y volvé a la pantalla anterior." className="modal-close" disabled={vehicleSwapSaving} onClick={() => setMonthlyVehicleSetup(null)}><Icon name="close" /></button><p className="eyebrow">RESPONSABLES DE FLOTA</p><h2 id="monthly-vehicles-title">Vehículos de {new Date(`${monthlyVehicleSetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Asigná el responsable predeterminado de cada vehículo. Cada viernes se creará un control de 15 minutos a las 15:45 para cargar la foto interior y el kilometraje. Si surge una contingencia, podés elegir un reemplazo sólo para ese viernes sin modificar el resto del mes.</p><VehicleResponsibilitySwap month={monthlyVehicleSetup.month} today={today} vehicles={vehicles} history={history} disabled={!canConfigureWeekly('weeklyVehicles') || JSON.stringify(monthlyVehicleSetup.assignments) !== JSON.stringify(monthlyTeams[monthlyVehicleSetup.month]?.vehicleAssignments || [])} onBusyChange={setVehicleSwapSaving} onSave={async command => {
-      if (!canConfigureWeekly('weeklyVehicles')) throw new Error('No tenés permiso para cambiar responsables vehiculares.')
-      await persistWeeklyConfiguration(snapshot => swapVehicleResponsibilities(snapshot, { ...command, today: currentLocalDate(), user: authUser }))
-      setMonthlyVehicleSetup(null)
-      setNotice('Responsables intercambiados sólo para el viernes elegido. Se conservó la asignación mensual.')
-    }} /><div className="monthly-vehicle-list">{vehicles.map(vehicle => { const assignment = monthlyVehicleSetup.assignments.find(item => String(item.vehicleId) === String(vehicle.id)); const futureFridays = monthFridays(monthlyVehicleSetup.month).filter(friday => friday >= today); return <div className="monthly-vehicle-assignment" key={vehicle.id}><label><span><b>{vehicleLabel(vehicle)}</b><small>Kilometraje actual: {Number(vehicle.mileage || 0).toLocaleString('es-AR')} km</small></span><select disabled={!canConfigureWeekly('weeklyVehicles')} value={assignment?.technicianId || ''} onChange={event => updateMonthlyVehicleAssignment(vehicle.id, event.target.value)}><option value="">Seleccionar responsable</option>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></label>{futureFridays.length > 0 && assignment?.technicianId && <details className="vehicle-control-overrides"><summary>Reemplazos por contingencia</summary>{futureFridays.map(friday => <label key={friday}><span><b>{prettyDate(friday)}</b><small>{assignment.weeklyOverrides?.[friday] ? 'Reemplazo excepcional' : 'Responsable mensual'}</small></span><select disabled={!canConfigureWeekly('weeklyVehicles')} value={assignment.weeklyOverrides?.[friday] || assignment.technicianId} onChange={event => updateVehicleControlOverride(vehicle.id, friday, event.target.value)}>{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select></label>)}</details>}</div> })}</div><ConfigurationHistoryPanel history={monthlyTeams[monthlyVehicleSetup.month]?.configurationHistory} type="vehicles" /><div className="modal-actions"><button title="Cancelá esta operación sin aplicar los cambios del formulario." className="secondary" disabled={vehicleSwapSaving} onClick={() => setMonthlyVehicleSetup(null)}><Icon name="close" size={16} />Cancelar</button><button title="Guardá los responsables mensuales de vehículos y sus reemplazos excepcionales." className="primary" disabled={vehicleSwapSaving || !canConfigureWeekly('weeklyVehicles')} onClick={() => saveMonthlyVehicleSetup(false)}><Icon name="check" size={16} />Guardar responsables</button>{granular && can('weekly.controls.schedule') && <button type="button" className="primary" title="Generá los controles usando la asignación mensual ya guardada." disabled={vehicleSwapSaving || !monthlyTeams[monthlyVehicleSetup.month]?.vehicleAssignments?.length} onClick={() => saveMonthlyVehicleSetup(true)}>Generar controles</button>}</div></section></div>}
-{monthlyHours && <MonthlyHoursSettings month={monthlyHours} weekly={weekly} persistWeeklyConfiguration={persistWeeklyConfiguration} setNotice={setNotice} onClose={() => setMonthlyHours(null)} />}{monthlySetup && <div className="modal-backdrop monthly-backdrop"><section className="modal monthly-teams-modal" role="dialog" aria-modal="true"><button title="Cerrá esta ventana y volvé a la pantalla anterior." className="modal-close" onClick={() => setMonthlySetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN MENSUAL</p><h2>Equipos de {new Date(`${monthlySetup.month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</h2><p>Se actualizan los equipos pendientes desde hoy que conservan la dotación mensual. Se mantienen las excepciones diarias, las guardias y los equipos con trabajos iniciados o cerrados.</p><details className="monthly-team-help"><summary>Cómo se distribuyen los equipos</summary><p>El sistema propone una distribución con rotación mensual. Participan los colaboradores con rol Técnico; los perfiles con función técnica adicional se asignan puntualmente. Podés modificar la sugerencia antes de guardarla.</p></details><div className="monthly-team-list"><fieldset disabled={!canConfigureWeekly('weeklyTeams')} style={{ display: 'contents' }}>{monthlySetup.teams.map((team, index) => <TeamTechniciansField disabled={!canConfigureWeekly('weeklyTeams')} key={team.teamId || index} label={team.label || `Equipo ${index + 1}`} technicians={monthlyEligibleTechnicians(activeTechs)} memberIds={team.memberIds || []} onChange={memberIds => updateMonthlyTeam(index, memberIds)} />)}</fieldset></div><button title="Agregá un equipo a la configuración mensual." className="secondary monthly-add-team" disabled={!canConfigureWeekly('weeklyTeams')} onClick={addMonthlyTeam}><Icon name="plus" size={15} />Agregar equipo</button><ConfigurationHistoryPanel history={monthlyTeams[monthlySetup.month]?.configurationHistory} type="teams" /><div className="modal-actions"><button title="Cancelá esta operación sin aplicar los cambios del formulario." className="secondary" onClick={() => setMonthlySetup(null)}><Icon name="close" size={16} />Cancelar</button><button title="Guardá la distribución de equipos y técnicos del mes seleccionado." className="primary" disabled={!canConfigureWeekly('weeklyTeams')} onClick={saveMonthlySetup}><Icon name="check" size={16} />Guardar equipos del mes</button></div></section></div>}
-    {annualGuardSetup && (() => {
-      const duplicated = new Set(annualGuardSetup.rotation.map(item => String(item.technicianId || item.name))).size !== annualGuardSetup.rotation.length
-      const validYear = /^\d{4}$/.test(annualGuardSetup.year)
-      return <div className="modal-backdrop monthly-backdrop"><section className="modal annual-guards-modal" role="dialog" aria-modal="true" aria-labelledby="annual-guards-title"><button title="Cerrá esta ventana y volvé a la pantalla anterior." className="modal-close" onClick={() => setAnnualGuardSetup(null)}><Icon name="close" /></button><p className="eyebrow">CONFIGURACIÓN ANUAL</p><h2 id="annual-guards-title">Guardias de fin de semana</h2><p>Definí el orden de rotación. El primer técnico cubrirá el primer sábado del año y luego el ciclo se repetirá durante todos los sábados.</p><label className="annual-guard-year">Año<input type="number" min="2026" max="2100" value={annualGuardSetup.year} onChange={event => changeAnnualGuardYear(event.target.value)} /></label><div className="annual-guard-list"><fieldset style={{ display: 'contents' }} disabled={!canConfigureWeekly('weeklyGuards')}>{annualGuardSetup.rotation.map((guard, index) => {
-        const legacyGuard = guard.name && !activeTechs.some(tech => String(tech.id) === String(guard.technicianId))
-        return <div className="annual-guard-row" key={`${guard.technicianId || guard.name}-${index}`}><span>{index + 1}</span><select aria-label={`Técnico ${index + 1} de la rotación`} value={guard.technicianId || ''} onChange={event => updateAnnualGuardTechnician(index, event.target.value)}>{legacyGuard && <option value={guard.technicianId || ''}>{guard.name} (no activo)</option>}{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select><button type="button" className="secondary" title="Mové a este técnico una posición hacia arriba en el orden de rotación de guardias." aria-label={`Subir a ${guard.name}`} disabled={index === 0} onClick={() => moveAnnualGuardTechnician(index, -1)}>↑</button><button type="button" className="secondary" title="Mové a este técnico una posición hacia abajo en el orden de rotación de guardias." aria-label={`Bajar a ${guard.name}`} disabled={index === annualGuardSetup.rotation.length - 1} onClick={() => moveAnnualGuardTechnician(index, 1)}>↓</button><button type="button" className="icon-btn delete" title="Quitá a este técnico de la rotación de guardias; no elimina su perfil." aria-label={`Quitar a ${guard.name}`} onClick={() => removeAnnualGuardTechnician(index)}><Icon name="trash" size={15} /></button></div>
-      })}</fieldset></div><button title="Incorporá un técnico al orden de rotación de guardias." type="button" className="secondary annual-guard-add" disabled={!canConfigureWeekly('weeklyGuards') || !activeTechs.length || !validYear} onClick={addAnnualGuardTechnician}><Icon name="plus" size={15} />Agregar técnico</button>{!validYear && <p className="field-error">Ingresá un año válido.</p>}{duplicated && <p className="field-error">Cada técnico puede aparecer una sola vez en la rotación.</p>}{validYear && !annualGuardSetup.rotation.length && <p className="field-error">Agregá al menos un técnico para generar el cronograma.</p>}<p className="annual-guard-help">Los cambios manuales realizados en un sábado específico se conservan como excepción.</p><ConfigurationHistoryPanel history={weekly._annualGuards?.[annualGuardSetup.year]?.configurationHistory} type="guards" /><div className="modal-actions"><button title="Cancelá esta operación sin aplicar los cambios del formulario." className="secondary" onClick={() => setAnnualGuardSetup(null)}><Icon name="close" size={16} />Cancelar</button><button title="Guardá el orden y la configuración de las guardias del año seleccionado." className="primary" disabled={!canConfigureWeekly('weeklyGuards') || !validYear || !annualGuardSetup.rotation.length || duplicated} onClick={saveAnnualGuardSetup}><Icon name="check" size={16} />Guardar guardias del año</button></div></section></div>
-    })()}
-<div className="module-intro weekly-intro"><ModuleIntroduction><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1>{readOnly && <p className="weekly-description-mobile">Consulta de solo lectura.</p>}</ModuleIntroduction><div className="weekly-actions"><WeeklyServiceSearch anchor={anchor} weekly={weekly} history={history} getPlan={dayPlan} navigate={day => { weeklyAnchorFollowsCurrentRef.current = false; setAnchor(day) }} boardRef={weeklyBoardRef} openService={openTaskEditor} />{canReadConfiguration('weeklyHours') && <button type="button" className="secondary" title="Consultá los horarios heredados del mes seleccionado." onClick={() => setMonthlyHours(monthKey)}><Icon name="clock" size={16} />Horarios del mes</button>}{canReadConfiguration('weeklyTeams') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : 'Configurá la distribución mensual de equipos y técnicos.'} onClick={openMonthlySetup}><Icon name="users" size={16} />Equipos del mes</button>}{canReadConfiguration('weeklyVehicles') && <button className="secondary" disabled={pastMonthSelected} title={pastMonthSelected ? pastMonthConfigurationMessage : 'Asigná responsables de vehículos y reemplazos para los controles semanales del mes.'} onClick={openMonthlyVehicleSetup}><Icon name="vehicle" size={16} />Vehículos del mes</button>}{canReadConfiguration('weeklyGuards') && <button title="Configurá la rotación de técnicos para las guardias del año." className="secondary" onClick={openAnnualGuardSetup}><Icon name="users" size={16} />Guardias del año</button>}<label className="week-selector">Mostrar desde<input type="date" value={anchor} onChange={event => { if (!event.target.value) return; weeklyAnchorFollowsCurrentRef.current = false; setAnchor(event.target.value) }} /></label>    <nav className="weekly-date-navigation" aria-label="Navegar jornadas de la agenda">
+<div className="module-intro weekly-intro"><ModuleIntroduction><p className="eyebrow">PLANIFICACIÓN SEMANAL</p><h1>Agenda semanal</h1>{readOnly && <p className="weekly-description-mobile">Consulta de solo lectura.</p>}</ModuleIntroduction><div className="weekly-actions"><WeeklyServiceSearch anchor={anchor} weekly={weekly} history={history} getPlan={dayPlan} navigate={day => { weeklyAnchorFollowsCurrentRef.current = false; setAnchor(day) }} boardRef={weeklyBoardRef} openService={openTaskEditor} />{onOpenPlanning && ['weeklyHours', 'weeklyTeams', 'weeklyVehicles', 'weeklyGuards'].some(canReadConfiguration) && <button type="button" className="secondary weekly-planning-link" title="Abrí la planificación de recursos del mes seleccionado." onClick={() => onOpenPlanning(monthKey)}><Icon name="settings" size={16} />Planificación</button>}<label className="week-selector">Mostrar desde<input type="date" value={anchor} onChange={event => { if (!event.target.value) return; weeklyAnchorFollowsCurrentRef.current = false; setAnchor(event.target.value) }} /></label>    <nav className="weekly-date-navigation" aria-label="Navegar jornadas de la agenda">
       <button type="button" className="secondary" aria-label="Jornada anterior" title="Retroceder una jornada, omitiendo domingos" onClick={() => { weeklyAnchorFollowsCurrentRef.current = false; setAnchor(value => shiftWeeklyAnchor(value, -1)) }}>← <span>Anterior</span></button>
       <button type="button" className="secondary" title="Volvé a la jornada actual de la agenda semanal." onClick={() => { weeklyAnchorFollowsCurrentRef.current = true; setAnchor(defaultWeeklyAnchor()) }}>Hoy</button>
       <button type="button" className="secondary" aria-label="Jornada siguiente" title="Avanzar una jornada, omitiendo domingos" onClick={() => { weeklyAnchorFollowsCurrentRef.current = false; setAnchor(value => shiftWeeklyAnchor(value, 1)) }}><span>Siguiente</span> →</button>

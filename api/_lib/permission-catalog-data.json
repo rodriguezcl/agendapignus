@@ -688,7 +688,7 @@
       "id": "weekly.monthlyTeams.read",
       "label": "Consultar equipos del mes",
       "groups": [
-        "weekly"
+        "operationalPlanning"
       ],
       "all": [
         "weekly.view"
@@ -701,7 +701,7 @@
       "id": "weekly.monthlyTeams.manage",
       "label": "Configurar equipos del mes",
       "groups": [
-        "weekly"
+        "operationalPlanning"
       ],
       "all": [
         "weekly.monthlyTeams.read"
@@ -714,7 +714,7 @@
       "id": "weekly.monthlyHours.read",
       "label": "Consultar horarios mensuales heredados",
       "groups": [
-        "weekly"
+        "operationalPlanning"
       ],
       "all": [
         "weekly.view"
@@ -727,7 +727,7 @@
       "id": "weekly.monthlyHours.manage",
       "label": "Modificar horarios mensuales heredados",
       "groups": [
-        "weekly"
+        "operationalPlanning"
       ],
       "all": [
         "weekly.monthlyHours.read"
@@ -740,7 +740,7 @@
       "id": "weekly.monthlyVehicles.read",
       "label": "Consultar vehículos y responsables del mes",
       "groups": [
-        "weekly"
+        "operationalPlanning"
       ],
       "all": [
         "weekly.view"
@@ -753,7 +753,7 @@
       "id": "weekly.monthlyVehicles.assign",
       "label": "Asignar vehículos y responsables del mes",
       "groups": [
-        "weekly"
+        "operationalPlanning"
       ],
       "all": [
         "weekly.monthlyVehicles.read"
@@ -766,7 +766,7 @@
       "id": "weekly.controls.schedule",
       "label": "Generar o programar controles vehiculares",
       "groups": [
-        "weekly"
+        "operationalPlanning"
       ],
       "all": [
         "weekly.monthlyVehicles.read"
@@ -779,7 +779,7 @@
       "id": "weekly.guards.read",
       "label": "Consultar guardias del año",
       "groups": [
-        "weekly"
+        "operationalPlanning"
       ],
       "all": [
         "weekly.view"
@@ -792,7 +792,7 @@
       "id": "weekly.guards.manage",
       "label": "Configurar rotación anual de guardias",
       "groups": [
-        "weekly"
+        "operationalPlanning"
       ],
       "all": [
         "weekly.guards.read"
