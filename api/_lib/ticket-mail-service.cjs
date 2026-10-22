@@ -1,13 +1,21 @@
-const { timingSafeEqual } = require('node:crypto')
+const { timingSafeEqual, hkdfSync } = require('node:crypto')
 const { can } = require('./permission-catalog.cjs')
 const { safeMailError } = require('./ticket-mail.cjs')
 
 const CHANNEL_LEASE = 'agentec-mail-channel-operation'
 const fail = (message, statusCode = 400) => { throw Object.assign(new Error(message), { statusCode }) }
 
+function workerSecret(env = process.env) {
+  const explicit = env.TICKETS_MAIL_WORKER_SECRET
+  if (explicit !== undefined) return typeof explicit === 'string' && explicit.length >= 32 ? explicit : null
+  const session = env.PIGNUS_SESSION_SECRET
+  if (typeof session !== 'string' || session.length < 32) return null
+  return Buffer.from(hkdfSync('sha256', session, '', 'agentec/tickets/mail-worker/v1', 32)).toString('hex')
+}
+
 function workerAuthorized(req, env = process.env) {
-  const secret = env.TICKETS_MAIL_WORKER_SECRET
-  if (typeof secret !== 'string' || secret.length < 32) return false
+  const secret = workerSecret(env)
+  if (!secret) return false
   const header = req.headers?.authorization
   if (typeof header !== 'string') return false
   const actual = Buffer.from(header), expected = Buffer.from(`Bearer ${secret}`)
@@ -28,6 +36,7 @@ function createMailService({ sql, db, ticketStore, env = process.env, runMail, t
     } catch {
       result.status = { lastError: { message: 'Revisá las credenciales guardadas del correo.' } }
     }
+    result.scheduler = await require('./ticket-mail-scheduler.cjs').schedulerStatus({ sql })
     return result
   }
 
@@ -83,4 +92,4 @@ function createMailService({ sql, db, ticketStore, env = process.env, runMail, t
   return { request, process, snapshot }
 }
 
-module.exports = { createMailService, workerAuthorized, CHANNEL_LEASE }
+module.exports = { createMailService, workerSecret, workerAuthorized, CHANNEL_LEASE }

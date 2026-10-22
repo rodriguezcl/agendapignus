@@ -30,7 +30,8 @@
     "build": "vite build",
     "analyze:build": "node scripts/inspect-build.cjs",
     "preview": "vite preview",
-    "mail:tickets": "node --env-file-if-exists=.env.local scripts/ticket-mail-worker.cjs"
+    "mail:tickets": "node --env-file-if-exists=.env.local scripts/ticket-mail-worker.cjs",
+    "mail:tickets:schedule": "node --env-file-if-exists=.env.local scripts/configure-ticket-mail-schedule.cjs"
   },
   "dependencies": {
     "imapflow": "2.9.0",

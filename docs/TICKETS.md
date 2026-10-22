@@ -48,7 +48,7 @@ El formulario separa **Correo entrante** de **Correo saliente** siguiendo la org
 | Correo saliente | SMTP: servidor, puerto, SSL/TLS o STARTTLS, usuario y contraseña; admite reutilizar las credenciales de entrada mediante una opción explícita. |
 | Contraseñas | Una contraseña vacía conserva la ya guardada. El formulario indica si existe una credencial, sin volver a mostrarla. Para reemplazarla se ingresa el nuevo valor. |
 | Conservación | Los mensajes se conservan siempre: IMAP se abre en sólo lectura, sin borrar, mover ni marcar como leído. |
-| Operación | Guardar, probar conexión, activar en prueba u operativo, pausar y procesar una ejecución manual. El estado muestra ejecuciones y errores de forma resumida. |
+| Operación | Guardar, probar conexión, activar en prueba u operativo, pausar y procesar una ejecución manual. El estado distingue la programación automática del canal y muestra los últimos intentos, resultados y errores. |
 
 Para **GoDaddy Professional Email**, la configuración oficial es `imap.secureserver.net`, puerto `993`, SSL/TLS, y `smtpout.secureserver.net`, puerto `465`, SSL/TLS; el usuario suele ser la dirección completa. Verificar el producto contratado: estas instrucciones no configuran una cuenta Microsoft 365. [Configuración oficial de GoDaddy](https://www.godaddy.com/en-ph/help/use-imap-settings-to-add-my-professional-email-to-a-client-32204).
 
@@ -74,30 +74,53 @@ La configuración guardada en Agentec prevalece sobre la configuración históri
 2. Cargar los datos en Correo de soporte, seleccionar la carpeta de prueba, guardar y probar entrada y salida. Confirmar que se trata de una fuente aislada antes de activar el modo Prueba.
 3. Activar y ejecutar el procesamiento manual. La **primera ejecución guarda UIDNEXT como punto de partida y omite todo el correo anterior**. Enviar los mensajes de prueba después de ese punto. Una conexión verificada por sí sola no inicia la recepción.
 4. Comprobar creación del ticket, clasificación en el área elegida, vinculación manual de cuentas, adjuntos, duplicados y errores. El modo Prueba no envía respuestas; los tickets creados como prueba tampoco pueden responder al cliente al cambiar luego a Operativo.
-5. Configurar y probar el programador periódico si se requiere recepción automática. El botón de procesamiento manual ejecuta un ciclo acotado y no crea una tarea periódica.
+5. Consultar el estado de la ejecución automática en Funcionamiento. El programador configurado revisa el canal cada 2 minutos, aun sin sesiones abiertas; el botón de procesamiento manual ejecuta un único ciclo acotado y no cambia esa programación.
 6. Para pasar al buzón operativo, guardar la configuración final, repetir las pruebas y activar Operativo. El cambio de modo o identidad de buzón tiene su propio punto de activación; no recupera historia anterior. Coordinar qué sistema responde mientras Zammad continúa en paralelo.
 
 Una pausa conserva el cursor. Al reanudar la misma fuente y modo se continúa desde ese punto; no equivale a recrear un canal. Una carpeta o cuenta diferente necesita revisar el nuevo punto de activación. No cambiar de buzón con respuestas pendientes sin revisar primero la cola: los envíos conservan su vínculo con el canal de origen.
 
 ### Ejecución automática y diagnóstico
 
-Hay tres formas de ejecutar el mismo procesamiento: desde el formulario con una sesión autorizada; mediante `npm run mail:tickets` en un proceso con acceso a PostgreSQL y a IMAP/SMTP; o mediante un programador externo que llame al endpoint protegido:
+Hay tres formas de ejecutar el mismo procesamiento: desde el formulario con una sesión autorizada; mediante `npm run mail:tickets` en un proceso con acceso a PostgreSQL y a IMAP/SMTP; o mediante la programación de Supabase, que llama cada **2 minutos** al endpoint protegido de Vercel:
 
 ```http
 POST /api/tickets/mail/process
-Authorization: Bearer <TICKETS_MAIL_WORKER_SECRET>
+Authorization: Bearer <credencial del proceso>
 Content-Type: application/json
 
 {}
 ```
 
-`TICKETS_MAIL_WORKER_SECRET` es un secreto aleatorio de al menos 32 caracteres, diferente de la contraseña del buzón. Debe configurarse tanto en el servidor como en el almacén secreto del programador. No colocarlo en la URL, el repositorio, capturas ni logs. Sin un secreto válido, el endpoint no permite ejecuciones anónimas. El programador debe usar HTTPS, conservar el resultado de cada ejecución y alertar ante errores persistentes. La frecuencia y el servicio de ejecución se eligen según el volumen y el tiempo de atención esperado; no se contrata infraestructura al guardar el formulario.
+La tarea `agentec-ticket-mail-every-2-minutes` usa **pg_cron** y **pg_net** de Supabase. Se ejecuta en el servidor y no depende de que una persona mantenga Agentec abierto. El trabajo guarda su credencial en Supabase Vault, bajo el nombre `agentec-ticket-mail-worker`; el comando de cron no contiene el secreto. [Supabase Cron](https://supabase.com/docs/guides/cron) y [solicitudes HTTP con pg_net](https://supabase.com/docs/guides/database/extensions/pg_net).
+
+La configuración y la función de invocación viven en `agentec_private`, sin permisos para `PUBLIC`, `anon` o `authenticated`. Supabase administra las tablas internas de `net`; su cola contiene el encabezado de autorización mientras procesa cada solicitud. Mantener `net` y `agentec_private` fuera de los esquemas expuestos por la Data API y no publicar vistas ni funciones que permitan consultar esa cola. Los resultados de pg_net se conservan normalmente durante seis horas; el historial de cron puede consultarse para diagnosticar fallos anteriores al envío HTTP.
+
+La credencial puede definirse con `TICKETS_MAIL_WORKER_SECRET`, de al menos 32 caracteres aleatorios, diferente de la contraseña del buzón. Si se omite la variable, la API y el aprovisionamiento la derivan de `PIGNUS_SESSION_SECRET` mediante HKDF con un contexto exclusivo para esta tarea. Un valor explícitamente vacío o de menos de 32 caracteres se rechaza; no activa la derivación. Ambos deben usar la misma configuración. No colocar el secreto ni su derivación en la URL, el repositorio, capturas ni logs; Vault conserva el valor necesario para autenticar la solicitud. Sin una credencial válida, el endpoint no permite ejecutar el correo.
+
+La programación es independiente del canal: un ciclo con correo desactivado termina sin conectarse a IMAP o SMTP. En modo Prueba no se envían mensajes; en Operativo se reciben los nuevos correos y se procesan únicamente las respuestas que los usuarios solicitaron desde Tickets. Programar o pausar la tarea no modifica las credenciales, el modo del canal ni Zammad.
+
+#### Aprovisionamiento y mantenimiento
+
+El script `scripts/configure-ticket-mail-schedule.cjs` se ejecuta con `DATABASE_URL` y la misma credencial o clave de origen que la API. El comando de estado es de sólo lectura; los demás requieren `--confirm` explícito:
+
+```sh
+npm run mail:tickets:schedule -- --status
+npm run mail:tickets:schedule -- --prepare --confirm --url https://agenda.pignusarg.com
+npm run mail:tickets:schedule -- --enable --confirm
+npm run mail:tickets:schedule -- --disable --confirm
+```
+
+`--prepare` crea o actualiza la configuración y deja la tarea pausada. Luego de publicar una API compatible, `--enable` realiza una comprobación HTTPS autenticada mediante GET: el endpoint debe responder 405, porque sólo admite POST. Esta comprobación no recibe ni envía correo; después se habilita la tarea. `--disable` pausa la ejecución periódica y conserva la configuración. El estado permite revisar la programación y el último resultado sin exponer la credencial.
+
+Si se rota `TICKETS_MAIL_WORKER_SECRET`, o `PIGNUS_SESSION_SECRET` cuando se usa la derivación, repetir `--prepare` y `--enable` con el nuevo valor y coordinar su actualización en Vercel. La tarea debe permanecer pausada hasta que coincidan las credenciales del servidor y Vault. Rotar la clave de sesión también puede afectar el cifrado del buzón: revisar la sección de protección de credenciales antes de cambiarla.
+
+La solicitud de pg_net tiene un timeout de 65 segundos; la función de Vercel dispone de 60 segundos. El procesamiento tiene un presupuesto acotado por ciclo y una reserva global de 180 segundos que evita ejecuciones simultáneas, incluidas las manuales. Si ya existe un procesamiento, se devuelve 409 y la tarea vuelve a intentar en el siguiente ciclo; no crea un segundo procesamiento en paralelo.
 
 El CLI resuelve la configuración desde la misma base que la API. `npm run mail:tickets -- --status` consulta el estado sin descargar ni enviar mensajes. Se necesitan `DATABASE_URL` y la clave de cifrado correspondiente en el entorno del proceso. Los límites `TICKETS_MAIL_BATCH_SIZE` y `TICKETS_MAIL_MAX_RUN_MS` acotan el lote; las reservas de buzón impiden superposición entre las distintas formas de ejecución.
 
-No se agrega automáticamente un cron en Vercel. La documentación de Vercel limita Hobby a una ejecución diaria y rechaza durante el despliegue frecuencias mayores; por eso no se presupone suficiente para una bandeja de soporte. Un scheduler externo o un plan compatible debe configurarse expresamente. [Límites oficiales de Vercel Cron](https://vercel.com/docs/cron-jobs/usage-and-pricing).
+No se configura un cron en Vercel: Supabase inicia las llamadas periódicas a la API existente. Esto evita depender de la frecuencia permitida por Vercel Cron en el plan contratado. Guardar el formulario de correo no crea ni modifica tareas de infraestructura. [Límites oficiales de Vercel Cron](https://vercel.com/docs/cron-jobs/usage-and-pricing).
 
-La pantalla muestra última ejecución correcta, error y estados de la cola. Un cambio de UIDVALIDITY requiere revisar el punto de activación: no se reinicia automáticamente ni importa mensajes históricos. Las pruebas de conexión no sustituyen la supervisión de las ejecuciones periódicas ni del espacio disponible en el buzón.
+La pantalla muestra la última sincronización correcta, el estado activo/pausado de la programación, último intento y finalización, errores y estados de la cola. Un intento programado completado no significa que se hayan recibido mensajes: puede no haber novedades o el canal puede estar desactivado. Los errores y la ausencia de ejecuciones recientes se señalan al consultar el estado; no se envía una alerta externa de infraestructura. Un cambio de UIDVALIDITY requiere revisar el punto de activación: no se reinicia automáticamente ni importa mensajes históricos. Las pruebas de conexión no sustituyen la supervisión de las ejecuciones periódicas ni del espacio disponible en el buzón.
 
 La recepción deduplica por Message-ID (o huella del contenido cuando falta). Las respuestas se vinculan por encabezados y por `Ticket#`, comprobando que el remitente ya participa en el caso. Conocer un número no permite agregar mensajes a un caso ajeno. Una dirección no identificada abre un caso para clasificación y vinculación manual, sin inventar una cuenta.
 
@@ -124,6 +147,8 @@ Validación del 22/10/2026: compilación de producción aprobada; 32 pruebas del
 
 La suite general no queda completamente verde: conserva cinco fallos reproducidos también sobre `HEAD 6d6c5af`, anteriores a Tickets (descripción de botón en horarios mensuales, historial de configuración, selector de equipos mensuales y dos pruebas de controles vehiculares). La aserción de compatibilidad que aún esperaba el texto «Seguimientos» se actualizó a «Tickets» y sus cuatro pruebas volvieron a pasar. Estos fallos anteriores no se ocultan ni se modifican como parte del módulo.
 
-La conexión real a GoDaddy se configura desde el formulario; la clave de cifrado y el secreto del programador permanecen en el entorno del servidor. El scheduler y la habilitación operativa deben configurarse expresamente. Las verificaciones automatizadas usan adaptadores de correo simulados: no acreditan credenciales reales ni entregabilidad. No se hicieron envíos reales ni cambios en Zammad como parte de este ajuste. La publicación requiere el despliegue normal del proyecto y revisión de permisos de los roles que participarán.
+La conexión real a GoDaddy se configura desde el formulario; la clave de cifrado permanece en el entorno del servidor y la credencial del programador se conserva en Vault. La habilitación operativa del canal se realiza expresamente desde el formulario. Las verificaciones automatizadas usan adaptadores de correo simulados: no acreditan credenciales reales ni entregabilidad. No se hicieron envíos reales ni cambios en Zammad como parte del desarrollo del formulario. La publicación requiere el despliegue normal del proyecto y revisión de permisos de los roles que participarán.
 
 Validación del formulario de correo (22/10/2026): 84 pruebas de Tickets, correo, canal y proceso aprobadas; 2 pruebas HTTP de Tickets aprobadas (incluyen permisos, credenciales y autenticación del proceso); 11 controles UX aprobados. Revisión visual con API simulada en escritorio, móvil de 390 px y tema oscuro, sin desbordamientos ni errores React. Las pruebas de conexión usaron adaptadores ficticios, sin acceder a GoDaddy.
+
+Validación del programador (22/10/2026): autenticación dedicada, estado del cron, errores HTTP/SQL, ausencia de ejecuciones, concurrencia y provisión protegida por comprobación previa; pruebas de correo y canal aprobadas, 2 pruebas HTTP y 11 pruebas UX aprobadas, compilación de producción correcta. La preparación de Supabase se verificó con el trabajo pausado y sin modificar la versión del canal. La habilitación se realiza después del despliegue y debe verificarse con una ejecución programada real.

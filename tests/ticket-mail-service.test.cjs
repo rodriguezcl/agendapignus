@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { DatabaseSync } = require('node:sqlite')
 const { createTicketStore } = require('../api/_lib/tickets-store.cjs')
-const { createMailService, workerAuthorized, CHANNEL_LEASE } = require('../api/_lib/ticket-mail-service.cjs')
+const { createMailService, workerSecret, workerAuthorized, CHANNEL_LEASE } = require('../api/_lib/ticket-mail-service.cjs')
 const { sqliteTicketMailStore } = require('../api/_lib/ticket-mail-store.cjs')
 
 const admin = { id: 'admin', name: 'Administración', roleCode: 'administrator' }
@@ -37,6 +37,39 @@ test('el scheduler sólo admite Bearer exacto y secreto de servidor configurado'
   assert.equal(workerAuthorized({ headers: { authorization: `Bearer ${secret}` } }, { TICKETS_MAIL_WORKER_SECRET: secret }), true)
   assert.equal(workerAuthorized({ headers: { authorization: 'Bearer corto' } }, { TICKETS_MAIL_WORKER_SECRET: 'corto' }), false)
   assert.equal(workerAuthorized({ headers: { authorization: `Bearer ${secret}` } }, {}), false)
+})
+
+test('el scheduler deriva una clave dedicada estable sin aceptar el secreto de sesión', () => {
+  const secret = workerSecret(env)
+  assert.match(secret, /^[a-f0-9]{64}$/)
+  assert.equal(workerSecret({ ...env }), secret)
+  assert.notEqual(workerSecret({ PIGNUS_SESSION_SECRET: env.PIGNUS_SESSION_SECRET + 'rotado' }), secret)
+  assert.equal(workerAuthorized({ headers: { authorization: `Bearer ${secret}` } }, env), true)
+  assert.equal(workerAuthorized({ headers: { authorization: `Bearer ${env.PIGNUS_SESSION_SECRET}` } }, env), false)
+  for (const PIGNUS_SESSION_SECRET of [undefined, '', 'corta', 123]) assert.equal(workerSecret({ PIGNUS_SESSION_SECRET }), null)
+})
+
+test('un secreto explícito inválido no permite volver a la clave derivada', () => {
+  const derived = workerSecret(env)
+  const explicit = 'clave-explicita-para-worker-de-correo-123456789'
+  assert.equal(workerSecret({ ...env, TICKETS_MAIL_WORKER_SECRET: explicit }), explicit)
+  assert.equal(workerAuthorized({ headers: { authorization: `Bearer ${derived}` } }, { ...env, TICKETS_MAIL_WORKER_SECRET: explicit }), false)
+  for (const value of ['', 'corta', 123, false, null]) {
+    const configured = { ...env, TICKETS_MAIL_WORKER_SECRET: value }
+    assert.equal(workerSecret(configured), null)
+    assert.equal(workerAuthorized({ headers: { authorization: `Bearer ${derived}` } }, configured), false)
+  }
+})
+
+test('el estado local informa que la ejecución automática no está configurada', async () => {
+  const f = await fixture()
+  try {
+    const result = await f.request()
+    assert.equal(result.scheduler.configured, false)
+    assert.equal(result.scheduler.active, false)
+    assert.equal(result.scheduler.state, 'unconfigured')
+    assert.equal(result.scheduler.lastAttemptAt, null)
+  } finally { f.close() }
 })
 
 test('consultar, guardar, probar y procesar correo exige configurar Tickets', async () => {
