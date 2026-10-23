@@ -53,11 +53,8 @@
 }
 
 .app-shell[data-theme] :is(.accounts-bar, .audit-filters) {
-  padding: 16px;
+  padding: 0;
   margin-block: 0 var(--ap-section-gap);
-  background: var(--ap-surface);
-  border: 1px solid var(--ap-border);
-  border-radius: var(--ap-radius);
   color: var(--ap-muted);
 }
 
@@ -73,7 +70,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 12px 16px;
-  padding: 12px 16px;
+  padding: 0;
 }
 
 .app-shell[data-theme] .accounts-toolbar > .accounts-toolbar-search {
@@ -485,7 +482,6 @@ body .configuration-history > summary span { background: var(--ap-surface) !impo
 .technician-page .technician-service.blocked-by-vehicle-control { box-shadow: inset 3px 0 #d79224; }
 
 @media (max-width: 900px) {
-  .app-shell[data-theme] :is(.accounts-bar, .audit-filters) { padding: 14px; }
   .app-shell[data-theme] .dashboard-analytics { grid-template-columns: minmax(0, 1fr); }
 }
 
@@ -624,4 +620,13 @@ body .app-shell[data-theme] .content > .notice[data-tone] > button { color: var(
   .app-shell[data-theme] .history-toolbar .history-date-filters { grid-column: 1; grid-row: 2; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .app-shell[data-theme] .history-toolbar > div:not(.history-date-filters) { grid-row: 3; }
   .app-shell[data-theme] .history-toolbar .history-date-filters > label { grid-column: auto !important; }
+}
+
+/* Module controls sit directly on the page, as in the weekly agenda. */
+.app-shell[data-theme] .content :is(.accounts-bar, .audit-filters, .agenda-toolbar, .weekly-actions, .weekly-date-navigation, .planning-toolbar, .tickets-filters, .followups-toolbar, .followups-filters, .collections-filters, .subscriber-map-filters, .subscriber-map-toolbar) {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  padding: 0;
 }
