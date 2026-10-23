@@ -118,3 +118,11 @@
   .tickets-settings-category-body { padding:14px; }
   .tickets-timeline-heading span { margin-left:0; }
 }
+.tickets-results .tickets-observation-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}

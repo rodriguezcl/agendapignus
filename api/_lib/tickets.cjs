@@ -229,6 +229,7 @@ function metadataAttachment(file) {
 function present(ticket, user, entries = [], aliases = [], detailed = false) {
   const result = { ...ticket, displayNumber: `Ticket#${ticket.number}`, customerName: ticket.customerSnapshot?.name || '', eventAt: ticket.occurredAt, slaSummary: sla.slaView(ticket) }
   result.title = require('./ticket-registration-form.cjs').registrationFormTitle(ticket, permissions.can(user, 'records.contact'))
+  if (ticket.origin === 'technical') result.title = require('./ticket-technical-title.cjs').technicalTicketTitle(ticket)
   if(!permissions.can(user,'records.contact')||!permissions.can(user,'planning.commercial')) delete result.registrationForm
   delete result.externalParticipants
   if (!permissions.can(user, 'records.contact')) {
