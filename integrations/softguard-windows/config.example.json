@@ -1,0 +1,9 @@
+{
+  "softguardUrl": "https://softguard.pignusarg.com/",
+  "agentecUrl": "https://agenda.pignusarg.com/",
+  "dealer": "PIG",
+  "importEnabled": false,
+  "maxDropFraction": 0.1,
+  "downloadTimeoutMs": 90000,
+  "attempts": 3
+}

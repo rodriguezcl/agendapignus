@@ -1,0 +1,7 @@
+.customer-sync-control { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+.customer-sync-control .customer-sync-status { border: 0; background: transparent; padding: 2px 4px; min-height: 0; font-size: .75rem; color: var(--text-muted, #52657a); }
+.customer-sync-control small { max-width: 260px; }
+.customer-sync-modal { width: min(620px, calc(100vw - 32px)); }
+.customer-sync-modal p { margin: 16px 0; }
+.customer-sync-modal section { margin-top: 24px; }
+.customer-sync-modal input { width: 100%; margin-top: 8px; }

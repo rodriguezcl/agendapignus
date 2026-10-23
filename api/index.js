@@ -1223,6 +1223,11 @@ module.exports = async function handler(req, res) {
     if (process.env.VERCEL && !productionSecretsAreValid()) return send(res, 500, { error: 'La API no tiene configurados secretos de seguridad válidos.' })
     const sql = database()
     const route = routePath(req)
+    if (route === '/customers/sync/worker') {
+      if (req.method !== 'POST') return send(res, 405, { error: 'Método no permitido.' })
+      try { return send(res, 200, await require('./_lib/customer-sync.cjs').handle({ sql, mode: 'worker', body: requestBody(req), bearer: String(req.headers.authorization || '').replace(/^Bearer /, '') })) }
+      catch (error) { return send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo procesar la sincronización.' }) }
+    }
     if (route === '/tickets/mail/process') {
       const { createMailService, workerAuthorized } = require('./_lib/ticket-mail-service.cjs')
       if (!workerAuthorized(req)) return send(res, 401, { error: 'Acceso no autorizado al proceso de correo.' })
@@ -1246,6 +1251,12 @@ module.exports = async function handler(req, res) {
     }
     const session = await requireSession(req, res, sql)
     if (!session) return
+    if (route === '/customers/sync' || route === '/customers/sync/token') {
+      if (!(isGranular(session.user) ? canPermission(session.user, 'customers.import') : userCan(session.user, 'accountsImport'))) return send(res, 403, { error: 'No tenés permiso para sincronizar abonados.' })
+      const mode = route.endsWith('/token') ? (req.method === 'POST' ? 'token' : '') : req.method === 'GET' ? 'status' : req.method === 'POST' ? 'request' : ''
+      try { return send(res, 200, await require('./_lib/customer-sync.cjs').handle({ sql, mode, user: session.user })) }
+      catch (error) { return send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo procesar la sincronización.' }) }
+    }
     try { endpointPolicy.assertEndpointPermission(session.user, req.method, route) } catch (error) { return send(res, error.statusCode || 403, { error: error.message, code: error.code, permission: error.permission }) }
     if (isOperator(session.user) && !operatorRouteAllowed(req.method, route)) return send(res, 403, { error: 'Operador sólo puede consultar la Agenda semanal.' })
     await require('./_lib/tickets-http.cjs').storeFor(sql, 'sql').ensure()

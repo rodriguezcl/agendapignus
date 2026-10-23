@@ -1,0 +1,12 @@
+{
+  "name": "agentec-softguard-windows",
+  "version": "1.0.0",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": { "test": "node --test test/*.test.cjs" },
+  "dependencies": {
+    "playwright": "1.56.1",
+    "htmlparser2": "10.1.0",
+    "domutils": "3.2.2"
+  }
+}
