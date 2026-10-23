@@ -15,6 +15,20 @@ test('detecta los tres formularios y sólo extrae correos de Ver respuesta',()=>
  assert.equal(forms.detectRegistrationForm(title,'2 respuestas nuevas. Ver respuesta: a@example.com Ver respuesta: b@example.com').multiple,true)
  assert.deepEqual(forms.detectRegistrationForm(title,'Ver respuesta: no-es-correo').candidates,[])
 })
+test('títulos identifican el formulario y al respondente, incluidos avisos antiguos',()=>{
+ for(const [name,label] of [['Docta Urbanización','Docta Urbanización'],['Nobu Town','Nobu Town'],['Pignus Seguridad','Residencial']]) {
+  const ticket={number:'100',title:'Alta de Servicio - '+name,description:body,requesterEmail:'forms@google.com'}
+  assert.equal(forms.registrationFormTitle(ticket),'Formulario '+label+' completo: cliente@example.com')
+  assert.equal(require('../api/_lib/tickets.cjs').present(ticket,user).title,forms.registrationFormTitle(ticket))
+  assert.ok(require('../api/_lib/ticket-communications.cjs').notificationTitle(ticket,'Nuevo',{},true).includes('cliente@example.com'))
+  assert.ok(!require('../api/_lib/ticket-communications.cjs').notificationTitle(ticket,'Nuevo').includes('@'))
+  assert.equal(forms.registrationFormTitle({...ticket,description:'Sin correo'}),'Formulario '+label+' completo: Correo por identificar')
+  assert.equal(forms.registrationFormTitle({...ticket,description:'2 respuestas nuevas. Ver respuesta: a@example.com Ver respuesta: b@example.com'}),'Formulario '+label+' completo: Correo por identificar')
+  assert.equal(ticket.description,body)
+ }
+ assert.equal(forms.registrationFormTitle({title:'Otro caso',description:body}),'Otro caso')
+ assert.equal(forms.registrationFormTitle({title,registrationForm:{kind:'docta',multiple:true,candidates:['a@example.com','b@example.com'],confirmedAt:'2026-10-23',email:'b@example.com'}}),'Formulario Docta Urbanización completo: b@example.com')
+})
 for(const engine of ['sqlite','postgres'])test(engine+': formulario, agenda y correo se confirman atómicamente sin notificar a Google',async()=>{
  const values={TICKETS_MAIL_ENABLED:'true',TICKETS_MAIL_MODE:'live',TICKETS_MAIL_ADDRESS:'support@example.com',TICKETS_MAIL_USER:'support@example.com',TICKETS_MAIL_PASSWORD:'fixture-only'},prior={}
  for(const [key,value] of Object.entries(values)){prior[key]=process.env[key];process.env[key]=value}
@@ -30,6 +44,12 @@ for(const engine of ['sqlite','postgres'])test(engine+': formulario, agenda y co
  const imported=await store.ingestMail({subject:title,text:body,sender:{email:'forms@google.com',name:'Formularios de Google'},messageId:'<form1@google.com>',mode:'live',mailboxKey:runtime.mailboxKey,attachments:[]})
  assert.equal((await q('SELECT * FROM pignus_ticket_mail_outbox')).length,0)
  const detail=(await store.query(user,state,{mode:'detail',id:imported.ticketId})).ticket
+ assert.equal(detail.title,'Formulario Docta Urbanización completo: cliente@example.com')
+ assert.equal(detail.messages[0].body,body)
+ const list=await store.query(user,state,{mode:'list'})
+ assert.equal(list.items.find(item=>item.id===detail.id).title,detail.title)
+ const notifications=await store.query(user,state,{mode:'notifications'})
+ assert.ok(notifications.notifications.some(item=>item.title.includes(detail.title)))
  const adapter={load:async()=>JSON.parse((await q('SELECT data FROM form_test_state'))[0].data),save:async(_tx,_old,next)=>q('UPDATE form_test_state SET data=?',[JSON.stringify(next)])}
  const payload={action:'formReceipt',id:detail.id,version:detail.version,commandId:crypto.randomUUID(),customerId:'c1',formEmail:'cliente@example.com',serviceId:'s1',serviceSnapshot:JSON.stringify({form:'',formEmail:'',date:record.date,time:record.time})}
  await assert.rejects(store.run(user,state,{...payload,commandId:crypto.randomUUID(),formEmail:'wrong@example.com'},adapter),/Ver respuesta/)

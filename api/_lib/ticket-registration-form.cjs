@@ -22,4 +22,11 @@ function formServicePatch(state, record, email) {
  return {next,after}
 }
 function installationSuggestion(state) { const found=(state.services||[]).filter(s=>s.status==='Activo'&&/^(instalacion de alarma|instalacion de alarmas)$/.test(normalize(s.name)));return found.length===1?String(found[0].id):'' }
-module.exports={detectRegistrationForm,installation,formServicePatch,installationSuggestion}
+function registrationFormTitle(ticket, showEmail = true) {
+ const form = ticket.registrationForm || detectRegistrationForm(ticket.title, ticket.description)
+ const name = {docta:'Docta Urbanización','nobu-town':'Nobu Town',residencial:'Residencial'}[form?.kind]
+ if (!name) return ticket.title
+ const address = emailAddress(form.confirmedAt && form.email) || (!form.multiple && form.candidates?.length === 1 ? emailAddress(form.candidates[0]) : '')
+ return `Formulario ${name} completo${showEmail ? `: ${address || 'Correo por identificar'}` : ''}`
+}
+module.exports={detectRegistrationForm,installation,formServicePatch,installationSuggestion,registrationFormTitle}

@@ -18,7 +18,9 @@ const plain = (value, limit = 200) => String(value || '').replace(/[\u0000-\u001
 const hash = (...parts) => createHash('sha256').update(JSON.stringify(parts)).digest('hex')
 const system = { id: 'agentec-automation', name: 'Equipo de soporte · Agentec' }
 
-function notificationTitle(ticket, label, state = {}) {
+function notificationTitle(ticket, label, state = {}, showFormEmail = false) {
+  const formTitle = require('./ticket-registration-form.cjs').registrationFormTitle(ticket, showFormEmail)
+  if (formTitle !== ticket.title) return [formTitle, `Ticket#${plain(ticket.number, 30)}`, plain(label, 100)].filter(Boolean).join(' · ')
   const current = ticket.customerId && (state.customers || []).find(customer => String(customer.customerId || customer.id) === String(ticket.customerId))
   const customer = current || ticket.customerSnapshot
   const account = plain(customer?.account, 30)
