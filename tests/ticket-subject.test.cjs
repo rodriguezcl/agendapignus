@@ -4,8 +4,8 @@ const { automaticSubject } = require('../api/_lib/ticket-subject.cjs')
 const d = require('../api/_lib/tickets.cjs')
 test('asunto automático uniforme con cuenta, evento y zona sin repetir PIG', () => {
   assert.equal(automaticSubject({ customer:{account:'PIG-6029',name:'PIG-6029 Martín French'},event:{name:'BUR - Intrusión'},zone:'1 puerta de ingreso',category:{name:'Alarmas'},subcategory:{name:'Activaciones reiteradas'} }), 'PIG-6029 MARTÍN FRENCH - BUR - INTRUSIÓN - ZONA 1 PUERTA DE INGRESO')
-  assert.equal(automaticSubject({requesterName:'María',category:{name:'Soporte interno'},subcategory:{name:'Impresión'}}),'MARÍA')
-  assert.equal(automaticSubject({category:{name:'Soporte interno'}}),'SOLICITUD INTERNA')
+  assert.equal(automaticSubject({requesterName:'María',category:{name:'Soporte interno'},subcategory:{name:'Impresión'}}),'MARÍA - IMPRESIÓN')
+  assert.equal(automaticSubject({category:{name:'Soporte interno'}}),'SOLICITUD INTERNA - SOPORTE INTERNO')
   const long=automaticSubject({customer:{account:'CLI-1234',name:'N'.repeat(300)},event:{name:'E'.repeat(100)},zone:'Z'.repeat(200)})
   assert.ok(long.length<=160 && long.includes(' - E') && long.includes(' - ZONA Z'))
 })
@@ -13,7 +13,7 @@ test('servidor genera asunto con datos confiables y conserva compatibilidad de o
   const config=d.defaultConfig(),user={id:'admin',roleCode:'administrator',name:'Admin'},state={customers:[{customerId:'c1',account:'PIG-1',name:'Cliente'}],history:[]}
   const input={customerId:'c1',origin:'phone',categoryId:'alarm',subcategoryId:'repeated',description:'Observación obligatoria',title:'Título manipulado',automaticTitle:true}
   const item=d.newTicket(input,user,state,config,'1','2026-10-23T15:00:00Z')
-  assert.equal(item.title,'PIG-1 CLIENTE')
+  assert.equal(item.title,'PIG-1 CLIENTE - ACTIVACIONES REITERADAS')
   assert.equal(d.newTicket({...input,automaticTitle:false},user,state,config,'2','2026-10-23T15:00:00Z').title,'Título manipulado')
   assert.throws(()=>d.newTicket({...input,description:' '},user,state,config,'3','2026-10-23T15:00:00Z'),/Observación/)
 })

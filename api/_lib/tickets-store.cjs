@@ -1,3 +1,4 @@
+const { initializeBusinessDefaults } = require('./ticket-business-defaults.cjs')
 const crypto = require('node:crypto')
 const d = require('./tickets.cjs')
 const policy = require('./permission-catalog.cjs')
@@ -36,7 +37,7 @@ function sameMailContext(ticket, namespace, mode) {
 }
 function createTicketStore({ sql, db }) {
   const pg = Boolean(sql)
-  let readiness, serviceDefaultsReady, queue = Promise.resolve()
+  let readiness, businessDefaultsReady, serviceDefaultsReady, queue = Promise.resolve()
   const executor = connection => async (query, args = []) => {
     if (pg) return connection.unsafe(sqlParameters(query), args)
     const stmt = connection.prepare(query)
@@ -106,6 +107,24 @@ function createTicketStore({ sql, db }) {
       })
     })().catch(error => { serviceDefaultsReady = null; throw error })
     return serviceDefaultsReady
+  }
+  async function ensureBusinessDefaults() {
+    if (!businessDefaultsReady) businessDefaultsReady = (async () => {
+      const migration = 'ticket-business-defaults-v1'
+      if ((await execute('SELECT id FROM pignus_ticket_settings WHERE id=?', [migration])).length) return
+      await transaction(async q => {
+        const configuration = await settings(q, true)
+        if ((await q('SELECT id FROM pignus_ticket_settings WHERE id=?', [migration])).length) return
+        const next = initializeBusinessDefaults(configuration.config, d.defaultConfig())
+        if (JSON.stringify(next) !== JSON.stringify(configuration.config)) {
+          configuration.config = next
+          configuration.version++
+          await q('UPDATE pignus_ticket_settings SET data=? WHERE id=?', [JSON.stringify(configuration), 'config'])
+        }
+        await q('INSERT INTO pignus_ticket_settings (id,data) VALUES (?,?) ON CONFLICT(id) DO NOTHING', [migration, '{"complete":true}'])
+      })
+    })().catch(error => { businessDefaultsReady = null; throw error })
+    return businessDefaultsReady
   }
   async function ticket(q, id, locked = false) { return parse((await q(`SELECT data FROM pignus_tickets WHERE id=? OR number=?${pg && locked ? ' FOR UPDATE' : ''}`, [String(id || ''), String(id || '').replace(/^Ticket#/i, '')]))[0]) }
   async function principal(q, item, locked = false) {
@@ -184,6 +203,7 @@ function createTicketStore({ sql, db }) {
   }
   async function query(user,state,params={}) {
     await ensure()
+    await ensureBusinessDefaults()
     await ensureServiceDefaults(state)
     return serialized(async()=>{
       await rememberEscalationRecipients(execute,state)
@@ -271,6 +291,7 @@ function createTicketStore({ sql, db }) {
     const action=input.action,permission=d.ACTION_PERMISSIONS[action]
     if(action==='configure'?!d.can(user,'configure'):['create','contribute'].includes(action)?(!d.can(user,'view')||!d.can(user,'create')&&!d.can(user,'fromService')):!permission||!d.can(user,permission))d.fail('No tenés permiso para realizar esta acción.',403)
     await ensure()
+    await ensureBusinessDefaults()
     await ensureServiceDefaults(state)
     return transaction(async q=>{
       // Reintentos de un mismo comando se serializan sin bloquear casos independientes.

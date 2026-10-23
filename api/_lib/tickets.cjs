@@ -42,7 +42,8 @@ function defaultConfig() {
       category('electric-fence', 'Cerco eléctrico', 'Media', 'required', [['not-working', 'Falla de funcionamiento', 'Alta'], ['repeated', 'Activaciones reiteradas', 'Media'], ['damage', 'Daño físico', 'Alta'], ['other', 'Otra incidencia', 'Media']]),
       category('totems', 'Tótems', 'Media', 'required', [['not-working', 'Equipo fuera de servicio', 'Alta'], ['communication', 'Falla de comunicación', 'Alta'], ['other', 'Otra incidencia', 'Media']]),
       category('work', 'Trabajos realizados', 'Media', 'required', [['incomplete', 'Trabajo incompleto', 'Media'], ['visit', 'Coordinar visita', 'Media'], ['issue', 'Gestionar problema', 'Media']]),
-      category('commercial', 'Solicitudes comerciales', 'Baja', 'optional', [['quote', 'Cotizar adicional', 'Baja']], 'administration'),
+      category('commercial', 'Solicitudes comerciales', 'Baja', 'optional', [['quote', 'Solicitud de cotización', 'Baja'], ['expansion', 'Ampliación del servicio', 'Baja'], ['contract', 'Contratación de servicio', 'Media']], 'administration'),
+      category('administrative', 'Gestiones administrativas', 'Media', 'optional', [['billing', 'Consulta de facturación', 'Media'], ['payment', 'Consulta de pagos', 'Media'], ['account-data', 'Actualización de datos del titular', 'Baja'], ['other', 'Otra gestión administrativa', 'Media']], 'administration'),
       category('internal', 'Soporte interno', 'Media', 'optional', [['printing', 'Problema de impresión', 'Media'], ['other', 'Otra solicitud interna', 'Media']], 'administration'),
       category('general', 'Otras solicitudes', 'Media', 'optional', [['review', 'Revisar y clasificar', 'Media']])
     ],
@@ -201,7 +202,7 @@ function newTicket(input, user, state, config, number, now) {
   const event = eventId && config.events.find(item => item.active && (item.id === eventId || item.name === eventId))
   if (eventId && !event) fail('Seleccioná un evento activo.')
   const zone = effective.showZone ? text(input.zone, 200, 'Zona') : ''
-  const title = input.automaticTitle === true ? automaticSubject({ customer, event: effective.showEvent ? event : null, zone, requesterName: input.requesterName }) : text(input.title, 160, 'Asunto') || `${subcategory?.name || category.name}${customer ? ` · ${customer.account}` : ''}`
+  const title = input.automaticTitle === true ? automaticSubject({ customer, category, subcategory, scope: input.scope, event: effective.showEvent ? event : null, zone, requesterName: input.requesterName }) : text(input.title, 160, 'Asunto') || `${subcategory?.name || category.name}${customer ? ` · ${customer.account}` : ''}`
   const ticket = {
     id: crypto.randomUUID(), number: String(number), version: 1, title,
     description: text(input.description ?? input.body, 10000, 'Observación', true), scope: customer ? 'customer' : 'internal',
