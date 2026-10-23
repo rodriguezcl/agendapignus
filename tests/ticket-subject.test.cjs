@@ -32,3 +32,14 @@ test('opciones alfabéticas en español sin alterar el catálogo original', asyn
  assert.deepEqual(sortOptionsAlphabetically(input).map(x=>x.name),['Alarmas','cámaras','Zona 2','Zona 10'])
  assert.equal(input[0].name,'Zona 10')
 })
+
+test('ticket telefónico toma el correo de la cuenta y mantiene al operador como autor', () => {
+ const config=d.defaultConfig(),user={id:'op',name:'Operador',roleCode:'administrator'}
+ const input={scope:'customer',origin:'phone',categoryId:'alarm',customerId:'c1',description:'Revisar alarma',requesterEmail:'otro@example.com',customerEmailNotifications:true}
+ for(const [address,expected] of [['CLIENTE@example.com','cliente@example.com'],['',''],['no es correo','']]) {
+ const item=d.newTicket(input,user,{customers:[{customerId:'c1',account:'PIG-1',name:'Cliente',email:address}]},config,'1','2026-10-23T15:00:00Z')
+ assert.equal(item.requesterEmail,expected);assert.equal(item.customerEmailNotifications,Boolean(expected));assert.equal(item.createdById,'op');assert.equal(item.requesterId,'op')
+ }
+ const internal=d.newTicket({...input,scope:'internal',origin:'internal',categoryId:'internal',customerId:''},user,{customers:[]},config,'2','2026-10-23T15:00:00Z')
+ assert.equal(internal.customerEmailNotifications,false)
+})

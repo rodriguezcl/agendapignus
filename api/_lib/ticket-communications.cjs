@@ -70,12 +70,13 @@ function eventContent(type, ticket, context = {}, channel = 'platform') {
 }
 
 function canAutomaticallyEmail(ticket, runtime, type, inbound) {
-  if (REMINDERS.has(type) || ticket.origin !== 'email' || ticket.mailMode !== 'live' || !ticket.mailboxKey ||
+  const customerNotice = ticket.origin === 'phone' && ticket.customerEmailNotifications === true && Boolean(ticket.customerId)
+  if (REMINDERS.has(type) || (!customerNotice && ticket.origin !== 'email') || ticket.mailMode !== 'live' || !ticket.mailboxKey ||
       ticket.mailReviewRequired || ticket.autoReplySuppressed || !runtime?.enabled || runtime.mode !== 'live' ||
       runtime.mailboxKey !== ticket.mailboxKey) return false
   const recipient = emailAddress(ticket.requesterEmail)
   if (!recipient || recipient === emailAddress(runtime.address)) return false
-  if (type === 'received') {
+  if (type === 'received' && !customerNotice) {
     if (!inbound || inbound.automated || inbound.loop || inbound.bounce || inbound.mailReviewRequired || inbound.reviewRequired ||
         emailAddress(inbound.sender?.email) !== recipient || !messageIds(inbound.messageId).length) return false
   }

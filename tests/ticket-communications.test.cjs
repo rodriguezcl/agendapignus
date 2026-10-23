@@ -171,3 +171,14 @@ test('un error de persistencia revierte el evento, el aviso y el correo dentro d
     assert.equal((await f.communicate({ ticket: emailTicket(), mailRuntime: runtime })).queued, true)
   } finally { f.db.close() }
 })
+
+test('ticket del operador notifica al cliente una sola vez y conserva los avisos posteriores', async () => {
+ const f=fixture(), customerCase={...ticket(),customerId:'c1',customerEmailNotifications:true,requesterEmail:'customer@example.com',mailMode:'live',mailboxKey:runtime.mailboxKey}
+ try {
+ assert.equal((await f.communicate({ticket:customerCase,mailRuntime:runtime,type:'received',eventKey:'created'})).queued,true)
+ assert.equal((await f.communicate({ticket:customerCase,mailRuntime:runtime,type:'received',eventKey:'created'})).created,false)
+ assert.equal(f.outbox().length,1);assert.equal(f.outbox()[0].payload.to,'customer@example.com')
+ assert.equal((await f.communicate({ticket:customerCase,mailRuntime:runtime,type:'resolved',eventKey:'closed'})).queued,true)
+ for(const [i,change] of [{origin:'internal'},{customerId:''},{requesterEmail:''},{mailMode:'test'},{requesterEmail:runtime.address}].entries()) assert.equal((await f.communicate({ticket:{...customerCase,...change},mailRuntime:runtime,type:'received',eventKey:'blocked'+i})).queued,false)
+ }finally{f.db.close()}
+})

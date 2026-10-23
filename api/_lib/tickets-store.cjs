@@ -154,6 +154,11 @@ function createTicketStore({ sql, db }) {
     let mailRuntime
     // A broken mail configuration must not discard an agenda change or a report.
     if (!reminder) try { mailRuntime = await require('./ticket-mail-channel.cjs').createMailChannelStore({ query:q }).runtime() } catch { /* platform notice remains durable */ }
+    if (type === 'received' && item.customerEmailNotifications && !item.mailboxKey && mailRuntime?.mailboxKey) {
+      item.mailboxKey = mailRuntime.mailboxKey
+      item.mailMode = mailRuntime.mode
+      await save(q, item)
+    }
     const area = (await settings(q)).config.areas.find(area => area.id === item.areaId)
     const fallback=reminder?parse((await q('SELECT data FROM pignus_ticket_settings WHERE id=?',['escalation-recipients']))[0])?.recipientIds:[]
     const recipients = reminder ? (item.assigneeId ? [item.assigneeId] : area?.memberIds?.length ? area.memberIds : fallback?.length ? fallback : [item.createdById]) : requesterIds(item)

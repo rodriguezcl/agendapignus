@@ -4,6 +4,7 @@ const read = require('./granular-read-policy.cjs')
 const sla = require('./ticket-sla.cjs')
 const { requesterIds, sourceTicketIds } = require('./ticket-requesters.cjs')
 const { eligibleService } = require('./ticket-service-suggestion.cjs')
+const { emailAddress } = require('./ticket-mail.cjs')
 const { automaticSubject } = require('./ticket-subject.cjs')
 
 const STATUSES = ['Nuevo', 'En gestión', 'En espera', 'Resuelto', 'Fusionado']
@@ -203,13 +204,15 @@ function newTicket(input, user, state, config, number, now) {
   if (eventId && !event) fail('Seleccioná un evento activo.')
   const zone = effective.showZone ? text(input.zone, 200, 'Zona') : ''
   const title = input.automaticTitle === true ? automaticSubject({ customer, category, subcategory, scope: input.scope, event: effective.showEvent ? event : null, zone, requesterName: input.requesterName }) : text(input.title, 160, 'Asunto') || `${subcategory?.name || category.name}${customer ? ` · ${customer.account}` : ''}`
+  const customerEmail = origin === 'phone' && customer ? emailAddress(customer.email) : ''
   const ticket = {
+    customerEmailNotifications: Boolean(customerEmail),
     id: crypto.randomUUID(), number: String(number), version: 1, title,
     description: text(input.description ?? input.body, 10000, 'Observación', true), scope: customer ? 'customer' : 'internal',
     customerId: customer ? id(customer.customerId || customer.id) : '', customerSnapshot: customer ? snapshot(customer) : null,
     origin, categoryId: category.id, subcategoryId: subcategory?.id || '', eventId: effective.showEvent ? event?.id || '' : '', eventType: effective.showEvent ? event?.name || '' : '',
     zone, occurredAt: timestamp(input.eventAt || input.occurredAt, now),
-    requesterId: id(user.id), requesterName: text(input.requesterName, 160, 'Solicitante') || user.name || 'Usuario', requesterEmail: email(input.requesterEmail),
+    requesterId: id(user.id), requesterName: text(input.requesterName, 160, 'Solicitante') || user.name || 'Usuario', requesterEmail: origin === 'phone' && customer ? customerEmail : email(input.requesterEmail),
     createdById: id(user.id), createdByName: user.name || 'Usuario', areaId: effective.areaId || '', assigneeId: '', assigneeName: '',
     status: 'Nuevo', priority: effective.priority || 'Media', createdAt: now, updatedAt: now, serviceIds: service ? [id(service.id)] : [], participantIds: [id(user.id)]
   }
