@@ -375,3 +375,29 @@ body :is(.service-duration-field > span, .service-duration-inputs small, .system
 @media (max-width: 359px) {
   .modal.modal .history-detail-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Keep the shared close control inside the dialog scrollport without adding
+   an extra heading row. The negative margin reserves no vertical space. */
+:is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal.modal > :is(.close-modal, .modal-close) {
+  position: sticky !important;
+  top: 0 !important;
+  right: auto !important;
+  left: auto !important;
+  z-index: 30;
+  display: grid !important;
+  flex: none;
+  margin: 0 0 -36px auto !important;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
+  max-width: 36px !important;
+  max-height: 36px !important;
+  padding: 0 !important;
+  transform: none !important;
+}
+.modal.modal > :is(.close-modal, .modal-close) svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+.modal.modal > .tickets-dialog-heading { padding-right: 48px; min-height: 36px; }

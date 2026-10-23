@@ -1,6 +1,7 @@
 import { retirementClientLabel } from '../domain/customers/retirement-label.mjs'
 import { serviceTypesLabel } from '../domain/services/multi-service.mjs'
 import { useActionPermissions } from '../presentation/hooks/useActionPermissions.mjs'
+import Icon from './ui/Icon.jsx'
 import React, { useEffect, useRef } from 'react'
 import './location-installations-modal.css'
 
@@ -33,7 +34,7 @@ export default function LocationInstallationsModal({ records, category, label, m
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
       }
     }}>
-      <button title="Cerrá el detalle y volvé al resumen." ref={closeButton} type="button" className="close-modal" aria-label="Cerrar detalle" onClick={close}>×</button>
+      <button title="Cerrá el detalle y volvé al resumen." ref={closeButton} type="button" className="close-modal" aria-label="Cerrar detalle" onClick={close}><Icon name="close" /></button>
       <p className="eyebrow">{retirements ? 'BAJAS DE SERVICIO' : 'ALTAS DE SERVICIO · DETALLE POR UBICACIÓN'}</p>
       <h2 id="location-installations-title">{label}</h2>
       <p>{new Date(`${month}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} · {rows.length} {retirements ? 'retiro(s) de alarma completado(s)' : 'instalación(es) completada(s)'}</p>

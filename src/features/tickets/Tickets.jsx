@@ -43,7 +43,7 @@ function TicketDialog({ title, onClose, busy, children, wide = false, inactive =
     return () => { document.removeEventListener('keydown', trap); if (opener?.isConnected) opener.focus() }
   }, [])
   return <div className="modal-layer tickets-dialog-layer" onClick={event => { if (event.target === event.currentTarget) { event.preventDefault(); event.stopPropagation(); if (!busy && !inactive) onClose?.() } }}><section className={`modal tickets-dialog ${wide ? 'tickets-dialog--wide' : ''}`} role="dialog" aria-modal={!inactive} aria-hidden={inactive || undefined} inert={inactive ? '' : undefined} aria-label={title} tabIndex={-1} ref={root}>
-    <header className="tickets-dialog-heading"><h2>{title}</h2><button title="Cerrá esta ventana; si hay cambios pendientes, podrás conservarlos o descartarlos." type="button" className="secondary tickets-icon-button modal-dismiss" aria-label={`Cerrar ${title}`} disabled={busy} onClick={onClose}><Icon name="close" size={18} /></button></header>{children}
+    <button title="Cerrá esta ventana; si hay cambios pendientes, podrás conservarlos o descartarlos." type="button" className="close-modal modal-dismiss" aria-label={`Cerrar ${title}`} disabled={busy} onClick={onClose}><Icon name="close" size={18} /></button><header className="tickets-dialog-heading"><h2>{title}</h2></header>{children}
   </section></div>
 }
 
