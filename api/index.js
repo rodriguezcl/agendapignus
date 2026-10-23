@@ -1355,7 +1355,13 @@ module.exports = async function handler(req, res) {
     if (route === '/tickets' || route.startsWith('/tickets/')) {
       const { ticketRequest, ticketError, attachmentHeaders } = require('./_lib/tickets-http.cjs')
       try {
-        const result = await ticketRequest({ connection: sql, kind: 'sql', user: session.user, state: await readState(sql), method: req.method, route, query: req.query, input: requestBody(req) })
+        const result = await ticketRequest({ connection: sql, kind: 'sql', user: session.user, state: await readState(sql), method: req.method, route, query: req.query, input: requestBody(req), formState: {
+          load: async tx => { await tx`select value from pignus_preferences where key = 'state_revision' for update`; return readState(tx) },
+          save: async (tx, current, next, before, after) => {
+            await persistStateCollections(tx,current,next,Number(current.revision||0)+1)
+            await appendAudit(tx,[auditEntry(session.user,'Aplicó formulario de alta','Servicio / historial',String(after.id),before,after)])
+          }
+        } })
         if (result.file) { securityHeaders(res); for (const [key, value] of Object.entries(attachmentHeaders(result.file))) res.setHeader(key, value); return res.status(200).send(result.file.data) }
         return send(res, 200, result.body)
       } catch (error) { const failure = ticketError(error); return send(res, failure.status, failure.body) }

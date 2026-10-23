@@ -153,6 +153,19 @@ async function synchronizeTicketServices({ q, pg, previous, next, user, now, rep
       const coordinated = isNewLink || (item.resolutionServiceIds || []).includes(key)
       const type = !coordinated ? null : isNewLink && isScheduled ? 'scheduled' : moved ? 'rescheduled' : wasScheduled && !isScheduled ? 'canceled' : null
       if (type) {
+        if (isNewLink && item.registrationForm?.confirmedAt) {
+          if(record.form!=='Completo'||record.formEmail!==item.registrationForm.email) d.fail('La instalación debe conservar el formulario y correo confirmados.',409)
+          if(!require('./ticket-registration-form.cjs').installation(record,next)) d.fail('El formulario de alta requiere una instalación de alarma pendiente.',409)
+          if(!require('./permission-catalog.cjs').can(user,'planning.commercial')) d.fail('No tenés permiso para aplicar el formulario.',403)
+          item.registrationForm.serviceId=key;item.registrationForm.pendingCoordination=false
+          if(!item.registrationForm.receiptSentAt){
+            const receipt=await store.communicate(q,item,'form-received','registration-form-confirmed',now,{service:record},user)
+            if(!receipt.queued)d.fail('Activá el correo operativo del ticket antes de confirmar la instalación.',409)
+            item.registrationForm.receiptSentAt=now
+            item.status='En gestión';item.nextReviewAt='';item.waitReason=''
+            continue
+          }
+        }
         if (type !== 'canceled') { item.status = 'En gestión'; item.nextReviewAt = ''; item.waitReason = '' }
         await store.communicate(q, item, type, `service:${key}:${type}:${item.version + 1}`, now, { service: schedule(record || before), date: (record || before).date, time: (record || before).time }, user)
       }

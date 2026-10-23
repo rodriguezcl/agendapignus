@@ -8,6 +8,7 @@ const NOTIFICATION_SCHEMA = [
 ]
 const REMINDERS = new Set(['sla-overdue', 'response-overdue', 'no-update'])
 const LABELS = {
+  'form-received': 'Recibimos tu formulario de alta',
   received: 'Recibimos tu solicitud', scheduled: 'Servicio programado', rescheduled: 'Visita reprogramada',
   canceled: 'Visita cancelada', resolved: 'Caso resuelto', reopened: 'Caso nuevamente en gestión',
   waiting: 'Caso en espera', 'sla-overdue': 'Plazo de resolución vencido',
@@ -50,6 +51,7 @@ function eventContent(type, ticket, context = {}, channel = 'platform') {
   const returnAction = channel === 'email' ? 'responder este correo' : 'agregar una observación al ticket'
   let body
   switch (type) {
+    case 'form-received': body = `${greeting} Gracias por completar el formulario de alta. Lo recibimos correctamente. ${appointment ? `Tu visita está programada para el ${appointment}. Seguiremos acompañándote durante el proceso.` : 'Queda pendiente coordinar la fecha y el horario de la instalación. Por favor, continuá la gestión por WhatsApp al +54 9 3512 35-2959: https://wa.me/5493512352959. ¡Gracias por tu tiempo!'}`; break
     case 'received': body = `${greeting} Gracias por contarnos lo que está pasando. Registramos tu solicitud como ${number}. Nuestro equipo revisará el caso y te mantendremos informado de los avances.`; break
     case 'scheduled': body = `${greeting} ${appointment ? `Registramos una visita para el ${appointment}` : 'Registramos una visita en la agenda'} para atender tu reclamo. Seguiremos el caso hasta conocer el resultado. Gracias por tu disponibilidad.`; break
     case 'rescheduled': body = `${greeting} La visita de tu ${number} fue reprogramada${appointment ? ` para el ${appointment}` : ''}. Tu caso sigue abierto y te mantendremos informado de los avances. Gracias por tu paciencia y disponibilidad.`; break
@@ -71,6 +73,7 @@ function eventContent(type, ticket, context = {}, channel = 'platform') {
 
 function canAutomaticallyEmail(ticket, runtime, type, inbound) {
   const customerNotice = ticket.origin === 'phone' && ticket.customerEmailNotifications === true && Boolean(ticket.customerId)
+  if (ticket.registrationForm && !ticket.registrationForm.confirmedAt) return false
   if (REMINDERS.has(type) || (!customerNotice && ticket.origin !== 'email') || ticket.mailMode !== 'live' || !ticket.mailboxKey ||
       ticket.mailReviewRequired || ticket.autoReplySuppressed || !runtime?.enabled || runtime.mode !== 'live' ||
       runtime.mailboxKey !== ticket.mailboxKey) return false
@@ -107,6 +110,11 @@ async function communicateTicket({ q, ticket, type, eventKey, now = new Date().t
   let queued = false
   if (canAutomaticallyEmail(ticket, mailRuntime, type, inbound)) {
     const prepared = prepareTicketReply({ ...ticket, entries }, { text: eventContent(type, ticket, context, 'email').body }, system, mailRuntime)
+    if(type==='form-received') prepared.outbox.payload.subject=`Formulario de alta recibido [Ticket#${ticket.number}]`
+    if(type==='form-received' && !scheduledDate(context)) {
+      const escaped=prepared.outbox.payload.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')
+      prepared.outbox.payload.html=(prepared.outbox.payload.html||'<div>'+escaped+'</div>')+'<p><a href="https://wa.me/5493512352959" style="display:inline-block;padding:12px 18px;background:#186943;color:#ffffff;text-decoration:none;border-radius:6px">Continuar por WhatsApp</a></p>'
+    }
     // Un único evento es también el comprobante de la cola; no duplicar la conversación ni registrar el acuse como respuesta humana.
     const automaticOutbox = { ...prepared.outbox, entryId, createdAt: now, nextAttemptAt: now,
       payload: { ...prepared.outbox.payload, automatic: true } }

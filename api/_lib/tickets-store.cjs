@@ -1,3 +1,4 @@
+const registration = require('./ticket-registration-form.cjs')
 const { initializeBusinessDefaults } = require('./ticket-business-defaults.cjs')
 const crypto = require('node:crypto')
 const d = require('./tickets.cjs')
@@ -38,12 +39,12 @@ function sameMailContext(ticket, namespace, mode) {
 function createTicketStore({ sql, db }) {
   const pg = Boolean(sql)
   let readiness, businessDefaultsReady, serviceDefaultsReady, queue = Promise.resolve()
-  const executor = connection => async (query, args = []) => {
+  const executor = connection => Object.assign(async (query, args = []) => {
     if (pg) return connection.unsafe(sqlParameters(query), args)
     const stmt = connection.prepare(query)
     if (/^\s*SELECT|\bRETURNING\b/i.test(query)) return stmt.all(...args)
     stmt.run(...args); return []
-  }
+  }, { connection })
   const execute = executor(sql || db)
   const serialized = fn => {
     if (pg) return fn()
@@ -150,6 +151,7 @@ function createTicketStore({ sql, db }) {
     await q('INSERT INTO pignus_ticket_settings (id,data) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data',['escalation-recipients',JSON.stringify({recipientIds})])
   }
   async function communicate(q, item, type, eventKey, now, context = {}, actor, inbound) {
+    if(!item.registrationForm) item.registrationForm=registration.detectRegistrationForm(item.title,item.description)
     const reminder = ['sla-overdue','response-overdue','no-update'].includes(type)
     let mailRuntime
     // A broken mail configuration must not discard an agenda change or a report.
@@ -199,7 +201,7 @@ function createTicketStore({ sql, db }) {
   }
   async function detailed(q, item, user, state = {}, config) {
     const aliases = (await q('SELECT number FROM pignus_ticket_aliases WHERE ticket_id=? ORDER BY number',[item.id])).map(row=>row.number)
-    return { ...d.present(item,user,await entries(q,item.id),aliases,true), suggestedServiceId: serviceSuggestions.suggestedServiceId(item, config || (await settings(q)).config, state) }
+    return { ...d.present(item,user,await entries(q,item.id),aliases,true), registrationForm: policy.can(user,'planning.commercial') && policy.can(user,'records.contact') ? item.registrationForm || registration.detectRegistrationForm(item.title,item.description) : undefined, suggestedServiceId: registration.detectRegistrationForm(item.title,item.description) ? registration.installationSuggestion(state) : serviceSuggestions.suggestedServiceId(item, config || (await settings(q)).config, state) }
   }
   async function customerLock(q, customerId) { if (pg && customerId) await q('SELECT pg_advisory_xact_lock(hashtext(?))',[`ticket-customer:${customerId}`]) }
   async function duplicates(q, customerId, user, state, config, locked=false) {
@@ -224,6 +226,10 @@ function createTicketStore({ sql, db }) {
         if(!d.can(user,'create')&&!d.can(user,'fromService')&&!d.can(user,'classify')) d.fail('No tenés permiso para buscar cuentas para tickets.',403)
         const needle=d.normalized(params.search)
         return {items:needle.length<2?[]:(state.customers||[]).filter(c=>read.customerReadable(c,user,state)&&d.normalized(`${c.account} ${c.name} ${policy.can(user,'records.contact')?c.phone||'':''}`).includes(needle)).slice(0,20).map(c=>d.snapshot(c,user))}
+      }
+      if(mode==='formServices'){
+        if(!d.can(user,'linkService')||!policy.can(user,'planning.commercial')||!policy.can(user,'records.contact'))d.fail('No tenés permiso para aplicar formularios.',403)
+        return {items:(state.history||[]).filter(r=>registration.installation(r,state)&&read.serviceWritable(r,user,state)&&(!params.customerId||String(read.customerForRecord(r,state)?.customerId||r.customerId)===String(params.customerId))).sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time).localeCompare(String(b.time))).map(r=>({id:String(r.id),label:[r.client||r.clientAccount,r.date,r.time,r.service].filter(Boolean).join(' · '),form:r.form||'',formEmail:r.formEmail||'',snapshot:JSON.stringify({form:r.form||'',formEmail:r.formEmail||'',date:r.date||'',time:r.time||''})}))}
       }
       if(mode==='services'){if(!d.can(user,'linkService'))d.fail('No tenés permiso para vincular servicios.',403);return {items:(state.history||[]).filter(r=>read.serviceReadable(r,user,state)&&(!params.customerId||String(read.customerForRecord(r,state)?.customerId||r.customerId)===String(params.customerId))).sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,100).map(r=>({id:String(r.id),date:r.date,label:`${r.date||''} · ${r.client||r.clientAccount||''} · ${r.service||r.serviceType||r.detail||'Servicio'}`}))}}
       if(mode==='duplicates') { const customer=d.duplicateCustomer(params,user,state,{allowNoCustomer:true});const customerId=String(customer?.customerId||customer?.id||''); return customerId?{...await duplicates(execute,customerId,user,state,config),customerId}:{customerId:'',candidates:[],duplicateToken:''} }
@@ -286,7 +292,7 @@ function createTicketStore({ sql, db }) {
       return {items:items.map(t=>d.present(t,user)),total,page,pageSize,counts}
     })
   }
-  async function run(user,state,input) {
+  async function run(user,state,input, formState) {
     if(input.action==='markNotificationsRead') {
       if(!d.can(user,'view'))d.fail('No tenés acceso a Tickets.',403)
       return transaction(async q=>{const config=(await settings(q)).config,item=await principal(q,await ticket(q,input.id));d.assertVisible(item,user,state,config);const result=await communications.acknowledgeNotifications(q,user.id,{ticketId:item.id});for(const row of await q('SELECT id FROM pignus_tickets WHERE status=?',['Fusionado'])){const source=await ticket(q,row.id);if(source.mergedIntoId===item.id)await communications.acknowledgeNotifications(q,user.id,{ticketId:source.id})}return result})
@@ -299,6 +305,7 @@ function createTicketStore({ sql, db }) {
     await ensureBusinessDefaults()
     await ensureServiceDefaults(state)
     return transaction(async q=>{
+      if(action==='formReceipt' && formState) state=await formState.load(q.connection)
       // Reintentos de un mismo comando se serializan sin bloquear casos independientes.
       await rememberEscalationRecipients(q,state)
       if(pg)await q('SELECT pg_advisory_xact_lock(hashtext(?))',[`ticket-command:${commandId}`])
@@ -332,7 +339,7 @@ function createTicketStore({ sql, db }) {
         if(item.status==='Fusionado')d.fail('Este ticket fue fusionado. Abrí el ticket principal.',409)
         if(item.status==='Resuelto'&&!['reopen','merge'].includes(action))d.fail('Reabrí el ticket antes de modificarlo.',409)
         if(action==='resume'&&item.status!=='En espera')d.fail('El ticket no está en espera.',409)
-        const note=d.text(input.note??input.body,10000,'Observación',!['assign','resume','linkService'].includes(action))
+        const note=d.text(input.note??input.body,10000,'Observación',!['assign','resume','linkService','formReceipt'].includes(action))
         let eventLabel='',visibility='public',attachments=[]
         if(action==='comment'||action==='reply'||action==='contribute') {
           if(action==='contribute'&&input.visibility==='internal')d.fail('El aporte a un caso existente debe ser público.',403)
@@ -348,6 +355,7 @@ function createTicketStore({ sql, db }) {
           const context=input.context?{categoryId:d.text(input.context.categoryId,80,'Categoría'),subcategoryId:d.text(input.context.subcategoryId,80,'Subcategoría'),eventId:d.text(input.context.eventId,120,'Evento'),zone:d.text(input.context.zone,200,'Zona'),occurredAt:d.timestamp(input.context.occurredAt)}:undefined
           if(action==='contribute')item.coRequesterIds=[...new Set([...(item.coRequesterIds||[]),String(user.id)])]
           if(action==='reply') {
+            if(registration.detectRegistrationForm(item.title,item.description)&&!item.registrationForm?.confirmedAt)d.fail('Confirmá el correo de la respuesta del formulario antes de responder.',409)
             await q(`SELECT data FROM pignus_ticket_settings WHERE id=?${pg?' FOR UPDATE':''}`,['mail-channel'])
             const channel=await require('./ticket-mail-channel.cjs').createMailChannelStore({query:q}).runtime()
             const mail=require('./ticket-mail.cjs'),prepared=mail.prepareTicketReply({...item,entries:await entries(q,item.id)},{...input,attachments:input.attachments},user,channel)
@@ -382,6 +390,36 @@ function createTicketStore({ sql, db }) {
         }
         else if(action==='reopen') {if(item.status!=='Resuelto')d.fail('El ticket ya está abierto.',409);item.status='En gestión';item.resolvedAt='';delete item.resolvedByServiceId;delete item.resolvedById;delete item.resolvedByName;delete item.resolutionMethod;eventLabel='Reabrió el ticket'}
         else if(action==='linkCustomer') {const customer=d.customerFor(input,user,state);if(!customer)d.fail('Seleccioná una cuenta.');if(item.customerId&&item.customerId!==String(customer.customerId||customer.id))d.fail('El ticket ya tiene una cuenta vinculada.');const rule=d.classification(config,item.categoryId,item.subcategoryId);if(rule.effective.customerPolicy==='none')d.fail('Reclasificá el ticket para permitir una cuenta.');item.customerId=String(customer.customerId||customer.id);item.customerSnapshot=d.snapshot(customer);item.scope='customer';eventLabel='Vinculó un abonado o cliente'}
+        else if(action==='formReceipt') {
+          if(!policy.can(user,'planning.commercial')||!policy.can(user,'records.contact')) d.fail('No tenés permiso para gestionar formularios y datos de contacto.',403)
+          const detected=registration.detectRegistrationForm(item.title,item.description)
+          if(!detected || detected.multiple) d.fail('Revisá el aviso: se requiere un único formulario por ticket.')
+          if(item.registrationForm?.serviceId || item.registrationForm?.confirmedAt && !input.serviceId) d.fail('Este formulario ya fue confirmado. Usá Coordinar servicio para agendarlo.',409)
+          const address=require('./ticket-mail.cjs').emailAddress(input.formEmail)
+          if(!address || detected.candidates.length && !detected.candidates.includes(address)) d.fail('Seleccioná el correo de Ver respuesta del aviso.')
+          const customer=d.customerFor({customerId:input.customerId||item.customerId},user,state)
+          if(!customer) d.fail('Primero vinculá una cuenta al formulario.')
+          if(item.customerId && item.customerId!==String(customer.customerId||customer.id))d.fail('La cuenta del formulario no coincide con la del ticket.',409)
+          if(!item.customerId&&!d.can(user,'classify'))d.fail('No tenés permiso para vincular la cuenta.',403)
+          if(input.deferUntilScheduled===true&&!policy.can(user,'planning.create'))d.fail('No tenés permiso para coordinar una instalación.',403)
+          const record=input.serviceId?(state.history||[]).find(r=>String(r.id)===String(input.serviceId)):null
+          if(input.serviceId && (!record || !registration.installation(record,state) || !read.serviceWritable(record,user,state) || !policy.can(user,'planning.commercial'))) d.fail('No tenés acceso comercial a una instalación pendiente.',403)
+          if(record && String(read.customerForRecord(record,state)?.customerId||record.customerId)!==String(customer.customerId||customer.id)) d.fail('La cuenta del servicio no coincide.')
+          if(record && (record.formEmail && record.formEmail!==address || record.form==='Completo') && input.replaceForm!==true) d.fail('El servicio ya tiene un formulario. Confirmá el reemplazo.',409)
+          if(record && input.serviceSnapshot!==JSON.stringify({form:record.form||'',formEmail:record.formEmail||'',date:record.date||'',time:record.time||''})) d.fail('El servicio cambió. Volvé a seleccionarlo antes de confirmar.',409)
+          if(record && !formState) d.fail('No está disponible la actualización de agenda.',503)
+          item.customerId=String(customer.customerId||customer.id);item.customerSnapshot=d.snapshot(customer);item.scope='customer'
+          item.registrationForm={...item.registrationForm,...detected,email:address,confirmedAt:now,confirmedById:String(user.id),serviceId:record?String(record.id):'',pendingCoordination:!record}
+          item.requesterEmail=address;item.requesterName=customer.name||'';item.externalParticipants=[address];item.autoReplySuppressed=false;item.mailReviewRequired=false
+          item.status=record?'En gestión':'En espera';item.waitReason=record?'':'Pendiente de coordinar instalación'
+          if(record){const patch=registration.formServicePatch(state,record,address);await formState.save(q.connection,state,patch.next,record,patch.after);state=patch.next;item.serviceIds=[...new Set([...item.serviceIds,String(record.id)])];item.serviceSchedule=[{id:String(record.id),date:record.date,time:record.time,status:record.status,service:record.service}]}
+          if(!item.registrationForm.receiptSentAt && input.deferUntilScheduled!==true){
+            const result=await communicate(q,item,'form-received','registration-form-confirmed',now,{service:record},user)
+            if(!result.queued) d.fail('El correo debe estar operativo y corresponder al buzón del ticket para confirmar el formulario.',409)
+            item.registrationForm.receiptSentAt=now
+          }
+          eventLabel=record?'Aplicó el formulario a la instalación y confirmó su recepción':'Confirmó el formulario pendiente de coordinación'
+        }
         else if(action==='linkService') {const record=(state.history||[]).find(r=>String(r.id)===String(input.serviceId));if(!d.can(user,'linkService')||!record||!read.serviceReadable(record,user,state))d.fail('No tenés acceso al servicio.',403);if(item.customerId&&item.customerId!==String(read.customerForRecord(record,state)?.customerId||record.customerId||''))d.fail('La cuenta del servicio no coincide.');await require('./ticket-service-lifecycle.cjs').adoptLegacyServiceLinks(q,item,{ticket});const related=record.serviceJourney?(state.history||[]).filter(r=>r.serviceJourney?.id===record.serviceJourney.id):[record];item.serviceIds=[...new Set([...item.serviceIds,...related.map(r=>String(r.id))])];item.resolutionServiceIds=[...new Set([...(item.resolutionServiceIds||[]),...related.map(r=>String(r.id))])];item.serviceSchedule=related.map(r=>({id:String(r.id),date:r.date,time:r.time,status:r.status,service:r.service}));eventLabel='Vinculó un servicio';if(!['Completado','Cancelado','Avance registrado'].includes(record.status)){item.status='En gestión';await communicate(q,item,'scheduled',commandId,now,{service:record},user)}}
         else if(action==='merge') {
           const target=await ticket(q,input.targetId,true);d.assertVisible(target,user,state,config)
@@ -469,14 +507,15 @@ function createTicketStore({ sql, db }) {
       if(identifierCollision){messageKey=mailIdentifier(namespace,`${mail.messageId}\u001f${mail.sender.email}`);known=(await q('SELECT ticket_id,sender FROM pignus_ticket_mail_ids WHERE message_id=?',[messageKey]))[0]}
       if(known){const current=await principal(q,await ticket(q,known.ticket_id));return {ticketId:current?.id||known.ticket_id,duplicate:true}}
       let item
-      for(const ref of [...(mail.references||[]),mail.inReplyTo].filter(Boolean).reverse()){const rows=await q('SELECT ticket_id FROM pignus_ticket_mail_ids WHERE message_id IN (?,?)',[mailIdentifier(namespace,`${ref}\u001f${mail.sender.email}`),mailIdentifier(namespace,ref)]);for(const row of rows){const candidate=await principal(q,await ticket(q,row.ticket_id,true),true);if(sameMailContext(candidate,namespace,mode)&&require('./ticket-mail.cjs').ticketParticipantEmails(candidate).includes(mail.sender.email)){item=candidate;break}}if(item)break}
-      if(!item)for(const number of mail.headerTicketNumbers||[]){const alias=(await q('SELECT ticket_id FROM pignus_ticket_aliases WHERE number=?',[number]))[0];const candidate=await principal(q,await ticket(q,alias?.ticket_id||number,true),true);if(sameMailContext(candidate,namespace,mode)&&require('./ticket-mail.cjs').ticketParticipantEmails(candidate).includes(mail.sender.email)){item=candidate;break}}
+      if(!registration.detectRegistrationForm(mail.subject,mail.text)) for(const ref of [...(mail.references||[]),mail.inReplyTo].filter(Boolean).reverse()){const rows=await q('SELECT ticket_id FROM pignus_ticket_mail_ids WHERE message_id IN (?,?)',[mailIdentifier(namespace,`${ref}\u001f${mail.sender.email}`),mailIdentifier(namespace,ref)]);for(const row of rows){const candidate=await principal(q,await ticket(q,row.ticket_id,true),true);if(sameMailContext(candidate,namespace,mode)&&require('./ticket-mail.cjs').ticketParticipantEmails(candidate).includes(mail.sender.email)){item=candidate;break}}if(item)break}
+      if(!item&&!registration.detectRegistrationForm(mail.subject,mail.text))for(const number of mail.headerTicketNumbers||[]){const alias=(await q('SELECT ticket_id FROM pignus_ticket_aliases WHERE number=?',[number]))[0];const candidate=await principal(q,await ticket(q,alias?.ticket_id||number,true),true);if(sameMailContext(candidate,namespace,mode)&&require('./ticket-mail.cjs').ticketParticipantEmails(candidate).includes(mail.sender.email)){item=candidate;break}}
       const now=new Date().toISOString(),isNew=!item,previousTicket=item?d.clone(item):null
       const mailCategory=configuration.config.categories.find(c=>c.id==='general'&&c.active)||configuration.config.categories.find(c=>c.active&&c.customerPolicy!=='required')
       if(!item&&!mailCategory)d.fail('Configurá una categoría activa sin cuenta obligatoria para recibir correos.',409)
       const mailRule=mailCategory&&d.classification(configuration.config,mailCategory.id,mailCategory.subcategories.find(c=>c.id==='review'&&c.active)?.id||'')
       if(!item)item={id:crypto.randomUUID(),number:await nextNumber(q,configuration),version:1,title:mail.subject.slice(0,160),description:mail.text.slice(0,10000),scope:'unlinked',mailReviewRequired:identifierCollision||mail.mailReviewRequired||false,mailMode:mode,mailboxKey:namespace,customerId:'',customerSnapshot:null,origin:'email',categoryId:mailRule.category.id,subcategoryId:mailRule.subcategory?.id||'',eventType:'',zone:'',createdAt:now,updatedAt:now,requesterId:'',requesterName:mail.sender.name||mail.sender.email,requesterEmail:mail.sender.email,createdById:'email',createdByName:mail.sender.name||mail.sender.email,externalParticipants:[mail.sender.email],participantIds:[],areaId:configuration.config.areas.find(area=>area.active!==false&&area.id===mail.areaId)?.id||mailRule.effective.areaId||'',assigneeId:'',assigneeName:'',status:'Nuevo',priority:mailRule.effective.priority,ruleVersion:configuration.version,serviceIds:[]}
       else {item.mailboxKey=namespace;item.mailMode=mode;item.version++;item.updatedAt=now;if(item.status==='Resuelto'||item.status==='En espera'){item.status='En gestión';item.resolvedAt='';delete item.resolvedByServiceId;delete item.resolvedById;delete item.resolvedByName;delete item.resolutionMethod;item.nextReviewAt='';await addEntry(q,{...d.entry(item,{id:'email',name:'Correo'},'El cliente agregó información y el caso vuelve a gestión.',now,{kind:'event',action:'reopen'}),ticketId:item.id})}}
+      if(isNew && registration.detectRegistrationForm(mail.subject,mail.text)){item.registrationForm=registration.detectRegistrationForm(mail.subject,mail.text);item.autoReplySuppressed=true}
       sla.transitionSla(item,previousTicket,'inbound',configuration.config,now)
       const attachments=validateAttachments((mail.attachments||[]).map(f=>({fileName:f.fileName||f.name,mimeType:f.mimeType||f.mime,data:Buffer.isBuffer(f.data)?f.data.toString('base64'):f.data})))
       await save(q,item);await addEntry(q,{...d.entry(item,{id:'email',name:mail.sender.name||mail.sender.email},mail.text,now,{channel:'email',visibility:'public',messageId:mail.messageId,from:mail.sender.email,receivedAt:mail.receivedAt,reviewRequired:identifierCollision||mail.mailReviewRequired||false,truncated:mail.textTruncated||mail.truncated||false,attachments}),ticketId:item.id});await q('INSERT INTO pignus_ticket_mail_ids (message_id,ticket_id,sender) VALUES (?,?,?)',[messageKey,item.id,mail.sender.email])

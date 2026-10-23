@@ -2054,7 +2054,15 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     const { ticketRequest, ticketError, attachmentHeaders } = require('./api/_lib/tickets-http.cjs')
-    return (req.method === 'GET' ? Promise.resolve({}) : readJson(req, 4_000_000)).then(input => ticketRequest({ connection: db, kind: 'db', user, state: readState(), method: req.method, route: url.pathname.replace(/^\/api/, ''), query: Object.fromEntries(url.searchParams), input })).then(result => {
+    return (req.method === 'GET' ? Promise.resolve({}) : readJson(req, 4_000_000)).then(input => ticketRequest({ connection: db, kind: 'db', user, state: readState(), method: req.method, route: url.pathname.replace(/^\/api/, ''), query: Object.fromEntries(url.searchParams), input, formState: {
+      load: async () => readState(),
+      save: async (_connection,current,next,before,after) => {
+        db.prepare('UPDATE work_history SET data=? WHERE id=?').run(JSON.stringify(after),String(after.id))
+        db.prepare('UPDATE agendas SET data=? WHERE id=?').run(JSON.stringify(next.agenda),'current')
+        writeAudit(user,'Aplicó formulario de alta','Servicio / historial',String(after.id),before,after)
+        db.prepare('INSERT OR REPLACE INTO preferences (key,value) VALUES (?,?)').run('state_revision',String(currentStateRevision()+1))
+      }
+    } })).then(result => {
       if (result.file) { res.writeHead(200, attachmentHeaders(result.file)); return res.end(result.file.data) }
       return send(res, 200, result.body)
     }).catch(error => { const failure = ticketError(error); return send(res, failure.status, failure.body) })

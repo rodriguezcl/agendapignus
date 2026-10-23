@@ -4,7 +4,7 @@ function storeFor(connection, kind) {
   if (!stores.has(connection)) stores.set(connection, require('./tickets-store.cjs').createTicketStore({ [kind]: connection }))
   return stores.get(connection)
 }
-async function ticketRequest({ connection, kind, user, state, method, route, query = {}, input = {} }) {
+async function ticketRequest({ connection, kind, user, state, method, route, query = {}, input = {}, formState }) {
   const store = storeFor(connection, kind)
   if (route === '/tickets/mail') {
     const service = require('./ticket-mail-service.cjs').createMailService({ [kind]: connection, ticketStore: store })
@@ -22,7 +22,7 @@ async function ticketRequest({ connection, kind, user, state, method, route, que
     return { body: method === 'GET' ? await store.query(user, state, { mode: 'metadata' }) : await store.run(user, state, { ...input, action: 'configure' }) }
   }
   if (route !== '/tickets' || !['GET', 'POST'].includes(method)) throw Object.assign(new Error('Ruta de tickets no disponible.'), { statusCode: 405 })
-  if (method === 'POST') return { body: await store.run(user, state, input) }
+  if (method === 'POST') return { body: await store.run(user, state, input, formState) }
   const mode = query.view || (query.id ? 'detail' : 'list')
   return { body: await store.query(user, state, { ...query, mode, search: query.search || query.q || '' }) }
 }

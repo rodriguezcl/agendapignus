@@ -58,6 +58,7 @@ test('la evidencia usa autor, fecha y texto del informe del servidor y exige tic
 })
 
 for (const engine of ['sqlite', 'postgres']) test(`Tickets y Agenda ${engine}: vínculo, resolución y SLA transaccionales`, async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(at).getTime() - 60000 })
   const f = await fixture(engine)
   try {
     await t.test('agendar crea vínculo duradero y aviso; repetir la misma escritura no duplica ni altera plazos', async () => {

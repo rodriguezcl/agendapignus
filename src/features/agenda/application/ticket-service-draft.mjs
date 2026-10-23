@@ -22,6 +22,7 @@ export function ticketServiceDraft(ticket, customers, user, services = []) {
   return {
     ...customerLinkPatch(null, customer, user),
     ...(service ? { serviceId: service.id, service: service.name, serviceTypes: [{ id: service.id, name: service.name }], estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes), estimatedMinutesCustomized: false } : {}),
+    ...(ticket.registrationForm?.confirmedAt ? { form: 'Completo', formEmail: ticket.registrationForm.email, installationZone: ticket.registrationForm.kind } : {}),
     sourceTicketId: String(ticket.id), ticketNumber: String(ticket.number),
     detail: ticketReferenceDetail([ticket.title, ticket.description].filter(Boolean).join('\n\n'), ticket.number)
   }

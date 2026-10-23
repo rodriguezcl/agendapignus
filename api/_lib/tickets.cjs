@@ -11,7 +11,7 @@ const STATUSES = ['Nuevo', 'En gestión', 'En espera', 'Resuelto', 'Fusionado']
 const PRIORITIES = ['Crítica', 'Alta', 'Media', 'Baja']
 const OPEN_STATUSES = STATUSES.slice(0, 3)
 const ORIGINS = ['phone', 'internal', 'technical', 'email']
-const ACTION_PERMISSIONS = { create: 'create', comment: 'comment', assign: 'assign', classify: 'classify', wait: 'assign', resume: 'assign', resolve: 'resolve', reopen: 'reopen', merge: 'merge', reply: 'reply', linkService: 'linkService', linkCustomer: 'classify' }
+const ACTION_PERMISSIONS = { formReceipt: 'linkService', create: 'create', comment: 'comment', assign: 'assign', classify: 'classify', wait: 'assign', resume: 'assign', resolve: 'resolve', reopen: 'reopen', merge: 'merge', reply: 'reply', linkService: 'linkService', linkCustomer: 'classify' }
 const fail = (message, statusCode = 400, extra = {}) => { throw Object.assign(new Error(message), { statusCode, ...extra }) }
 const can = (user, name) => permissions.can(user, `tickets.${name}`)
 const id = value => String(value ?? '')
@@ -228,6 +228,7 @@ function metadataAttachment(file) {
 }
 function present(ticket, user, entries = [], aliases = [], detailed = false) {
   const result = { ...ticket, displayNumber: `Ticket#${ticket.number}`, customerName: ticket.customerSnapshot?.name || '', eventAt: ticket.occurredAt, slaSummary: sla.slaView(ticket) }
+  if(!permissions.can(user,'records.contact')||!permissions.can(user,'planning.commercial')) delete result.registrationForm
   delete result.externalParticipants
   if (!permissions.can(user, 'records.contact')) {
     if (result.customerSnapshot) result.customerSnapshot = snapshot(result.customerSnapshot, user)
