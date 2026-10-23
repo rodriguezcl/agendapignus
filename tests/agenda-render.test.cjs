@@ -16,7 +16,8 @@ test('daily and weekly components render through their actual prop forwarding ch
     setDate: noop, setTeams: noop, setWeekly: noop, setHistory: noop, setCustomers: noop, setNotice: noop, updateTask: noop, openDaily: noop, persistAgendaRecords: async () => {}, persistWeeklyService: async () => {} }
   assert.doesNotThrow(() => renderToString(React.createElement(compiled.exports.Agenda, props)))
   const weekly = renderToString(React.createElement(compiled.exports.WeeklyPlanner, props))
-  assert.match(weekly, /Agenda semanal/)
+  assert.match(weekly, /module-intro-placeholder/)
+  assert.doesNotMatch(weekly, /<h1>Agenda semanal<\/h1>|PLANIFICACIÓN SEMANAL/)
   assert.doesNotMatch(weekly, /weekly-save-day/)
   const confirmation = awaitingConfirmation => renderToString(React.createElement(compiled.exports.ServiceConfirmationButton, {
     task: { client: 'Cliente', awaitingConfirmation }, day: '2099-01-05', onDraftChange: noop
