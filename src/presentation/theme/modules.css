@@ -67,19 +67,25 @@
 .app-shell[data-theme] .accounts-bar.accounts-toolbar {
   display: flex;
   flex-direction: row;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 12px 16px;
+  gap: 8px;
+  overflow-x: auto;
   padding: 0;
 }
 
 .app-shell[data-theme] .accounts-toolbar > .accounts-toolbar-search {
   display: flex;
-  flex: 1 1 200px;
+  flex: 1 0 160px;
   width: auto;
   max-width: none;
   min-width: 0;
   gap: 8px;
+}
+
+.app-shell[data-theme] .accounts-toolbar > select {
+  flex: 0 0 164px;
+  width: 164px;
 }
 
 .app-shell[data-theme] .accounts-toolbar-search input {
@@ -90,8 +96,8 @@
 .app-shell[data-theme] .accounts-toolbar > .accounts-toolbar-actions {
   display: flex;
   flex-direction: row;
-  flex: 0 1 auto;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
   width: auto;
   min-width: 0;
   margin: 0 0 0 auto;
@@ -99,20 +105,19 @@
 }
 
 .app-shell[data-theme] .accounts-toolbar-actions > button {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   width: auto;
+  white-space: nowrap;
 }
 
-@media (max-width: 640px) {
-  .app-shell[data-theme] .accounts-toolbar > .accounts-toolbar-search,
-  .app-shell[data-theme] .accounts-toolbar > .accounts-toolbar-actions {
-    flex-basis: 100%;
-    width: 100%;
-  }
-  .app-shell[data-theme] .accounts-toolbar-actions > button {
-    flex: 1 1 180px;
-    white-space: normal;
-  }
+.app-shell[data-theme] .accounts-toolbar .customer-sync-control {
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+.app-shell[data-theme] .accounts-toolbar .customer-sync-control > button:first-child {
+  flex: 0 0 190px;
+  width: 190px;
 }
 
 .app-shell[data-theme] :is(.audit-filters label, .audit-filters > span, .month-filter, .accounts-bar label) {
