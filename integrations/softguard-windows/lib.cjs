@@ -34,7 +34,7 @@ function validateReport(buffer, { expectedCount, dealer = 'PIG', previousCount =
   if (previousCount && accounts.size < previousCount * (1 - maxDropFraction)) throw fail('SUSPICIOUS_DROP', 'La cantidad de cuentas disminuyó más del umbral permitido; requiere revisión.')
   // Exclude volatile report headers/timestamps, but retain every imported field.
   const hash = createHash('sha256').update(JSON.stringify({ headers, rows: rows.sort((a, b) => a[index].localeCompare(b[index])) })).digest('hex')
-  return { count: accounts.size, hash, bytes: buffer.length }
+  return { count: accounts.size, hash, bytes: buffer.length, report: { version: 1, accounts: [...accounts].sort() } }
 }
 async function retryDownload(operation, { attempts = 3, sleep = ms => new Promise(r => setTimeout(r, ms)), onRetry = () => {} } = {}) {
   for (let attempt = 1; attempt <= attempts; attempt++) {

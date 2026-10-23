@@ -225,7 +225,7 @@ function createTicketStore({ sql, db }) {
       if(mode==='customers') {
         if(!d.can(user,'create')&&!d.can(user,'fromService')&&!d.can(user,'classify')) d.fail('No tenés permiso para buscar cuentas para tickets.',403)
         const needle=d.normalized(params.search)
-        return {items:needle.length<2?[]:(state.customers||[]).filter(c=>read.customerReadable(c,user,state)&&d.normalized(`${c.account} ${c.name} ${policy.can(user,'records.contact')?c.phone||'':''}`).includes(needle)).slice(0,20).map(c=>d.snapshot(c,user))}
+        return {items:needle.length<2?[]:(state.customers||[]).filter(c=>c.softguardPresence?.status!=='inactive'&&read.customerReadable(c,user,state)&&d.normalized(`${c.account} ${c.name} ${policy.can(user,'records.contact')?c.phone||'':''}`).includes(needle)).slice(0,20).map(c=>d.snapshot(c,user))}
       }
       if(mode==='formServices'){
         if(!d.can(user,'linkService')||!policy.can(user,'planning.commercial')||!policy.can(user,'records.contact'))d.fail('No tenés permiso para aplicar formularios.',403)

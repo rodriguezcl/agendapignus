@@ -6,7 +6,7 @@ const hash = token => crypto.createHash('sha256').update(token).digest('hex')
 const active = state => ['pending', 'running'].includes(state.job?.status)
 function expire(state, now) {
   if (state.job?.status === 'running' && now - state.job.startedAt > LEASE) {
-    state.job = { ...state.job, status: 'error', finishedAt: now, code: 'WORKER_TIMEOUT' }
+    state.job = { ...state.job, status: 'error', finishedAt: now, code: 'WORKER_TIMEOUT' }; delete state.lastReport
   }
   if (state.job?.status === 'pending' && now - state.job.createdAt > HOUR) state.job = { ...state.job, status: 'error', finishedAt: now, code: 'REQUEST_EXPIRED' }
 }
@@ -38,7 +38,7 @@ function worker(state, body, now) {
   return { ok: true }
 }
 function publicStatus(state, configured, now) {
-  return { configured, online: Boolean(state.lastSeen && now - state.lastSeen < 180000), lastSeen: state.lastSeen || null, lastSuccess: state.lastSuccess || null, job: state.job || null }
+  return { configured, presenceEnabled: state.presenceEnabled === true, online: Boolean(state.lastSeen && now - state.lastSeen < 180000), lastSeen: state.lastSeen || null, lastSuccess: state.lastSuccess || null, job: state.job || null }
 }
 async function ensure(sql) {
   return require('./schema-readiness.cjs').ensureCommittedSchema(sql, 'customer-sync', async sql => {
@@ -48,7 +48,7 @@ async function ensure(sql) {
   await sql`insert into pignus_customer_sync (id) values (1) on conflict do nothing`
   })
 }
-async function handle({ sql, mode, body = {}, bearer = '', user }) {
+async function handle({ sql, mode, body = {}, bearer = '', user, reconcileReport }) {
   if (mode === 'worker' && !/^[a-f0-9]{64}$/.test(bearer)) fail(401, 'Conector no autorizado.')
   await ensure(sql)
   return sql.begin(async tx => {
@@ -58,14 +58,23 @@ async function handle({ sql, mode, body = {}, bearer = '', user }) {
     let result, tokenHash = row.token_hash
     if (mode === 'worker') {
       if (!/^[a-f0-9]{64}$/.test(bearer) || !tokenHash || !crypto.timingSafeEqual(Buffer.from(hash(bearer)), Buffer.from(tokenHash))) fail(401, 'Conector no autorizado.')
+      const successful = body.action === 'finish' && ['imported','unchanged'].includes(body.status)
+      const report = successful ? require('./softguard-presence.cjs').validatePresenceReport(body, state.lastReport) : null
       result = worker(state, body, now)
+      if(body.action === 'finish') {
+        if(report && reconcileReport) {
+          await reconcileReport(tx, report, state.lastReport, new Date(now).toISOString())
+          state.lastReport = report
+          state.presenceEnabled = true
+        } else { delete state.lastReport; state.presenceEnabled = false }
+      }
     } else if (mode === 'token') {
       if (user?.roleCode !== 'administrator') fail(403, 'Solamente Administración puede conectar la PC.')
       expire(state, now)
       if (active(state)) fail(409, 'Esperá a que termine la solicitud activa antes de reemplazar la conexión.')
       const token = crypto.randomBytes(32).toString('hex')
       tokenHash = hash(token)
-      state.lastSeen = null
+      state.lastSeen = null; delete state.lastReport
       result = { token }
     } else if (mode === 'request') {
       if (!tokenHash) fail(409, 'Primero conectá la PC de sincronización.')

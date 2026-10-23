@@ -981,6 +981,9 @@ function replaceRows(table, records, key, previous = null) {
 
 /** Guarda todas las entidades dentro de una transacción para evitar estados parciales. */
 function validateState(state, previousState = null) {
+  if(previousState) require('./api/_lib/softguard-presence.cjs').assertPresenceUnchanged(previousState.customers,state?.customers)
+  const priorRecords=new Map((previousState?.history||[]).map(r=>[String(r.id),r]))
+  for(const record of state?.history||[]) require('./api/_lib/softguard-presence.cjs').assertActiveService(priorRecords.get(String(record.id)),record,previousState?.customers||state.customers)
   granularWrite.validateGranularRoles(state || {}, previousState)
   require('./api/_lib/completed-service-policy.cjs').assertCompletedServices(state, previousState)
   require('./api/_lib/journey-identity.cjs').synchronizeJourneyIdentity(state, previousState)

@@ -77,6 +77,7 @@ function validScheduledControl(record, state, day = record?.date) {
 }
 
 function assertServiceChange(before, after, user, state, { planning = false, task = false, monthlyAssignment = null } = {}) {
+  require('./softguard-presence.cjs').assertActiveService(before,after,state.customers)
   if (same(before, after)) return
   const populated = value => value && ['serviceId', 'service', 'customerId', 'client', 'vehicleControl', 'subscriberReservation'].some(key => nonempty(value[key]))
   if (task && !populated(before) && !populated(after)) return

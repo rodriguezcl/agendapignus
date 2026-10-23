@@ -1225,7 +1225,20 @@ module.exports = async function handler(req, res) {
     const route = routePath(req)
     if (route === '/customers/sync/worker') {
       if (req.method !== 'POST') return send(res, 405, { error: 'Método no permitido.' })
-      try { return send(res, 200, await require('./_lib/customer-sync.cjs').handle({ sql, mode: 'worker', body: requestBody(req), bearer: String(req.headers.authorization || '').replace(/^Bearer /, '') })) }
+      try { return send(res, 200, await require('./_lib/customer-sync.cjs').handle({ sql, mode: 'worker', body: requestBody(req), bearer: String(req.headers.authorization || '').replace(/^Bearer /, ''), reconcileReport: async (tx, report, previous, now) => {
+        await tx`set local lock_timeout = '10s'`
+        await tx`insert into pignus_preferences (key,value) values ('state_revision','0') on conflict do nothing`
+        await tx`select value from pignus_preferences where key = 'state_revision' for update`
+        const current = await readState(tx)
+        const activePigs=(current.customers||[]).filter(c=>/^PIG-\d+$/.test(c.account)&&c.kind!=='client'&&c.softguardPresence?.status!=='inactive').length
+        if(report.accounts.length<activePigs*0.9) throw Object.assign(new Error('Disminución de cuentas excesiva; requiere revisión.'),{statusCode:409})
+        const customers = require('./_lib/softguard-presence.cjs').reconcilePresence(current.customers || [], report, previous, now)
+        const changes = customerImportChanges(current.customers || [], customers)
+        if(changes.upsert.length) {
+          await persistStateCollections(tx,current,{...current,customers},Number(current.revision||0)+1)
+          await appendAudit(tx,[auditEntry({id:'softguard-sync',name:'Sincronización SoftGuard'},'Actualizó presencia en SoftGuard','Abonados / Clientes','softguard-presence',{}, {modified:changes.upsert.length})])
+        }
+      } })) }
       catch (error) { return send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo procesar la sincronización.' }) }
     }
     if (route === '/tickets/mail/process') {

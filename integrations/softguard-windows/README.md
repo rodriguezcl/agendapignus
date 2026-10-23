@@ -57,7 +57,7 @@ Luego seguir los pasos de vinculacion anteriores. Sin clave de conexion, Program
 - Ejecutar.ps1 -Accion Estado muestra el ultimo resultado local. node run.cjs --diagnostic abre Chrome visible y nunca importa.
 - El reporte debe estar completo, tener columnas Dealer/Cuenta y Nombre, solo cuentas PIG unicas y total igual al listado filtrado. No se fija en 1064: ese fue el total observado durante la instalacion.
 - Tres intentos de descarga, pausas de 10 y 20 segundos. Confirma la ventana Exportar Reporte sin cambiar casillas. Si una contrasena se rechaza, termina la ejecucion sin insistir dentro de los reintentos.
-- El importador conserva su respaldo, control de concurrencia y permisos. No elimina cuentas ausentes ni vincula reservas automaticamente. Una caida mayor al 10% frente al ultimo reporte importado requiere revision.
+- El importador conserva su respaldo, control de concurrencia y permisos. No elimina físicamente cuentas ni vincula reservas automaticamente. El conector actualizado informa la lista validada: Agentec marca Baja en SoftGuard tras dos reportes completos consecutivos sin esa cuenta y la reactiva si reaparece. Los reportes fallidos o de conectores antiguos no confirman bajas. Una caida mayor al 10% frente al ultimo reporte importado requiere revision.
 - pending-import.json bloquea la importacion si se perdio su confirmacion. Revisar auditoria antes de resolver ese marcador. remote-job.json conserva el resultado que falta comunicar al servidor: no borrarlo para reintentar una escritura.
 - Un corte despues de iniciar un trabajo puede marcar WORKER_INTERRUPTED; no se presume exito ni se repite automaticamente la escritura incierta. Revisar el resultado en Agentec.
 - El bloqueo exclusivo se libera al terminar el proceso. Los reportes temporales se eliminan al finalizar; un corte abrupto puede dejar carpetas download-* con datos sensibles. Retirarlas solo cuando no haya ejecucion activa.
@@ -65,3 +65,7 @@ Luego seguir los pasos de vinculacion anteriores. Sin clave de conexion, Program
 - Agentec muestra estado, ultimo contacto, ultima sincronizacion correcta y errores. No envia alertas por correo. Ante caidas de Internet o del sitio, vuelve a consultar en la proxima ejecucion. Cambios de clave, permisos o pantallas pueden requerir intervencion.
 
 Para pausar, deshabilitar Agentec - Sincronizar SoftGuard en el Programador de tareas. Para volver a pruebas, establecer importEnabled:false en la configuracion local. No borrar datos del servidor al pausar.
+
+## Actualización para detectar bajas
+
+Deshabilitar la tarea y esperar a que termine cualquier sincronización en curso. Reemplazar únicamente lib.cjs, run.cjs y worker.cjs en C:\AgentecSoftguard por los archivos actualizados. Habilitar la tarea nuevamente. No borrar credenciales, configuración ni archivos de estado. No requiere reinstalar dependencias ni generar otra clave. Ejecutar dos sincronizaciones completas desde Agentec; el panel Estado informa si la detección está habilitada. Las cuentas archivadas se consultan con el filtro Bajas en SoftGuard y conservan su historial.

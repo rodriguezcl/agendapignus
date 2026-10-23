@@ -64,7 +64,7 @@ export default function CustomerSync({ administrator, onComplete }) {
     {open && createPortal(<div className="modal-layer" onClick={event => { if (event.target === event.currentTarget) close() }}><div className="modal customer-sync-modal" role="dialog" aria-modal="true" aria-label="Sincronización de abonados">
       <button className="close-modal" aria-label="Cerrar" onClick={close}><Icon name="close" /></button>
       <h2>Sincronización de abonados</h2>
-      <p>{connection}</p>
+      <p>{connection}</p><p>{status?.presenceEnabled ? 'Detección de bajas habilitada: requiere dos reportes completos consecutivos.' : 'Detección de bajas pendiente: actualizá el conector Windows y completá una sincronización.'}</p>
       <p>Estado: <strong>{labels[status?.job?.status] || 'Sin solicitudes'}</strong></p>
       <p>Última conexión de la PC: {date(status?.lastSeen)}</p>
       <p>Última sincronización correcta: {date(status?.lastSuccess?.at)}{status?.lastSuccess?.count != null && ` · ${status.lastSuccess.count} cuentas`}</p>

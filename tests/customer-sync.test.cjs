@@ -53,3 +53,28 @@ test('persistencia SQL, clave limitada, rotación y resultados', async () => {
     await assert.rejects(handle({ sql, mode: 'worker', bearer: token, body: { action: 'poll' } }), { statusCode: 401 })
   } finally { await pg.close() }
 })
+
+test('reportes completos se reconcilian una vez, con rollback y reinicio tras fallos', async()=>{
+ const {PGlite}=await import('@electric-sql/pglite'),pg=await PGlite.create()
+ try {
+  await pg.exec('create role anon; create role authenticated; create table presence_test (id int primary key, data jsonb);')
+  const sql=pgliteAdapter(pg),user={id:'admin',roleCode:'administrator'}
+  const {token}=await handle({sql,mode:'token',user})
+  const report={version:1,accounts:['PIG-6000']}
+  let calls=0
+  const reconcileReport=async(tx,report,previous)=>{calls++;await tx`insert into presence_test values (1, ${tx.json({report,previous})}) on conflict(id) do update set data=excluded.data`}
+  const run=async(body,callback=reconcileReport)=>handle({sql,mode:'worker',bearer:token,body,reconcileReport:callback})
+  const {job}=await run({action:'poll'})
+  const finish={action:'finish',jobId:job.id,status:'imported',count:1,report}
+  await assert.rejects(run(finish,async(tx,...args)=>{await reconcileReport(tx,...args);throw Error('rollback')}),/rollback/)
+  assert.equal((await sql`select * from presence_test`).length,0)
+  assert.equal((await handle({sql,mode:'status',user})).job.status,'running')
+  await run(finish);assert.equal(calls,2)
+  await assert.rejects(run(finish),{statusCode:409});assert.equal(calls,2)
+  assert.equal((await handle({sql,mode:'status',user})).presenceEnabled,true)
+  await handle({sql,mode:'request',user});const second=await run({action:'poll'})
+  await run({action:'finish',jobId:second.job.id,status:'error',code:'DOWNLOAD_TIMEOUT'})
+  const [row]=await sql`select state from pignus_customer_sync`
+  assert.equal(row.state.lastReport,undefined)
+ } finally {await pg.close()}
+})

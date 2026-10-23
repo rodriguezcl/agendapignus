@@ -475,6 +475,9 @@ function secureEmployees(employees, previousEmployees) {
 }
 
 function validateState(state, previousState = null) {
+  if(previousState) require('./softguard-presence.cjs').assertPresenceUnchanged(previousState.customers,state?.customers)
+  const priorRecords=new Map((previousState?.history||[]).map(r=>[String(r.id),r]))
+  for(const record of state?.history||[]) require('./softguard-presence.cjs').assertActiveService(priorRecords.get(String(record.id)),record,previousState?.customers||state.customers)
   require('./granular-write-policy.cjs').validateGranularRoles(state || {}, previousState)
   require('./workday.cjs').validateWorkday(state?.agenda?.weekly?._workday)
   require('./frozen-months.cjs').validateFrozenMonths(state, previousState)

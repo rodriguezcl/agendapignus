@@ -140,14 +140,14 @@ async function main() {
     const report = await exportReport(context, config, last.count || 0, runDir)
     const apply = config.importEnabled === true && !args.has('--preview') && !diagnostic
     if (apply && last.hash === report.hash) {
-      await write('last-result.json', { status: 'unchanged', at: new Date().toISOString(), count: report.count }); return
+      await write('last-result.json', { status: 'unchanged', at: new Date().toISOString(), count: report.count, report: report.report }); return
     }
     await importReport(context, config, report, apply)
     if (apply) {
       await write('last-import.json', { hash: report.hash, count: report.count, at: new Date().toISOString() })
       await fs.unlink(file('pending-import.json'))
     }
-    await write('last-result.json', { status: apply ? 'imported' : 'preview-ok', at: new Date().toISOString(), count: report.count, attempts: report.attempt })
+    await write('last-result.json', { status: apply ? 'imported' : 'preview-ok', at: new Date().toISOString(), count: report.count, report: report.report, attempts: report.attempt })
     console.log(apply ? 'Sincronización confirmada.' : 'Prueba correcta. No se importaron datos.')
   } catch (e) {
     await write('last-result.json', { status: 'error', at: new Date().toISOString(), code: e.code || 'AUTOMATION_ERROR', message: e.code ? e.message : 'Cambió la pantalla o falló el navegador. Revisá las sesiones y repetí la prueba.' })

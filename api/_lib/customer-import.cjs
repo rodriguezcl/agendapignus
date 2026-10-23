@@ -20,8 +20,8 @@ function preserveCustomerTrackingFlags(currentCustomers = [], importedCustomers 
   return preserveSoftguardRetirementCustomers(currentCustomers, importedCustomers).map(customer => {
     const current = byId.get(String(customer?.customerId || '')) || byAccount.get(String(customer?.account || '').trim().toUpperCase())
     // Coordinates belong to the local record, never to the imported spreadsheet.
-    const { locationOverride, excludeFromSubscriberCount, ...imported } = customer
-    return { ...imported, ...(typeof current?.excludeFromSubscriberCount === 'boolean' ? { excludeFromSubscriberCount: current.excludeFromSubscriberCount } : {}), ...(current && Object.hasOwn(current, 'locationOverride') ? { locationOverride: current.locationOverride } : {}), cctvService: Boolean(current?.cctvService) }
+    const { locationOverride, excludeFromSubscriberCount, softguardPresence, ...imported } = customer
+    return { ...imported, ...(current?.softguardPresence ? { softguardPresence: current.softguardPresence } : {}), ...(typeof current?.excludeFromSubscriberCount === 'boolean' ? { excludeFromSubscriberCount: current.excludeFromSubscriberCount } : {}), ...(current && Object.hasOwn(current, 'locationOverride') ? { locationOverride: current.locationOverride } : {}), cctvService: Boolean(current?.cctvService) }
   })
 }
 
@@ -77,7 +77,12 @@ function restoreCustomerImportBackup(currentCustomers = [], backup) {
   })
   if (lifecycleChanged) throw Object.assign(new Error('La situación de un abonado cambió después de la importación. No se puede deshacer la importación sin afectar su baja o restitución.'), { statusCode: 409 })
   const preserve = customers => {
-    const next = preserveSoftguardRetirementCustomers(currentCustomers, customers)
+    const presenceById = new Map(currentCustomers.map(c=>[String(c.customerId),c.softguardPresence]))
+    const next = preserveSoftguardRetirementCustomers(currentCustomers, customers).map(c=>{
+      const next={...c};delete next.softguardPresence
+      if(presenceById.get(String(c.customerId)))next.softguardPresence=presenceById.get(String(c.customerId))
+      return next
+    })
     assertSoftguardRetirementDeletion({ customers: currentCustomers }, { customers: next })
     return next
   }

@@ -11,7 +11,7 @@ export function excludedFromSubscriberCount(customer) {
 export function isActiveSubscriber(customer) {
   const account = normalized(customer?.account).replace(/\s/g, '')
   return customer?.kind !== 'client' && (customer?.kind === 'subscriber' || account.startsWith('pig-'))
-    && !customer.subscriptionEndedAt && !['inactivo', 'baja', 'cancelado'].includes(normalized(customer.status))
+    && customer.softguardPresence?.status !== 'inactive' && !customer.subscriptionEndedAt && !['inactivo', 'baja', 'cancelado'].includes(normalized(customer.status))
     && !excludedFromSubscriberCount(customer)
 }
 

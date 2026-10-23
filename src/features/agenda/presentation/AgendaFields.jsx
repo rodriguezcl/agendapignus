@@ -63,7 +63,7 @@ export function CustomerAutocomplete({ value = '', customerId = '', customers = 
   const selectionIsIntact = Boolean(selectedCustomer) && normalizeSearchText(selectedLabel) === normalizedQuery
   const suggestions = useMemo(() => {
     if (normalizedQuery.length < 2 || selectionIsIntact) return []
-    const availableCustomers = subscriberReservation ? customers.filter(customer => customerKind(customer) === 'subscriber') : customers
+    const availableCustomers = customers.filter(customer => customer.softguardPresence?.status !== 'inactive' && (!subscriberReservation || customerKind(customer) === 'subscriber'))
     return availableCustomers
       .map(customer => {
         const searchable = normalizeSearchText(`${customer.account} ${customer.name} ${customer.phone || ''}`)
@@ -89,7 +89,7 @@ export function CustomerAutocomplete({ value = '', customerId = '', customers = 
   }
   const commitText = () => {
     if (!canLink) return
-    const availableCustomers = subscriberReservation ? customers.filter(customer => customerKind(customer) === 'subscriber') : customers
+    const availableCustomers = customers.filter(customer => customer.softguardPresence?.status !== 'inactive' && (!subscriberReservation || customerKind(customer) === 'subscriber'))
     // El nombre por sí solo no identifica una cuenta: dos personas pueden ser
     // homónimas. La selección automática sólo es segura con el código o con la
     // etiqueta completa; por nombre se exige elegir una sugerencia.

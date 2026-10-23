@@ -49,7 +49,7 @@ async function main() {
     finally { clearInterval(heartbeat) }
     const result = await read(path.join(home, 'last-result.json'))
     record.result = result && Date.parse(result.at) >= started && (exitOk || result.status === 'error')
-      ? { status: ['imported','unchanged'].includes(result.status) ? result.status : 'error', count: result.count, code: result.status === 'preview-ok' ? 'IMPORT_NOT_ENABLED' : result.code || 'WORKER_ERROR' }
+      ? { status: ['imported','unchanged'].includes(result.status) ? result.status : 'error', count: result.count, report: result.report, code: result.status === 'preview-ok' ? 'IMPORT_NOT_ENABLED' : result.code || 'WORKER_ERROR' }
       : { status: 'error', code: 'WORKER_FAILED' }
     await save(record)
     await finish(record)
