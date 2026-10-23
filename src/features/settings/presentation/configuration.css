@@ -1,0 +1,13 @@
+.configuration-page { display: grid; gap: 24px; min-width: 0; }
+.configuration-tabs { display: flex; gap: 4px; min-width: 0; max-width: 100%; overflow-x: auto; padding: 4px 4px 0; border-bottom: 1px solid var(--ap-border, #d8dfe9); }
+.configuration-tabs > [role='tab'] { flex: 0 0 auto; min-height: 48px; padding: 12px 20px; border: 0; border-bottom: 3px solid transparent; border-radius: 6px 6px 0 0; background: transparent; color: var(--ap-muted, #63758a); font-weight: 600; white-space: nowrap; }
+.configuration-tabs > [role='tab']:hover { background: var(--ap-surface, #fff); color: var(--ap-text, #25374b); }
+.configuration-tabs > [role='tab'][aria-selected='true'] { border-bottom-color: var(--ap-accent, #986d00); background: var(--ap-surface, #fff); color: var(--ap-accent, #986d00); }
+.configuration-tabs > [role='tab']:focus-visible { outline: 2px solid var(--ap-accent, #986d00); outline-offset: -3px; }
+.configuration-panel { min-width: 0; }
+.configuration-panel > .settings-section { margin-bottom: 0; }
+.support-mail-configuration > .ticket-mail-settings { margin-top: 0; padding-top: 0; border-top: 0; }
+@media (max-width: 640px) {
+  .configuration-page { gap: 18px; }
+  .configuration-tabs > [role='tab'] { padding-inline: 16px; }
+}

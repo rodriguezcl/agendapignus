@@ -10,6 +10,7 @@ const { ensureVehicleControlService } = require('./vehicle-control-service.cjs')
 const { synchronizeVehicleControlAssignments } = require('./vehicle-control-assignment.cjs')
 const { assertNoPastWeeklyServiceAdditions } = require('./past-agenda.cjs')
 const { projectLegacyCollectionReceipts, restoreLegacyCollectionReceipts } = require('./legacy-collection-receipts.cjs')
+const { sanitizeTechnicianFollowup } = require('./technician-followup-access.cjs')
 
 const normalizedText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 const normalizedRoleName = normalizedText
@@ -115,7 +116,7 @@ function userForEmployee(employee, roles) {
   }
 }
 
-function technicianSafeRecord(record = {}) {
+function technicianSafeRecord(record = {}, user = { roleCode: 'technician' }) {
   const { servicePreparation: _servicePreparation, internalNote: _internalNote, internalChecklist: _internalChecklist, monthlyFee: _monthlyFee, ...visible } = record
   for (const field of ['collection', 'monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy']) delete visible[field]
   const cashPayment = normalizedRoleName(visible.paymentMethod) === 'efectivo'
@@ -126,7 +127,7 @@ function technicianSafeRecord(record = {}) {
   }
   if (!handwrittenForm) delete visible.form
   delete visible.formEmail
-  return visible
+  return sanitizeTechnicianFollowup(visible, user)
 }
 
 function internalPlanningIsValid(record = {}) {
@@ -152,10 +153,10 @@ function visibleStateForUser(state, user) {
 function visibleTechnicianStateForUser(state, user) {
   const sessionUser = stateSessionUser(state, user)
   const projectionUser = require('./permission-catalog.cjs').isGranular(sessionUser) ? sessionUser : { ...sessionUser, roleCode: 'technician' }
-  return { ...projectStateForUser(state, projectionUser), sessionUser }
+  return { ...projectStateForUser(state, projectionUser, sessionUser), sessionUser }
 }
 
-function projectStateForUser(state, user) {
+function projectStateForUser(state, user, ticketUser = user) {
   if (require('./permission-catalog.cjs').isGranular(user)) return require('./granular-read-policy.cjs').granularVisibleState(state, user)
   if (isOperator(user)) return projectLegacyCollectionReceipts(operatorState(state), user)
   if (user.roleCode === 'technician') {
@@ -180,7 +181,7 @@ function projectStateForUser(state, user) {
     return {
       revision: state.revision,
       roles: [], employees: [], services: [], vehicles: (state.vehicles || []).map(technicianVehicle), customers: [], agenda: null, preferences: {},
-      history: visibleHistory.map(record => technicianSafeRecord(record.serviceJourney ? { ...record, journeyActiveIndexes: require('./service-journeys.cjs').activeJourneyIndexes(record, journeyHistory) } : record))
+      history: visibleHistory.map(record => technicianSafeRecord(record.serviceJourney ? { ...record, journeyActiveIndexes: require('./service-journeys.cjs').activeJourneyIndexes(record, journeyHistory) } : record, ticketUser))
     }
   }
   if (user.roleCode === 'supervisor' || normalizedRoleName(user.role) === 'supervisor') {

@@ -28,6 +28,7 @@ function restoreHidden(proposed, current, visible) {
   if (!object(current) || !object(proposed)) return proposed
   const result = { ...proposed }
   if (Object.hasOwn(result, 'supervisorVisible') && !Object.hasOwn(current, 'supervisorVisible')) delete result.supervisorVisible
+  if (Object.hasOwn(result, 'hasFollowup') && !Object.hasOwn(current, 'hasFollowup')) delete result.hasFollowup
   if (Object.hasOwn(result, 'assignable') && !Object.hasOwn(current, 'assignable')) delete result.assignable
   for (const key of Object.keys(current)) {
     if (!Object.hasOwn(visible || {}, key)) result[key] = current[key]

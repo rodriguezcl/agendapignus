@@ -32,6 +32,7 @@ const { deduplicateScheduledTasks } = require('./api/_lib/core.cjs')
 const { canPerformTechnicalServices } = require('./api/_lib/technical-capability.cjs')
 const { isGranular, can: canPermission, permissionSnapshot } = require('./api/_lib/permission-catalog.cjs')
 const granularRead = require('./api/_lib/granular-read-policy.cjs')
+const { sanitizeTechnicianFollowup } = require('./api/_lib/technician-followup-access.cjs')
 const granularWrite = require('./api/_lib/granular-write-policy.cjs')
 const endpointPolicy = require('./api/_lib/endpoint-policy.cjs')
 const { customerImportChanges, normalizeImportedCustomers, preserveCustomerTrackingFlags, restoreCustomerImportBackup, validateImportedCustomers, validateIncrementalCustomerImport } = require('./api/_lib/customer-import.cjs')
@@ -755,7 +756,7 @@ function readState() {
   }
 }
 
-function technicianSafeRecord(record = {}) {
+function technicianSafeRecord(record = {}, user = { roleCode: 'technician' }) {
   const { internalNote: _internalNote, internalChecklist: _internalChecklist, monthlyFee: _monthlyFee, ...visible } = record
   for (const field of ['collection', 'monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy']) delete visible[field]
   const cashPayment = normalizedRoleName(visible.paymentMethod) === 'efectivo'
@@ -766,7 +767,7 @@ function technicianSafeRecord(record = {}) {
   }
   if (!handwrittenForm) delete visible.form
   delete visible.formEmail
-  return visible
+  return sanitizeTechnicianFollowup(visible, user)
 }
 
 function internalPlanningIsValid(record = {}) {
@@ -794,7 +795,7 @@ function readTechnicianState(user) {
       const customerId = String(record.customerId || '')
       const account = String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()
       return (customerId && activeCustomerIds.has(customerId)) || (account && activeCustomerAccounts.has(account))
-    }).map(record => technicianSafeRecord(record.serviceJourney ? { ...record, journeyActiveIndexes: require('./api/_lib/service-journeys.cjs').activeJourneyIndexes(record, journeyHistory) } : record))
+    }).map(record => technicianSafeRecord(record.serviceJourney ? { ...record, journeyActiveIndexes: require('./api/_lib/service-journeys.cjs').activeJourneyIndexes(record, journeyHistory) } : record, user))
   }
 }
 
@@ -2291,7 +2292,7 @@ const server = http.createServer((req, res) => {
         const next = decision ? resolveServiceAdvance(previous, user, decision) : startServiceEarly(previous, user)
         if (next === previous) {
           db.exec('COMMIT')
-          return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(previous, user) : technicianSafeRecord(previous), revision: currentStateRevision() })
+          return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(previous, user) : technicianSafeRecord(previous, user), revision: currentStateRevision() })
         }
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(next), String(next.id))
         const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
@@ -2304,7 +2305,7 @@ const server = http.createServer((req, res) => {
         const revision = currentStateRevision() + 1
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
         db.exec('COMMIT')
-        return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(next, user) : user.roleCode === 'technician' ? technicianSafeRecord(next) : next, revision })
+        return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(next, user) : user.roleCode === 'technician' ? technicianSafeRecord(next, user) : next, revision })
       } catch (error) {
         db.exec('ROLLBACK')
         throw error
@@ -2324,14 +2325,14 @@ const server = http.createServer((req, res) => {
         const next = startTechnicianServiceRecord(previous, user)
         if (next === previous) {
           db.exec('COMMIT')
-          return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(previous, user) : technicianSafeRecord(previous), revision: currentStateRevision() })
+          return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(previous, user) : technicianSafeRecord(previous, user), revision: currentStateRevision() })
         }
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(next), String(next.id))
         writeAudit(user, 'Inició servicio técnico', 'Servicio / historial', String(next.id), previous, next)
         const revision = currentStateRevision() + 1
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
         db.exec('COMMIT')
-        return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(next, user) : technicianSafeRecord(next), revision })
+        return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(next, user) : technicianSafeRecord(next, user), revision })
       } catch (error) {
         db.exec('ROLLBACK')
         throw error
@@ -2360,7 +2361,7 @@ const server = http.createServer((req, res) => {
           : []
         if (record.vehicleControl && !vehicleControlIsOpen(record, Date.now(), technicianDayRecords)) return send(res, 409, { error: `El control vehicular se habilita el ${vehicleControlWindowLabel(record)}.` })
         if (record.technicalStatus) {
-          if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record: technicianSafeRecord(record) })
+          if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record: technicianSafeRecord(record, user) })
           return send(res, 409, { error: 'Este servicio ya fue informado desde otra sesión.' })
         }
       endpointPolicy.assertTechnicalAction(user, record, isGranular(user) ? readState() : undefined, type)
@@ -2420,7 +2421,7 @@ const server = http.createServer((req, res) => {
         db.exec('ROLLBACK')
         throw error
       }
-      return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(updated, user) : technicianSafeRecord(updated) })
+      return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(updated, user) : technicianSafeRecord(updated, user) })
     }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo informar el estado.' }))
   }
   if (req.method === 'POST' && url.pathname === '/api/agenda/daily/clear') {

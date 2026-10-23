@@ -6,11 +6,18 @@ import RequiredLabel from '../presentation/components/forms/RequiredLabel.jsx'
 import { captureCameraPhoto } from '../infrastructure/media/camera-capture.mjs'
 import { compactVehiclePhoto } from '../infrastructure/media/image-upload.mjs'
 import { requestJson } from '../infrastructure/http/json-request.mjs'
+import { ticketDate, ticketNumber } from '../features/tickets/ticket-ui.mjs'
 import './technician-report.css'
 import '../features/followups/followups.css'
 
 const attachmentUrl = (recordId, fileId) => `/api/attachments/service/${encodeURIComponent(String(recordId))}${fileId ? `/${encodeURIComponent(String(fileId))}` : ''}`
 const supportedImage = file => /^image\/(jpeg|png|webp)$/.test(file?.mime || '')
+
+export function TechnicalDuplicatePreview({ ticket }) {
+  return <section className="followup-summary" aria-label="Detalle del caso seleccionado"><strong>{ticketNumber(ticket)} · {ticket.status}</strong><p><b>{ticket.title}</b></p><p>{ticket.priority} · Responsable: {ticket.assigneeName || 'Sin asignar'}</p>{(ticket.eventType || ticket.zone) && <p>{ticket.eventType}{ticket.zone && ` · Zona: ${ticket.zone}`}</p>}{ticket.description && <p style={{ whiteSpace: 'pre-wrap' }}>{ticket.description}</p>}
+    {(ticket.messages || []).filter(message => message.visibility !== 'internal').map((message, index) => <div key={message.id || index}><small><b>{message.byName || message.authorName || 'Solicitante'}</b> · {ticketDate(message.at || message.createdAt)}</small><p style={{ whiteSpace: 'pre-wrap' }}>{message.body || message.text}</p></div>)}
+  </section>
+}
 
 export default function TechnicianReportModal({ record, type, serviceLabel, pendingAttachments = [], onPendingAttachmentsChange, attachmentsPreparing = false, onPreparingChange, onClose, onSubmit }) {
   const { can } = useActionPermissions()
@@ -34,12 +41,30 @@ export default function TechnicianReportModal({ record, type, serviceLabel, pend
     return () => { active = false }
   }, [checkLinkedTickets, record.id, linkedTicketsRetry])
   const hasLinkedComplaint = Boolean(linkedTickets.length || record.sourceTicketId && (!checkLinkedTickets || linkedTicketsLoading || linkedTicketsError))
-  const [ticketCandidates,setTicketCandidates]=useState([]), [ticketChoice,setTicketChoice]=useState(''), [ticketChecking,setTicketChecking]=useState(false), [ticketError,setTicketError]=useState('')
-  useEffect(()=>{if(!needsFollowup||!record.customerId)return;let active=true;setTicketChecking(true);setTicketError('');requestJson('/api/tickets?'+new URLSearchParams({view:'duplicates',customerId:record.customerId})).then(data=>{if(active){setTicketCandidates(data.candidates||[]);setTicketChoice('')}}).catch(e=>{if(active)setTicketError(e.message)}).finally(()=>{if(active)setTicketChecking(false)});return()=>{active=false}},[needsFollowup,record.customerId])
+  const [ticketCandidates,setTicketCandidates]=useState([]), [ticketChoice,setTicketChoice]=useState(''), [ticketChecking,setTicketChecking]=useState(false), [ticketError,setTicketError]=useState(''), [ticketRetry,setTicketRetry]=useState(0), [duplicateToken,setDuplicateToken]=useState(''), [checkedTicketContext,setCheckedTicketContext]=useState('')
+  const ticketContext = JSON.stringify([String(record.customerId || ''), String(record.id)])
+  const ticketContextPending = Boolean(needsFollowup && record.id && checkedTicketContext !== ticketContext)
+  useEffect(() => {
+    setTicketCandidates([]); setTicketChoice(''); setDuplicateToken(''); setCheckedTicketContext(''); setTicketError('')
+    if (!needsFollowup || !record.id) { setTicketChecking(false); return }
+    let active = true; setTicketChecking(true)
+    requestJson('/api/tickets?' + new URLSearchParams({ view: 'duplicates', customerId: String(record.customerId || ''), serviceId: String(record.id) }))
+      .then(data => { if (active) { setTicketCandidates(data.candidates || []); setDuplicateToken(data.duplicateToken || ''); setCheckedTicketContext(ticketContext) } })
+      .catch(failure => { if (active) setTicketError(failure.message) }).finally(() => { if (active) setTicketChecking(false) })
+    return () => { active = false }
+  }, [needsFollowup, record.customerId, record.id, ticketContext, ticketRetry])
   const followupCandidates = [...new Map([...ticketCandidates, ...linkedTickets].map(ticket => [String(ticket.id), ticket])).values()]
   useEffect(() => { if (needsFollowup && ticketChoice !== 'different') setComplaintResolved(false) }, [needsFollowup, ticketChoice])
-  const [ticketPreview,setTicketPreview]=useState(null)
-  useEffect(()=>{setTicketPreview(null);if(!ticketChoice||ticketChoice==='different')return;let active=true;requestJson('/api/tickets?'+new URLSearchParams({id:ticketChoice})).then(data=>{if(active)setTicketPreview(data.ticket)}).catch(error=>{if(active)setTicketError(error.message)});return()=>{active=false}},[ticketChoice])
+  const [ticketPreview,setTicketPreview]=useState(null), [previewLoading,setPreviewLoading]=useState(false), [previewError,setPreviewError]=useState(''), [previewRetry,setPreviewRetry]=useState(0), [previewContext,setPreviewContext]=useState('')
+  const selectedTicketContext = JSON.stringify([ticketChoice, ticketContext])
+  useEffect(() => {
+    setTicketPreview(null); setPreviewError(''); setPreviewContext('')
+    if (!ticketChoice || ticketChoice === 'different' || ticketContextPending) { setPreviewLoading(false); return }
+    let active = true; setPreviewLoading(true)
+    requestJson('/api/tickets?' + new URLSearchParams({ view: 'duplicateDetail', id: ticketChoice, customerId: String(record.customerId || ''), serviceId: String(record.id) }))
+      .then(data => { if (active) { setTicketPreview(data.ticket); setPreviewContext(selectedTicketContext) } }).catch(failure => { if (active) setPreviewError(failure.message) }).finally(() => { if (active) setPreviewLoading(false) })
+    return () => { active = false }
+  }, [ticketChoice, record.customerId, record.id, ticketContextPending, selectedTicketContext, previewRetry])
   const vehicleControl = Boolean(record.vehicleControl && type === 'Completado')
   const [observation, setObservation] = useState('')
   const [mileage, setMileage] = useState('')
@@ -64,7 +89,7 @@ export default function TechnicianReportModal({ record, type, serviceLabel, pend
   const busy = saving || photoBusy || attachmentsPreparing
   const valid = vehicleControl
     ? Boolean(photo) && /^\d+$/.test(mileage) && Number(mileage) > Number(record.vehicleMileageAtScheduling || 0)
-    : Boolean(observation.trim()) && !linkedTicketsLoading && (!needsFollowup || Boolean(followupDescription.trim()) && !ticketChecking && !ticketError && (!(followupCandidates.length || hasLinkedComplaint) || Boolean(ticketChoice)))
+    : Boolean(observation.trim()) && !linkedTicketsLoading && (!needsFollowup || Boolean(followupDescription.trim()) && !ticketChecking && !ticketContextPending && !ticketError && (!(followupCandidates.length || hasLinkedComplaint) || Boolean(ticketChoice)) && (!ticketChoice || ticketChoice === 'different' || Boolean(ticketPreview) && !previewLoading && !previewError && previewContext === selectedTicketContext))
   const requestClose = () => { if (!busy) dirty ? setDiscarding(true) : onClose() }
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; photoRequestRef.current?.abort() } }, [])
@@ -128,8 +153,9 @@ export default function TechnicianReportModal({ record, type, serviceLabel, pend
       })
       await onSubmit({ observation, vehicleMileage: mileage, vehiclePhoto: photo,
         ...(type === 'Completado' && hasLinkedComplaint ? { ticketResolution: { resolved: complaintResolved && (!needsFollowup || ticketChoice === 'different') && !linkedTicketsError, ticketIds: linkedTickets.length ? linkedTickets.map(ticket => String(ticket.id)) : [String(record.sourceTicketId)].filter(Boolean) } } : {}),
-        ...(needsFollowup ? { followup: { type: followupType, description: followupDescription, relatedTicketId: ticketChoice === 'different' ? '' : ticketChoice, ...(ticketChoice === 'different' ? { relation: 'different' } : {}) } } : {}) })
+        ...(needsFollowup ? { followup: { type: followupType, description: followupDescription, duplicateToken, relatedTicketId: ticketChoice === 'different' ? '' : ticketChoice, ...(ticketChoice && ticketChoice !== 'different' ? { relatedTicketVersion: ticketPreview.version } : {}), ...(ticketChoice === 'different' ? { relation: 'different' } : {}) } } : {}) })
     } catch (failure) {
+      if (alive.current && failure.status === 409 && needsFollowup) { setTicketRetry(value => value + 1); setConfirming(false); setTicketChoice('') }
       if (alive.current) setError(failure.message || 'No se pudo guardar el informe. Los datos siguen disponibles para reintentar.')
     } finally {
       savingRef.current = false
@@ -171,10 +197,16 @@ export default function TechnicianReportModal({ record, type, serviceLabel, pend
             <small>Confirmalo únicamente si se resolvió el inconveniente. El ticket se cerrará cuando no queden visitas ni acciones pendientes del mismo caso.</small>
             {needsFollowup && ticketChoice !== 'different' && <p>El seguimiento pendiente mantiene abierto el reclamo. Si es otro pedido, identificá que se trata de un caso diferente.</p>}
           </fieldset>}
-          {can('tickets.fromService') && !record.followup && <fieldset className="followup-request"><legend>Acciones posteriores</legend><label><input type="checkbox" checked={needsFollowup} disabled={saving} onChange={event => setNeedsFollowup(event.target.checked)} />Solicitar acción / seguimiento</label><small>Crea un ticket vinculado a este servicio.</small>{needsFollowup && <>{ticketChecking && <p role="status">Consultando tickets abiertos…</p>}{ticketError && <p className="field-error">{ticketError}</p>}{Boolean(followupCandidates.length || hasLinkedComplaint) && <label>Ya existen tickets abiertos: revisá si corresponden al mismo caso<select required value={ticketChoice} disabled={busy} onChange={event=>setTicketChoice(event.target.value)}><option value="">Seleccionar</option>{followupCandidates.map(item=><option key={item.id} value={item.id}>{item.displayNumber} · {item.title}</option>)}<option value="different">Es un caso diferente: crear otro ticket</option></select><small>Si elegís un ticket abierto, tu observación se sumará al caso. Si ya se cerró antes de guardar, se creará una nueva solicitud para que el pedido no se pierda.</small></label>}{ticketPreview && <section className="followup-summary" aria-label="Detalle del caso seleccionado"><strong>{ticketPreview.displayNumber} · {ticketPreview.status}</strong><p>{ticketPreview.description}</p>{ticketPreview.messages?.slice(-3).map(message=><p key={message.id}><b>{message.byName}:</b> {message.body}</p>)}</section>}<label>Tipo de solicitud<select value={followupType} disabled={saving} onChange={event => setFollowupType(event.target.value)}>{['Cotizar adicional', 'Coordinar visita', 'Gestionar problema', 'Otra acción'].map(type => <option key={type}>{type}</option>)}</select></label><label>Acción solicitada<textarea required maxLength={2000} value={followupDescription} disabled={saving} onChange={event => setFollowupDescription(event.target.value)} placeholder="Por ejemplo: cotizar dos cámaras adicionales para el patio." /></label></>}</fieldset>}
+          {can('tickets.fromService') && !record.followup && !record.hasFollowup && <fieldset className="followup-request"><legend>Acciones posteriores</legend><label><input type="checkbox" checked={needsFollowup} disabled={saving} onChange={event => setNeedsFollowup(event.target.checked)} />Solicitar acción / seguimiento</label><small>Agrega información a un caso abierto o crea un ticket vinculado a este servicio.</small>{needsFollowup && <>
+            {ticketChecking && <p role="status">Consultando tickets abiertos…</p>}{ticketError && <p role="alert" className="field-error">{ticketError} <button type="button" className="secondary" disabled={busy} onClick={() => setTicketRetry(value => value + 1)}>Reintentar consulta</button></p>}
+            {!ticketContextPending && Boolean(followupCandidates.length || hasLinkedComplaint) && <label>Ya existen tickets abiertos: revisá si corresponden al mismo caso<select required value={ticketChoice} disabled={busy || ticketChecking} onChange={event=>setTicketChoice(event.target.value)}><option value="">Seleccionar</option>{followupCandidates.map(item=><option key={item.id} value={item.id}>{ticketNumber(item)} · {item.title}</option>)}<option value="different">Es un caso diferente: crear otro ticket</option></select><small>Si es el mismo problema, tu información se sumará al caso y podrás seguir su atención. Si es otro motivo, creá una solicitud nueva.</small></label>}
+            {previewLoading && <p role="status">Consultando información del caso…</p>}{previewError && <p role="alert" className="field-error">{previewError} <button type="button" className="secondary" disabled={busy} onClick={() => setPreviewRetry(value => value + 1)}>Reintentar detalle</button><button type="button" className="secondary" disabled={busy} onClick={() => setTicketRetry(value => value + 1)}>Actualizar casos abiertos</button></p>}
+            {ticketPreview && previewContext === selectedTicketContext && !ticketContextPending && <TechnicalDuplicatePreview ticket={ticketPreview} />}
+            <label>Tipo de solicitud<select value={followupType} disabled={saving} onChange={event => setFollowupType(event.target.value)}>{['Cotizar adicional', 'Coordinar visita', 'Gestionar problema', 'Otra acción'].map(type => <option key={type}>{type}</option>)}</select></label><label>Acción solicitada<textarea required maxLength={2000} value={followupDescription} disabled={saving} onChange={event => setFollowupDescription(event.target.value)} placeholder="Por ejemplo: cotizar dos cámaras adicionales para el patio." /></label></>}</fieldset>}
           <Attachments entityId={record.id} pendingFiles={pendingAttachments} onPendingFilesChange={onPendingAttachmentsChange} onPreparingChange={onPreparingChange} disabled={saving} />
         </>}
         {pendingAttachments.length > 0 && <p className="technician-report-pending" role="status">Se guardarán {pendingAttachments.length} adjunto(s) pendiente(s) junto con el informe.</p>}
+        {error && !confirming && <p className="field-error" role="alert">{error}</p>}
         <div className="modal-actions"><button type="button" title="Cerrá el informe; si hay cambios pendientes, podrás conservarlos o descartarlos." className="secondary" disabled={busy} onClick={requestClose}>Cancelar</button><button type="button" title="Revisá la confirmación antes de guardar el informe y actualizar el estado del servicio." className="primary" disabled={!valid || busy} onClick={() => { setError(''); setConfirming(true) }}>Continuar</button></div>
       </section>
     </div>

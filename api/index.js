@@ -725,7 +725,7 @@ async function handleTechnicianStart(req, res, sql, user) {
       await appendAudit(transaction, [auditEntry(user, 'Inició servicio técnico', 'Servicio / historial', String(next.id), previous, next)])
       return { record: next, revision: currentRevision + 1 }
     })
-    return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(result.record, user) : technicianSafeRecord(result.record), revision: result.revision })
+    return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(result.record, user) : technicianSafeRecord(result.record, user), revision: result.revision })
   } catch (error) {
     const databaseBusy = error.code === '55P03' || error.code === '57014'
     return send(res, databaseBusy ? 503 : (error.statusCode || 400), { error: databaseBusy ? 'La base de datos está ocupada. Intentá nuevamente.' : (error.message || 'No se pudo iniciar el servicio.') })
@@ -816,7 +816,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
       await appendAudit(transaction, entries)
       return next
     })
-    return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(updated, user) : technicianSafeRecord(updated) })
+    return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(updated, user) : technicianSafeRecord(updated, user) })
   } catch (error) {
     const databaseBusy = error.code === '55P03' || error.code === '57014'
     return send(res, databaseBusy ? 503 : (error.statusCode || 400), { error: databaseBusy ? 'La base de datos está ocupada. El sistema volverá a intentarlo automáticamente.' : (error.message || 'No se pudo informar el estado.') })
@@ -1041,7 +1041,7 @@ async function handleServiceAdvance(req, res, sql, user, decision = '') {
       await appendAudit(transaction, [auditEntry(user, action, 'Servicio / historial', String(next.id), previous, next)])
       return { record: next, revision: currentRevision + 1 }
     })
-    return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(result.record, user) : user.roleCode === 'technician' ? technicianSafeRecord(result.record) : result.record, revision: result.revision })
+    return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(result.record, user) : user.roleCode === 'technician' ? technicianSafeRecord(result.record, user) : result.record, revision: result.revision })
   } catch (error) {
     const databaseBusy = error.code === '55P03' || error.code === '57014'
     return send(res, databaseBusy ? 503 : (error.statusCode || 400), { error: databaseBusy ? 'La base de datos está ocupada. Intentá nuevamente.' : (error.message || 'No se pudo procesar la solicitud de adelanto.') })

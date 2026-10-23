@@ -2,6 +2,7 @@ const crypto = require('node:crypto')
 const permissions = require('./permission-catalog.cjs')
 const read = require('./granular-read-policy.cjs')
 const sla = require('./ticket-sla.cjs')
+const { requesterIds, sourceTicketIds } = require('./ticket-requesters.cjs')
 
 const STATUSES = ['Nuevo', 'En gestión', 'En espera', 'Resuelto', 'Fusionado']
 const PRIORITIES = ['Crítica', 'Alta', 'Media', 'Baja']
@@ -106,8 +107,18 @@ function subject(employee, state) {
   return role ? { ...employee, roleCode: role.code, role: role.name, permissions: role.permissions } : employee
 }
 function isOwn(ticket, user) { return [ticket.createdById, ticket.requesterId, ...(ticket.participantIds || [])].some(value => value && id(value) === id(user.id)) }
+function personalScope(user) { return permissions.roleCode(user) === 'technician' }
+function assignedTicketIds(user, state) {
+  if (!can(user, 'fromService')) return []
+  return [...new Set((state.history || []).filter(record => record.sourceTicketId && (record.technicianIds || []).some(technicianId => id(technicianId) === id(user.id)) && read.serviceReadable(record, user, state)).map(record => id(record.sourceTicketId)))]
+}
 function visible(ticket, user, state, config) {
   if (!can(user, 'view')) return false
+  // Compartir un servicio no hace propia la solicitud de otro integrante.
+  // Una visita expresamente agendada desde el ticket sí habilita su atención.
+  if (personalScope(user)) return requesterIds(ticket).includes(id(user.id)) ||
+    Boolean(can(user, 'scope.assigned') && ticket.assigneeId && id(ticket.assigneeId) === id(user.id)) ||
+    assignedTicketIds(user, state).some(ticketId => sourceTicketIds(ticket).includes(ticketId))
   if (can(user, 'scope.all') || isOwn(ticket, user)) return true
   if (can(user,'scope.assigned') && ticket.assigneeId && id(ticket.assigneeId) === id(user.id)) return true
   if (can(user, 'scope.area') && config.areas.some(area => area.id === ticket.areaId && area.memberIds.some(member => id(member) === id(user.id)))) return true
@@ -135,6 +146,32 @@ function customerFor(input, user, state) {
   const customer = (state.customers || []).find(item => id(item.customerId || item.id) === id(input.customerId))
   if (!customer || !read.customerReadable(customer, user, state)) fail('La cuenta no está disponible dentro de tu alcance.', 403)
   return customer
+}
+function duplicateCustomer(input, user, state, { allowNoCustomer = false } = {}) {
+  if (!can(user, 'view') || !(can(user, 'create') || can(user, 'fromService'))) fail('No tenés permiso para revisar coincidencias de una solicitud.', 403)
+  const serviceId = id(input.serviceId || input.recordId)
+  const service = serviceId && (state.history || []).find(record => id(record.id) === serviceId)
+  if (serviceId && (!can(user, 'fromService') || !service || service.vehicleControl || !read.serviceReadable(service, user, state) || personalScope(user) && !(service.technicianIds || []).some(value => id(value) === id(user.id)))) fail('No tenés acceso a este servicio para revisar coincidencias.', 403)
+  if (!can(user, 'create') && !service) fail('Revisá las coincidencias desde un servicio asignado.', 403)
+  const serviceCustomerId = id(service && (read.customerForRecord(service, state)?.customerId || service.customerId))
+  const customer = customerFor({ customerId: input.customerId || serviceCustomerId }, user, state)
+  if (!customer) {
+    if (service && allowNoCustomer) return null
+    fail('Seleccioná la cuenta para revisar sus casos abiertos.')
+  }
+  if (service && serviceCustomerId !== id(customer.customerId || customer.id)) fail('La cuenta del servicio no coincide.', 403)
+  return customer
+}
+function assertDuplicate(ticket, input, user, state) {
+  const customer = duplicateCustomer(input, user, state)
+  if (!ticket || id(ticket.customerId) !== id(customer.customerId || customer.id)) fail('El caso no pertenece a la cuenta seleccionada.', 404)
+  if (!OPEN_STATUSES.includes(ticket.status)) fail('El caso ya no está abierto. Revisá las coincidencias antes de continuar.', 409)
+}
+function duplicatePreview(ticket, entries = []) {
+  // La excepción sirve para comparar el motivo, no para abrir la gestión
+  // completa ni exponer notas internas, contactos o archivos del caso ajeno.
+  const fields = ['id', 'number', 'version', 'title', 'description', 'customerId', 'status', 'priority', 'assigneeName', 'categoryId', 'subcategoryId', 'eventType', 'zone', 'occurredAt', 'createdAt', 'updatedAt']
+  return { ...Object.fromEntries(fields.filter(key => Object.hasOwn(ticket, key)).map(key => [key, ticket[key]])), displayNumber: `Ticket#${ticket.number}`, messages: entries.filter(item => item.visibility !== 'internal' && item.kind !== 'event').map(item => ({ id: item.id, body: item.body, byName: item.byName, at: item.at, channel: item.channel })) }
 }
 function newTicket(input, user, state, config, number, now) {
   const serviceId = id(input.serviceId || input.recordId)
@@ -194,4 +231,4 @@ function present(ticket, user, entries = [], aliases = [], detailed = false) {
 function duplicatesToken(customerId, tickets) {
   return crypto.createHash('sha256').update(JSON.stringify([customerId, tickets.map(ticket => [ticket.id, ticket.version]).sort((a, b) => a[0].localeCompare(b[0]))])).digest('hex')
 }
-module.exports = { STATUSES, PRIORITIES, OPEN_STATUSES, ORIGINS, ACTION_PERMISSIONS, fail, can, id, normalized, clone, text, email, timestamp, defaultConfig, validateConfig, classification, visible, assertVisible, assignees, snapshot, customerFor, newTicket, entry, present, metadataAttachment, duplicatesToken, subject }
+module.exports = { STATUSES, PRIORITIES, OPEN_STATUSES, ORIGINS, ACTION_PERMISSIONS, fail, can, id, normalized, clone, text, email, timestamp, defaultConfig, validateConfig, classification, personalScope, assignedTicketIds, visible, assertVisible, assignees, snapshot, customerFor, duplicateCustomer, assertDuplicate, duplicatePreview, newTicket, entry, present, metadataAttachment, duplicatesToken, subject }

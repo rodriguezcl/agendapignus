@@ -1,3 +1,4 @@
+const { requesterIds } = require('./ticket-requesters.cjs')
 const PRIORITIES = ['Crítica', 'Alta', 'Media', 'Baja']
 const CLOSED = new Set(['Resuelto', 'Fusionado'])
 const MINUTE = 60000
@@ -76,7 +77,7 @@ function transitionSla(ticket, previous, action, config, now = new Date().toISOS
   }
   sla.priority = PRIORITIES.includes(ticket.priority) ? ticket.priority : sla.priority
   const actorId = String(options.actorId || '')
-  const ownComment = ['comment', 'reply'].includes(action) && (!actorId || [ticket.createdById, ticket.requesterId].some(value => value && String(value) === actorId))
+  const ownComment = ['comment', 'reply'].includes(action) && (!actorId || requesterIds(ticket).includes(actorId))
   if (options.humanUpdate === true && HUMAN_ACTIONS.has(action) && !ownComment && at >= sla.startedAt) {
     if (!sla.firstResponseAt || at < sla.firstResponseAt) sla.firstResponseAt = at
     if (!sla.lastHumanUpdateAt || at > sla.lastHumanUpdateAt) sla.lastHumanUpdateAt = at

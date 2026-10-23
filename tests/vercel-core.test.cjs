@@ -884,7 +884,7 @@ test('cada equipo reserva una hora mínima y oculta turnos vacíos incompatibles
 test('jornada laboral y horarios mensuales tienen permisos y editores separados', () => {
   const source = frontendSource()
   assert.match(source, /canConfigureWorkday=\{granularAccess \? allowed\('settings\.workday\.read'\) : isAdministrator \|\| Boolean\(modulePermissions.weeklyHours\)\}/)
-  assert.match(fs.readFileSync(path.resolve(__dirname, '../src/features/settings/presentation/Settings.jsx'), 'utf8'), /<WorkdaySettings/)
+  assert.match(fs.readFileSync(path.resolve(__dirname, '../src/features/settings/presentation/Configuration.jsx'), 'utf8'), /<WorkdaySettings/)
   const monthly = fs.readFileSync(path.resolve(__dirname, '../src/components/MonthlyHoursSettings.jsx'), 'utf8')
   assert.match(monthly, /can\('weekly\.monthlyHours\.read'\)/)
   assert.match(monthly, /can\('weekly\.monthlyHours\.manage'\)/)
@@ -1013,7 +1013,7 @@ test('la nota y el checklist internos se conservan para administración y no apa
   assert.match(source, /internalNote: task\.internalNote \|\| ''/)
   assert.match(source, /internalChecklist: normalizeInternalChecklist\(task\.internalChecklist\)/)
   assert.doesNotMatch(source.slice(source.indexOf('function TechnicianPortal'), source.indexOf('function History(')), /internalNote|internalChecklist|Nota interna|Checklist de preparación/)
-  assert.match(apiSource, /record: isGranular\(user\) \? granularRead\.sanitizeService\(updated, user\) : technicianSafeRecord\(updated\)/)
+  assert.match(apiSource, /record: isGranular\(user\) \? granularRead\.sanitizeService\(updated, user\) : technicianSafeRecord\(updated, user\)/)
   assert.match(localServer, /history:[\s\S]*?\.map\(record => technicianSafeRecord\(/)
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/ui-polish.css'), 'utf8')
   assert.match(styles, /\.content > \.team-card \.task-row > \.internal-preparation,[\s\S]*?grid-column: 2 \/ 5 !important/)

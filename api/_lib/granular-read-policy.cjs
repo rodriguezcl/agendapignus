@@ -1,4 +1,5 @@
 const permissions = require('./permission-catalog.cjs')
+const { sanitizeTechnicianFollowup } = require('./technician-followup-access.cjs')
 const id = value => String(value ?? '')
 const any = (user, keys) => keys.some(key => permissions.can(user, key))
 const FINANCIAL_FIELDS = new Set(['amount', 'paymentMethod', 'monthlyFee', 'monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'collection', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy', 'form', 'formEmail'])
@@ -93,7 +94,7 @@ function sanitizeService(record, user, state) {
     delete result.internalChecklist
     delete result.servicePreparation
   }
-  return result
+  return sanitizeTechnicianFollowup(result, user)
 }
 
 function sanitizeCustomer(customer, user, auxiliary = false) {

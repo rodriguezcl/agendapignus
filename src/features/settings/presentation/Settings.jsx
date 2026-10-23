@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { CATALOG, PERMISSION_GROUPS, BY_ID, roleCode, isGranular, toGranularPermissions, dependencyReason, togglePermission, readScope, writeScope } from '../../../domain/access/permissions.mjs'
 import { canDelegateRole } from '../../../domain/access/role-delegation.mjs'
 import { usePermissions } from '../../../presentation/contexts/permissions-context.jsx'
-import WorkdaySettings from '../../../components/WorkdaySettings.jsx'
 import ModuleIntroduction from '../../../components/ModuleIntroduction.jsx'
 import Icon from '../../../components/ui/Icon.jsx'
 import RolePreview from './RolePreview.jsx'
@@ -17,7 +16,7 @@ const scopeFields = [
 ]
 const scopeLabels = { all: 'Todos los autorizados', assigned: 'Sólo asignados', cctv: 'Sólo clientes con seguimiento CCTV', related: 'Sólo vinculados a sus servicios', none: 'Sin acceso: corregir alcance' }
 
-export default function Settings({ roles, employees = [], setRoles, setNotice, ask, weekly, persistWeeklyConfiguration, persistRole, roleBaseline, canConfigureWorkday = false }) {
+export default function Settings({ roles, employees = [], setRoles, setNotice, ask, persistRole, roleBaseline }) {
   const { can, user } = usePermissions()
   const [active, setActive] = useState(roles[0]?.id)
   const [module, setModule] = useState('weekly')
@@ -44,6 +43,7 @@ export default function Settings({ roles, employees = [], setRoles, setNotice, a
     if (!dirty) return undefined
     const preventUnload = event => { event.preventDefault(); event.returnValue = '' }
     const preventNavigation = event => {
+      if (event.defaultPrevented) return
       event.preventDefault()
       if (saving) { event.detail?.onBlocked?.(); return }
       ask('Cambios sin guardar', '¿Querés descartar los cambios de este rol y continuar?', () => {
@@ -115,7 +115,6 @@ export default function Settings({ roles, employees = [], setRoles, setNotice, a
     finally { setSaving(false) }
   }
   return <>
-    {canConfigureWorkday && <WorkdaySettings {...{ weekly, persistWeeklyConfiguration, setNotice }} canManage={can('settings.workday.manage')} />}
     {can('settings.roles.read') && <div className="role-permissions">
       <div className="module-intro">
         <ModuleIntroduction><h1>Roles y permisos</h1><p>Definí qué puede consultar y hacer cada rol. Las opciones en gris indican qué requisito falta.</p></ModuleIntroduction>

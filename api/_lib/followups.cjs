@@ -19,7 +19,11 @@ function createFollowup(record, input, user, state, now) {
   if(relatedTicketId&&!/^[a-zA-Z0-9-]{1,100}$/.test(relatedTicketId))fail('La referencia del ticket no es válida.')
   if (input.relation && !['same', 'different'].includes(input.relation)) fail('La relación del seguimiento no es válida.')
   if (input.relation === 'different' && relatedTicketId === String(record.sourceTicketId || '') && relatedTicketId) fail('Un caso diferente no puede agregarse al reclamo original.')
-  return { relatedTicketId, relation: input.relation === 'different' ? 'different' : 'same', id: `followup:${record.id}`, type: input.type, description, status: 'Pendiente', version: 1,
+  const duplicateToken = String(input.duplicateToken || '')
+  if (duplicateToken && !/^[a-f0-9]{64}$/.test(duplicateToken)) fail('La revisión de coincidencias no es válida.')
+  const relatedTicketVersion = Number(input.relatedTicketVersion)
+  if (relatedTicketId && (!Number.isSafeInteger(relatedTicketVersion) || relatedTicketVersion < 1)) fail('Volvé a revisar el caso antes de agregar tu información.', 409)
+  return { relatedTicketId, ...(relatedTicketId ? { relatedTicketVersion } : {}), relation: input.relation === 'different' ? 'different' : 'same', duplicateReview: true, duplicateToken, id: `followup:${record.id}`, type: input.type, description, status: 'Pendiente', version: 1,
     createdAt: now, createdById: user.id, createdByName: user.name || 'Técnico',
     events: [{ action: 'Creó la solicitud', at: now, byId: user.id, byName: user.name || 'Técnico', note: description }] }
 }

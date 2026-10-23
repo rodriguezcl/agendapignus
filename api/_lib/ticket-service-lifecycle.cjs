@@ -150,7 +150,8 @@ async function synchronizeTicketServices({ q, pg, previous, next, user, now, rep
       const wasScheduled = before && !canceled(before)
       const isScheduled = record && !canceled(record)
       const moved = wasScheduled && isScheduled && (before.date !== record.date || before.time !== record.time || id(before.teamId) !== id(record.teamId))
-      const type = isNewLink && isScheduled ? 'scheduled' : moved ? 'rescheduled' : wasScheduled && !isScheduled ? 'canceled' : null
+      const coordinated = isNewLink || (item.resolutionServiceIds || []).includes(key)
+      const type = !coordinated ? null : isNewLink && isScheduled ? 'scheduled' : moved ? 'rescheduled' : wasScheduled && !isScheduled ? 'canceled' : null
       if (type) {
         if (type !== 'canceled') { item.status = 'En gestión'; item.nextReviewAt = ''; item.waitReason = '' }
         await store.communicate(q, item, type, `service:${key}:${type}:${item.version + 1}`, now, { service: schedule(record || before), date: (record || before).date, time: (record || before).time }, user)
@@ -174,7 +175,7 @@ async function synchronizeTicketServices({ q, pg, previous, next, user, now, rep
       await store.communicate(q, item, 'resolved', `service-resolution:${reported.id}:${reported.ticketResolution.at}`, now, { service: schedule(reported), sourceTechnical: true }, user)
     }
     if (!isDeepStrictEqual(item, beforeTicket)) {
-      sla.transitionSla(item, beforeTicket, item.status === 'Resuelto' ? 'resolve' : 'scheduleService', config, now, { humanUpdate: item.origin !== 'email' && (newLinks.length > 0 || Boolean(reportRecordId)), actorId: user?.id })
+      sla.transitionSla(item, beforeTicket, item.status === 'Resuelto' ? 'resolve' : 'scheduleService', config, now, { humanUpdate: item.origin !== 'email' && (newLinks.length > 0 || Boolean(reportRecordId && (item.resolutionServiceIds || []).includes(id(reportRecordId)))), actorId: user?.id })
       item.version++; item.updatedAt = now
       if (newLinks.length && user) item.participantIds = [...new Set([...(item.participantIds || []), id(user.id)])]
       await store.save(q, item)

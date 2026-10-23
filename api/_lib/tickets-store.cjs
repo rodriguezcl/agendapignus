@@ -6,6 +6,7 @@ const { validateAttachments } = require('./tickets-attachments.cjs')
 const { MAIL_SCHEMA, sqlParameters } = require('./ticket-mail-store.cjs')
 const sla = require('./ticket-sla.cjs')
 const communications = require('./ticket-communications.cjs')
+const { requesterIds, mergeRequesterIds, sourceTicketIds, backfillMergedRequesters } = require('./ticket-requesters.cjs')
 const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS pignus_ticket_settings (id TEXT PRIMARY KEY, data TEXT NOT NULL)',
   'CREATE TABLE IF NOT EXISTS pignus_tickets (id TEXT PRIMARY KEY, number TEXT NOT NULL UNIQUE, customer_id TEXT, status TEXT NOT NULL, area_id TEXT, assignee_id TEXT, created_by_id TEXT, requester_id TEXT, legacy_id TEXT UNIQUE, updated_at TEXT NOT NULL, search_text TEXT NOT NULL, data TEXT NOT NULL)',
@@ -54,6 +55,27 @@ function createTicketStore({ sql, db }) {
         await sql.unsafe(`DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN REVOKE ALL ON TABLE ${table} FROM anon; END IF; IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN REVOKE ALL ON TABLE ${table} FROM authenticated; END IF; END $$`)
       }
       await execute('INSERT INTO pignus_ticket_settings (id,data) VALUES (?,?) ON CONFLICT(id) DO NOTHING', ['config', JSON.stringify({ version: 1, nextNumber: 1000001, config: d.defaultConfig() })])
+      // Conserva a los solicitantes originales de fusiones anteriores sin usar
+      // la lista de participantes, que también contiene comentarios de terceros.
+      const requesterMigration = 'ticket-requesters-v1'
+      if (!(await execute('SELECT id FROM pignus_ticket_settings WHERE id=?', [requesterMigration])).length) {
+        const migrate = async q => {
+          if ((await q('SELECT id FROM pignus_ticket_settings WHERE id=?', [requesterMigration])).length) return
+          await backfillMergedRequesters(q, { pg })
+          await q('INSERT INTO pignus_ticket_settings (id,data) VALUES (?,?) ON CONFLICT(id) DO NOTHING', [requesterMigration, '{"complete":true}'])
+        }
+        if (pg) await sql.begin(async tx => {
+          await tx`set local lock_timeout = '5s'`
+          const q = executor(tx)
+          await q('SELECT pg_advisory_xact_lock(hashtext(?))', [requesterMigration])
+          await migrate(q)
+        })
+        else {
+          db.exec('BEGIN IMMEDIATE')
+          try { await migrate(execute); db.exec('COMMIT') }
+          catch (error) { db.exec('ROLLBACK'); throw error }
+        }
+      }
     }).catch(error => { readiness = null; throw error })
     return readiness
   }
@@ -93,7 +115,7 @@ function createTicketStore({ sql, db }) {
     if (!reminder) try { mailRuntime = await require('./ticket-mail-channel.cjs').createMailChannelStore({ query:q }).runtime() } catch { /* platform notice remains durable */ }
     const area = (await settings(q)).config.areas.find(area => area.id === item.areaId)
     const fallback=reminder?parse((await q('SELECT data FROM pignus_ticket_settings WHERE id=?',['escalation-recipients']))[0])?.recipientIds:[]
-    const recipients = reminder ? (item.assigneeId ? [item.assigneeId] : area?.memberIds?.length ? area.memberIds : fallback?.length ? fallback : [item.createdById]) : [item.createdById, item.requesterId]
+    const recipients = reminder ? (item.assigneeId ? [item.assigneeId] : area?.memberIds?.length ? area.memberIds : fallback?.length ? fallback : [item.createdById]) : requesterIds(item)
     const key=reminder?`${eventKey}:${recipients.map(String).sort().join(',')}`:eventKey
     return communications.communicateTicket({ q, ticket:item, type, eventKey:key, now, actorId:actor?.id, recipients, context, mailRuntime, entries:reminder?[]:await entries(q,item.id), inbound })
   }
@@ -135,8 +157,8 @@ function createTicketStore({ sql, db }) {
   }
   async function customerLock(q, customerId) { if (pg && customerId) await q('SELECT pg_advisory_xact_lock(hashtext(?))',[`ticket-customer:${customerId}`]) }
   async function duplicates(q, customerId, user, state, config, locked=false) {
-    const items = (await q(`SELECT data FROM pignus_tickets WHERE customer_id=? AND status IN ('Nuevo','En gestión','En espera') ORDER BY id${pg&&locked?' FOR UPDATE':''}`,[String(customerId)])).map(parse).filter(t=>d.visible(t,user,state,config))
-    return { candidates:items.map(t=>d.present(t,user)),duplicateToken:d.duplicatesToken(customerId,items) }
+    const items = (await q(`SELECT data FROM pignus_tickets WHERE customer_id=? AND status IN ('Nuevo','En gestión','En espera') ORDER BY id${pg&&locked?' FOR UPDATE':''}`,[String(customerId)])).map(parse)
+    return { candidates:items.map(t=>d.duplicatePreview(t)),duplicateToken:d.duplicatesToken(customerId,items) }
   }
   async function query(user,state,params={}) {
     await ensure()
@@ -156,11 +178,24 @@ function createTicketStore({ sql, db }) {
         return {items:needle.length<2?[]:(state.customers||[]).filter(c=>read.customerReadable(c,user,state)&&d.normalized(`${c.account} ${c.name} ${policy.can(user,'records.contact')?c.phone||'':''}`).includes(needle)).slice(0,20).map(c=>d.snapshot(c,user))}
       }
       if(mode==='services'){if(!d.can(user,'linkService'))d.fail('No tenés permiso para vincular servicios.',403);return {items:(state.history||[]).filter(r=>read.serviceReadable(r,user,state)&&(!params.customerId||String(read.customerForRecord(r,state)?.customerId||r.customerId)===String(params.customerId))).sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,100).map(r=>({id:String(r.id),date:r.date,label:`${r.date||''} · ${r.client||r.clientAccount||''} · ${r.service||r.serviceType||r.detail||'Servicio'}`}))}}
-      if(mode==='duplicates') { d.customerFor(params,user,state); return duplicates(execute,params.customerId,user,state,config) }
+      if(mode==='duplicates') { const customer=d.duplicateCustomer(params,user,state,{allowNoCustomer:true});const customerId=String(customer?.customerId||customer?.id||''); return customerId?{...await duplicates(execute,customerId,user,state,config),customerId}:{customerId:'',candidates:[],duplicateToken:''} }
+      if(mode==='duplicateDetail') { const item=await ticket(execute,params.id);d.assertDuplicate(item,params,user,state);return {ticket:d.duplicatePreview(item,await entries(execute,item.id))} }
       if(mode==='detail') { let item=await ticket(execute,params.id);if(!item){const alias=(await execute('SELECT ticket_id FROM pignus_ticket_aliases WHERE number=?',[String(params.id||'').replace(/^Ticket#/i,'')]))[0];if(alias)item=await ticket(execute,alias.ticket_id)}item=await principal(execute,item);d.assertVisible(item,user,state,config);return {ticket:await detailed(execute,item,user)} }
       const field=key=>pg?`(data::jsonb ->> '${key}')`:`json_extract(data,'$.${key}')`
       let where=[],args=[]
-      if(!d.can(user,'scope.all')) {
+      if(d.personalScope(user)) {
+        const uid=String(user.id),parts=['created_by_id=?','requester_id=?'];args.push(uid,uid)
+        parts.push(pg?"(data::jsonb -> 'mergedRequesterIds') @> ?::jsonb":"EXISTS (SELECT 1 FROM json_each(data,'$.mergedRequesterIds') WHERE value=?)");args.push(pg?JSON.stringify([uid]):uid)
+        parts.push(pg?"(data::jsonb -> 'coRequesterIds') @> ?::jsonb":"EXISTS (SELECT 1 FROM json_each(data,'$.coRequesterIds') WHERE value=?)");args.push(pg?JSON.stringify([uid]):uid)
+        if(d.can(user,'scope.assigned')){parts.push('assignee_id=?');args.push(uid)}
+        const assigned=d.assignedTicketIds(user,state)
+        if(assigned.length){
+          const placeholders=assigned.map(()=>'?').join(',')
+          parts.push('id IN ('+placeholders+')');args.push(...assigned)
+          parts.push(pg?"EXISTS (SELECT 1 FROM jsonb_array_elements_text(data::jsonb -> 'mergedTicketIds') linked(value) WHERE linked.value IN ("+placeholders+"))":"EXISTS (SELECT 1 FROM json_each(data,'$.mergedTicketIds') WHERE value IN ("+placeholders+"))");args.push(...assigned)
+        }
+        where.push('('+parts.join(' OR ')+')')
+      } else if(!d.can(user,'scope.all')) {
         const uid=String(user.id),parts=['created_by_id=?','requester_id=?'];args.push(uid,uid);if(d.can(user,'scope.assigned')){parts.push('assignee_id=?');args.push(uid)}
         parts.push(pg?"(data::jsonb -> 'participantIds') @> ?::jsonb":"EXISTS (SELECT 1 FROM json_each(data,'$.participantIds') WHERE value=?)");args.push(pg?JSON.stringify([uid]):uid)
         const areas=d.can(user,'scope.area')?config.areas.filter(a=>a.memberIds.includes(uid)).map(a=>a.id):[]
@@ -175,7 +210,11 @@ function createTicketStore({ sql, db }) {
       if(params.assigneeId){where.push('assignee_id=?');args.push(params.assigneeId==='unassigned'?'':params.assigneeId==='me'?String(user.id):String(params.assigneeId))}
       if(params.serviceId){where.push(pg?"(data::jsonb -> 'serviceIds') @> ?::jsonb":"EXISTS (SELECT 1 FROM json_each(data,'$.serviceIds') WHERE value=?)");args.push(pg?JSON.stringify([String(params.serviceId)]):String(params.serviceId))}
       for(const key of ['origin','priority','categoryId','areaId'])if(params[key]){where.push(field(key)+'=?');args.push(params[key]==='technician'?'technical':params[key])}
-      if(params.scope==='mine'){where.push('(created_by_id=? OR requester_id=?)');args.push(String(user.id),String(user.id))}
+      if(params.scope==='mine'){
+        const merged=pg?"(data::jsonb -> 'mergedRequesterIds') @> ?::jsonb":"EXISTS (SELECT 1 FROM json_each(data,'$.mergedRequesterIds') WHERE value=?)"
+        const shared=pg?"(data::jsonb -> 'coRequesterIds') @> ?::jsonb":"EXISTS (SELECT 1 FROM json_each(data,'$.coRequesterIds') WHERE value=?)"
+        where.push('(created_by_id=? OR requester_id=? OR '+merged+' OR '+shared+')');args.push(String(user.id),String(user.id),pg?JSON.stringify([String(user.id)]):String(user.id),pg?JSON.stringify([String(user.id)]):String(user.id))
+      }
       if(params.scope==='assigned'){where.push('assignee_id=?');args.push(String(user.id))}
       if(params.scope==='unassigned')where.push("assignee_id=''")
       const needle=d.normalized(params.search).replace(/^ticket#/,'')
@@ -207,7 +246,7 @@ function createTicketStore({ sql, db }) {
     const commandId=d.text(input.commandId,100,'Identificador de operación',true)
     if(!/^[\w-]{8,100}$/.test(commandId))d.fail('Identificador de operación inválido.')
     const action=input.action,permission=d.ACTION_PERMISSIONS[action]
-    if(action==='configure'?!d.can(user,'configure'):action==='create'?(!d.can(user,'create')&&!d.can(user,'fromService')):!permission||!d.can(user,permission))d.fail('No tenés permiso para realizar esta acción.',403)
+    if(action==='configure'?!d.can(user,'configure'):['create','contribute'].includes(action)?(!d.can(user,'view')||!d.can(user,'create')&&!d.can(user,'fromService')):!permission||!d.can(user,permission))d.fail('No tenés permiso para realizar esta acción.',403)
     return transaction(async q=>{
       // Reintentos de un mismo comando se serializan sin bloquear casos independientes.
       await rememberEscalationRecipients(q,state)
@@ -227,15 +266,16 @@ function createTicketStore({ sql, db }) {
       let item
       if(action==='create') {
         item=d.newTicket(input,user,state,config,'pending',now)
-        if(item.customerId){await customerLock(q,item.customerId);const found=await duplicates(q,item.customerId,user,state,config,true);if(found.candidates.length&&!(input.allowDuplicate===true&&input.duplicateToken===found.duplicateToken))d.fail('Esta cuenta tiene tickets abiertos. Revisá si es el mismo caso antes de continuar.',409,{code:'ticket_duplicates',...found})}
+        if(item.customerId){d.duplicateCustomer({...input,customerId:item.customerId},user,state);await customerLock(q,item.customerId);const found=await duplicates(q,item.customerId,user,state,config,true);if(found.candidates.length&&!(input.allowDuplicate===true&&input.duplicateToken===found.duplicateToken))d.fail('Esta cuenta tiene tickets abiertos. Revisá si es el mismo caso antes de continuar.',409,{code:'ticket_duplicates',...found})}
         const attachments=validateAttachments(input.attachments)
         item.number=await nextNumber(q,configuration);item.ruleVersion=configuration.version
         await save(q,item);await addEntry(q,{...d.entry(item,user,item.description,now,{attachments,visibility:'public'}),ticketId:item.id})
         await communicate(q,item,'received','created',now,{},null)
       } else {
+        if(action==='contribute'){const customer=d.duplicateCustomer(input,user,state);await customerLock(q,String(customer.customerId||customer.id))}
         if(action==='linkCustomer')await customerLock(q,input.customerId)
         if(pg&&action==='merge')await q('SELECT id FROM pignus_tickets WHERE id IN (?,?) ORDER BY id FOR UPDATE',[String(input.id),String(input.targetId)])
-        item=await ticket(q,input.id,true);d.assertVisible(item,user,state,config)
+        item=await ticket(q,input.id,true);if(action==='contribute')d.assertDuplicate(item,input,user,state);else d.assertVisible(item,user,state,config)
         const beforeTicket=d.clone(item)
         if(Number(input.version)!==item.version)d.fail('El ticket cambió en otra sesión. Actualizá antes de guardar.',409)
         if(item.status==='Fusionado')d.fail('Este ticket fue fusionado. Abrí el ticket principal.',409)
@@ -243,7 +283,8 @@ function createTicketStore({ sql, db }) {
         if(action==='resume'&&item.status!=='En espera')d.fail('El ticket no está en espera.',409)
         const note=d.text(input.note??input.body,10000,'Observación',!['assign','resume','linkService'].includes(action))
         let eventLabel='',visibility='public',attachments=[]
-        if(action==='comment'||action==='reply') {
+        if(action==='comment'||action==='reply'||action==='contribute') {
+          if(action==='contribute'&&input.visibility==='internal')d.fail('El aporte a un caso existente debe ser público.',403)
           if(item.status==='Resuelto')d.fail('Reabrí el ticket antes de agregar información.',409)
           if(input.visibility==='internal'){if(!d.can(user,'internal'))d.fail('No tenés permiso para notas internas.',403);visibility='internal'}
           attachments=validateAttachments(input.attachments)
@@ -254,6 +295,7 @@ function createTicketStore({ sql, db }) {
             item.serviceIds=[...new Set([...item.serviceIds,String(record.id)])]
           }
           const context=input.context?{categoryId:d.text(input.context.categoryId,80,'Categoría'),subcategoryId:d.text(input.context.subcategoryId,80,'Subcategoría'),eventId:d.text(input.context.eventId,120,'Evento'),zone:d.text(input.context.zone,200,'Zona'),occurredAt:d.timestamp(input.context.occurredAt)}:undefined
+          if(action==='contribute')item.coRequesterIds=[...new Set([...(item.coRequesterIds||[]),String(user.id)])]
           if(action==='reply') {
             await q(`SELECT data FROM pignus_ticket_settings WHERE id=?${pg?' FOR UPDATE':''}`,['mail-channel'])
             const channel=await require('./ticket-mail-channel.cjs').createMailChannelStore({query:q}).runtime()
@@ -301,6 +343,8 @@ function createTicketStore({ sql, db }) {
           await q('UPDATE pignus_ticket_entries SET ticket_id=? WHERE ticket_id=?',[target.id,item.id])
           await q('INSERT INTO pignus_ticket_aliases (number,ticket_id) VALUES (?,?) ON CONFLICT(number) DO UPDATE SET ticket_id=excluded.ticket_id',[item.number,target.id])
           await q('UPDATE pignus_ticket_service_requests SET ticket_id=? WHERE ticket_id=?',[target.id,item.id]);await q('UPDATE pignus_ticket_mail_outbox SET ticket_id=? WHERE ticket_id=?',[target.id,item.id]);await q('UPDATE pignus_ticket_aliases SET ticket_id=? WHERE ticket_id=?',[target.id,item.id]);await q('UPDATE pignus_ticket_mail_ids SET ticket_id=? WHERE ticket_id=?',[target.id,item.id])
+          target.mergedRequesterIds=mergeRequesterIds(target,item)
+          target.mergedTicketIds=[...new Set([...sourceTicketIds(target),...sourceTicketIds(item)])]
           target.participantIds=[...new Set([...target.participantIds,...item.participantIds])];target.externalParticipants=[...new Set([...(target.externalParticipants||[]),...(item.externalParticipants||[]),item.requesterEmail].filter(Boolean))];target.serviceIds=[...new Set([...target.serviceIds,...item.serviceIds])];target.version++;target.updatedAt=now
           target.resolutionServiceIds=[...new Set([...(target.resolutionServiceIds||[]),...(item.resolutionServiceIds||[])])]
           await addEntry(q,{...d.entry(target,user,`Fusionó Ticket#${item.number}. ${note}`,now,{kind:'event'}),ticketId:target.id});await save(q,target)
@@ -326,15 +370,32 @@ function createTicketStore({ sql, db }) {
     const synchronize = async q=>{
       const configuration=await settings(q,true)
       for(const record of records){const old=record.followup,legacyId=String(old.id||`followup:${record.id}`);if((await q('SELECT id FROM pignus_tickets WHERE legacy_id=?',[legacyId])).length||(await q('SELECT legacy_id FROM pignus_ticket_service_requests WHERE legacy_id=?',[legacyId])).length)continue
+        const customer=read.customerForRecord(record,state),customerId=String(customer?.customerId||record.customerId||'')
+        const employee=(state.employees||[]).find(e=>String(e.id)===String(old.createdById)),author=employee&&d.subject(employee,state)
+        // El informe puede estar completado: su permiso de escritura y autor
+        // fueron comprobados al guardarlo, aunque ya no figure como pendiente.
+        const canContribute=author&&d.can(author,'view')&&d.can(author,'fromService')&&(record.technicianIds||[]).some(value=>String(value)===String(author.id))&&read.serviceWritable(record,author,state)&&(!customerId||customer&&read.customerReadable(customer,author,state))
+        if(old.duplicateReview&&customerId){
+          if(!canContribute)d.fail('No tenés permiso para aportar al caso desde este servicio.',403)
+          await customerLock(q,customerId)
+        }
         if(old.relatedTicketId){
-          const target=await principal(q,await ticket(q,old.relatedTicketId,true),true),employee=(state.employees||[]).find(e=>String(e.id)===String(old.createdById)),author=employee&&d.subject(employee,state)
-          if(target&&author&&d.visible(target,author,state,configuration.config)&&d.OPEN_STATUSES.includes(target.status)&&target.customerId===String(record.customerId||'')){
-            const at=old.createdAt||new Date().toISOString();await addEntry(q,{...d.entry(target,author,old.type+': '+old.description,at,{channel:'technical',visibility:'public',sourceServiceId:String(record.id)}),ticketId:target.id});target.version++;target.updatedAt=[target.updatedAt,at].sort().at(-1);target.serviceIds=[...new Set([...target.serviceIds,String(record.id)])];target.participantIds=[...new Set([...target.participantIds,String(author.id)])];await save(q,target);await q('INSERT INTO pignus_ticket_service_requests (legacy_id,ticket_id) VALUES (?,?)',[legacyId,target.id]);continue
+          const selected=await ticket(q,old.relatedTicketId,true)
+          if(old.duplicateReview&&selected?.status==='Fusionado')d.fail('El caso fue fusionado. Revisá el ticket principal antes de agregar información.',409)
+          if(old.duplicateReview&&selected&&Number(old.relatedTicketVersion)!==selected.version)d.fail('El caso cambió mientras completabas el informe. Revisá la información actualizada.',409)
+          const target=await principal(q,selected,true)
+          if(target&&author&&(canContribute||!old.duplicateReview&&d.visible(target,author,state,configuration.config))&&d.OPEN_STATUSES.includes(target.status)&&target.customerId===customerId){
+            const at=old.createdAt||new Date().toISOString();await addEntry(q,{...d.entry(target,author,old.type+': '+old.description,at,{channel:'technical',visibility:'public',sourceServiceId:String(record.id)}),ticketId:target.id});target.version++;target.updatedAt=[target.updatedAt,at].sort().at(-1);target.serviceIds=[...new Set([...target.serviceIds,String(record.id)])];target.participantIds=[...new Set([...target.participantIds,String(author.id)])];target.coRequesterIds=[...new Set([...(target.coRequesterIds||[]),String(author.id)])];await save(q,target);await q('INSERT INTO pignus_ticket_service_requests (legacy_id,ticket_id) VALUES (?,?)',[legacyId,target.id]);continue
           }
+          if(old.duplicateReview)d.fail('El caso elegido cambió o ya no está abierto. Revisá las coincidencias antes de guardar.',409)
+        }
+        if(old.duplicateReview&&customerId){
+          const found=await duplicates(q,customerId,author,state,configuration.config,true)
+          if(found.candidates.length&&!(old.relation==='different'&&old.duplicateToken===found.duplicateToken))d.fail('Ya existen casos abiertos de esta cuenta. Revisá si es el mismo motivo antes de guardar el informe.',409,{code:'ticket_duplicates',...found})
         }
         const now=old.createdAt||new Date().toISOString(),type=old.type==='Cotizar adicional'?['commercial','quote']:old.type==='Coordinar visita'?['work','visit']:['general','review']
         const category=configuration.config.categories.find(c=>c.id===type[0]),subcategory=category?.subcategories.find(c=>c.id===type[1]),rule={...category,...Object.fromEntries(Object.entries(subcategory||{}).filter(([,v])=>v!==undefined&&v!==null))}
-        const item={id:crypto.randomUUID(),number:await nextNumber(q,configuration),version:1,ruleVersion:configuration.version,legacyId,title:old.type,description:old.description,scope:record.customerId?'customer':'internal',customerId:String(record.customerId||''),customerSnapshot:{customerId:record.customerId,account:record.clientAccount||'',name:record.client||''},origin:'technical',categoryId:type[0],subcategoryId:type[1],eventType:'',zone:'',createdAt:now,updatedAt:old.events?.at(-1)?.at||now,createdById:String(old.createdById||''),createdByName:old.createdByName,requesterId:String(old.createdById||''),requesterName:old.createdByName,areaId:rule.areaId||'technical',assigneeId:String(old.assigneeId||''),assigneeName:old.assigneeName||'',status:old.status==='Pendiente'?'Nuevo':old.status,priority:rule.priority||(old.type==='Cotizar adicional'?'Baja':'Media'),serviceIds:[String(record.id)],participantIds:[String(old.createdById||'')],resolution:old.resolution||'',resolvedAt:old.resolvedAt||''}
+        const item={id:crypto.randomUUID(),number:await nextNumber(q,configuration),version:1,ruleVersion:configuration.version,legacyId,title:old.type,description:old.description,scope:customerId?'customer':'internal',customerId,customerSnapshot:{customerId,account:record.clientAccount||'',name:record.client||''},origin:'technical',categoryId:type[0],subcategoryId:type[1],eventType:'',zone:'',createdAt:now,updatedAt:old.events?.at(-1)?.at||now,createdById:String(old.createdById||''),createdByName:old.createdByName,requesterId:String(old.createdById||''),requesterName:old.createdByName,areaId:rule.areaId||'technical',assigneeId:String(old.assigneeId||''),assigneeName:old.assigneeName||'',status:old.status==='Pendiente'?'Nuevo':old.status,priority:rule.priority||(old.type==='Cotizar adicional'?'Baja':'Media'),serviceIds:[String(record.id)],participantIds:[String(old.createdById||'')],resolution:old.resolution||'',resolvedAt:old.resolvedAt||''}
         sla.initSla(item,configuration.config,new Date().toISOString())
         if(old.relation==='different'&&record.sourceTicketId)item.parentTicketId=record.sourceTicketId
         await save(q,item)

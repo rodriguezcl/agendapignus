@@ -76,7 +76,7 @@ Para que dos operadores detecten los reclamos cargados por sus compañeros, habi
 
 ## Correo: formulario de entrada y salida
 
-Administración → Configuración → Tickets → Correo de soporte permite configurar un canal de correo desde Agentec. La cuenta inicia desactivada. El acceso al formulario y a sus operaciones exige el permiso de configuración de Tickets; una persona autorizada a responder casos no obtiene por ello acceso a las credenciales del canal.
+Administración → Configuración → Correo de soporte permite configurar un canal de correo desde Agentec. La cuenta inicia desactivada. El acceso al formulario y a sus operaciones exige el permiso de configuración de Tickets; una persona autorizada a responder casos no obtiene por ello acceso a las credenciales del canal.
 
 El formulario separa **Correo entrante** de **Correo saliente** siguiendo la organización de la [configuración de cuentas de Zammad](https://admin-docs.zammad.org/en/latest/channels/email/accounts/account-setup.html). En Agentec se utiliza un único buzón de soporte, con área de destino, dirección y nombre de remitente; no se implementan POP3, Sendmail, archivo histórico ni múltiples cuentas.
 

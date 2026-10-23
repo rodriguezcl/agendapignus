@@ -66,11 +66,13 @@ for (const engine of ['sqlite', 'postgres']) {
         assert.equal(second.number, '1000003')
       })
 
-      await t.test('alcance propio no revela tickets, coincidencias, notas ni contactos de terceros', async () => {
+      await t.test('alcance propio conserva privacidad y permite revisar coincidencias al cargar', async () => {
         const outsider = user('outsider')
         assert.equal((await store.query(outsider, state, {})).total, 0)
-        assert.equal((await store.query(outsider, state, { mode: 'duplicates', customerId: 'customer-1' })).candidates.length, 0)
-        const own = (await store.run(outsider, state, createInput())).ticket
+        const duplicates = await store.query(outsider, state, { mode: 'duplicates', customerId: 'customer-1' })
+        assert.equal(duplicates.candidates.length, 2)
+        assert.ok(duplicates.candidates.every(item => !item.customerSnapshot && !item.requesterEmail))
+        const own = (await store.run(outsider, state, createInput({ allowDuplicate: true, duplicateToken: duplicates.duplicateToken }))).ticket
         assert.equal(own.customerSnapshot.address, undefined)
         assert.equal(own.customerSnapshot.phone, undefined)
         assert.equal(own.customerSnapshot.monthlyFee, undefined)
@@ -271,7 +273,8 @@ for (const engine of ['sqlite', 'postgres']) {
 
       await t.test('los aportes técnicos validan permiso, servicio y cuenta antes de vincular', async () => {
         const actor = user('technical-author')
-        const item = (await store.run(actor, state, createInput())).ticket
+        const duplicates = await store.query(actor, state, { mode: 'duplicates', customerId: 'customer-1' })
+        const item = (await store.run(actor, state, createInput({ allowDuplicate: true, duplicateToken: duplicates.duplicateToken }))).ticket
         const relatedState = { ...state, history: [{ id: 'service-1', customerId: 'customer-1', technicianIds: ['technical-author'] }, { id: 'service-2', customerId: 'customer-2', technicianIds: ['technical-author'] }] }
         await rejectsStatus(() => store.run(actor, relatedState, command('comment', { id: item.id, version: item.version, note: 'Sin permiso técnico', serviceId: 'service-1' })), 403)
         await rejectsStatus(() => store.run(administrator, relatedState, command('comment', { id: item.id, version: item.version, note: 'Otra cuenta', serviceId: 'service-2' })), 400)

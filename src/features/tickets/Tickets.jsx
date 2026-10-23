@@ -6,6 +6,7 @@ import ModuleIntroduction from '../../components/ModuleIntroduction.jsx'
 import Icon from '../../components/ui/Icon.jsx'
 import TicketSlaSummary, { TicketServiceSchedule } from './TicketSlaSummary.jsx'
 import { TICKET_STATES, TICKET_PRIORITIES, TICKET_ORIGINS, ticketNumber, ticketDate, ticketCustomer, ticketAccount, ticketRule, newCommandId, validateTicketFiles, encodeTicketFiles } from './ticket-ui.mjs'
+import { prepareTicketCommand } from './ticket-command-retry.mjs'
 import './tickets.css'
 
 const get = params => requestJson(`/api/tickets?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null))}`)
@@ -14,12 +15,12 @@ const valueOf = item => String(item?.id ?? '')
 const active = items => (items || []).filter(item => item.active !== false)
 const useDebounced = (value, delay = 300) => { const [result, setResult] = useState(value); useEffect(() => { const timer = setTimeout(() => setResult(value), delay); return () => clearTimeout(timer) }, [value, delay]); return result }
 
-function TicketDialog({ title, onClose, busy, children, wide = false }) {
+function TicketDialog({ title, onClose, busy, children, wide = false, inactive = false, restoreFocusTo }) {
   const root = useRef(null), latestClose = useRef(onClose), busyRef = useRef(busy)
   latestClose.current = onClose
   busyRef.current = busy
   useEffect(() => {
-    const opener = document.activeElement
+    const opener = restoreFocusTo || document.activeElement
     const element = root.current
     element?.focus()
     const trap = event => {
@@ -34,7 +35,7 @@ function TicketDialog({ title, onClose, busy, children, wide = false }) {
     document.addEventListener('keydown', trap)
     return () => { document.removeEventListener('keydown', trap); if (opener?.isConnected) opener.focus() }
   }, [])
-  return <div className="modal-layer tickets-dialog-layer"><section className={`modal tickets-dialog ${wide ? 'tickets-dialog--wide' : ''}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={root}>
+  return <div className="modal-layer tickets-dialog-layer"><section className={`modal tickets-dialog ${wide ? 'tickets-dialog--wide' : ''}`} role="dialog" aria-modal={!inactive} aria-hidden={inactive || undefined} inert={inactive ? '' : undefined} aria-label={title} tabIndex={-1} ref={root}>
     <header className="tickets-dialog-heading"><h2>{title}</h2><button title="Cerrá esta ventana; si hay cambios pendientes, podrás conservarlos o descartarlos." type="button" className="secondary tickets-icon-button" aria-label={`Cerrar ${title}`} disabled={busy} onClick={onClose}><Icon name="close" size={18} /></button></header>{children}
   </section></div>
 }
@@ -57,14 +58,43 @@ function CategoryFields({ config, value, onChange, disabled, includePriority = f
   </>
 }
 
-function NewTicket({ metadata, initial, onClose, onSaved, onReview }) {
+export function DuplicateTicketContent({ ticket, config = {} }) {
+  const messages = (ticket.messages || []).filter(message => message.visibility !== 'internal')
+  return <div className="tickets-detail"><header><div className="tickets-actions"><span className={`tickets-priority tickets-priority--${ticket.priority?.toLowerCase()}`}>{ticket.priority}</span><span className="tickets-status">{ticket.status}</span></div><h3>{ticket.title}</h3></header>
+    <dl className="tickets-facts"><div><dt>Responsable</dt><dd>{ticket.assigneeName || 'Sin asignar'}</dd></div><div><dt>Creado</dt><dd>{ticketDate(ticket.createdAt)}</dd></div>{ticket.categoryId && <div><dt>Categoría</dt><dd>{config.categories?.find(item => item.id === ticket.categoryId)?.name || ticket.categoryId}</dd></div>}{ticket.eventType && <div><dt>Evento</dt><dd>{config.events?.find(item => item.id === ticket.eventType)?.name || ticket.eventType}</dd></div>}{ticket.zone && <div><dt>Zona</dt><dd>{ticket.zone}</dd></div>}</dl>
+    {ticket.description && <p className="tickets-text">{ticket.description}</p>}
+    <section aria-label="Información pública del caso"><h3>Información y respuestas del caso</h3><ol className="tickets-timeline">{messages.map((message, index) => <li className="tickets-timeline-message" key={message.id || index}><div className="tickets-timeline-heading"><strong>{message.byName || message.authorName || 'Solicitante'}</strong><time>{ticketDate(message.at || message.createdAt)}</time></div><p className="tickets-text">{message.body || message.text}</p></li>)}</ol>{!messages.length && <p className="tickets-muted">Todavía no hay aportes adicionales.</p>}</section>
+  </div>
+}
+
+function DuplicateTicketReview({ candidate, customerId, serviceId, config, onClose, onSelect, selected, restoreFocusTo }) {
+  const [ticket, setTicket] = useState(null), [loading, setLoading] = useState(true), [error, setError] = useState(''), [retry, setRetry] = useState(0)
+  useEffect(() => {
+    let current = true; setLoading(true); setError(''); setTicket(null)
+    get({ view: 'duplicateDetail', id: candidate.id, customerId, serviceId }).then(data => { if (current) setTicket(data.ticket) }).catch(failure => { if (current) setError(failure.message) }).finally(() => { if (current) setLoading(false) })
+    return () => { current = false }
+  }, [candidate.id, customerId, serviceId, retry])
+  return <TicketDialog title={`Revisar ${ticketNumber(ticket || candidate)}`} onClose={onClose} restoreFocusTo={restoreFocusTo} wide>
+    <p className="tickets-muted">Si es el mismo problema, sumá tu información al caso existente. Si es otro motivo, conservá la solicitud nueva.</p>
+    {loading ? <p role="status">Cargando información del caso…</p> : error ? <p role="alert" className="field-error">{error} <button type="button" className="secondary" onClick={() => setRetry(value => value + 1)}>Reintentar</button></p> : ticket && <DuplicateTicketContent ticket={ticket} config={config} />}
+    <div className="tickets-form-footer"><button type="button" className="secondary" onClick={onClose}>Volver a la solicitud</button><button type="button" className="primary" disabled={loading || Boolean(error) || !ticket} onClick={() => onSelect(String(candidate.id))}>{selected ? 'Conservar este caso' : 'Es el mismo caso'}</button></div>
+  </TicketDialog>
+}
+
+function NewTicket({ metadata, initial, onClose, onSaved }) {
   const { can } = usePermissions()
   const [draft, setDraft] = useState(() => ({ scope: initial?.customerId ? 'customer' : 'customer', origin: initial?.serviceId ? 'technical' : 'phone', title: initial?.title || '', description: initial?.description || '', categoryId: initial?.categoryId || '', subcategoryId: '', customerId: initial?.customerId || '', eventType: '', zone: '', occurredAt: '', requesterName: '', requesterEmail: '', serviceId: initial?.serviceId || '' }))
   const [customer, setCustomer] = useState(initial?.customer || null), [search, setSearch] = useState(''), [customers, setCustomers] = useState([]), [searching, setSearching] = useState(false)
   const [duplicates, setDuplicates] = useState([]), [duplicateToken, setDuplicateToken] = useState(''), [checking, setChecking] = useState(false), [duplicateError, setDuplicateError] = useState('')
+  const [checkedAccount, setCheckedAccount] = useState(''), [reviewing, setReviewing] = useState(null), [duplicateRetry, setDuplicateRetry] = useState(0)
   const [decision, setDecision] = useState(''), [files, setFiles] = useState([]), [busy, setBusy] = useState(false), [error, setError] = useState('')
   const command = useRef(null), lock = useRef(false), query = useDebounced(search), rule = ticketRule(metadata.config, draft.categoryId, draft.subcategoryId)
+  const reviewOpener = useRef(null)
+  const accountContext = draft.customerId ? JSON.stringify([String(draft.customerId), String(draft.serviceId)]) : ''
+  const accountPending = Boolean(draft.customerId && checkedAccount !== accountContext)
   const patch = changes => { setDraft(previous => ({ ...previous, ...changes })); setError(''); command.current = null }
+  const chooseDecision = value => { if (value !== decision) command.current = null; setDecision(value) }
+  const changeFiles = value => { command.current = null; setFiles(value) }
   const dirty = Boolean(draft.title || draft.description || draft.customerId || draft.categoryId || draft.requesterName || draft.requesterEmail || files.length)
   const guard = useDiscardGuard({ dirty, busy, onDiscard: onClose })
   useEffect(() => {
@@ -74,11 +104,13 @@ function NewTicket({ metadata, initial, onClose, onSaved, onReview }) {
     return () => { cancelled = true }
   }, [query])
   useEffect(() => {
-    if (!draft.customerId) { setDuplicates([]); setDuplicateToken(''); setChecking(false); setDuplicateError(''); return }
-    let cancelled = false; setChecking(true); setDuplicateError(''); setDecision('')
-    get({ view: 'duplicates', customerId: draft.customerId }).then(data => { if (!cancelled) { setDuplicates(data.candidates || data.tickets || []); setDuplicateToken(data.duplicateToken || '') } }).catch(failure => { if (!cancelled) setDuplicateError(failure.message) }).finally(() => { if (!cancelled) setChecking(false) })
+    command.current = null
+    setDuplicates([]); setDuplicateToken(''); setDecision(''); setReviewing(null); setCheckedAccount(''); setDuplicateError('')
+    if (!draft.customerId) { setChecking(false); return }
+    let cancelled = false; setChecking(true)
+    get({ view: 'duplicates', customerId: draft.customerId, serviceId: draft.serviceId }).then(data => { if (!cancelled) { setDuplicates(data.candidates || data.tickets || []); setDuplicateToken(data.duplicateToken || ''); setCheckedAccount(accountContext) } }).catch(failure => { if (!cancelled) setDuplicateError(failure.message) }).finally(() => { if (!cancelled) setChecking(false) })
     return () => { cancelled = true }
-  }, [draft.customerId])
+  }, [draft.customerId, draft.serviceId, accountContext, duplicateRetry])
   const selectCustomer = item => { setCustomer(item); setSearch(''); setCustomers([]); patch({ customerId: valueOf(item) }) }
   const clearCustomer = () => { setCustomer(null); patch({ customerId: '' }); setDecision('') }
   const chooseScope = scope => { patch({ scope, origin: scope === 'internal' ? 'internal' : 'phone', customerId: '', categoryId: '', subcategoryId: '' }); setCustomer(null); setDecision(''); setSearch('') }
@@ -86,46 +118,44 @@ function NewTicket({ metadata, initial, onClose, onSaved, onReview }) {
   const appendTarget = duplicates.find(item => String(item.id) === decision)
   const submit = async event => {
     event.preventDefault()
-    if (lock.current || checking) return
+    if (lock.current || checking || accountPending || duplicateError) return
     if (needsCustomer && !draft.customerId) { setError('Seleccioná el abonado o cliente del reclamo.'); return }
     if (!draft.description.trim()) { setError('Ingresá la observación del caso.'); return }
     if (duplicates.length && !decision) { setError('Revisá los tickets abiertos e indicá si es el mismo caso o uno diferente.'); return }
     lock.current = true; setBusy(true); setError('')
     try {
       const attachments = await encodeTicketFiles(files)
-      let payload
-      if (appendTarget) {
-        if (!can('tickets.comment')) throw new Error('Tu rol no permite agregar información a otro ticket.')
-        const current = await get({ id: appendTarget.id })
-        const context = [draft.title.trim() && `Asunto informado: ${draft.title.trim()}`, draft.eventType && `Evento: ${metadata.config.events?.find(item => item.id === draft.eventType)?.name || draft.eventType}`, draft.zone && `Zona: ${draft.zone}`, draft.occurredAt && `Fecha del evento: ${ticketDate(draft.occurredAt)}`].filter(Boolean).join('\n')
-        payload = { action: 'comment', id: current.ticket.id, version: current.ticket.version, note: [draft.description.trim(), context].filter(Boolean).join('\n\n'), visibility: 'public', origin: draft.origin, serviceId: draft.serviceId, attachments, context:{categoryId:draft.categoryId,subcategoryId:draft.subcategoryId,eventId:draft.eventType,zone:draft.zone,occurredAt:draft.occurredAt ? new Date(draft.occurredAt).toISOString() : ''} }
-      } else {
-        payload = { action: 'create', ...draft, title: draft.title.trim() || `${rule.name || 'Solicitud'}${customer ? ` · ${customer.name}` : ''}`, occurredAt: draft.occurredAt ? new Date(draft.occurredAt).toISOString() : undefined, description: draft.description.trim(), allowDuplicate: decision === 'different', duplicateToken, attachments }
-      }
-      const fingerprint = JSON.stringify(payload)
-      if (command.current?.fingerprint !== fingerprint) command.current = { fingerprint, id: newCommandId() }
-      const result = await post({ ...payload, commandId: command.current.id })
+      command.current = await prepareTicketCommand(command.current, { draft, decision, duplicateToken, attachments }, async () => {
+        if (appendTarget) {
+          const current = await get({ view: 'duplicateDetail', id: appendTarget.id, customerId: draft.customerId, serviceId: draft.serviceId })
+          const context = [draft.title.trim() && `Asunto informado: ${draft.title.trim()}`, draft.eventType && `Evento: ${metadata.config.events?.find(item => item.id === draft.eventType)?.name || draft.eventType}`, draft.zone && `Zona: ${draft.zone}`, draft.occurredAt && `Fecha del evento: ${ticketDate(draft.occurredAt)}`].filter(Boolean).join('\n')
+          return { action: 'contribute', id: current.ticket.id, version: current.ticket.version, customerId: draft.customerId, note: [draft.description.trim(), context].filter(Boolean).join('\n\n'), origin: draft.origin, serviceId: draft.serviceId, attachments, context:{categoryId:draft.categoryId,subcategoryId:draft.subcategoryId,eventId:draft.eventType,zone:draft.zone,occurredAt:draft.occurredAt ? new Date(draft.occurredAt).toISOString() : ''} }
+        }
+        return { action: 'create', ...draft, title: draft.title.trim() || `${rule.name || 'Solicitud'}${customer ? ` · ${customer.name}` : ''}`, occurredAt: draft.occurredAt ? new Date(draft.occurredAt).toISOString() : undefined, description: draft.description.trim(), allowDuplicate: decision === 'different', duplicateToken, attachments }
+      }, newCommandId)
+      const result = await post({ ...command.current.payload, commandId: command.current.id })
       onSaved(result.ticket || result, appendTarget ? 'Se agregó la información al caso existente.' : 'Ticket creado.')
     } catch (failure) {
       const collision = failure.payload?.details || failure.payload
       if (failure.status === 409 && (collision?.candidates || collision?.tickets)) { setDuplicates(collision.candidates || collision.tickets); setDuplicateToken(collision.duplicateToken || ''); setDecision(''); command.current = null }
+      else if ([404, 409].includes(failure.status)) { setDuplicateRetry(value => value + 1); command.current = null }
       setError(failure.message)
     } finally { lock.current = false; setBusy(false) }
   }
-  return <><TicketDialog title="Nuevo ticket" onClose={guard.requestClose} busy={busy} wide><form onSubmit={submit} className="tickets-form">
+  return <><TicketDialog title="Nuevo ticket" onClose={guard.requestClose} busy={busy} inactive={Boolean(reviewing && !accountPending)} wide><form onSubmit={submit} className="tickets-form">
     <fieldset className="tickets-kind-picker" disabled={busy}><legend>Tipo de solicitud</legend><label><input type="radio" name="ticket-scope" checked={draft.scope === 'customer'} onChange={() => chooseScope('customer')} />Reclamo de abonado o cliente</label><label><input type="radio" name="ticket-scope" checked={draft.scope === 'internal'} onChange={() => chooseScope('internal')} />Solicitud interna</label></fieldset>
     <div className="tickets-fields"><CategoryFields config={metadata.config} value={draft} onChange={patch} disabled={busy} />{draft.categoryId && <div className="tickets-rule-summary"><span>Prioridad predeterminada</span><strong className={`tickets-priority tickets-priority--${rule.priority?.toLowerCase()}`}>{rule.priority}</strong>{rule.areaId && <small>Área: {metadata.config.areas?.find(item => item.id === rule.areaId)?.name || 'Sin asignar'}</small>}</div>}</div>
     {(rule.customerPolicy !== 'none' || needsCustomer) && <div className="tickets-customer-search">{customer ? <div className="tickets-account-card"><div><strong>{ticketAccount(customer)} {customer.name}</strong><p>{customer.address || 'Domicilio no informado'}</p>{customer.phone && <small>{customer.phone}</small>}</div><button title="Buscá otra cuenta para asociarla a esta solicitud." type="button" className="secondary" disabled={busy} onClick={clearCustomer}>Cambiar cuenta</button></div> : <><label>Abonado o cliente {needsCustomer ? '*' : '(opcional)'}<input type="search" value={search} disabled={busy} onChange={event => setSearch(event.target.value)} placeholder="Buscar por PIG, CLI, nombre o teléfono" autoComplete="off" /></label>{searching && <p role="status">Buscando cuentas…</p>}{query.trim().length >= 2 && !searching && <div className="tickets-search-results">{customers.map(item => <button title="Seleccioná esta cuenta para completar sus datos y revisar los tickets abiertos." className="secondary" type="button" key={item.id} onClick={() => selectCustomer(item)}><strong>{ticketAccount(item)} · {item.name}</strong><small>{item.address}</small></button>)}{!customers.length && <p>No se encontraron cuentas para esta búsqueda.</p>}</div>}</>}
-      {checking && <p role="status">Consultando tickets abiertos de la cuenta…</p>}{duplicateError && <p role="alert" className="field-error">No se pudieron verificar los tickets de la cuenta. {duplicateError}</p>}
-      {Boolean(duplicates.length) && <section className="tickets-duplicates" aria-label="Tickets abiertos de esta cuenta"><h3>Esta cuenta tiene {duplicates.length} ticket{duplicates.length === 1 ? '' : 's'} abierto{duplicates.length === 1 ? '' : 's'}</h3><p>Revisá si alguno corresponde al problema que estás registrando.</p>{duplicates.map(item => <article key={item.id} className={decision === String(item.id) ? 'is-selected' : ''}><div><strong>{ticketNumber(item)} · {item.title}</strong><small>{item.status} · {item.assigneeName || 'Sin asignar'} · {ticketDate(item.updatedAt || item.createdAt)}</small>{(item.eventType || item.zone) && <small>{item.eventType} {item.zone && `· Zona: ${item.zone}`}</small>}</div><div className="tickets-actions"><button title="Consultá la conversación del ticket antes de decidir si corresponde al mismo caso." type="button" className="secondary" disabled={busy} onClick={() => onReview(item.id)}>Revisar caso</button>{can('tickets.comment') && <button title="Sumá la observación a este ticket y conservá su número y conversación." type="button" className={decision === String(item.id) ? 'primary' : 'secondary'} disabled={busy} aria-pressed={decision === String(item.id)} onClick={() => setDecision(String(item.id))}>Es el mismo caso</button>}</div></article>)}<label className="tickets-checkbox"><input type="checkbox" checked={decision === 'different'} disabled={busy} onChange={event => setDecision(event.target.checked ? 'different' : '')} />Es un caso diferente: crear un ticket nuevo</label></section>}
+      {checking && <p role="status">Consultando tickets abiertos de la cuenta…</p>}{duplicateError && <p role="alert" className="field-error">No se pudieron verificar los tickets de la cuenta. {duplicateError} <button type="button" className="secondary" disabled={busy} onClick={() => setDuplicateRetry(value => value + 1)}>Reintentar consulta</button></p>}
+      {!accountPending && Boolean(duplicates.length) && <section className="tickets-duplicates" aria-label="Tickets abiertos de esta cuenta"><h3>Esta cuenta tiene {duplicates.length} ticket{duplicates.length === 1 ? '' : 's'} abierto{duplicates.length === 1 ? '' : 's'}</h3><p>Si es el mismo problema, sumá tu información al caso existente. Si es otro motivo, creá una solicitud nueva.</p>{duplicates.map(item => <article key={item.id} className={decision === String(item.id) ? 'is-selected' : ''}><div><strong>{ticketNumber(item)} · {item.title}</strong><small>{item.status} · {item.assigneeName || 'Sin asignar'} · {ticketDate(item.updatedAt || item.createdAt)}</small>{(item.eventType || item.zone) && <small>{item.eventType} {item.zone && `· Zona: ${item.zone}`}</small>}</div><div className="tickets-actions"><button title="Consultá la información pública del ticket antes de decidir si corresponde al mismo caso." type="button" className="secondary" disabled={busy} onClick={event => { reviewOpener.current = event.currentTarget; setReviewing(item) }}>Revisar caso</button>{(can('tickets.create') || can('tickets.fromService')) && <button title="Sumá la observación a este ticket y conservá su número y conversación." type="button" className={decision === String(item.id) ? 'primary' : 'secondary'} disabled={busy} aria-pressed={decision === String(item.id)} onClick={() => chooseDecision(String(item.id))}>Es el mismo caso</button>}</div></article>)}<label className="tickets-checkbox"><input type="checkbox" checked={decision === 'different'} disabled={busy} onChange={event => chooseDecision(event.target.checked ? 'different' : '')} />Es un caso diferente: crear un ticket nuevo</label></section>}
     </div>}
     {draft.scope === 'internal' && <div className="tickets-fields"><label>Solicitante (opcional)<input maxLength={160} value={draft.requesterName} disabled={busy} onChange={event => patch({ requesterName: event.target.value })} placeholder="Si informás el pedido de otra persona" /></label><label>Correo de contacto (opcional)<input type="email" maxLength={254} value={draft.requesterEmail} disabled={busy} onChange={event => patch({ requesterEmail: event.target.value })} /></label></div>}
     <label>Asunto <span className="tickets-muted">(opcional; se sugiere según la categoría)</span><input maxLength={160} value={draft.title} disabled={busy} onChange={event => patch({ title: event.target.value })} placeholder="Resumen del problema o solicitud" /></label>
     <div className="tickets-fields">{rule.showEvent && <label>Evento<select value={draft.eventType} disabled={busy} onChange={event => patch({ eventType: event.target.value })}><option value="">No corresponde / sin informar</option>{active(metadata.config.events).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}{rule.showZone && <label>Zona (si corresponde)<input maxLength={200} value={draft.zone} disabled={busy} onChange={event => patch({ zone: event.target.value })} placeholder="Ej.: 1 · Puerta de ingreso" /></label>}{rule.showEvent && <label>Fecha y hora del evento (opcional)<input type="datetime-local" value={draft.occurredAt} disabled={busy} onChange={event => patch({ occurredAt: event.target.value })} /></label>}</div>
     <label>{appendTarget ? `Información para sumar a ${ticketNumber(appendTarget)}` : 'Observaciones *'}<textarea required maxLength={10000} value={draft.description} disabled={busy} onChange={event => patch({ description: event.target.value })} placeholder="Describí qué ocurrió y qué gestión se necesita." /></label>
-    <FilePicker files={files} onChange={setFiles} disabled={busy} />
-    {error && <p role="alert" className="field-error">{error}</p>}<div className="tickets-form-footer"><button title="Cancelá la carga del ticket; podrás confirmar si querés descartar el borrador." type="button" className="secondary" disabled={busy} onClick={guard.requestClose}>Cancelar</button><button title="Guardá la solicitud o agregá este aporte al caso existente seleccionado." type="submit" className="primary" disabled={busy || checking || Boolean(duplicateError) || !draft.categoryId || (needsCustomer && !draft.customerId) || !draft.description.trim() || (duplicates.length > 0 && !decision)}>{busy ? 'Guardando…' : appendTarget ? 'Agregar información al caso' : 'Crear ticket'}</button></div>
-  </form></TicketDialog>{guard.discardDialog}</>
+    <FilePicker files={files} onChange={changeFiles} disabled={busy} />
+    {error && <p role="alert" className="field-error">{error}</p>}<div className="tickets-form-footer"><button title="Cancelá la carga del ticket; podrás confirmar si querés descartar el borrador." type="button" className="secondary" disabled={busy} onClick={guard.requestClose}>Cancelar</button><button title="Guardá la solicitud o agregá este aporte al caso existente seleccionado." type="submit" className="primary" disabled={busy || checking || accountPending || Boolean(duplicateError) || !draft.categoryId || (needsCustomer && !draft.customerId) || !draft.description.trim() || (duplicates.length > 0 && !decision)}>{busy ? 'Guardando…' : appendTarget ? 'Agregar información al caso' : 'Crear ticket'}</button></div>
+  </form></TicketDialog>{reviewing && !accountPending && <DuplicateTicketReview candidate={reviewing} customerId={draft.customerId} serviceId={draft.serviceId} config={metadata.config} restoreFocusTo={reviewOpener.current} onClose={() => setReviewing(null)} selected={decision === String(reviewing.id)} onSelect={id => { chooseDecision(id); setReviewing(null) }} />}{guard.discardDialog}</>
 }
 
 function TicketDetail({ id, metadata, onClose, onChanged, onCoordinateService }) {
@@ -240,7 +270,7 @@ export default function Tickets({ openRequest, onChanged, onCoordinateService })
     {error && <p role="alert" className="field-error">{error} <button title="Volvé a consultar los tickets y la configuración necesarios para esta pantalla." className="secondary" type="button" onClick={() => { if (!metadata) get({ view: 'metadata' }).then(setMetadata).catch(failure => setError(failure.message)); setRevision(value => value + 1) }}>Reintentar</button></p>}{notice && <p role="status" className="tickets-feedback">{notice}</p>}
     <section className="data-card tickets-results" aria-label="Listado de tickets" aria-busy={loading}>{loading ? <p className="empty-state" role="status">Cargando tickets…</p> : !data.items.length ? <p className="empty-state">No hay tickets para estos filtros.</p> : <><div className="tickets-table-wrapper"><table><thead><tr><th>Ticket y solicitud</th><th>Prioridad</th><th>Estado</th><th>Responsable</th><th>Última actividad</th><th><span className="tickets-sr-only">Acciones</span></th></tr></thead><tbody>{data.items.map(ticket => <tr key={ticket.id}><td><button title="Abrí el ticket para consultar su conversación, adjuntos y gestiones." className="tickets-ticket-link" type="button" onClick={() => setSelected(String(ticket.id))}>{ticketNumber(ticket)} · {ticket.title}</button><small>{ticketCustomer(ticket)}</small><small>{TICKET_ORIGINS[ticket.origin] || (ticket.origin === 'technical' ? 'Informe técnico' : ticket.origin)}</small></td><td><span className={`tickets-priority tickets-priority--${ticket.priority?.toLowerCase()}`}>{ticket.priority}</span><TicketSlaSummary summary={ticket.slaSummary} compact /></td><td>{ticket.status}<TicketServiceSchedule ticket={ticket} compact /></td><td>{ticket.assigneeName || metadata?.assignees?.find(item => String(item.id) === String(ticket.assigneeId))?.name || 'Sin asignar'}</td><td>{ticketDate(ticket.updatedAt || ticket.createdAt)}</td><td><button title="Consultá el detalle del ticket y las acciones habilitadas para tu rol." type="button" className="secondary" onClick={() => setSelected(String(ticket.id))} aria-label={`Ver ${ticketNumber(ticket)}`}>Ver</button></td></tr>)}</tbody></table></div><footer className="tickets-pagination"><span>{data.total} ticket{data.total === 1 ? '' : 's'} · página {page} de {Math.max(1, Math.ceil(data.total / (data.pageSize || 20)))}</span><div className="tickets-actions"><button title="Mostrá la página anterior conservando los filtros de la bandeja." type="button" className="secondary" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Anterior</button><button title="Mostrá la página siguiente conservando los filtros de la bandeja." type="button" className="secondary" disabled={page * (data.pageSize || 20) >= data.total} onClick={() => setPage(value => value + 1)}>Siguiente</button></div></footer></>}
     </section>
-    {creating && metadata && <NewTicket metadata={metadata} initial={initial} onClose={() => setCreating(false)} onReview={setSelected} onSaved={(ticket, message) => { setCreating(false); setNotice(message); if (ticket?.id) setSelected(String(ticket.id)); changed() }} />}
+    {creating && metadata && <NewTicket metadata={metadata} initial={initial} onClose={() => setCreating(false)} onSaved={(ticket, message) => { setCreating(false); setNotice(message); if (ticket?.id) setSelected(String(ticket.id)); changed() }} />}
     {selected && metadata && <TicketDetail key={selected} id={selected} metadata={metadata} onClose={() => setSelected(null)} onChanged={changed} onCoordinateService={onCoordinateService} />}
   </div>
 }
