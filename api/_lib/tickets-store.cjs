@@ -248,11 +248,11 @@ function createTicketStore({ sql, db }) {
       if(mode==='notifications'){
         if(!policy.can(user,'notifications.tickets'))return {notifications:[]}
         const notices=[]
-        for(const notice of await communications.readNotifications(execute,user.id)) { const item=await principal(execute,await ticket(execute,notice.target.ticketId)); if(item&&d.visible(item,user,state,config))notices.push({...notice,target:{...notice.target,ticketId:item.id}}) }
+        for(const notice of await communications.readNotifications(execute,user.id)) { const item=await principal(execute,await ticket(execute,notice.target.ticketId)); if(item&&d.visible(item,user,state,config))notices.push({...notice,title:communications.notificationTitle(item,notice.eventLabel||notice.title.replace(/^Ticket#\d+\s*·\s*/,''),state),target:{...notice.target,ticketId:item.id}}) }
         where.push("status IN ('Nuevo','En gestión','En espera')")
         const items=(await execute('SELECT data FROM pignus_tickets'+clause()+' ORDER BY CASE '+field('priority')+" WHEN 'Crítica' THEN 0 WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END,updated_at DESC LIMIT 50",args)).map(parse)
         const noticed=new Set(notices.map(n=>n.target.ticketId))
-        return {notifications:[...notices,...items.filter(t=>!noticed.has(t.id)).map(t=>({id:'ticket:'+t.id,title:(t.priority==='Crítica'?'Crítico · ':'')+'Ticket#'+t.number+' · '+t.status,detail:t.title+' · '+(t.assigneeName||'Sin asignar'),tone:t.priority==='Crítica'?'danger':'warning',target:{type:'ticket',ticketId:t.id}}))]}
+        return {notifications:[...notices,...items.filter(t=>!noticed.has(t.id)).map(t=>({id:'ticket:'+t.id,title:communications.notificationTitle(t,(t.priority==='Crítica'?'Crítico · ':'')+t.status,state),detail:t.title+' · '+(t.assigneeName||'Sin asignar'),tone:t.priority==='Crítica'?'danger':'warning',target:{type:'ticket',ticketId:t.id}}))]}
       }
       if(params.status){if(params.status==='open')where.push("status IN ('Nuevo','En gestión','En espera')");else{where.push('status=?');args.push(params.status)}}
       const total=Number((await execute('SELECT COUNT(*) AS count FROM pignus_tickets'+clause(),args))[0].count)

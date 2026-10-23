@@ -1,4 +1,5 @@
 import { currentLocalDate, initials } from "./presentation/formatting.mjs";
+import { submitModalFromEnter } from './infrastructure/browser/modal-submit.mjs';
 import { collectionRepository } from "./infrastructure/repositories/collection-repository.mjs";
 import ModuleIntroduction from "./components/ModuleIntroduction.jsx";
 import { manageDrawerFocus } from "./infrastructure/browser/drawer-focus.mjs";
@@ -389,6 +390,7 @@ export default function App() {
       return true
     }
     const closeFromBackdrop = event => {
+      if (event.defaultPrevented) return
       if (!(event.target instanceof Element) || !event.target.matches('.modal-layer, .modal-backdrop')) return
       dismiss(event.target)
     }
@@ -423,6 +425,11 @@ export default function App() {
         event.preventDefault(); first.focus()
       }
     }
+    const confirmFromEnter = event => {
+      if (document.querySelector('dialog[open]')) return
+      const layers = modalLayers()
+      submitModalFromEnter(event, layers.length ? dialogFor(layers.at(-1)) : null)
+    }
     const modalObserver = new MutationObserver(records => records.forEach(record => {
       record.addedNodes.forEach(node => {
         if (!(node instanceof Element)) return
@@ -439,11 +446,13 @@ export default function App() {
     modalObserver.observe(document.body, { childList: true, subtree: true })
     document.addEventListener('click', closeFromBackdrop)
     document.addEventListener('keydown', closeFromEscape)
+    document.addEventListener('keydown', confirmFromEnter)
     document.addEventListener('keydown', trapModalFocus, true)
     return () => {
       modalObserver.disconnect()
       document.removeEventListener('click', closeFromBackdrop)
       document.removeEventListener('keydown', closeFromEscape)
+      document.removeEventListener('keydown', confirmFromEnter)
       document.removeEventListener('keydown', trapModalFocus, true)
     }
   }, [])

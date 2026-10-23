@@ -79,7 +79,7 @@
 .notification-item[data-tone='danger'] .notification-marker { color: #cf645c; background: transparent; border: 1px solid #cf645c; }
 .notification-item[data-tone='info'] .notification-marker { color: #5798c9; background: transparent; border: 1px solid #5798c9; }
 .notification-panel .notification-copy { display: grid; min-width: 0; gap: 5px; }
-.notification-panel .notification-copy strong { color: var(--ap-text); font-size: 13px; font-weight: 650; line-height: 1.4; }
+.notification-panel .notification-copy strong { color: var(--ap-text); font-size: 13px; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }
 .notification-panel .notification-copy > span { color: var(--ap-muted); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
 .notification-panel .notification-empty { display: grid; justify-items: center; gap: 10px; padding: 32px 24px; color: var(--ap-muted); text-align: center; }
 .notification-panel .notification-empty strong { color: var(--ap-text); font-size: 14px; }

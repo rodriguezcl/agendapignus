@@ -1,4 +1,11 @@
 import resolution from '../../../api/_lib/ticket-resolution.cjs'
+import subject from '../../../api/_lib/ticket-subject.cjs'
+
+export const automaticTicketSubject = subject.automaticSubject
+export function ticketLocalDateTime(now = new Date()) {
+  const pad = value => String(value).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
+}
 
 export const TICKET_RESOLUTION_METHODS = resolution.RESOLUTION_METHODS
 export const TICKET_STATES = ['Nuevo', 'En gestión', 'En espera', 'Resuelto', 'Fusionado']

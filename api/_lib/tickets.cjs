@@ -4,6 +4,7 @@ const read = require('./granular-read-policy.cjs')
 const sla = require('./ticket-sla.cjs')
 const { requesterIds, sourceTicketIds } = require('./ticket-requesters.cjs')
 const { eligibleService } = require('./ticket-service-suggestion.cjs')
+const { automaticSubject } = require('./ticket-subject.cjs')
 
 const STATUSES = ['Nuevo', 'En gestión', 'En espera', 'Resuelto', 'Fusionado']
 const PRIORITIES = ['Crítica', 'Alta', 'Media', 'Baja']
@@ -199,7 +200,7 @@ function newTicket(input, user, state, config, number, now) {
   const eventId = text(input.eventId ?? input.eventType, 120, 'Evento')
   const event = eventId && config.events.find(item => item.active && (item.id === eventId || item.name === eventId))
   if (eventId && !event) fail('Seleccioná un evento activo.')
-  const title = text(input.title, 160, 'Asunto') || `${subcategory?.name || category.name}${customer ? ` · ${customer.account}` : ''}`
+  const title = input.automaticTitle === true ? automaticSubject({ customer, event: effective.showEvent ? event : null, category, subcategory, requesterName: input.requesterName }) : text(input.title, 160, 'Asunto') || `${subcategory?.name || category.name}${customer ? ` · ${customer.account}` : ''}`
   const ticket = {
     id: crypto.randomUUID(), number: String(number), version: 1, title,
     description: text(input.description ?? input.body, 10000, 'Observación', true), scope: customer ? 'customer' : 'internal',

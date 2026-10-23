@@ -17,6 +17,23 @@ const plain = (value, limit = 200) => String(value || '').replace(/[\u0000-\u001
 const hash = (...parts) => createHash('sha256').update(JSON.stringify(parts)).digest('hex')
 const system = { id: 'agentec-automation', name: 'Equipo de soporte · Agentec' }
 
+function notificationTitle(ticket, label, state = {}) {
+  const current = ticket.customerId && (state.customers || []).find(customer => String(customer.customerId || customer.id) === String(ticket.customerId))
+  const customer = current || ticket.customerSnapshot
+  const account = plain(customer?.account, 30)
+  let name = plain(customer?.name, 80)
+  if (account && name.toLowerCase().startsWith(account.toLowerCase() + ' ')) name = name.slice(account.length).trim()
+  let identity = [account, name].filter(Boolean).join(' · ')
+  if (!identity) {
+    // El nombre permite reconocer al solicitante sin exponer direcciones de correo.
+    const named = [{ name: ticket.requesterName, label: ticket.origin === 'email' ? 'Remitente' : 'Solicitante' }, { name: ticket.createdByName, label: 'Creado por' }]
+      .map(item => ({ ...item, name: plain(item.name, 80) }))
+      .find(item => item.name && !item.name.includes('@') && !['usuario', 'correo', 'email'].includes(item.name.toLowerCase()))
+    identity = named ? `${named.label}: ${named.name}` : ticket.origin === 'email' ? 'Solicitud por correo' : 'Solicitud sin cuenta'
+  }
+  return [identity, `Ticket#${plain(ticket.number, 30)}`, plain(label, 100)].filter(Boolean).join(' · ')
+}
+
 function scheduledDate(context = {}) {
   const service = context.service || context
   const date = plain(service.date || context.date, 10), time = plain(service.time || service.startTime || context.time, 5)
@@ -82,7 +99,7 @@ async function communicateTicket({ q, ticket, type, eventKey, now = new Date().t
     .map(value => String(value || '')).filter(value => value && value !== String(actorId) && !['email', system.id].includes(value)))]
   for (const recipient of recipientsToNotify) {
     const id = `ticket-notice:${hash(key, recipient)}`
-    const notification = { id, notificationId: id, title: content.title, detail: content.body, tone: content.tone, createdAt: now,
+    const notification = { id, notificationId: id, title: notificationTitle(ticket, LABELS[type]), eventLabel: LABELS[type], detail: content.body, tone: content.tone, createdAt: now,
       target: { type: 'ticket', ticketId: ticket.id, notificationId: id } }
     await q('INSERT INTO pignus_ticket_notifications (id,ticket_id,recipient_id,created_at,read_at,data) VALUES (?,?,?,?,NULL,?) ON CONFLICT(id) DO NOTHING', [id, ticket.id, recipient, now, JSON.stringify(notification)])
   }
@@ -118,4 +135,4 @@ async function acknowledgeNotifications(q, recipientId, { ids, ticketId } = {}, 
   return { acknowledged: rows.length }
 }
 
-module.exports = { NOTIFICATION_SCHEMA, REMINDERS, eventContent, scheduledDate, canAutomaticallyEmail, communicateTicket, readNotifications, acknowledgeNotifications }
+module.exports = { NOTIFICATION_SCHEMA, REMINDERS, notificationTitle, eventContent, scheduledDate, canAutomaticallyEmail, communicateTicket, readNotifications, acknowledgeNotifications }
