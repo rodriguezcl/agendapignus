@@ -51,3 +51,21 @@ test('today excludes past starts, Sunday offers none, and Friday ends at 16', as
   assert.equal(slots('2026-10-04').length, 0)
   assert.equal(slots('2026-10-02').at(-1).time, '15:00')
 })
+
+test('ofrece reprogramar en los huecos del guardia hasta las 20, descontando los otros equipos', async () => {
+  const { rescheduleSlots } = await import('../src/domain/agenda/reschedule-slots.mjs')
+  const { availableRescheduleTeams } = await import('../src/domain/agenda/reschedule-availability.mjs')
+  const teams = [
+    { teamId: 'diurno', memberIds: ['santos', 'rodrigo'], tasks: [{ serviceId: 's', time: '08:30', estimatedMinutes: 390 }] },
+    { teamId: 'guardia', memberIds: ['santos'], tasks: [{ serviceId: 's', time: '17:30', estimatedMinutes: 60 }] },
+    { teamId: 'otro', memberIds: ['pascual'], tasks: [] }
+  ]
+  const available = (day, time, record) => availableRescheduleTeams(teams, record, day, time)
+  const before = JSON.stringify(teams)
+  const rows = rescheduleSlots('2026-10-23', { estimatedMinutes: 60 }, teams, available, new Date('2026-10-22T12:00:00Z'), {})
+  assert.deepEqual(rows[1].slots.map(slot => slot.time), ['16:00', '16:15', '16:30', '18:30', '18:45', '19:00'])
+  assert.equal(rows[1].slots.at(-1).end, '20:00')
+  assert.equal(rows[0].slots.length, 0)
+  assert.equal(rows[2].slots.at(-1).end, '16:00')
+  assert.equal(JSON.stringify(teams), before)
+})

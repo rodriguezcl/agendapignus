@@ -1,4 +1,5 @@
 import { taskOccupiedInterval, minutesAsTime, serviceSlotReleased } from './service-scheduling.mjs'
+import { teamHasAdvancedFridayGuard } from './weekend-guard.mjs'
 import workday from '../../../api/_lib/workday.cjs'
 
 export function planningHoursForDay(day, weekly = {}, teamId = '') {
@@ -8,15 +9,14 @@ export function planningHoursForDay(day, weekly = {}, teamId = '') {
 }
 
 // Empty placeholders do not reserve working time. Include the final stretch when closing hours are known.
-export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:00', breakEnd = '14:00', fullAvailability = false, day, now = new Date(), blockedIntervals = [] } = {}) {
+export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:00', breakEnd = '14:00', fullAvailability = false, day, now = new Date(), blockedIntervals = [], advancedFridayGuard = false } = {}) {
   const minutes = value => /^\d{2}:\d{2}$/.test(value || '') ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : null
   let lower = minutes(fullAvailability ? bookable || min : min) ?? 0
   const lunchStart = minutes(breakStart), lunchEnd = minutes(breakEnd)
   const minimumGap = fullAvailability ? 60 : 90
-  // Friday 16:00–20:00 is reserved for advancing Saturday guard duty,
-  // not general availability. Keep planningHoursForDay unchanged for that workflow.
+  // El viernes hasta las 20:00 queda disponible solo para quien adelantó la guardia.
   const friday = day && new Date(`${day}T12:00:00`).getDay() === 5
-  const upper = Math.min(minutes(max) ?? 1440, friday ? 16 * 60 : 1440)
+  const upper = Math.min(minutes(max) ?? 1440, friday ? (advancedFridayGuard ? 20 : 16) * 60 : 1440)
   if (day) {
     const instant = new Date(now)
     if (Number.isNaN(instant.getTime())) return []
@@ -86,5 +86,6 @@ export function teamServiceGaps(teams, teamIndex, options = {}, hoursForTeam = (
       return interval ? [interval] : []
     })
   })
-  return serviceGaps(team.tasks || [], { ...options, blockedIntervals })
+  const advancedFridayGuard = options.day && new Date(`${options.day}T12:00:00`).getDay() === 5 && teamHasAdvancedFridayGuard(teams, team)
+  return serviceGaps(team.tasks || [], { ...options, blockedIntervals, advancedFridayGuard })
 }

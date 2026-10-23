@@ -4,7 +4,8 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
 const source = frontendSource()
-const start = source.indexOf("  const addTask = (day, teamIndex, startTime = '')")
+const start = source.indexOf('  const addTask = (')
+assert.notEqual(start, -1, 'debe encontrar la creación de servicios desde una franja disponible')
 const code = source.slice(start, source.indexOf('  const removeWeeklyTask', start))
 for (const persisted of [true, false]) {
   test(`availability editor retains a local draft identity without saving a placeholder (persisted=${persisted})`, () => {

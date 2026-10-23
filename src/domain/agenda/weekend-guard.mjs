@@ -1,3 +1,5 @@
+import { serviceSlotReleased } from './service-scheduling.mjs'
+
 const normalizeIdentity = value => String(value || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -70,6 +72,20 @@ export const findAdvancedSaturdayGuard = ({ fridayPlan, saturdayPlan }) => {
     saturdayServices,
     hasSaturdayConflict: saturdayServices.length > 0
   }
+}
+
+/** La extensión corresponde al guardia individual, no a sus compañeros de otros equipos. */
+export const teamHasAdvancedFridayGuard = (teams, team) => {
+  if (team?.memberIds?.length !== 1) return false
+  const advance = findAdvancedSaturdayGuard({
+    fridayPlan: {
+      teams: teams.filter(candidate => candidate.memberIds?.length === 1).map(candidate => ({
+        ...candidate,
+        tasks: (candidate.tasks || []).filter(task => !task.vehicleControl && !serviceSlotReleased(task))
+      }))
+    }
+  })
+  return Boolean(advance?.technicianId) && String(team.memberIds[0]) === String(advance.technicianId)
 }
 
 /** Oculta únicamente espacios disponibles; nunca elimina servicios reales. */

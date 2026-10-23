@@ -31,7 +31,7 @@ import { normalizeSearchText, normalizeCustomerName } from "../../../domain/shar
 import { Confirm } from "../../../presentation/components/Confirm.jsx";
 import Icon from "../../../components/ui/Icon.jsx";
 import RequiredLabel from "../../../presentation/components/forms/RequiredLabel.jsx";
-import { serviceGaps, planningHoursForDay } from "../../../domain/agenda/service-gaps.mjs";
+import { teamServiceGaps, planningHoursForDay } from "../../../domain/agenda/service-gaps.mjs";
 import { withLunchNotice } from "../../../domain/agenda/lunch-placement.mjs";
 import { vehicleLabel } from "../../../domain/vehicles/vehicle-controls.mjs";
 import ServiceTypesField from "../../../components/ServiceTypesField.jsx";
@@ -925,11 +925,12 @@ export function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, 
       ? <label className="daily-field-customer"><RequiredLabel required={required}>Nombre de la capacitación</RequiredLabel><BufferedInput disabled={!canEditTask(task)} aria-required={required} placeholder="CAPACITACIÓN CERCO ELÉCTRICO" value={task.client} onCommit={value => updateTask(teamIndex, taskIndex, trainingClientPatch(value), 'planning.training')} /></label>
       : <DailyCustomerField disabled={Boolean(historyRecordForTask(task, date, history)) && !canWriteTask(task)} task={task} customers={customers} teamIndex={teamIndex} taskIndex={taskIndex} required={required} onTextCommit={commitCustomerText} onCustomerSelect={selectCustomerResult} onAddCustomer={beginNewCustomer} onReserveSubscriber={serviceCode(serviceForTask(task)) === 'alarm-installation' ? beginSubscriberReservation : undefined} />
   }
-  const gapsForDailyTeam = (team, now) => serviceGaps(team.tasks.map(task => taskWithServiceEstimate({ ...historyRecordForTask(task, date, history), ...task, date }, serviceForTask(task))), { ...planningHoursForDay(date, weekly, team.teamId), fullAvailability: true, day: date, now })
-  const dailyGaps = teams.map(team => withLunchNotice(team.tasks, gapsForDailyTeam(team, dailyPlanningClock), planningHoursForDay(date, weekly, team.teamId)))
+  const dailyScheduleTeams = teams.map(team => ({ ...team, tasks: team.tasks.map(task => taskWithServiceEstimate({ ...historyRecordForTask(task, date, history), ...task, date }, serviceForTask(task))) }))
+  const gapsForDailyTeam = (teamIndex, now) => teamServiceGaps(dailyScheduleTeams, teamIndex, { ...planningHoursForDay(date, weekly, teams[teamIndex]?.teamId), fullAvailability: true, day: date, now }, team => planningHoursForDay(date, weekly, team.teamId))
+  const dailyGaps = teams.map((team, teamIndex) => withLunchNotice(team.tasks, gapsForDailyTeam(teamIndex, dailyPlanningClock), planningHoursForDay(date, weekly, team.teamId)))
   const addDailyGapTask = (teamIndex, start) => {
     if (!requirePermission('planning.create')) return
-    const gap = gapsForDailyTeam(teams[teamIndex], Date.now()).find(item => item.start === start)
+    const gap = gapsForDailyTeam(teamIndex, Date.now()).find(item => item.start === start)
     if (!gap) { setDailyPlanningClock(Date.now()); setNotice('La disponibilidad cambió. Revisá los horarios antes de agregar el servicio.'); return }
     const task = { ...blankTask(), time: gap.start }
     setTeams(previous => previous.map((team, index) => index === teamIndex ? { ...team, tasks: [...team.tasks.slice(0, gap.beforeIndex), task, ...team.tasks.slice(gap.beforeIndex)] } : team))
