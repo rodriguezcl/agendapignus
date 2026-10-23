@@ -17,7 +17,9 @@ function createFollowup(record, input, user, state, now) {
   if (!TYPES.includes(input.type) || !description || description.length > 2000) fail('Seleccioná el tipo e indicá la acción solicitada (hasta 2000 caracteres).')
   const relatedTicketId=String(input.relatedTicketId||'')
   if(relatedTicketId&&!/^[a-zA-Z0-9-]{1,100}$/.test(relatedTicketId))fail('La referencia del ticket no es válida.')
-  return { relatedTicketId, id: `followup:${record.id}`, type: input.type, description, status: 'Pendiente', version: 1,
+  if (input.relation && !['same', 'different'].includes(input.relation)) fail('La relación del seguimiento no es válida.')
+  if (input.relation === 'different' && relatedTicketId === String(record.sourceTicketId || '') && relatedTicketId) fail('Un caso diferente no puede agregarse al reclamo original.')
+  return { relatedTicketId, relation: input.relation === 'different' ? 'different' : 'same', id: `followup:${record.id}`, type: input.type, description, status: 'Pendiente', version: 1,
     createdAt: now, createdById: user.id, createdByName: user.name || 'Técnico',
     events: [{ action: 'Creó la solicitud', at: now, byId: user.id, byName: user.name || 'Técnico', note: description }] }
 }

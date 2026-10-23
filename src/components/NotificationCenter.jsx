@@ -59,7 +59,7 @@ export default function NotificationCenter({ notifications = [], onSelect }) {
           <span className="notification-copy"><strong>{notification.title}</strong><span>{notification.detail}</span></span>
         </button>) : <div className="notification-empty"><Icon name="check" size={24} /><strong>No hay avisos activos</strong><p>Acá aparecerán los avisos que requieran seguimiento.</p></div>}
       </div>
-      <footer className="notification-footer"><small>Los avisos se actualizan cuando se resuelve su causa.</small></footer>
+      <footer className="notification-footer"><small>Las novedades de Tickets se marcan como leídas al abrir el caso. Los pendientes se mantienen hasta su resolución.</small></footer>
     </section>}
   </div>
 }

@@ -1,0 +1,7 @@
+.ticket-service-schedule { width: min(620px, calc(100vw - 32px)); }
+.ticket-service-schedule > p { overflow-wrap: anywhere; }
+.ticket-service-schedule form { display: grid; gap: 16px; margin-top: 20px; }
+.ticket-service-schedule label { display: grid; gap: 8px; }
+.ticket-service-schedule :is(input, select) { width: 100%; min-width: 0; }
+.ticket-service-reference { border: 1px solid var(--ap-border, #d5dde3); border-radius: 8px; padding: 12px 14px; margin: 12px 0; overflow-wrap: anywhere; }
+.ticket-service-reference small { display: block; margin-top: 4px; }

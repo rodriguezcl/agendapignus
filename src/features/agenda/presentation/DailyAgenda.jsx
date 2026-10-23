@@ -1,4 +1,5 @@
 import { canWriteRecord } from '../../../domain/access/record-scope.mjs'
+import { ticketLinkFields, ticketReferenceDetail } from '../application/ticket-service-draft.mjs'
 import { usePermissions } from '../../../presentation/contexts/permissions-context.jsx'
 import { isGranular } from '../../../domain/access/permissions.mjs'
 import { permittedPlanningPatch, canEditPlanningFields, canSavePlanningFields, serviceCopyRecord } from '../application/planning-permissions.mjs'
@@ -486,13 +487,14 @@ export function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, 
         // Para un servicio nuevo se usa el taskId, que permanece aunque cambien sus datos.
         id: task.historyId || `work-${task.taskId || `${date}-${teamIndex}-${taskIndex}`}`,
         sourceTaskId: task.taskId,
+        ...ticketLinkFields(task, historyRecordForTask(task, date, history)),
         awaitingConfirmation: task.awaitingConfirmation === true,
         date, time: task.time, scheduledTime: task.time, estimatedMinutes: serviceEstimateForTask(task, serviceForTask(task)), estimatedMinutesCustomized: Boolean(task.estimatedMinutesCustomized), team: `Equipo ${teamIndex + 1}`,
         // El historial conserva el titular original aunque la cuenta se reasigne después.
         teamId: team.teamId, technicianIds: team.memberIds || [], technicians: team.members, serviceTypes: task.serviceTypes, serviceId: serviceForTask(task)?.id || task.serviceId, service: serviceForTask(task)?.name || task.service, client: task.client,
         customerId: task.customerId || '',
         clientAccount: task.clientAccount || '',
-        clientNameAtService: task.clientNameAtService || task.client.replace(/^[^\s]+\s+/, ''), detail: task.detail,
+        clientNameAtService: task.clientNameAtService || task.client.replace(/^[^\s]+\s+/, ''), detail: ticketReferenceDetail(task.detail, ticketLinkFields(task, historyRecordForTask(task, date, history)).ticketNumber),
         internalNote: task.internalNote || '', internalChecklist: normalizeInternalChecklist(task.internalChecklist),
         ...applicableServiceExtras(task, serviceForTask(task)),
         address: task.address, phone: task.phone, installationZone: task.installationZone || '', servicePhotoAttached: Boolean(task.servicePhotoAttached), servicePhotoUrl: task.servicePhotoUrl || '', servicePhotoAttachedAt: task.servicePhotoAttachedAt || '', ...serviceTrace(task)

@@ -8,10 +8,49 @@ Implementación: 22/10/2026. Reemplaza la bandeja visible de Seguimientos. No im
 - Reclamo telefónico: cuenta obligatoria, categoría/subcategoría, evento y zona cuando corresponden, observación y adjuntos. Una solicitud interna admite cuenta opcional según la categoría.
 - La cuenta seleccionada muestra casos abiertos dentro del alcance del usuario. Se puede revisar un caso, sumar información o confirmar que es distinto. La creación vuelve a comprobar coincidencias y exige una confirmación vigente. No se fusiona sólo por compartir una cuenta.
 - Las observaciones conservan autor, fecha, canal, visibilidad y adjuntos. Agregar información no envía un correo. Las notas internas requieren permiso adicional y nunca se incluyen automáticamente en una respuesta.
-- Estados: Nuevo, En gestión, En espera, Resuelto y Fusionado. Resolver requiere responsable y resultado; reabrir exige motivo. La espera admite fecha de revisión. Abrir una notificación no resuelve el caso.
+- Estados: Nuevo, En gestión, En espera, Resuelto y Fusionado. Resolver y cerrar requiere informar el resultado. Si el ticket no tiene responsable, se asigna automáticamente a quien confirma el cierre; si ya tiene uno, se conserva esa asignación. El estado guardado continúa siendo Resuelto. Reabrir exige motivo. La espera admite fecha de revisión. Abrir una notificación no resuelve el caso.
 - Una fusión requiere permiso y confirmación, y conserva las referencias originales, autores, archivos y vínculos. El principal mantiene su número. Fusionado es un archivo de referencia, no otro caso activo.
-- Vincular servicios existentes requiere acceso al servicio y coincidencia de la cuenta. La visita se planifica con las reglas habituales de Agenda; completar la visita no resuelve el ticket.
+- Vincular servicios existentes requiere acceso al servicio y coincidencia de la cuenta. **Agendar servicio** abre la planificación con la cuenta y el reclamo precargados, permite elegir fecha, equipo y disponibilidad, y conserva el vínculo aunque se edite el detalle.
 - En el informe técnico, Solicitar acción / seguimiento guarda la solicitud junto con el resultado del servicio. Si se identifica un caso abierto, se incorpora el aporte conservando su autor. Si ya no es accesible o está cerrado cuando se incorpora, se conserva la solicitud como un caso nuevo. Nueva solicitud en la ficha permite registrar otro caso del mismo servicio.
+
+## Del reclamo a la visita y su resultado
+
+Desde la ficha del ticket, **Agendar servicio** requiere permisos para vincular servicios y crear planificación, además del acceso a la cuenta. El ticket debe estar abierto y tener un abonado o cliente vinculado. Se elige una fecha, un equipo y una franja disponible; luego se completa el formulario habitual de Agenda con tipo de servicio, duración y datos operativos. Se aplican los controles de horarios, técnicos compartidos, feriados y concurrencia de la agenda.
+
+La cuenta se toma de sus datos vigentes, no de una copia antigua en la conversación. El detalle incluye `Ticket#número`; la relación se guarda además mediante `sourceTicketId` y `ticketNumber` en el servicio y sus proyecciones. El servicio y su asociación se confirman en la misma operación de persistencia. Las jornadas adicionales conservan el vínculo. Editar las observaciones no elimina la asociación.
+
+La programación, los cambios de fecha y las cancelaciones dejan trazabilidad en el caso y generan avisos para su creador. Programar una visita mantiene el ticket en gestión. Cancelar o eliminar una planificación no equivale a resolver el reclamo: el caso debe seguir siendo revisado por soporte.
+
+En el informe final, el técnico debe marcar explícitamente **El reclamo asociado quedó resuelto** y detallar el resultado. Esa casilla comienza desmarcada. Un avance de jornada no ofrece confirmación de cierre. El servidor sólo resuelve automáticamente el ticket cuando se acredita la resolución y no quedan visitas, jornadas o acciones pendientes del mismo caso. Si no se marca la casilla, el informe se conserva y el ticket sigue abierto para revisión.
+
+**Solicitar acción / seguimiento** distingue dos situaciones: si el pedido corresponde al mismo reclamo, se suma al caso y evita su cierre automático; si es un pedido diferente —por ejemplo, cotizar una cámara adicional después de reparar la avería— se identifica expresamente como **Es un caso diferente**. El nuevo pedido conserva su propio seguimiento y no se confunde con la resolución del reclamo original.
+
+Los avisos de avances y resolución permanecen en la campana aunque el ticket ya esté resuelto, hasta que el destinatario abre el caso y se marcan como leídos. La conversación conserva su registro. Leer un aviso no cambia el estado del caso. El cierre automático conserva el informe técnico y la identidad de quien informó el resultado como evidencia.
+
+## Objetivos de atención y resolución (SLA)
+
+En **Administración → Configuración → Tickets** se definen los plazos por prioridad. Son objetivos operativos editables; los valores iniciales son:
+
+| Prioridad | Primera respuesta | Resolución efectiva | Actualización del caso |
+| --- | --- | --- | --- |
+| Crítica | 15 minutos | 4 horas | 1 hora |
+| Alta | 1 hora | 24 horas | 4 horas |
+| Media | 4 horas | 72 horas | 24 horas |
+| Baja | 8 horas | 120 horas | 48 horas |
+
+El reloj usa **horas corridas**, incluidos fines de semana y feriados. Pasar a **En espera** no pausa ni reinicia el plazo de resolución; la fecha de revisión sirve para organizar la próxima gestión. Agendar una visita tampoco equivale a resolver el caso. El acuse automático confirma recepción, pero no reemplaza una primera respuesta humana.
+
+Para casos por correo, una respuesta o un aviso derivado de una gestión humana cuenta cuando SMTP confirma su aceptación. Estar en cola, fallar o quedar con entrega incierta no cumple ese objetivo; tampoco lo cumple un comentario que sólo quedó dentro de Agentec. Los reintentos y las respuestas encoladas antes de una reapertura no renuevan el ciclo actual. La aceptación SMTP no acredita lectura por parte del destinatario.
+
+Cada ticket conserva una copia de los objetivos vigentes al comenzar su seguimiento SLA. Editar la configuración aplica a casos nuevos y no altera silenciosamente los plazos históricos. Si cambia la prioridad de un ticket, se usa la tabla de objetivos guardada en ese caso, sin otorgar un nuevo plazo completo desde la reclasificación. Los tickets existentes sin SLA comienzan a medirse al incorporarse al nuevo esquema; no se les atribuyen incumplimientos retroactivos anteriores a esa incorporación.
+
+La ficha y la bandeja permiten identificar objetivos y vencimientos. Si un caso queda sin novedades, se recuerda al responsable que debe revisarlo y comunicar un avance concreto; no se envían mensajes repetitivos al cliente que simulen actividad. La ejecución periódica comprueba los plazos y evita duplicar recordatorios del mismo hito.
+
+## Comunicación automática
+
+Los mensajes reconocen el reporte, agradecen la información y explican el estado real: recibido, visita programada, cambio de planificación o resolución confirmada. Se conserva un tono humano y respetuoso, sin afirmar que el equipo ya comenzó a trabajar cuando todavía no ocurrió ni prometer una fecha no coordinada.
+
+Los avisos de avance dentro de Agentec se dirigen al creador y al solicitante autorizado; quien realizó la acción no recibe un aviso duplicado de su propia gestión. Los recordatorios SLA se dirigen al responsable asignado o al área y sus administradores cuando falta asignación. El correo automático se utiliza sólo para casos de origen correo, recibidos en modo operativo y asociados a la misma cuenta de soporte activa. No envía mensajes desde casos de prueba ni convierte notas internas en respuestas al cliente. Los envíos pasan por la cola existente, con trazabilidad e idempotencia. Las respuestas automáticas pueden incorporar la firma común del buzón bajo las mismas reglas de contenido y reintento que las respuestas manuales.
 
 ## Persistencia y concurrencia
 
@@ -23,11 +62,11 @@ Cada comando tiene un identificador y una huella, y cada ticket tiene versión. 
 
 Los seguimientos previos de **Agentec** se incorporan de forma idempotente por `legacy_id`, conservando sus autores y fechas. La solicitud original se conserva en el servicio como origen durable y no vuelve a gestionarse desde `/api/followups` (responde 410). La gestión actual se consulta en Tickets. No hay conexión con la base de Zammad.
 
-El esquema está en `supabase/migrations/20261022_tickets.sql`. La aplicación también realiza su creación idempotente antes del primer uso. Las tablas tienen RLS sin políticas públicas; sólo el backend accede con su conexión de base. No se aplicó esta migración a producción durante el desarrollo.
+El esquema base está en `supabase/migrations/20261022_tickets.sql` y los avisos persistentes se incorporan con `20261022_tickets_notifications.sql`. La aplicación también realiza su creación idempotente antes del primer uso. Los objetivos SLA y las asociaciones con servicios se guardan en el documento de cada ticket. Las tablas tienen RLS sin políticas públicas; sólo el backend accede con su conexión de base. No se aplicaron migraciones a producción durante este ajuste.
 
 ## Permisos y configuración
 
-Administración → Configuración → Tickets permite administrar categorías, subcategorías, áreas e integrantes, eventos y prioridades Crítica/Alta/Media/Baja. Las subcategorías pueden heredar o sobrescribir reglas. La clasificación conserva la versión de regla usada; una modificación del catálogo no reclasifica casos anteriores. Se desactivan opciones en lugar de borrar su historia.
+Administración → Configuración → Tickets permite administrar categorías, subcategorías, áreas e integrantes, eventos, prioridades Crítica/Alta/Media/Baja y objetivos SLA. Las subcategorías pueden heredar o sobrescribir reglas. La clasificación conserva la versión de regla usada; una modificación del catálogo no reclasifica casos anteriores. Se desactivan opciones en lugar de borrar su historia.
 
 `tickets.view` permite ver casos propios o donde se participó. Los permisos `tickets.scope.assigned`, `.area` y `.all` amplían el alcance. Asignación, clasificación, resolución, reapertura, fusión, respuesta por correo y vinculación de servicios tienen permisos separados. `tickets.internal` habilita notas internas; responder por correo requiere además consultar contactos. La búsqueda de cuentas respeta el alcance de clientes.
 
@@ -62,7 +101,7 @@ En **Correo de soporte → Firma de las respuestas** se escribe o pega la firma 
 
 Activar **Agregar la firma a las respuestas por correo** y presionar **Guardar firma** aplica el cambio a las respuestas nuevas. Este guardado es independiente: no pausa el canal ni modifica credenciales o pruebas de conexión. Requiere el permiso de configuración de Tickets y una cuenta de correo ya guardada. El servidor valida la versión y el contenido, elimina HTML activo y deriva la alternativa de texto; límites: 50.000 caracteres de HTML y 8.000 de texto.
 
-La respuesta queda firmada al registrarse en la cola. Los reintentos conservan ese contenido aunque luego cambie la firma; los mensajes ya encolados sin firma no se modifican. El historial conserva el texto firmado. Las notas internas y las resoluciones no agregan firma ni generan por sí solas un correo. El destinatario recibe versiones HTML y texto cuando la firma está habilitada; su cliente de correo puede bloquear imágenes remotas.
+La respuesta queda firmada al registrarse en la cola. Los reintentos conservan ese contenido aunque luego cambie la firma; los mensajes ya encolados sin firma no se modifican. El historial conserva el texto firmado. Las notas internas no generan correos. Los avisos automáticos de resolución respetan las condiciones del apartado Comunicación automática y usan la firma del canal cuando está habilitada. El destinatario recibe versiones HTML y texto cuando la firma está habilitada; su cliente de correo puede bloquear imágenes remotas.
 
 El paso `prebuild` empaqueta `sanitize-html` y sus dependencias como CommonJS en `api/_vendor/sanitize-html.cjs`. Vercel incluye ese archivo generado en la función: evita depender de `require(ESM)` en el runtime y conserva la versión actualizada del sanitizador. El archivo no se versiona; debe regenerarse con `npm run build` para cada publicación. La prueba de compatibilidad carga el servicio con `--no-experimental-require-module`.
 
@@ -109,7 +148,7 @@ La configuración y la función de invocación viven en `agentec_private`, sin p
 
 La credencial puede definirse con `TICKETS_MAIL_WORKER_SECRET`, de al menos 32 caracteres aleatorios, diferente de la contraseña del buzón. Si se omite la variable, la API y el aprovisionamiento la derivan de `PIGNUS_SESSION_SECRET` mediante HKDF con un contexto exclusivo para esta tarea. Un valor explícitamente vacío o de menos de 32 caracteres se rechaza; no activa la derivación. Ambos deben usar la misma configuración. No colocar el secreto ni su derivación en la URL, el repositorio, capturas ni logs; Vault conserva el valor necesario para autenticar la solicitud. Sin una credencial válida, el endpoint no permite ejecutar el correo.
 
-La programación es independiente del canal: un ciclo con correo desactivado termina sin conectarse a IMAP o SMTP. En modo Prueba no se envían mensajes; en Operativo se reciben los nuevos correos y se procesan únicamente las respuestas que los usuarios solicitaron desde Tickets. Programar o pausar la tarea no modifica las credenciales, el modo del canal ni Zammad.
+La programación es independiente del canal: un ciclo con correo desactivado revisa los SLA sin conectarse a IMAP o SMTP. En modo Prueba no se envían mensajes; en Operativo se reciben los nuevos correos y se procesan las respuestas solicitadas desde Tickets y los avisos automáticos de recepción, coordinación y avance del caso. Programar o pausar la tarea no modifica las credenciales, el modo del canal ni Zammad.
 
 #### Aprovisionamiento y mantenimiento
 
@@ -140,18 +179,23 @@ Se ignoran bucles, rebotes y respuestas automáticas. HTML se convierte a texto,
 
 Adjuntos: hasta cinco PDF/JPEG/PNG/WEBP por mensaje, 2 MB por archivo y 2,5 MB total; firma y tamaño se comprueban en el servidor. Los límites mantienen la carga HTTP dentro del límite de la plataforma de despliegue. La descarga verifica el ticket y la visibilidad de la nota, y fuerza descarga sin ejecutar contenido.
 
-Las respuestas salen de una cola transaccional. `queued`, `retry`, `sending`, `sent`, `failed` y `uncertain` distinguen recepción por SMTP de errores. Un timeout después de transmitir el cuerpo puede haber entregado: queda `uncertain` y **no se reenvía automáticamente**. Revisar el buzón antes de registrar otra respuesta. La aceptación SMTP no garantiza lectura o entrega final al destinatario. No se envían acuses automáticos.
+Las respuestas salen de una cola transaccional. `queued`, `retry`, `sending`, `sent`, `failed` y `uncertain` distinguen recepción por SMTP de errores. Un timeout después de transmitir el cuerpo puede haber entregado: queda `uncertain` y **no se reenvía automáticamente**. Revisar el buzón antes de registrar otra respuesta. La aceptación SMTP no garantiza lectura o entrega final al destinatario. Los acuses y avances automáticos usan esta misma cola y las restricciones descritas en Comunicación automática.
 
 ## Comprobación antes de habilitar el equipo
 
 - Crear una solicitud interna sin cuenta y un reclamo con cuenta; comprobar categorías, prioridad heredada y alcance de lectura.
 - Sobre una cuenta con un caso abierto, revisar el caso y aportar información: debe conservarse el número y agregarse autor, fecha y canal. Crear un caso distinto exige decisión explícita.
 - Probar la concurrencia con dos usuarios que abren el formulario antes de guardar: el segundo debe revisar las coincidencias actualizadas, sin perder el texto que escribió.
-- Asignar un responsable, registrar espera y revisión, resolver con resultado y reabrir con motivo. La conversación y las referencias deben conservarse.
+- Registrar espera y revisión; resolver y cerrar con resultado tanto un caso sin responsable como uno ya asignado. El primero debe asignarse a quien cierra y el segundo conservar su responsable. Reabrir con motivo debe conservar la conversación y las referencias.
 - Verificar que una fusión conserva ambos números como referencias y que los adjuntos de notas internas sólo son descargables por roles autorizados.
 - Enviar correos únicamente al buzón aislado de prueba después de activar el worker. Confirmar que el mensaje aparece como prueba y que no se puede responder por SMTP desde ese caso.
+- Agendar desde un ticket, modificar el detalle y dividir en jornadas: comprobar que se conserva la referencia, que llegan los avisos al creador y que el caso no se cierra ante un avance parcial.
+- Completar sin confirmar resolución, con un seguimiento del mismo caso y con un pedido diferente: sólo el último escenario puede cerrar el reclamo original si se confirmó la resolución y no quedan otras acciones pendientes.
+- Revisar los SLA, reclasificar la prioridad y pasar a espera: los objetivos deben conservar su origen temporal; cambiar la configuración no debe reiniciar casos existentes. Los recordatorios no deben duplicarse en cada ejecución.
 
 ## Verificación y operación pendiente
+
+Validación de Agenda, comunicación y SLA (22/10/2026): el circuito transaccional pasó 37 pruebas en SQLite y PostgreSQL, incluidas visitas múltiples, vínculos anteriores, fusiones, reapertura y cierre técnico. Se verificaron por separado permisos, alias, concurrencia de escrituras, integración HTTP, acuses, entrega SMTP simulada y plazos. La compilación de producción y los controles UX pasaron. La revisión visual cubrió escritorio y móvil con datos ficticios. No se enviaron correos reales ni se publicaron estos cambios durante su desarrollo.
 
 Pruebas de dominio, SQLite, PostgreSQL con PGlite y correo con adaptadores simulados: `node --test tests/tickets-store.test.cjs tests/ticket-mail.test.cjs tests/ticket-mail-channel.test.cjs tests/ticket-mail-service.test.cjs`. La integración HTTP se verifica en `tests/security.integration.test.cjs`. Los datos usados en verificación visual son ficticios.
 

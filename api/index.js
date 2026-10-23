@@ -54,6 +54,11 @@ async function persistStateCollections(transaction, current, next, nextRevision,
   require('./_lib/completed-service-policy.cjs').assertCompletedServices(next, current, policyOptions)
   require('./_lib/journey-identity.cjs').synchronizeJourneyIdentity(next, current)
   require('./_lib/service-journeys.cjs').validateServiceJourneys(next, current)
+  const ticketStore = require('./_lib/tickets-http.cjs').storeFor(transaction, 'sql')
+  const [ticketSchema] = await transaction`select to_regclass('public.pignus_ticket_notifications') as relation`
+  if (!ticketSchema?.relation) await ticketStore.ensure()
+  if (policyOptions?.ticketReportRecordId) await ticketStore.syncLegacy({ ...next, history: next.history.filter(record => String(record.id) === String(policyOptions.ticketReportRecordId)) }, { connection: transaction })
+  await ticketStore.syncServices(current, next, { connection: transaction, user: policyOptions?.ticketActor, reportRecordId: policyOptions?.ticketReportRecordId })
   const versionedNext = { ...next, revision: Number(nextRevision) }
   return coordinateStateWrite(transaction, current, versionedNext, {
     mode: 'controlled',
@@ -535,7 +540,7 @@ async function handleSaveState(req, res, sql, user) {
       }
       timing.mark('prepare_projection')
       await verifyRevision()
-      await persistStateCollections(transaction, current, next, nextRevision, prepared)
+      await persistStateCollections(transaction, current, next, nextRevision, prepared, { ticketActor: user })
       timing.mark('persist')
       if (current.customers !== next.customers && JSON.stringify(current.customers) !== JSON.stringify(next.customers)) await setAuxiliaryPreference(transaction, CUSTOMER_IMPORT_BACKUP_KEY, null)
       await appendAudit(transaction, entries, { shadowPrepared: Boolean(prepared) })
@@ -729,7 +734,7 @@ async function handleTechnicianStart(req, res, sql, user) {
 
 async function handleTechnicianStatus(req, res, sql, user) {
   if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
-  const { recordId, type, observation, vehicleMileage, vehiclePhoto, followup } = requestBody(req)
+  const { recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution } = requestBody(req)
   const allowed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramación solicitada']
   if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
   try {
@@ -793,6 +798,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
       const now = new Date().toISOString()
       const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? type : 'Requiere revisión', technicianRequest: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
       if (followup != null) next.followup = require('./_lib/followups.cjs').createFollowup(record, followup, user, currentState, now)
+      if (ticketResolution != null) next.ticketResolution = require('./_lib/ticket-service-lifecycle.cjs').resolutionEvidence(ticketResolution, next, user, now, next.followup)
       const entries = [auditEntry(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, next)]
       if (vehicleChange) entries.push(auditEntry(user, 'Actualizó kilometraje por control semanal', 'Vehículo', String(record.vehicleId), vehicleChange.before, vehicleChange.after))
       workingState.history = workingState.history.map(item => String(item.id) === String(next.id) ? next : item)
@@ -805,7 +811,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
           normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, after.kind === 'subscriber' ? 'Restituyó abonado al corregir retiro' : 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
         }
       }
-      await persistStateCollections(transaction, currentState, nextState, currentRevision + 1, undefined, { followupRecordId: record.id })
+      await persistStateCollections(transaction, currentState, nextState, currentRevision + 1, undefined, { followupRecordId: record.id, ticketActor: user, ticketReportRecordId: record.id })
       if (photo) await upsertVehicleControlPhoto(transaction, photo)
       await appendAudit(transaction, entries)
       return next
@@ -1242,6 +1248,7 @@ module.exports = async function handler(req, res) {
     if (!session) return
     try { endpointPolicy.assertEndpointPermission(session.user, req.method, route) } catch (error) { return send(res, error.statusCode || 403, { error: error.message, code: error.code, permission: error.permission }) }
     if (isOperator(session.user) && !operatorRouteAllowed(req.method, route)) return send(res, 403, { error: 'Operador sólo puede consultar la Agenda semanal.' })
+    await require('./_lib/tickets-http.cjs').storeFor(sql, 'sql').ensure()
     const receiptRoute = /^\/collections\/([^/]+)\/receipts\/([^/]+)$/.exec(route)
     if (receiptRoute) {
       try {

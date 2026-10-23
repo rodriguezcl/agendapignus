@@ -4,6 +4,7 @@ import { usePermissions } from '../../presentation/contexts/permissions-context.
 import useDiscardGuard from '../../components/ui/useDiscardGuard.jsx'
 import { newCommandId, TICKET_PRIORITIES } from './ticket-ui.mjs'
 import TicketMailSettings from './TicketMailSettings.jsx'
+import TicketSlaSettings, { initialSlaConfig } from './TicketSlaSettings.jsx'
 import './tickets.css'
 
 const clone = value => JSON.parse(JSON.stringify(value))
@@ -28,7 +29,7 @@ export default function TicketSettings({ onChanged }) {
   const guard = useDiscardGuard({ dirty, busy, onDiscard: reset, title: 'Configuración de tickets sin guardar' })
   const load = async () => {
     setLoading(true); setError('')
-    try { const result = await requestJson('/api/tickets/config'); const config = clone(result.config); delete config.mail; delete config.numbering; setMetadata(result); setDraft(config); setBaseline(JSON.stringify(config)) }
+    try { const result = await requestJson('/api/tickets/config'); const config = clone(result.config); delete config.mail; delete config.numbering; config.sla ||= initialSlaConfig(); setMetadata(result); setDraft(config); setBaseline(JSON.stringify(config)) }
     catch (failure) { setError(failure.message) } finally { setLoading(false) }
   }
   useEffect(() => { if (can('tickets.configure')) load(); else setLoading(false) }, [can])
@@ -50,9 +51,10 @@ export default function TicketSettings({ onChanged }) {
   }
   if (!can('tickets.configure')) return null
   const employees = metadata?.employees || metadata?.assignees || []
-  return <section className="data-card tickets-settings" aria-label="Configuración de tickets"><header><p className="eyebrow">ADMINISTRACIÓN</p><h2>Tickets</h2><p>Categorías, prioridades y equipos responsables.</p></header>
+  return <section className="data-card tickets-settings" aria-label="Configuración de tickets"><header><p className="eyebrow">ADMINISTRACIÓN</p><h2>Tickets</h2><p>Categorías, prioridades, plazos de atención y equipos responsables.</p></header>
     {error && <p className="field-error" role="alert">{error} <button title="Consultá la configuración actual; podrás confirmar si querés descartar el borrador." type="button" className="secondary" disabled={busy} onClick={() => guard.requestClose(load)}>Actualizar configuración</button></p>}
     {loading ? <p role="status">Cargando configuración…</p> : draft && <form onSubmit={save} className="tickets-settings-form">
+      <TicketSlaSettings value={draft.sla} disabled={busy} onChange={sla => update({ sla })} />
       <section className="tickets-settings-section"><h3>Numeración</h3><div className="tickets-fields"><label>Prefijo<input readOnly value="Ticket#" /></label><label>Primer número de Agentec<input type="number" min="1" max="999999999999" step="1" required value={draft.startingNumber} disabled={busy || metadata.numberingLocked} onChange={event => update({ startingNumber: event.target.value })} /></label><div className="tickets-rule-summary"><span>Formato</span><strong>Ticket#{String(draft.startingNumber || '').padStart(5,'0')}</strong></div></div><small>{metadata.numberingLocked ? 'La numeración ya comenzó y no se puede reiniciar. Los números se conservan al resolver, reabrir o fusionar casos.' : 'Secuencia propia de Agentec. No se importará el historial de Zammad.'}</small></section>
       <section className="tickets-settings-section"><div className="tickets-section-heading"><h3>Categorías y subcategorías</h3><button title="Agregá una categoría para definir su prioridad, área y campos del formulario." type="button" className="secondary" disabled={busy || draft.categories.length >= 100} onClick={() => update({ categories: [...draft.categories, { id: identifier('category'), name: '', priority: 'Media', customerPolicy: 'optional', areaId: '', showEvent: false, showZone: false, active: true, subcategories: [] }] })}>Agregar categoría</button></div>
         {draft.categories.map(category => <details key={category.id} className="tickets-settings-category" open={!category.name}><summary><strong>{category.name || 'Nueva categoría'}</strong><span>{category.active === false ? 'Inactiva' : category.priority} · {category.subcategories?.length || 0} subcategorías</span></summary><div className="tickets-settings-category-body"><div className="tickets-fields"><label>Nombre de la categoría<input required maxLength={120} value={category.name} disabled={busy} onChange={event => updateList('categories', category.id, { name: event.target.value })} /></label><label className="tickets-checkbox"><input type="checkbox" checked={category.active !== false} disabled={busy} onChange={event => updateList('categories', category.id, { active: event.target.checked })} />Categoría activa</label></div>

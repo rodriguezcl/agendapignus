@@ -1179,7 +1179,9 @@ function managedHistoryRecord(current, proposed, user, now = new Date().toISOStr
   return next
 }
 
-function saveState(state, user) {
+async function saveState(state, user) {
+  const ticketStore = require('./api/_lib/tickets-http.cjs').storeFor(db, 'db')
+  await ticketStore.ensure()
   const { employeeOnly, applyEmployeeOperation } = require('./api/_lib/employee-operation.cjs')
   if (employeeOnly(state.operations)) {
     db.exec('BEGIN')
@@ -1331,6 +1333,7 @@ function saveState(state, user) {
   try {
     // El registro se realiza dentro de la misma transacción que los datos:
     // nunca queda una acción auditada que no haya sido guardada (ni al revés).
+    await ticketStore.syncServices(previousState, { ...state, history: normalizedHistory }, { connection: db, user })
     auditChanges(previousState.roles, state.roles, 'id', 'Rol', user)
     auditChanges([...previousEmployees.values()], securedEmployees, 'id', 'Empleado', user)
     auditChanges(previousState.services, state.services, 'id', 'Tipo de servicio', user)
@@ -1374,10 +1377,10 @@ function serviceOperationForRequest(method, pathname) {
   return null
 }
 
-function saveServiceCatalogOperation(input, requestOperation, user) {
+async function saveServiceCatalogOperation(input, requestOperation, user) {
   const current = readState()
   const operation = applyServiceCatalogOperation(current, { ...endpointPolicy.catalogInput('services', current, input, requestOperation, user), ...requestOperation })
-  const result = saveState({ ...current, services: operation.services, revision: current.revision, base: { services: current.services } }, user)
+  const result = await saveState({ ...current, services: operation.services, revision: current.revision, base: { services: current.services } }, user)
   const persisted = readState()
   return {
     revision: result.revision,
@@ -1396,10 +1399,10 @@ function vehicleOperationForRequest(method, pathname) {
   return null
 }
 
-function saveVehicleOperation(input, requestOperation, user) {
+async function saveVehicleOperation(input, requestOperation, user) {
   const current = readState()
   const operation = applyVehicleOperation(current, { ...endpointPolicy.catalogInput('vehicles', current, input, requestOperation, user), ...requestOperation })
-  const result = saveState({ ...current, vehicles: operation.vehicles, revision: current.revision, base: { vehicles: current.vehicles } }, user)
+  const result = await saveState({ ...current, vehicles: operation.vehicles, revision: current.revision, base: { vehicles: current.vehicles } }, user)
   const persisted = readState()
   const visibleVehicles = isGranular(user) ? granularRead.granularVisibleState(persisted, user).vehicles : persisted.vehicles
   return {
@@ -1851,12 +1854,15 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     if (!isGranular(user) && !userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
-    return readJson(req, 500_000).then(({ updates }) => {
+    return readJson(req, 500_000).then(async ({ updates }) => {
       if (!Array.isArray(updates) || !updates.length || updates.length > 100) return send(res, 400, { error: 'Seleccioná entre 1 y 100 servicios válidos.' })
+      const ticketStore = require('./api/_lib/tickets-http.cjs').storeFor(db, 'db')
+      await ticketStore.ensure()
       const identifiers = updates.map(update => String(update?.record?.id || ''))
       if (identifiers.some(id => !id) || new Set(identifiers).size !== identifiers.length || updates.some((update, index) => !update?.base || String(update.base.id || '') !== identifiers[index])) return send(res, 400, { error: 'La selección contiene servicios inválidos o repetidos.' })
       db.exec('BEGIN IMMEDIATE')
       try {
+        const previousState = readState()
         const currentById = new Map()
         for (const recordId of identifiers) {
           const stored = db.prepare('SELECT data FROM work_history WHERE id = ?').get(recordId)
@@ -1882,6 +1888,7 @@ const server = http.createServer((req, res) => {
         }
         if (agenda && JSON.stringify(agenda) !== agendaRow.data) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(agenda), 'current')
         reconcileRetirementCustomers([...currentById.values()], user)
+        await ticketStore.syncServices(previousState, readState(), { connection: db, user })
         const revision = currentStateRevision() + 1
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
         db.exec('COMMIT')
@@ -1897,8 +1904,10 @@ const server = http.createServer((req, res) => {
     if (!user) return
     if (!isGranular(user) && !userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para eliminar servicios del historial.' })
     const recordId = decodeURIComponent(url.pathname.slice('/api/history/'.length))
-    return readJson(req, 500_000).then(({ base }) => {
+    return readJson(req, 500_000).then(async ({ base }) => {
       if (!base || String(base.id || '') !== recordId) return send(res, 400, { error: 'El servicio solicitado no es válido.' })
+      const ticketStore = require('./api/_lib/tickets-http.cjs').storeFor(db, 'db')
+      await ticketStore.ensure()
       db.exec('BEGIN IMMEDIATE')
       try {
         const stored = db.prepare('SELECT data FROM work_history WHERE id = ?').get(recordId)
@@ -1916,6 +1925,7 @@ const server = http.createServer((req, res) => {
         const currentState = readState()
         if (isGranular(user)) granularWrite.assertServiceChange(current, null, user, currentState)
         const removed = removeHistoryRecord(currentState, recordId)
+        await ticketStore.syncServices(currentState, removed.state, { connection: db, user })
         db.prepare('DELETE FROM service_photos WHERE record_id = ?').run(recordId)
         db.prepare('DELETE FROM work_history WHERE id = ?').run(recordId)
         db.prepare('INSERT OR REPLACE INTO agendas (id, data) VALUES (?, ?)').run('current', JSON.stringify(removed.state.agenda || {}))
@@ -1935,10 +1945,13 @@ const server = http.createServer((req, res) => {
     if (!user) return
     if (!isGranular(user) && !userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
     const recordId = decodeURIComponent(url.pathname.slice('/api/history/'.length))
-    return readJson(req, 500_000).then(({ base, record: proposed }) => {
+    return readJson(req, 500_000).then(async ({ base, record: proposed }) => {
       if (!base || !proposed || String(base.id || '') !== recordId || String(proposed.id || '') !== recordId) return send(res, 400, { error: 'El servicio solicitado no es válido.' })
+      const ticketStore = require('./api/_lib/tickets-http.cjs').storeFor(db, 'db')
+      await ticketStore.ensure()
       db.exec('BEGIN IMMEDIATE')
       try {
+        const previousState = readState()
         const stored = db.prepare('SELECT data FROM work_history WHERE id = ?').get(recordId)
         const current = stored?.data ? JSON.parse(stored.data) : null
         if (!current) { const error = new Error('El servicio ya no existe.'); error.statusCode = 404; throw error }
@@ -1954,6 +1967,7 @@ const server = http.createServer((req, res) => {
         }
         writeAudit(user, 'Modificó', 'Servicio / historial', recordId, current, next)
         reconcileRetirementCustomers([current], user)
+        await ticketStore.syncServices(previousState, readState(), { connection: db, user, now })
         const revision = currentStateRevision() + 1
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
         db.exec('COMMIT')
@@ -2328,7 +2342,10 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
-    return readJson(req, 1_600_000).then(({ recordId, type, observation, vehicleMileage, vehiclePhoto, followup }) => {
+    return readJson(req, 1_600_000).then(async ({ recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution }) => {
+      const ticketStore = require('./api/_lib/tickets-http.cjs').storeFor(db, 'db')
+      await ticketStore.ensure()
+      const priorState = readState()
       const record = rows('work_history').find(item => item.id === recordId)
       const allowed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramación solicitada']
       if (!record) return send(res, 404, { error: 'El servicio no existe.' })
@@ -2375,8 +2392,12 @@ const server = http.createServer((req, res) => {
       const now = new Date().toISOString()
       const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? type : 'Requiere revisión', technicianRequest: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
       if (followup != null) updated.followup = require('./api/_lib/followups.cjs').createFollowup(record, followup, user, readState(), now)
+      if (ticketResolution != null) updated.ticketResolution = require('./api/_lib/ticket-service-lifecycle.cjs').resolutionEvidence(ticketResolution, updated, user, now, updated.followup)
       db.exec('BEGIN')
       try {
+        const nextState = { ...priorState, history: priorState.history.map(item => String(item.id) === String(record.id) ? updated : item) }
+        await ticketStore.syncLegacy({ ...nextState, history: [updated] }, { connection: db })
+        await ticketStore.syncServices(priorState, nextState, { connection: db, user, now, reportRecordId: record.id })
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(updated), String(record.id))
         if (record.serviceJourney || type === 'Cancelado') {
           const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
@@ -2414,7 +2435,7 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     if (!userCan(user, 'services')) return send(res, 403, { error: 'No tenés permiso para administrar tipos de servicio.' })
-    readJson(req, 100_000).then(input => send(res, 200, saveServiceCatalogOperation(input, serviceOperation, user))).catch(error => {
+    readJson(req, 100_000).then(async input => send(res, 200, await saveServiceCatalogOperation(input, serviceOperation, user))).catch(error => {
       console.error(error)
       send(res, error?.statusCode || 400, { error: error?.message || 'No se pudo guardar el tipo de servicio.', ...(error?.code ? { code: error.code } : {}) })
     })
@@ -2425,7 +2446,7 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     if (!userCan(user, 'vehicles')) return send(res, 403, { error: 'No tenés permiso para administrar vehículos.' })
-    readJson(req, 100_000).then(input => send(res, 200, saveVehicleOperation(input, vehicleOperation, user))).catch(error => {
+    readJson(req, 100_000).then(async input => send(res, 200, await saveVehicleOperation(input, vehicleOperation, user))).catch(error => {
       console.error(error)
       send(res, error?.statusCode || 400, { error: error?.message || 'No se pudo guardar el vehículo.', ...(error?.code ? { code: error.code } : {}) })
     })
@@ -2436,10 +2457,10 @@ const server = http.createServer((req, res) => {
     if (!user) return
     if (!isGranular(user) && (user.roleCode === 'technician' || user.roleCode === 'supervisor')) return send(res, 403, { error: 'Este rol tiene acceso de solo lectura.' })
     let attemptedRevision = null
-    readJson(req, 15_000_000).then(state => {
+    readJson(req, 15_000_000).then(async state => {
       if (req.method === 'PATCH' && !Array.isArray(state.operations)) throw new Error('Faltan las operaciones de guardado.')
       attemptedRevision = state.revision
-      const result = saveState(state, user)
+      const result = await saveState(state, user)
       if (result.merged) logStateConcurrencyEvent('state_write_merged', {
         actorRole: user.roleCode,
         expectedRevision: state.revision,

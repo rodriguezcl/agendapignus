@@ -1,6 +1,7 @@
 const crypto = require('node:crypto')
 const permissions = require('./permission-catalog.cjs')
 const read = require('./granular-read-policy.cjs')
+const sla = require('./ticket-sla.cjs')
 
 const STATUSES = ['Nuevo', 'En gestión', 'En espera', 'Resuelto', 'Fusionado']
 const PRIORITIES = ['Crítica', 'Alta', 'Media', 'Baja']
@@ -41,7 +42,8 @@ function defaultConfig() {
     ],
     areas: [{ id: 'technical', name: 'Servicio técnico', memberIds: [], active: true }, { id: 'administration', name: 'Administración', memberIds: [], active: true }],
     events: ['Intrusión', 'Pánico', 'Sabotaje', 'Falla de comunicación', 'Falla de alimentación', 'Otro'].map((name, index) => ({ id: `event-${index + 1}`, name, active: true })),
-    startingNumber: 1000001
+    startingNumber: 1000001,
+    sla: sla.defaultSlaConfig()
   }
 }
 function validateConfig(input, state, previous = defaultConfig()) {
@@ -90,7 +92,7 @@ function validateConfig(input, state, previous = defaultConfig()) {
   }
   const startingNumber = Number(input.startingNumber ?? previous.startingNumber)
   if (!Number.isSafeInteger(startingNumber) || startingNumber < 1 || startingNumber > 999999999999) fail('El número inicial debe ser un entero positivo de hasta 12 dígitos.')
-  return { categories, areas, events, startingNumber }
+  return { categories, areas, events, startingNumber, sla: sla.validateSlaConfig(input.sla ?? previous.sla ?? sla.defaultSlaConfig()) }
 }
 function classification(config, categoryId, subcategoryId) {
   const category = config.categories.find(item => item.id === categoryId && item.active)
@@ -109,6 +111,9 @@ function visible(ticket, user, state, config) {
   if (can(user, 'scope.all') || isOwn(ticket, user)) return true
   if (can(user,'scope.assigned') && ticket.assigneeId && id(ticket.assigneeId) === id(user.id)) return true
   if (can(user, 'scope.area') && config.areas.some(area => area.id === ticket.areaId && area.memberIds.some(member => id(member) === id(user.id)))) return true
+  // A technician can inspect the complaint for their assigned visit without
+  // receiving access to the customer's other tickets or visits.
+  if (can(user, 'fromService') && (state.history || []).some(record => (ticket.serviceIds || []).map(id).includes(id(record.id)) && (record.technicianIds || []).some(technicianId => id(technicianId) === id(user.id)) && read.serviceReadable(record, user, state))) return true
   // Existing service-bound followups retain their established reading scope.
   return Boolean(ticket.legacyId && permissions.can(user, 'followups.view') && (state.history || []).some(record => ticket.serviceIds?.includes(id(record.id)) && read.serviceInReadScope(record, user, state)))
 }
@@ -150,7 +155,7 @@ function newTicket(input, user, state, config, number, now) {
   const event = eventId && config.events.find(item => item.active && (item.id === eventId || item.name === eventId))
   if (eventId && !event) fail('Seleccioná un evento activo.')
   const title = text(input.title, 160, 'Asunto') || `${subcategory?.name || category.name}${customer ? ` · ${customer.account}` : ''}`
-  return {
+  const ticket = {
     id: crypto.randomUUID(), number: String(number), version: 1, title,
     description: text(input.description ?? input.body, 10000, 'Observación', true), scope: customer ? 'customer' : 'internal',
     customerId: customer ? id(customer.customerId || customer.id) : '', customerSnapshot: customer ? snapshot(customer) : null,
@@ -160,6 +165,8 @@ function newTicket(input, user, state, config, number, now) {
     createdById: id(user.id), createdByName: user.name || 'Usuario', areaId: effective.areaId || '', assigneeId: '', assigneeName: '',
     status: 'Nuevo', priority: effective.priority || 'Media', createdAt: now, updatedAt: now, serviceIds: service ? [id(service.id)] : [], participantIds: [id(user.id)]
   }
+  sla.initSla(ticket, config, now)
+  return ticket
 }
 function entry(ticket, user, body, now, options = {}) {
   return { id: crypto.randomUUID(), sourceTicketId: ticket.id, sourceTicketNumber: ticket.number, kind: options.kind || 'message', body, note: body, byId: id(user.id), byName: user.name || 'Usuario', at: now, channel: options.channel || ticket.origin || 'internal', visibility: options.visibility || 'public', ...options }
@@ -169,7 +176,7 @@ function metadataAttachment(file) {
   return { ...rest, name: file.fileName || file.name, mime: file.mimeType || file.mime, bytes: file.byteSize || file.bytes }
 }
 function present(ticket, user, entries = [], aliases = [], detailed = false) {
-  const result = { ...ticket, displayNumber: `Ticket#${ticket.number}`, customerName: ticket.customerSnapshot?.name || '', eventAt: ticket.occurredAt }
+  const result = { ...ticket, displayNumber: `Ticket#${ticket.number}`, customerName: ticket.customerSnapshot?.name || '', eventAt: ticket.occurredAt, slaSummary: sla.slaView(ticket) }
   delete result.externalParticipants
   if (!permissions.can(user, 'records.contact')) {
     if (result.customerSnapshot) result.customerSnapshot = snapshot(result.customerSnapshot, user)

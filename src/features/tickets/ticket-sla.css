@@ -1,0 +1,30 @@
+.tickets-sla-intro { margin-top:8px !important; color:var(--ap-muted,#63758a); font-size:13px; line-height:1.5; }
+.tickets-sla-table-scroll { overflow-x:auto; border:1px solid var(--ap-border,#d8dfe9); border-radius:8px; }
+.tickets-sla-table { width:100%; border-collapse:collapse; text-align:left; }
+.tickets-sla-table th,.tickets-sla-table td { padding:12px 16px; border-bottom:1px solid var(--ap-border,#d8dfe9); }
+.tickets-sla-table thead { background:var(--ap-surface-alt,#f7f8fa); font-size:13px; }
+.tickets-sla-table th small { display:block; font-weight:400; margin-top:4px; }
+.tickets-sla-table tbody tr:last-child > * { border-bottom:0; }
+.tickets-sla-table input { width:100%; min-width:95px !important; }
+.tickets-sla-rules { display:grid; gap:8px; color:var(--ap-muted,#63758a); font-size:12px; line-height:1.6; }
+.tickets-sla-detail { display:grid; gap:12px; }
+.tickets-sla-detail h3 { margin:0; }
+.tickets-sla-targets { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:0; }
+.tickets-sla-target { padding:14px; border:1px solid var(--ap-border,#d8dfe9); border-radius:8px; background:var(--ap-surface-alt,#f7f8fa); }
+.tickets-sla-target dt { font-size:12px; font-weight:600; margin-bottom:8px; }
+.tickets-sla-target dd { margin:0; font-size:13px; }
+.tickets-sla-target small { display:block; margin-top:8px; color:var(--ap-muted,#63758a); }
+.tickets-sla-overdue,.tickets-sla-late { color:#a32223; }
+.tickets-sla-target.tickets-sla-overdue { border-color:#dba4a4; }
+.tickets-sla-met { color:#216644; }
+.tickets-sla-compact { display:grid; gap:4px; margin-top:9px; font-size:11px; line-height:1.4; }
+.tickets-sla-compact > span:first-child { font-weight:600; }
+.tickets-service-scheduled { display:block; font-size:11px; color:var(--ap-muted,#63758a); margin-top:6px; }
+.tickets-service-schedule { display:grid; gap:12px; }
+.tickets-service-schedule h3 { margin:0; }
+.tickets-service-schedule ul { display:grid; gap:8px; margin:0; padding:0; list-style:none; }
+.tickets-service-schedule li { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; border:1px solid var(--ap-border,#d8dfe9); border-radius:8px; padding:14px; font-size:13px; }
+.tickets-service-schedule li > div { display:grid; gap:6px; }
+.tickets-service-schedule li > div > span { color:var(--ap-muted,#63758a); }
+@media(max-width:700px) { .tickets-sla-table th,.tickets-sla-table td { padding:10px; } }
+@media(max-width:700px) { .tickets-sla-targets { grid-template-columns:1fr; } }

@@ -50,10 +50,13 @@ function createMailService({ sql, db, ticketStore, env = process.env, runMail, t
 
   async function process({ manual = false, confirmSend = false, maxRunMs = 20000 } = {}) {
     return exclusive(async () => {
+      // Los recordatorios internos no dependen de habilitar un buzón ni envían correos al cliente.
+      const sla = await ticketStore.processSla?.()
       const config = await channel.runtime()
       if (manual && config.enabled && config.mode === 'live' && !confirmSend) fail('Confirmá la recepción y el envío de las respuestas pendientes antes de sincronizar.', 409)
       try {
-        return await worker({ config: { ...config, maxRunMs: Math.min(config.maxRunMs, maxRunMs) }, mailStore, ticketStore })
+        const result = await worker({ config: { ...config, maxRunMs: Math.min(config.maxRunMs, maxRunMs) }, mailStore, ticketStore })
+        return sla === undefined ? result : { ...result, sla }
       } catch (problem) {
         const safe = safeMailError(problem)
         throw Object.assign(new Error(safe.message), { statusCode: 502, code: safe.code })

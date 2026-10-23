@@ -72,6 +72,22 @@ test('el estado local informa que la ejecución automática no está configurada
   } finally { f.close() }
 })
 
+test('el scheduler procesa SLA aunque el correo esté deshabilitado y no duplica tareas ante un error', async () => {
+  const calls = [], f = await fixture()
+  try {
+    f.ticketStore.processSla = async () => { calls.push('sla'); return { reminders: 2 } }
+    const result = await f.service.process()
+    assert.equal(result.enabled, false)
+    assert.deepEqual(result.sla, { reminders: 2 })
+    assert.deepEqual(calls, ['sla'])
+    assert.equal(f.seen.length, 1)
+    f.ticketStore.processSla = async () => { throw new Error('Fallo de persistencia del SLA') }
+    await assert.rejects(f.service.process(), /persistencia del SLA/)
+    assert.equal(f.seen.length, 1)
+    assert.equal((await sqliteTicketMailStore(f.db).cursor(CHANNEL_LEASE)).lease_owner, null)
+  } finally { f.close() }
+})
+
 test('consultar, guardar, probar y procesar correo exige configurar Tickets', async () => {
   const f = await fixture()
   try {
@@ -177,8 +193,8 @@ test('firma común se guarda sin reprobar correo y queda en cola e historial só
     let ticket = (await f.ticketStore.query(admin, {}, { mode: 'detail', id: received.ticketId })).ticket
     const command = (action, note) => ({ action, commandId: require('node:crypto').randomUUID(), id: ticket.id, version: ticket.version, note })
     ticket = (await f.ticketStore.run(admin, {}, command('reply', 'Estamos revisando el caso.'))).ticket
-    const payload = JSON.parse(f.db.prepare('SELECT payload FROM pignus_ticket_mail_outbox').get().payload)
     const response = ticket.messages.find(item => item.deliveryStatus === 'queued')
+    const payload = JSON.parse(f.db.prepare('SELECT payload FROM pignus_ticket_mail_outbox WHERE entry_id=?').get(response.id).payload)
     assert.equal(response.body, payload.text)
     assert.equal(response.note, payload.text)
     assert.match(response.body, /Estamos revisando el caso\.\n\nAtención Pignus\nEquipo de soporte/)
@@ -192,8 +208,123 @@ test('firma común se guarda sin reprobar correo y queda en cola e historial só
     assert.equal(ticket.status, 'Resuelto')
     assert.equal(ticket.resolution, 'Quedó solucionado')
     const stored = f.db.prepare('SELECT data FROM pignus_ticket_entries WHERE ticket_id=?').all(ticket.id).map(row => JSON.parse(row.data))
-    assert.equal(stored.filter(item => item.body?.includes('Atención Pignus')).length, 1)
-    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM pignus_ticket_mail_outbox').get().n, 1)
+    const outbox = f.db.prepare('SELECT entry_id,payload FROM pignus_ticket_mail_outbox').all().map(row => ({ ...row, payload: JSON.parse(row.payload) }))
+    assert.equal(outbox.filter(row => !row.payload.automatic).length, 1)
+    const resolved = stored.find(item => item.action === 'automatic-resolved')
+    assert.ok(resolved)
+    assert.ok(outbox.some(row => row.entry_id === resolved.id && row.payload.automatic === true))
+    assert.equal(stored.filter(item => item.body?.includes('Atención Pignus')).length, outbox.length)
+    assert.ok(outbox.every(row => row.payload.text.includes('Atención Pignus') && row.payload.html.includes('<b>Atención Pignus</b>')))
+    assert.equal(note.body, 'Nota sólo interna')
+  } finally {
+    if (previousSecret === undefined) delete process.env.PIGNUS_SESSION_SECRET
+    else process.env.PIGNUS_SESSION_SECRET = previousSecret
+    f.close()
+  }
+})
+
+async function slaMailCase(f, suffix) {
+  await f.activate('live')
+  const runtime = await require('../api/_lib/ticket-mail-channel.cjs').createMailChannelStore({ db: f.db, env }).runtime()
+  const received = await f.ticketStore.ingestMail({ messageId: `<sla-${suffix}@example.com>`, sender: { email: 'cliente@example.com', name: 'Cliente' }, subject: 'Revisión del equipo', text: 'Necesito ayuda', mode: 'live', mailboxKey: runtime.mailboxKey, areaId: 'technical' })
+  const detail = async () => (await f.ticketStore.query(admin, {}, { mode: 'detail', id: received.ticketId })).ticket
+  const initial = await detail()
+  const at = minutes => new Date(new Date(initial.sla.startedAt).getTime() + minutes * 60000).toISOString()
+  const entries = () => f.db.prepare('SELECT data FROM pignus_ticket_entries WHERE ticket_id=?').all(received.ticketId).map(row => JSON.parse(row.data))
+  const deliver = async (entry, minutes, status = 'sent') => {
+    const outbox = f.db.prepare('SELECT * FROM pignus_ticket_mail_outbox WHERE entry_id=?').get(entry.id)
+    assert.ok(outbox, 'La comunicación debe tener una entrega en cola')
+    await f.ticketStore.applyDelivery({ ...outbox, status, finished_at: at(minutes) })
+    return detail()
+  }
+  const command = async (action, note, extra = {}, state = {}) => {
+    const item = await detail()
+    return (await f.ticketStore.run(admin, state, { action, commandId: require('node:crypto').randomUUID(), id: item.id, version: item.version, note, ...extra })).ticket
+  }
+  return { detail, at, entries, deliver, command }
+}
+
+test('SLA por correo: acuse, comentario y respuesta en cola no cuentan; la entrega real sí', async () => {
+  const f = await fixture(), previousSecret = process.env.PIGNUS_SESSION_SECRET
+  process.env.PIGNUS_SESSION_SECRET = env.PIGNUS_SESSION_SECRET
+  try {
+    const c = await slaMailCase(f, 'delivery')
+    let ticket = await c.detail()
+    assert.equal(ticket.sla.firstResponseAt, '')
+    ticket = await c.deliver(c.entries().find(entry => entry.action === 'automatic-received'), 1)
+    assert.equal(ticket.sla.firstResponseAt, '')
+    ticket = await c.command('comment', 'Revisamos el caso desde la plataforma.', { visibility: 'public' })
+    assert.equal(ticket.sla.firstResponseAt, '')
+    ticket = await c.command('reply', 'Estamos revisando la conexión del equipo y te avisaremos los avances.')
+    assert.equal(ticket.sla.firstResponseAt, '')
+    assert.equal(ticket.sla.lastHumanUpdateAt, '')
+    const response = c.entries().find(entry => entry.deliveryStatus === 'queued' && !entry.automatic)
+    assert.ok(response)
+    for (const status of ['failed', 'uncertain']) {
+      ticket = await c.deliver(response, 2, status)
+      assert.equal(ticket.sla.firstResponseAt, '')
+      assert.equal(ticket.sla.lastHumanUpdateAt, '')
+    }
+    ticket = await c.deliver(response, 3)
+    assert.equal(ticket.sla.firstResponseAt, c.at(3))
+    assert.equal(ticket.sla.lastHumanUpdateAt, c.at(3))
+    assert.equal(ticket.slaSummary.firstResponse.completedAt, c.at(3))
+    ticket = await c.deliver(response, 4)
+    assert.equal(ticket.sla.firstResponseAt, c.at(3))
+    assert.equal(ticket.sla.lastHumanUpdateAt, c.at(3))
+  } finally {
+    if (previousSecret === undefined) delete process.env.PIGNUS_SESSION_SECRET
+    else process.env.PIGNUS_SESSION_SECRET = previousSecret
+    f.close()
+  }
+})
+
+test('SLA por correo: resolver cierra el caso pero la respuesta se registra al entregar el aviso', async () => {
+  const f = await fixture(), previousSecret = process.env.PIGNUS_SESSION_SECRET
+  process.env.PIGNUS_SESSION_SECRET = env.PIGNUS_SESSION_SECRET
+  try {
+    const c = await slaMailCase(f, 'resolved')
+    const state = { roles: [{ id: 'admin-role', code: 'administrator', name: 'Administrador', permissions: {} }], employees: [{ id: admin.id, name: admin.name, roleId: 'admin-role', status: 'Activo' }] }
+    await c.command('assign', '', { assigneeId: admin.id }, state)
+    let ticket = await c.command('resolve', 'El equipo volvió a comunicarse correctamente.')
+    assert.equal(ticket.status, 'Resuelto')
+    assert.equal(ticket.sla.firstResponseAt, '')
+    assert.equal(ticket.slaSummary.firstResponse.status, 'pending')
+    assert.equal(ticket.slaSummary.firstResponse.completedAt, '')
+    const completedAt = ticket.sla.completedAt
+    const response = c.entries().find(entry => entry.action === 'automatic-resolved')
+    ticket = await c.deliver(response, 10)
+    assert.equal(ticket.sla.firstResponseAt, c.at(10))
+    assert.equal(ticket.slaSummary.firstResponse.completedAt, c.at(10))
+    assert.equal(ticket.sla.completedAt, completedAt)
+    assert.equal(ticket.slaSummary.resolution.completedAt, completedAt)
+  } finally {
+    if (previousSecret === undefined) delete process.env.PIGNUS_SESSION_SECRET
+    else process.env.PIGNUS_SESSION_SECRET = previousSecret
+    f.close()
+  }
+})
+
+test('SLA por correo: entregar una respuesta del ciclo anterior no responde una reapertura', async () => {
+  const f = await fixture(), previousSecret = process.env.PIGNUS_SESSION_SECRET
+  process.env.PIGNUS_SESSION_SECRET = env.PIGNUS_SESSION_SECRET
+  try {
+    const c = await slaMailCase(f, 'reopened')
+    await c.command('reply', 'La primera revisión está en curso.')
+    const oldReply = c.entries().find(entry => entry.deliveryStatus === 'queued' && !entry.automatic)
+    const state = { roles: [{ id: 'admin-role', code: 'administrator', name: 'Administrador', permissions: {} }], employees: [{ id: admin.id, name: admin.name, roleId: 'admin-role', status: 'Activo' }] }
+    await c.command('assign', '', { assigneeId: admin.id }, state)
+    await c.command('resolve', 'La primera revisión concluyó.')
+    let ticket = await c.command('reopen', 'El cliente informa que la falla continúa.')
+    assert.equal(ticket.sla.cycle, 2)
+    ticket = await c.deliver(oldReply, 10)
+    assert.equal(ticket.sla.firstResponseAt, '')
+    assert.equal(ticket.sla.lastHumanUpdateAt, '')
+    await c.command('reply', 'Gracias por avisarnos; estamos revisando la nueva información.')
+    const newReply = c.entries().find(entry => entry.deliveryStatus === 'queued' && !entry.automatic && entry.id !== oldReply.id)
+    ticket = await c.deliver(newReply, 20)
+    assert.equal(ticket.sla.firstResponseAt, c.at(20))
+    assert.equal(ticket.sla.cycle, 2)
   } finally {
     if (previousSecret === undefined) delete process.env.PIGNUS_SESSION_SECRET
     else process.env.PIGNUS_SESSION_SECRET = previousSecret

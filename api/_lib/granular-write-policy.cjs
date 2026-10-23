@@ -46,7 +46,7 @@ const RECORD_GROUPS = {
   confirm: ['awaitingConfirmation', 'confirmedAt', 'confirmedById', 'confirmedByName'],
   journey: ['serviceJourney'], reservation: ['subscriberReservation'],
   technical: ['technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'journeyClosedAt', 'startedAt', 'startedById', 'startedByName', 'advanceRequest', 'originalScheduledTime', 'vehicleMileage', 'vehiclePhotoUrl', 'vehicleControlReportedAt', 'technicianRequest'],
-  system: ['id', 'historyId', 'taskId', 'sourceTaskId', 'sourceHistoryId', 'createdBy', 'createdAt', 'updatedAt', 'status', 'collection', 'supervisorVisible'],
+  system: ['id', 'historyId', 'taskId', 'sourceTaskId', 'sourceHistoryId', 'createdBy', 'createdAt', 'updatedAt', 'status', 'collection', 'supervisorVisible', 'sourceTicketId', 'ticketNumber', 'ticketResolution'],
   general: ['service', 'serviceId', 'services', 'serviceIds', 'serviceTypes', 'estimatedMinutes', 'estimatedMinutesCustomized', 'detail', 'description', 'address', 'phone', 'location', 'category', 'vehicleId', 'vehicleControl', 'guard', 'guardAdvance', 'advancedGuard']
 }
 const classified = new Set(Object.values(RECORD_GROUPS).flat())
@@ -93,6 +93,8 @@ function assertServiceChange(before, after, user, state, { planning = false, tas
     if (after.serviceJourney) requirePermission(user, 'planning.journeys')
     if (after.subscriberReservation) requirePermission(user, 'planning.reservation.create')
     if (after.customerId) requirePermission(user, 'planning.linkAccount')
+    if (after.sourceTicketId) requirePermission(user, 'tickets.linkService')
+    if (after.ticketResolution) fail('planning.create', 'La resolución del ticket debe provenir del informe técnico.')
     if (nonempty(after.internalNote)) requirePermission(user, 'planning.notes')
     if (nonempty(after.internalChecklist)) requirePermission(user, 'planning.checklist')
     if (RECORD_GROUPS.commercial.some(key => nonempty(after[key]))) requirePermission(user, 'planning.commercial')
@@ -102,6 +104,8 @@ function assertServiceChange(before, after, user, state, { planning = false, tas
     return
   }
   const scheduled = catalog.can(user, 'weekly.controls.schedule') && validScheduledControl(after, state) && !before.startedAt && !before.completedAt && !before.technicalStatus
+  if (changed(before, after, ['sourceTicketId', 'ticketNumber'])) requirePermission(user, 'tickets.linkService')
+  if (changed(before, after, ['ticketResolution'])) fail('history.edit', 'La resolución del ticket debe provenir del informe técnico.')
   const scheduleDerived = scheduled ? new Set(['technicianIds', 'technicians', 'teamId', 'team', 'date', 'time', 'vehicleBrand', 'vehicleModel', 'vehiclePlate', 'vehicleMileageAtScheduling', 'vehicleControlScheduledFriday', 'monthlyVehicleAssignment', 'client']) : new Set()
   for (const key of ['id', 'taskId', 'historyId', 'sourceTaskId', 'sourceHistoryId', 'createdAt', 'createdBy']) {
     if (before[key] != null && !same(before[key], after[key])) fail('records.identity', 'No se puede alterar la identidad o atribución del servicio.')

@@ -60,7 +60,7 @@ function mailStore(query) {
     async finish(id, status, failure = null, nextAttemptAt = new Date().toISOString()) {
       await run("UPDATE pignus_ticket_mail_outbox SET status=?,finished_at=?,last_error=?,next_attempt_at=?,result_applied=0 WHERE id=? AND status='sending'", [status, new Date().toISOString(), failure ? JSON.stringify(failure) : null, nextAttemptAt, id])
     },
-    async unapplied(key, limit = 100) { return run("SELECT id,ticket_id,entry_id,status,attempts,last_error,message_id,mailbox_key FROM pignus_ticket_mail_outbox WHERE mailbox_key=? AND status NOT IN ('queued','sending') AND result_applied=0 ORDER BY created_at,id LIMIT ?", [key, limit]) },
+    async unapplied(key, limit = 100) { return run("SELECT id,ticket_id,entry_id,status,attempts,last_error,message_id,mailbox_key,finished_at FROM pignus_ticket_mail_outbox WHERE mailbox_key=? AND status NOT IN ('queued','sending') AND result_applied=0 ORDER BY created_at,id LIMIT ?", [key, limit]) },
     async applied(id, status, attempts) { await run('UPDATE pignus_ticket_mail_outbox SET result_applied=1 WHERE id=? AND status=? AND attempts=?', [id, status, attempts]) },
     async status(key) {
       const cursor = await this.cursor(key)

@@ -102,7 +102,9 @@ test('dedup por Message-ID permite repetir ingestión si el cursor no llegó a g
     assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM pignus_tickets').get().n, 1)
     f.mailStore.advance = advance
     assert.equal((await f.run()).duplicates, 1)
-    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM pignus_ticket_entries').get().n, 1)
+    const entries = f.db.prepare('SELECT data FROM pignus_ticket_entries').all().map(row => JSON.parse(row.data))
+    assert.equal(entries.filter(entry => !entry.automatic).length, 1)
+    assert.equal(entries.filter(entry => entry.action === 'automatic-received').length, 1)
   } finally { f.db.close() }
 })
 

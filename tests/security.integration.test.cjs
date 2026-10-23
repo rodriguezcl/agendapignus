@@ -1740,9 +1740,9 @@ test('Tickets: informe técnico se incorpora una vez y se gestiona fuera del est
   const assigned=await api('/api/tickets',admin,{method:'POST',body:JSON.stringify(assign)});assert.equal(assigned.status,200,await assigned.clone().text())
   assert.equal((await api('/api/tickets',admin,{method:'POST',body:JSON.stringify(assign)})).status,200)
   assert.equal((await api('/api/tickets',admin,{method:'POST',body:JSON.stringify({...assign,commandId:'qa-ticket-stale'})})).status,409)
-  const resolved=await api('/api/tickets',admin,{method:'POST',body:JSON.stringify({id:item.id,action:'resolve',version:2,commandId:'qa-ticket-resolve',note:'Presupuesto enviado y aceptado'})})
+  const resolved=await api('/api/tickets',admin,{method:'POST',body:JSON.stringify({id:item.id,action:'resolve',version:(await assigned.json()).ticket.version,commandId:'qa-ticket-resolve',note:'Presupuesto enviado y aceptado'})})
   assert.equal(resolved.status,200,await resolved.clone().text())
-  const saved=(await resolved.json()).ticket;assert.equal(saved.status,'Resuelto');assert.equal(saved.messages.length+saved.events.length,3)
+  const saved=(await resolved.json()).ticket;assert.equal(saved.status,'Resuelto');assert.equal(saved.messages.length+saved.events.filter(event=>!event.automatic).length,3)
   const service=(await state(admin)).history.find(r=>r.id===record.id);assert.equal(service.technicalObservation,report.observation)
   const tampered=await api('/api/history/'+record.id,admin,{method:'PATCH',body:JSON.stringify({base:service,record:{...service,followup:undefined}})});assert.equal(tampered.status,409)
 })
@@ -1777,4 +1777,36 @@ test('Tickets: administración del correo protege credenciales y proceso automá
   const response = await fetch(origin + '/api/tickets/mail/process', { method: 'POST', headers: { Authorization: 'Bearer clave-ficticia-del-proceso-para-pruebas-http' } })
   assert.equal(response.status, 200, await response.clone().text())
   assert.equal((await response.json()).enabled, false)
+})
+
+test('Tickets: agenda guarda vínculo atómico, conserva aviso al cerrar y protege evidencia técnica', async () => {
+  const admin=await login('qa-admin@pignus.test'), tech=await login('qa-tech@pignus.test')
+  const created=await api('/api/tickets',admin,{method:'POST',body:JSON.stringify({action:'create',commandId:crypto.randomUUID(),categoryId:'internal',subcategoryId:'other',origin:'internal',title:'Visita por impresora',description:'Revisar impresora del cliente.'})})
+  assert.equal(created.status,200,await created.clone().text())
+  const ticket=(await created.json()).ticket
+  const before=await state(admin)
+  const record={id:'qa-ticket-visit',sourceTaskId:'qa-ticket-visit',customerId:'qa-customer-a',clientAccount:'PIG-9001',client:'CLIENTE QA',date:'2020-02-03',time:'08:30',serviceId:'qa-service',service:'Service técnico',status:'Pendiente',technicianIds:['qa-tech'],technicians:['QA Técnico'],sourceTicketId:ticket.id,ticketNumber:ticket.number,detail:'Ticket#'+ticket.number,estimatedMinutes:60,awaitingConfirmation:false}
+  const saved=await api('/api/state',admin,{method:'PATCH',body:JSON.stringify({revision:before.revision,operations:[{path:['history',{key:'id',id:record.id}],before:null,after:record,existed:false,exists:true}]})})
+  assert.equal(saved.status,200,await saved.clone().text())
+  let detail=(await (await api('/api/tickets?id='+ticket.id,admin)).json()).ticket
+  assert.ok(detail.serviceIds.includes(record.id));assert.equal(detail.status,'En gestión')
+  let service=(await state(admin)).history.find(r=>r.id===record.id)
+  const forged=await api('/api/history/'+record.id,admin,{method:'PATCH',body:JSON.stringify({base:service,record:{...service,ticketResolution:{resolved:true}}})})
+  assert.equal(forged.status,403)
+  const start=await api('/api/technician/start',tech,{method:'POST',body:JSON.stringify({recordId:record.id})})
+  assert.equal(start.status,200,await start.clone().text())
+  // Finish a historical visit without waiting through the estimated work time.
+  const fixture=new DatabaseSync(path.join(temporaryDirectory,'agenda-tecnica.db'))
+  service=JSON.parse(fixture.prepare('SELECT data FROM work_history WHERE id=?').get(record.id).data)
+  fixture.prepare('UPDATE work_history SET data=? WHERE id=?').run(JSON.stringify({...service,startedAt:'2020-02-03T11:30:00Z'}),record.id);fixture.close()
+  const payload={recordId:record.id,type:'Completado',observation:'Impresora reparada y probada.',ticketResolution:{resolved:true,ticketIds:[ticket.id]}}
+  for(let i=0;i<2;i++){const result=await api('/api/technician/status',tech,{method:'POST',body:JSON.stringify(payload)});assert.equal(result.status,200,await result.clone().text())}
+  detail=(await (await api('/api/tickets?id='+ticket.id,admin)).json()).ticket
+  assert.equal(detail.status,'Resuelto');assert.equal(detail.resolvedByServiceId,record.id)
+  assert.equal(detail.events.filter(e=>e.action==='automatic-resolved').length,1)
+  let notices=(await (await api('/api/tickets?view=notifications',admin)).json()).notifications
+  assert.ok(notices.some(n=>n.target.ticketId===ticket.id&&/resuelto/i.test(n.title)))
+  const acknowledged=await api('/api/tickets',admin,{method:'POST',body:JSON.stringify({action:'markNotificationsRead',id:ticket.id})});assert.equal(acknowledged.status,200)
+  notices=(await (await api('/api/tickets?view=notifications',admin)).json()).notifications
+  assert.ok(!notices.some(n=>n.target.ticketId===ticket.id))
 })

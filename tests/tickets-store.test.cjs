@@ -92,17 +92,79 @@ for (const engine of ['sqlite', 'postgres']) {
         assert.equal(result.messages.length, 2)
       })
 
-      await t.test('resolución exige responsable y resultado y admite reapertura explícita', async () => {
+      await t.test('resolver un caso sin responsable lo asigna al actor, exige resultado y admite reapertura explícita', async () => {
         let item = (await store.run(administrator, state, createInput({ customerId: '', categoryId: 'internal', subcategoryId: 'other', origin: 'internal' }))).ticket
-        await rejectsStatus(() => store.run(administrator, state, command('resolve', { id: item.id, version: item.version, note: 'Solucionado' })), 400)
-        item = (await store.run(administrator, state, command('assign', { id: item.id, version: item.version, assigneeId: 'admin' }))).ticket
         await rejectsStatus(() => store.run(administrator, state, command('resolve', { id: item.id, version: item.version, note: '' })), 400)
-        item = (await store.run(administrator, state, command('resolve', { id: item.id, version: item.version, note: 'Reparada la impresora' }))).ticket
+        const unchanged = (await store.query(administrator, state, { mode: 'detail', id: item.id })).ticket
+        assert.equal(unchanged.assigneeId, '')
+        assert.equal(unchanged.version, item.version)
+        const input = command('resolve', { id: item.id, version: item.version, note: 'Reparada la impresora', assigneeId: 'fake-assignee', assigneeName: 'Falso', resolvedById: 'fake-actor', resolvedByName: 'Falso' })
+        item = (await store.run(administrator, state, input)).ticket
         assert.equal(item.status, 'Resuelto')
+        assert.equal(item.assigneeId, administrator.id)
+        assert.equal(item.assigneeName, administrator.name)
+        assert.equal(item.resolvedById, administrator.id)
+        assert.equal(item.resolvedByName, administrator.name)
+        const assignment = item.events.find(event => event.action === 'automatic-assignment')
+        assert.ok(assignment)
+        assert.equal(assignment.byId, administrator.id)
+        assert.equal(assignment.byName, administrator.name)
+        const retry = (await store.run(administrator, state, input)).ticket
+        assert.equal(retry.version, item.version)
+        assert.equal(retry.resolvedAt, item.resolvedAt)
+        assert.equal(retry.events.length, item.events.length)
+        assert.equal(retry.events.filter(event => event.action === 'automatic-assignment').length, 1)
         await rejectsStatus(() => store.run(administrator, state, command('comment', { id: item.id, version: item.version, note: 'Otra observación' })), 409)
         item = (await store.run(administrator, state, command('reopen', { id: item.id, version: item.version, note: 'La falla reapareció' }))).ticket
         assert.equal(item.status, 'En gestión')
-        assert.equal(item.events.length, 3)
+        assert.ok(!item.resolvedById && !item.resolvedByName)
+        assert.ok(item.events.some(event => event.action === 'Resolvió el ticket' && event.byId === administrator.id))
+        assert.ok(item.events.some(event => event.action === 'Reabrió el ticket'))
+        for (const action of ['automatic-received', 'automatic-reopened', 'automatic-resolved']) assert.ok(item.events.some(event => event.action === action))
+      })
+
+      await t.test('el permiso de resolver permite autoasignarse sin permiso adicional de asignación', async () => {
+        const resolver = { ...user('resolver-no-assign', ['tickets.resolve']), name: 'Responsable de soporte' }
+        assert.equal(domain.can(resolver, 'resolve'), true)
+        assert.equal(domain.can(resolver, 'assign'), false)
+        let item = (await store.run(resolver, state, createInput({ customerId: '', categoryId: 'internal', subcategoryId: 'other', origin: 'internal' }))).ticket
+        await rejectsStatus(() => store.run(resolver, state, command('assign', { id: item.id, version: item.version, assigneeId: administrator.id })), 403)
+        item = (await store.run(resolver, state, command('resolve', { id: item.id, version: item.version, note: 'Se restableció la conexión.' }))).ticket
+        assert.equal(item.status, 'Resuelto')
+        assert.equal(item.assigneeId, resolver.id)
+        assert.equal(item.assigneeName, resolver.name)
+        assert.equal(item.resolvedById, resolver.id)
+        assert.equal(item.resolvedByName, resolver.name)
+        const audited = (await store.query(administrator, state, { mode: 'detail', id: item.id })).ticket
+        const event = audited.events.find(entry => entry.action === 'automatic-assignment')
+        assert.equal(event.byId, resolver.id)
+        assert.equal(event.byName, resolver.name)
+      })
+
+      await t.test('resolver conserva al responsable existente y registra por separado quién cerró el caso', async () => {
+        const resolver = { ...user('closer', ['tickets.resolve']), name: 'Quien verifica la solución' }
+        let item = (await store.run(resolver, state, createInput({ customerId: '', categoryId: 'internal', subcategoryId: 'other', origin: 'internal' }))).ticket
+        item = (await store.run(administrator, state, command('assign', { id: item.id, version: item.version, assigneeId: administrator.id }))).ticket
+        item = (await store.run(resolver, state, command('resolve', { id: item.id, version: item.version, note: 'Solución verificada con el solicitante.', assigneeId: resolver.id }))).ticket
+        assert.equal(item.status, 'Resuelto')
+        assert.equal(item.assigneeId, administrator.id)
+        assert.equal(item.assigneeName, administrator.name)
+        assert.equal(item.resolvedById, resolver.id)
+        assert.equal(item.resolvedByName, resolver.name)
+        const audited = (await store.query(administrator, state, { mode: 'detail', id: item.id })).ticket
+        assert.equal(audited.events.filter(entry => entry.action === 'automatic-assignment').length, 0)
+        assert.ok(audited.events.some(entry => entry.action === 'Resolvió el ticket' && entry.byId === resolver.id))
+      })
+
+      await t.test('la autoasignación no permite cerrar sin permiso ni acceder a tickets ajenos', async () => {
+        const withoutResolve = user('without-resolve'), resolver = user('restricted-resolver', ['tickets.resolve'])
+        const own = (await store.run(withoutResolve, state, createInput({ customerId: '', categoryId: 'internal', subcategoryId: 'other', origin: 'internal' }))).ticket
+        await rejectsStatus(() => store.run(withoutResolve, state, command('resolve', { id: own.id, version: own.version, note: 'Intento sin permiso.' })), 403)
+        await rejectsStatus(() => store.run(resolver, state, command('resolve', { id: own.id, version: own.version, note: 'Intento fuera de alcance.' })), 404)
+        const unchanged = (await store.query(withoutResolve, state, { mode: 'detail', id: own.id })).ticket
+        assert.equal(unchanged.status, 'Nuevo')
+        assert.equal(unchanged.assigneeId, '')
+        assert.equal(unchanged.version, own.version)
       })
 
       await t.test('adjuntos se conservan atómicamente sin incluir bytes en los DTO', async () => {
