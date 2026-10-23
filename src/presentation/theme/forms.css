@@ -52,6 +52,13 @@
 
 /* Flat, quiet buttons give priority to the content and the primary action. */
 :is(body, .app-shell[data-theme], .technician-page[data-theme]) :is(.primary, .secondary, .danger-button, .detail-button, .save) {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  vertical-align: middle;
+  text-align: center;
   min-height: var(--ap-control-height);
   max-width: 100%;
   border-radius: 6px !important;
@@ -59,6 +66,9 @@
   font: 600 13px/1.4 var(--pignus-font-family);
   box-shadow: none !important;
   transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+:is(body, .app-shell[data-theme], .technician-page[data-theme]) :is(.primary, .secondary, .danger-button, .detail-button, .save) > svg {
+  flex-shrink: 0;
 }
 :is(body, .app-shell[data-theme], .technician-page[data-theme]) :is(.secondary, .detail-button) {
   border: 1px solid var(--ap-border) !important;
