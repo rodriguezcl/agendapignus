@@ -45,10 +45,12 @@ export default function CustomerSync({ administrator, onComplete }) {
       const result = await requestJson(url, { method: 'POST' })
       if (pairing) setToken(result.token)
       else setStatus(result)
-    } catch (e) { setError(e.message) }
+    } catch (e) { setError(e.message); setOpen(true) }
     finally { setBusy(false) }
   }
   const active = ['pending', 'running'].includes(status?.job?.status)
+  const needsAttention = Boolean(error || status?.job?.status === 'error')
+  const connection = !status ? 'Consultando conexión' : !status.configured ? 'PC pendiente de vincular' : status.online ? 'PC conectada' : 'PC sin conexión reciente'
   const close = () => { setOpen(false); setToken('') }
   useEffect(() => {
     if (!open) return
@@ -58,11 +60,11 @@ export default function CustomerSync({ administrator, onComplete }) {
   }, [open])
   return <div className="customer-sync-control">
     <button className="secondary" title="Solicitá a la PC conectada que actualice los abonados desde SoftGuard." disabled={busy || !status?.configured || active} onClick={() => execute('/api/customers/sync')}><Icon name="refresh" />{active ? labels[status.job.status] : 'Sincronizar abonados'}</button>
-    <button className="customer-sync-status" type="button" title={`Última sincronización correcta: ${date(status?.lastSuccess?.at)}`} onClick={() => setOpen(true)}>{status?.job?.status === 'error' ? 'Error · Ver estado' : !status ? 'Estado de sincronización' : !status.configured ? 'Conectar PC' : status.online ? 'PC conectada · Ver estado' : 'PC sin conexión reciente · Ver estado'}</button>
-    {error && <small role="alert">{error}</small>}
+    <button className={`secondary customer-sync-status${needsAttention ? ' customer-sync-status-alert' : ''}`} type="button" aria-label={needsAttention ? 'Estado de sincronización: requiere atención' : 'Estado de sincronización'} aria-haspopup="dialog" title={`${needsAttention ? 'Requiere atención. ' : ''}${connection}. Última sincronización correcta: ${date(status?.lastSuccess?.at)}`} onClick={() => setOpen(true)}><Icon name={needsAttention ? 'alert' : 'clock'} />Estado</button>
     {open && createPortal(<div className="modal-layer" onClick={event => { if (event.target === event.currentTarget) close() }}><div className="modal customer-sync-modal" role="dialog" aria-modal="true" aria-label="Sincronización de abonados">
       <button className="close-modal" aria-label="Cerrar" onClick={close}><Icon name="close" /></button>
       <h2>Sincronización de abonados</h2>
+      <p>{connection}</p>
       <p>Estado: <strong>{labels[status?.job?.status] || 'Sin solicitudes'}</strong></p>
       <p>Última conexión de la PC: {date(status?.lastSeen)}</p>
       <p>Última sincronización correcta: {date(status?.lastSuccess?.at)}{status?.lastSuccess?.count != null && ` · ${status.lastSuccess.count} cuentas`}</p>
