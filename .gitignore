@@ -17,3 +17,5 @@ node_modules/
 .env*
 !.env.example
 .vercel/
+# Dependencias CommonJS generadas antes de compilar para el runtime de Vercel.
+api/_vendor/

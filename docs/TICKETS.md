@@ -64,6 +64,8 @@ Activar **Agregar la firma a las respuestas por correo** y presionar **Guardar f
 
 La respuesta queda firmada al registrarse en la cola. Los reintentos conservan ese contenido aunque luego cambie la firma; los mensajes ya encolados sin firma no se modifican. El historial conserva el texto firmado. Las notas internas y las resoluciones no agregan firma ni generan por sí solas un correo. El destinatario recibe versiones HTML y texto cuando la firma está habilitada; su cliente de correo puede bloquear imágenes remotas.
 
+El paso `prebuild` empaqueta `sanitize-html` y sus dependencias como CommonJS en `api/_vendor/sanitize-html.cjs`. Vercel incluye ese archivo generado en la función: evita depender de `require(ESM)` en el runtime y conserva la versión actualizada del sanitizador. El archivo no se versiona; debe regenerarse con `npm run build` para cada publicación. La prueba de compatibilidad carga el servicio con `--no-experimental-require-module`.
+
 **Guardar gestión** cierra la ficha únicamente cuando el servidor confirma el guardado y actualiza la bandeja. Si se solicitó responder, el aviso indica que el mensaje quedó en cola; su entrega se consulta en la conversación. Ante un error, la ficha conserva el contenido y los adjuntos para revisar o reintentar.
 
 ### Protección y persistencia de las credenciales

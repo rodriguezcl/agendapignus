@@ -1,4 +1,4 @@
-const sanitizeHtml = require('sanitize-html')
+const sanitizeHtml = require('./mail-sanitizer-runtime.cjs')
 const { convert } = require('html-to-text')
 const { isIP } = require('node:net')
 const { isPublicMailAddress } = require('./ticket-mail-network.cjs')

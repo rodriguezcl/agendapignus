@@ -27,6 +27,7 @@
     "test": "node --test --test-concurrency=4 tests/*.test.cjs",
     "test:ux": "node scripts/ux-quality-gate.cjs && node --test tests/ux-constitution.test.cjs tests/ux-quality-gate.test.cjs",
     "test:concurrency": "node --test tests/state-concurrency-hardening.test.cjs tests/security.integration.test.cjs",
+    "prebuild": "node scripts/build-mail-sanitizer.cjs",
     "build": "vite build",
     "analyze:build": "node scripts/inspect-build.cjs",
     "preview": "vite preview",
@@ -50,6 +51,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "@vitejs/plugin-react": "^4.0.0",
+    "esbuild": "0.25.12",
     "vite": "^5.0.0"
   }
 }
