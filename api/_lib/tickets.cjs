@@ -200,13 +200,14 @@ function newTicket(input, user, state, config, number, now) {
   const eventId = text(input.eventId ?? input.eventType, 120, 'Evento')
   const event = eventId && config.events.find(item => item.active && (item.id === eventId || item.name === eventId))
   if (eventId && !event) fail('Seleccioná un evento activo.')
-  const title = input.automaticTitle === true ? automaticSubject({ customer, event: effective.showEvent ? event : null, category, subcategory, requesterName: input.requesterName }) : text(input.title, 160, 'Asunto') || `${subcategory?.name || category.name}${customer ? ` · ${customer.account}` : ''}`
+  const zone = effective.showZone ? text(input.zone, 200, 'Zona') : ''
+  const title = input.automaticTitle === true ? automaticSubject({ customer, event: effective.showEvent ? event : null, zone, requesterName: input.requesterName }) : text(input.title, 160, 'Asunto') || `${subcategory?.name || category.name}${customer ? ` · ${customer.account}` : ''}`
   const ticket = {
     id: crypto.randomUUID(), number: String(number), version: 1, title,
     description: text(input.description ?? input.body, 10000, 'Observación', true), scope: customer ? 'customer' : 'internal',
     customerId: customer ? id(customer.customerId || customer.id) : '', customerSnapshot: customer ? snapshot(customer) : null,
     origin, categoryId: category.id, subcategoryId: subcategory?.id || '', eventId: effective.showEvent ? event?.id || '' : '', eventType: effective.showEvent ? event?.name || '' : '',
-    zone: effective.showZone ? text(input.zone, 200, 'Zona') : '', occurredAt: timestamp(input.eventAt || input.occurredAt, now),
+    zone, occurredAt: timestamp(input.eventAt || input.occurredAt, now),
     requesterId: id(user.id), requesterName: text(input.requesterName, 160, 'Solicitante') || user.name || 'Usuario', requesterEmail: email(input.requesterEmail),
     createdById: id(user.id), createdByName: user.name || 'Usuario', areaId: effective.areaId || '', assigneeId: '', assigneeName: '',
     status: 'Nuevo', priority: effective.priority || 'Media', createdAt: now, updatedAt: now, serviceIds: service ? [id(service.id)] : [], participantIds: [id(user.id)]

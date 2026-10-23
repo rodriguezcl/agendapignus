@@ -6,3 +6,6 @@ export const sortEmployeesAlphabetically = (employees = []) => [...employees].so
 export const sortVehiclesAlphabetically = (vehicles = []) => [...vehicles].sort((a, b) =>
   collator.compare(`${a.brand || ''} ${a.model || ''}`.trim(), `${b.brand || ''} ${b.model || ''}`.trim()) ||
   collator.compare(String(a.plate || ''), String(b.plate || '')))
+
+export const sortOptionsAlphabetically = (items = [], label = item => item.name ?? item) => [...items].sort((a, b) =>
+  collator.compare(String(label(a) || '').trim(), String(label(b) || '').trim()))

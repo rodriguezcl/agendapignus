@@ -1,3 +1,4 @@
+import { sortOptionsAlphabetically } from '../../domain/shared/catalog-order.mjs'
 import React, { useEffect, useRef, useState } from 'react'
 import { requestJson } from '../../infrastructure/http/json-request.mjs'
 import useDiscardGuard from '../../components/ui/useDiscardGuard.jsx'
@@ -115,7 +116,7 @@ export default function TicketMailSettings({ areas = [], onChanged }) {
   }
   const activate = () => draft.mode === 'live' ? setConfirmation('activate') : execute('activate')
   const run = () => channel.settings.mode === 'live' ? setConfirmation('run') : execute('run')
-  const activeAreas = areas.filter(area => area.active !== false)
+  const activeAreas = sortOptionsAlphabetically(areas).filter(area => area.active !== false)
   const isBusy = Boolean(busy)
   const testsReady = freshTest(channel?.tests?.incoming) && freshTest(channel?.tests?.outgoing)
   const canActivate = !dirty && !isBusy && !channel?.enabled && testsReady && (draft?.mode === 'live' || draft?.testSourceConfirmed)
@@ -136,7 +137,7 @@ export default function TicketMailSettings({ areas = [], onChanged }) {
         <fieldset className="ticket-mail-general" disabled={isBusy || !channel.encryptionReady}>
           <legend>Cuenta de correo</legend>
           <div className="ticket-mail-identity"><label>Dirección de soporte<input type="email" required maxLength={254} value={draft.address} onChange={event => change({ address: event.target.value })} placeholder="soporte@pignusarg.com" autoComplete="off" /></label><label>Nombre del remitente<input type="text" required maxLength={120} value={draft.senderName} onChange={event => change({ senderName: event.target.value })} placeholder="Soporte · Pignus" /></label><label>Área de destino<select required value={draft.areaId} onChange={event => change({ areaId: event.target.value })}><option value="">Seleccionar área</option>{activeAreas.map(area => <option value={area.id} key={area.id}>{area.name}</option>)}</select></label></div>
-          <div className="ticket-mail-mode"><label>Modo de funcionamiento<select value={draft.mode} onChange={event => change({ mode: event.target.value, testSourceConfirmed: false })}><option value="test">Prueba · no envía correos</option><option value="live">Operativo · recepción y envío</option></select></label><p className="tickets-muted">{draft.mode === 'test' ? 'Usá un buzón o una carpeta de prueba separados del circuito real. Los tickets de prueba quedan identificados.' : 'Se crearán tickets con los correos nuevos y se habilitarán las respuestas a sus remitentes.'}</p></div>
+          <div className="ticket-mail-mode"><label>Modo de funcionamiento<select value={draft.mode} onChange={event => change({ mode: event.target.value, testSourceConfirmed: false })}><option value="live">Operativo · recepción y envío</option><option value="test">Prueba · no envía correos</option></select></label><p className="tickets-muted">{draft.mode === 'test' ? 'Usá un buzón o una carpeta de prueba separados del circuito real. Los tickets de prueba quedan identificados.' : 'Se crearán tickets con los correos nuevos y se habilitarán las respuestas a sus remitentes.'}</p></div>
           {draft.mode === 'test' && <label className="tickets-checkbox ticket-mail-isolated"><input type="checkbox" checked={draft.testSourceConfirmed} onChange={event => change({ testSourceConfirmed: event.target.checked })} />Confirmo que el buzón o la carpeta seleccionada se utiliza para pruebas y está separada del circuito real.</label>}
         </fieldset>
         <div className="ticket-mail-connections">

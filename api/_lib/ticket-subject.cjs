@@ -1,11 +1,13 @@
 const clean = value => String(value || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR')
-function automaticSubject({ customer, event, category, subcategory, requesterName } = {}) {
+function automaticSubject({ customer, event, zone, requesterName } = {}) {
   const account = clean(customer?.account), rawName = clean(customer?.name)
   const name = account && rawName.startsWith(account + ' ') ? rawName.slice(account.length).trim() : rawName
   const identity = [account, name].filter(Boolean).join(' ') || clean(requesterName) || 'SOLICITUD INTERNA'
-  const request = [clean(category?.name), clean(subcategory?.name)].filter(Boolean).join(' / ') || 'SOLICITUD'
-  const eventName = clean(event?.name)
-  // Reservar lugar para los tres componentes aun con nombres extensos.
-  return [identity.slice(0, 75), eventName.slice(0, 35), request.slice(0, eventName ? 44 : 82)].filter(Boolean).join(' - ').slice(0, 160)
+  const eventName = clean(event?.name), zoneText = clean(zone)
+  const zoneName = zoneText && (/^ZONA\b/.test(zoneText) ? zoneText : 'ZONA ' + zoneText)
+  // Reservar espacio para evento y zona aun con nombres de cuenta extensos.
+  const suffix = [eventName.slice(0, 45), zoneName.slice(0, 65)].filter(Boolean)
+  const identityLimit = 160 - suffix.reduce((total, part) => total + part.length + 3, 0)
+  return [identity.slice(0, identityLimit), ...suffix].join(' - ')
 }
 module.exports = { automaticSubject }
