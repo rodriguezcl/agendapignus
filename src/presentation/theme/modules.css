@@ -76,16 +76,11 @@
   padding: 12px 16px;
 }
 
-.app-shell[data-theme] .accounts-toolbar > .accounts-toolbar-count {
-  flex: 0 0 auto;
-  width: auto;
-  white-space: nowrap;
-}
-
 .app-shell[data-theme] .accounts-toolbar > .accounts-toolbar-search {
   display: flex;
-  flex: 1 1 240px;
+  flex: 1 1 200px;
   width: auto;
+  max-width: none;
   min-width: 0;
   gap: 8px;
 }
