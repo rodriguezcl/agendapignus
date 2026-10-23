@@ -950,12 +950,12 @@ export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, o
       const validDay = /^\d{4}-\d{2}-\d{2}$/.test(day || '')
       const teams = validDay ? dayPlan(day).teams : []
       const teamIndex = teams.findIndex(team => String(team.teamId) === String(ticketSchedule.teamId))
-      const hours = validDay ? hoursForDay(day, ticketSchedule.teamId) : null
+      const hours = validDay ? teams.some(team => hoursForDay(day, team.teamId)) : false
       const holiday = validDay ? holidayStateForDay(day) : null
       const advanced = validDay ? advancedGuardForDay(day) : null
       const unavailable = !validDay ? 'Elegí una fecha.' : day < today ? finishedDayMessage(day) : !hours ? 'La fecha no está habilitada para programar servicios.' : holiday?.blocked ? 'Primero definí la disponibilidad del feriado desde la agenda.' : advanced ? advancedSaturdayGuardMessage(advanced) : ''
-      const gaps = !unavailable && teamIndex >= 0 ? availableGapsForTeam(day, teamIndex, planningClock) : []
-      return <TicketServiceSchedule selection={ticketSchedule} suggestedService={suggestedServiceForTicket(ticketSchedule.ticket, services)} today={today} teams={teams} gaps={gaps} unavailable={unavailable} onChange={patch => setTicketSchedule(previous => ({ ...previous, ...patch }))} onClose={() => setTicketSchedule(null)} onContinue={() => addTask(day, teamIndex, ticketSchedule.startTime, ticketSchedule.ticket)} />
+      const gaps = !unavailable ? teams.flatMap((team, index) => team.members?.length && hoursForDay(day, team.teamId) ? availableGapsForTeam(day, index, planningClock).map(gap => ({ ...gap, teamId: String(team.teamId), teamLabel: team.label, members: team.members })) : []).sort((a, b) => a.start.localeCompare(b.start) || a.teamLabel.localeCompare(b.teamLabel, 'es', { numeric: true })) : []
+      return <TicketServiceSchedule selection={ticketSchedule} suggestedService={suggestedServiceForTicket(ticketSchedule.ticket, services)} today={today} gaps={gaps} unavailable={unavailable} onChange={patch => setTicketSchedule(previous => ({ ...previous, ...patch }))} onClose={() => setTicketSchedule(null)} onContinue={() => addTask(day, teamIndex, ticketSchedule.startTime, ticketSchedule.ticket)} />
     })()}
     {techPicker && <button title="Cerrá el selector de técnicos y volvé a la agenda." className="picker-backdrop" aria-label="Cerrar selector de técnicos" onClick={() => setTechPicker(null)} />}
     {teamRemoval && <Confirm title="Quitar equipo" detail={`¿Querés quitar ${teamRemoval.label} de la planificación del ${prettyDate(teamRemoval.day)}? Se quitará el equipo y su asignación de técnicos de ese día. Si sólo tiene controles vehiculares pendientes, un administrador también los omitirá porque esos vehículos no se utilizarán. Otros servicios o controles completados impiden eliminarlo.`} destructive action={() => removeWeeklyTeam(teamRemoval.day, teamRemoval.teamIndex)} close={() => setTeamRemoval(null)} />}
