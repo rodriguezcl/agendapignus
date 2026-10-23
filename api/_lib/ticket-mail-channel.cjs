@@ -1,6 +1,7 @@
 const { createCipheriv, createDecipheriv, hkdfSync, randomBytes, createHash } = require('node:crypto')
 const { emailAddress, ticketMailConfig } = require('./ticket-mail.cjs')
 const { normalizeMailHost, validateMailPort, resolveMailEndpoint } = require('./ticket-mail-network.cjs')
+const { emptySignature, normalizeSignature } = require('./ticket-mail-signature.cjs')
 
 const ID = 'mail-channel'
 const TEST_TTL_MS = 24 * 60 * 60 * 1000
@@ -48,7 +49,7 @@ function defaultChannel(env) {
       incoming: { protocol: 'imap', host: clean(env.TICKETS_MAIL_IMAP_HOST || 'imap.secureserver.net'), port: 993, security: 'tls', user: clean(env.TICKETS_MAIL_USER), folder: clean(env.TICKETS_MAIL_FOLDER || 'INBOX', 500) },
       outgoing: { protocol: 'smtp', host: clean(env.TICKETS_MAIL_SMTP_HOST || 'smtpout.secureserver.net'), port: 465, security: 'tls', user: '', useIncomingCredentials: true }
     },
-    credentials: {}, tests: { incoming: emptyTest(), outgoing: emptyTest() }, audit: []
+    signature: emptySignature(), credentials: {}, tests: { incoming: emptyTest(), outgoing: emptyTest() }, audit: []
   }
 }
 
@@ -124,7 +125,7 @@ function createMailChannelStore({ sql, db, query: executor, env = process.env })
     const settings = JSON.parse(JSON.stringify(record.settings))
     settings.incoming.passwordConfigured = Boolean(record.credentials?.incoming || (!configured && env.TICKETS_MAIL_PASSWORD))
     settings.outgoing.passwordConfigured = settings.outgoing.useIncomingCredentials ? settings.incoming.passwordConfigured : Boolean(record.credentials?.outgoing)
-    return { version: record.version, settings, tests: record.tests, enabled: record.enabled === true, encryptionReady: encryptionReady(env), configured, updatedAt: record.updatedAt }
+    return { version: record.version, settings, signature: normalizeSignature(record.signature), tests: record.tests, enabled: record.enabled === true, encryptionReady: encryptionReady(env), configured, updatedAt: record.updatedAt }
   }
   function checkVersion(record, version) { if (!Number.isInteger(version) || version !== record.version) throw conflict() }
   async function persist(previous, record, pendingMailboxKey = null) {
@@ -156,6 +157,14 @@ function createMailChannelStore({ sql, db, query: executor, env = process.env })
   }
   return {
     async get() { const previous = await read(); return dto(previous.record, previous.configured) },
+    async saveSignature({ version, signature }, user) {
+      const previous = await read(); checkVersion(previous.record, version)
+      if (!previous.configured || !emailAddress(previous.record.settings.address) || !previous.record.credentials?.incoming) throw failure('Guardá la configuración de correo antes de agregar una firma.', 'MAIL_NOT_CONFIGURED', 409)
+      if (!signature) throw failure('Completá la firma antes de guardarla.', 'MAIL_SIGNATURE_INVALID')
+      const record = { ...previous.record, signature: normalizeSignature(signature) }
+      audit(record, 'save-signature', user, new Date().toISOString())
+      return persist(previous, record)
+    },
     async save({ version, settings: input }, user, { areas } = {}) {
       const previous = await read(); checkVersion(previous.record, version); encryptionKey(env)
       const settings = normalizeSettings(input, areas), old = previous.record.settings
@@ -231,9 +240,10 @@ function createMailChannelStore({ sql, db, query: executor, env = process.env })
     },
     async runtime() {
       const previous = await read()
-      if (!previous.configured) return ticketMailConfig(env)
+      if (!previous.configured) return { ...ticketMailConfig(env), signature: emptySignature() }
       const { record } = previous, settings = record.settings
       const config = { ...ticketMailConfig({ ...env, TICKETS_MAIL_ENABLED: 'false', TICKETS_MAIL_MODE: settings.mode }), enabled: record.enabled, mode: settings.mode, address: settings.address, senderName: settings.senderName, areaId: settings.areaId, user: settings.incoming.user, password: '', imapHost: settings.incoming.host, imapPort: settings.incoming.port, imapSecurity: settings.incoming.security, mailbox: settings.incoming.folder, smtpHost: settings.outgoing.host, smtpPort: settings.outgoing.port, smtpSecurity: settings.outgoing.security, smtpUser: settings.outgoing.useIncomingCredentials ? settings.incoming.user : settings.outgoing.user, smtpPassword: '', testSourceConfirmed: settings.testSourceConfirmed, configurationVersion: record.version }
+      config.signature = normalizeSignature(record.signature)
       if (record.enabled) { const secrets = completeCredentials(previous); config.password = secrets.incoming; config.smtpPassword = settings.outgoing.useIncomingCredentials ? secrets.incoming : secrets.outgoing }
       config.mailboxKey = createHash('sha256').update([config.imapHost, config.address, config.mailbox, config.mode].join('\n')).digest('hex')
       return config

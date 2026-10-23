@@ -58,10 +58,28 @@ for (const engine of ['sqlite', 'postgres']) {
         assert.equal(runtime.password, base().incoming.password); assert.equal(runtime.smtpPassword, base().outgoing.password)
         assert.equal(runtime.areaId, 'technical'); assert.equal(runtime.configurationVersion, current.version)
       })
+      await t.test('firma se guarda sin clave ni desactivar correo, alterar pruebas o credenciales', async () => {
+        const before = JSON.parse((await fx.rows('SELECT data FROM pignus_ticket_settings WHERE id=?', ['mail-channel']))[0].data)
+        const noKey = fx.other({})
+        current = await noKey.saveSignature({ version: current.version, signature: { enabled: true, html: '<b>Soporte Pignus</b><br>3511234567', text: 'No confiar' } }, actor)
+        assert.equal(current.enabled, true)
+        assert.equal(current.signature.text, 'Soporte Pignus\n3511234567')
+        assert.equal(current.signature.enabled, true)
+        const after = JSON.parse((await fx.rows('SELECT data FROM pignus_ticket_settings WHERE id=?', ['mail-channel']))[0].data)
+        assert.deepEqual(after.settings, before.settings)
+        assert.deepEqual(after.tests, before.tests)
+        assert.deepEqual(after.credentials, before.credentials)
+        assert.equal(after.audit.at(-1).action, 'save-signature')
+        assert.equal((await store.runtime()).signature.text, current.signature.text)
+        assert.equal((await store.runtime()).password, base().incoming.password)
+        await rejectCode(() => noKey.saveSignature({ version: before.version, signature: { enabled: false, html: '' } }, actor), 'MAIL_VERSION_CONFLICT')
+        assert.equal((await store.get()).signature.enabled, true)
+      })
       await t.test('save preserva claves sin devolverlas, invalida pruebas y desactiva', async () => {
         const input = base(); input.incoming.password = ''; delete input.outgoing.password
         current = await store.save({ version: current.version, settings: input }, actor, { areas })
         assert.equal(current.enabled, false); assert.equal(current.tests.incoming.ok, false); assert.equal(current.tests.outgoing.ok, false)
+        assert.equal(current.signature.enabled, true); assert.match(current.signature.text, /Soporte Pignus/)
         assert.equal((await store.runtime()).password, '')
         const altered = structuredClone(input); altered.incoming.host = 'imap.otherdomain.com'
         await rejectCode(() => store.save({ version: current.version, settings: altered }, actor, { areas }), 'MAIL_CONFIGURATION')
@@ -164,6 +182,7 @@ test('Canal correo: desactivar una cuenta vacía nunca habilita conexiones sin c
   const fx = await fixture('sqlite')
   try {
     const current = await fx.store.disable({ version: 0 }, actor)
+    await rejectCode(() => fx.store.saveSignature({ version: current.version, signature: { enabled: true, html: 'Firma' } }, actor), 'MAIL_NOT_CONFIGURED')
     await rejectCode(() => fx.store.test({ version: current.version, direction: 'incoming' }, deps), 'MAIL_MISSING_CREDENTIALS')
     await rejectCode(() => fx.store.activate({ version: current.version }, actor), 'MAIL_MISSING_CREDENTIALS')
   } finally { await fx.close() }

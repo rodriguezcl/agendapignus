@@ -1,5 +1,6 @@
 const { parseTicketMail, safeMailError, classifyDeliveryError, emailAddress, messageIds } = require('./ticket-mail.cjs')
 const { validateAttachments } = require('./tickets-attachments.cjs')
+const { sanitizeSignatureHtml } = require('./ticket-mail-signature.cjs')
 
 function createImapAdapter(config) {
   const { ImapFlow } = require('imapflow')
@@ -49,6 +50,7 @@ function createSmtpAdapter(config) {
       const attachments = validateAttachments(payload.attachments || []).map(file => ({ filename: file.fileName, content: Buffer.from(file.data, 'base64'), contentType: file.mimeType }))
       return transport.sendMail({ from: { name: config.senderName || 'Tickets · Agentec', address: config.address }, to: payload.to,
         envelope: { from: config.address, to: [payload.to] }, subject: payload.subject, text: payload.text,
+        ...(typeof payload.html === 'string' ? { html: sanitizeSignatureHtml(payload.html) } : {}),
         messageId: row.message_id, inReplyTo: payload.inReplyTo || undefined, references: payload.references || [], attachments,
         headers: { 'X-Agentec-Ticket': row.ticket_id, 'X-Auto-Response-Suppress': 'All' },
         disableFileAccess: true, disableUrlAccess: true })

@@ -72,6 +72,7 @@ function createMailService({ sql, db, ticketStore, env = process.env, runMail, t
     }
     return exclusive(async () => {
       switch (input.action) {
+        case 'save-signature': await channel.saveSignature(input, user); break
         case 'save': {
           const metadata = await ticketStore.query(user, state, { mode: 'metadata' })
           await channel.save(input, user, { areas: metadata.config.areas })

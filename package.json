@@ -34,6 +34,8 @@
     "mail:tickets:schedule": "node --env-file-if-exists=.env.local scripts/configure-ticket-mail-schedule.cjs"
   },
   "dependencies": {
+    "dompurify": "3.4.17",
+    "html-to-text": "10.0.1",
     "imapflow": "2.9.0",
     "jspdf": "^4.2.1",
     "leaflet": "1.9.4",
@@ -42,7 +44,8 @@
     "nodemailer": "10.2.1",
     "postgres": "^3.4.9",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "sanitize-html": "2.18.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

@@ -96,8 +96,8 @@ function createTicketStore({ sql, db }) {
       const configuration = await settings(), config = configuration.config, mode=params.mode || 'list'
       if (mode==='metadata') {
         if (!d.can(user,'view')&&!d.can(user,'configure')) d.fail('No tenés acceso a Tickets.',403)
-        let mail={enabled:false,outboundEnabled:false,mode:'test'}
-        try { const m=await require('./ticket-mail-channel.cjs').createMailChannelStore({sql,db}).runtime(); mail={enabled:m.enabled,outboundEnabled:m.enabled&&m.mode==='live',mode:m.mode}; if(d.can(user,'configure')) mail={...mail,...await (pg?require('./ticket-mail-store.cjs').postgresTicketMailStore(sql):require('./ticket-mail-store.cjs').sqliteTicketMailStore(db)).status(m.mailboxKey)} } catch { mail.error='Falta completar la configuración del correo.' }
+        let mail={enabled:false,outboundEnabled:false,signatureEnabled:false,mode:'test'}
+        try { const m=await require('./ticket-mail-channel.cjs').createMailChannelStore({sql,db}).runtime(); mail={enabled:m.enabled,outboundEnabled:m.enabled&&m.mode==='live',signatureEnabled:m.signature?.enabled===true,mode:m.mode}; if(d.can(user,'configure')) mail={...mail,...await (pg?require('./ticket-mail-store.cjs').postgresTicketMailStore(sql):require('./ticket-mail-store.cjs').sqliteTicketMailStore(db)).status(m.mailboxKey)} } catch { mail.error='Falta completar la configuración del correo.' }
         return { config:{...config,mail},configVersion:configuration.version,numberingLocked:(await execute('SELECT id FROM pignus_tickets LIMIT 1')).length>0,assignees:d.assignees(state,null,config),employees:d.can(user,'configure')?(state.employees||[]).map(e=>({id:String(e.id),name:e.name||`${e.firstName||''} ${e.lastName||''}`})):[],permissions:policy.resolvePermissions(user) }
       }
       if(!d.can(user,'view')) d.fail('No tenés permiso para consultar tickets.',403)
@@ -197,7 +197,7 @@ function createTicketStore({ sql, db }) {
             await q(`SELECT data FROM pignus_ticket_settings WHERE id=?${pg?' FOR UPDATE':''}`,['mail-channel'])
             const channel=await require('./ticket-mail-channel.cjs').createMailChannelStore({query:q}).runtime()
             const mail=require('./ticket-mail.cjs'),prepared=mail.prepareTicketReply({...item,entries:await entries(q,item.id)},{...input,attachments:input.attachments},user,channel)
-            const entry={...d.entry(item,user,note,now,{channel:'email',visibility:'public',attachments,deliveryStatus:'queued',messageId:prepared.entry.messageId}),id:prepared.entry.id,ticketId:item.id}
+            const entry={...d.entry(item,user,prepared.entry.text,now,{channel:'email',visibility:'public',attachments,deliveryStatus:'queued',messageId:prepared.entry.messageId}),id:prepared.entry.id,ticketId:item.id}
             await addEntry(q,entry);const operation=mail.outboxOperation({...prepared.outbox,entryId:entry.id});await q(operation.sql,operation.params)
           } else await addEntry(q,{...d.entry(item,user,note,now,{channel:input.serviceId?'technical':d.ORIGINS.includes(input.origin)?input.origin:'internal',visibility,attachments,context,sourceServiceId:input.serviceId?String(input.serviceId):undefined}),ticketId:item.id})
         } else if(action==='assign') {

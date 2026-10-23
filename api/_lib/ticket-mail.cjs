@@ -1,5 +1,6 @@
 const { createHash, randomUUID } = require('node:crypto')
 const { validateAttachments } = require('./tickets-attachments.cjs')
+const { appendSignature } = require('./ticket-mail-signature.cjs')
 
 const MAX_MESSAGE_BYTES = 15_000_000
 const MAX_TEXT_LENGTH = 40_000
@@ -113,8 +114,10 @@ function prepareTicketReply(ticket, input, user, env = process.env) {
   if (!config.enabled) throw error('El correo de Tickets todavía no está habilitado.', 'MAIL_DISABLED', 409)
   if (config.mode !== 'live') throw error('El modo de prueba no permite enviar correos. Podés registrar una nota interna.', 'MAIL_TEST_NO_SEND', 409)
   if (ticket.mailboxKey && ticket.mailboxKey !== config.mailboxKey) throw error('Este ticket pertenece a otra configuración de correo. Revisá la cuenta antes de responder.', 'MAIL_ACCOUNT_MISMATCH', 409)
-  const text = String(input?.text || input?.body || input?.note || '').trim()
-  if (!text || text.length > MAX_TEXT_LENGTH) throw error('La respuesta debe contener entre 1 y 40000 caracteres.', 'MAIL_INVALID_REPLY')
+  const replyText = String(input?.text || input?.body || input?.note || '').trim()
+  if (!replyText || replyText.length > MAX_TEXT_LENGTH) throw error('La respuesta debe contener entre 1 y 40000 caracteres.', 'MAIL_INVALID_REPLY')
+  // La cola guarda el contenido firmado: cambios posteriores o reintentos no alteran lo enviado.
+  const content = appendSignature(replyText, config.signature), text = content.text
   const allowed = ticketParticipantEmails(ticket)
   const to = emailAddress(input?.to || ticket.requesterEmail || ticket.requester?.email)
   if (!to || !allowed.includes(to) || to === config.address) throw error('Seleccioná un destinatario externo vinculado al ticket.', 'MAIL_RECIPIENT_FORBIDDEN', 403)
@@ -126,7 +129,7 @@ function prepareTicketReply(ticket, input, user, env = process.env) {
   const references = messageIds(previous.map(entry => entry.messageId)).slice(-20)
   // Los adjuntos de respuesta deben ser validados por el mismo helper del endpoint.
   const attachments = validateAttachments(input?.attachments || [])
-  const payload = { to, subject: `${line(ticket.title).replace(/\s*\[Ticket#\d+\]/gi, '').slice(0, 250)} [Ticket#${String(ticket.number)}]`, text, inReplyTo, references, attachments }
+  const payload = { to, subject: `${line(ticket.title).replace(/\s*\[Ticket#\d+\]/gi, '').slice(0, 250)} [Ticket#${String(ticket.number)}]`, ...content, inReplyTo, references, attachments }
   return {
     entry: { id: entryId, kind: 'email_outbound', text, createdAt: now, authorId: String(user.id), authorName: String(user.name || ''), visibility: 'public', deliveryStatus: 'queued', messageId, to },
     outbox: { id, ticketId: String(ticket.id), entryId, mailboxKey: config.mailboxKey, status: 'queued', attempts: 0, messageId, payload, createdAt: now, nextAttemptAt: now }

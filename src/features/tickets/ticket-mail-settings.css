@@ -43,12 +43,24 @@
 .ticket-mail-confirm { display:grid; gap:20px; }
 .ticket-mail-confirm h2,.ticket-mail-confirm p { margin:0; }
 .ticket-mail-confirm p { line-height:1.6; }
+.ticket-mail-signature { display:grid; gap:16px; min-width:0; padding:20px; border:1px solid var(--ap-border,#d8dfe9); border-radius:9px; }
+.ticket-mail-signature > header { display:grid; gap:8px; }
+.ticket-signature-paper { background:#fff; color:#25374b; border:1px solid var(--ap-border,#d8dfe9); border-radius:7px; padding:16px; overflow:auto; }
+.ticket-signature-editor { min-height:150px; outline:none; font:14px/1.5 Arial,sans-serif; overflow-wrap:anywhere; }
+.ticket-signature-paper:focus-within { outline:2px solid var(--ap-accent,#986d00); outline-offset:2px; }
+.ticket-signature-editor:empty::before { content:attr(data-placeholder); color:#63758a; pointer-events:none; }
+.ticket-signature-editor img { max-width:100%; object-fit:contain; }
+.ticket-signature-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.ticket-signature-footer .tickets-actions { flex-wrap:wrap; }
 @media(max-width:1050px) {
   .ticket-mail-identity { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .ticket-mail-save { align-items:stretch; flex-direction:column; }
   .ticket-mail-save > .tickets-actions { justify-content:flex-end; }
 }
 @media(max-width:760px) {
+  .ticket-mail-signature { padding:16px; }
+  .ticket-signature-footer,.ticket-signature-footer .tickets-actions { width:100%; }
+  .ticket-signature-footer button { flex:1; }
   .ticket-mail-connections,.ticket-mail-identity,.ticket-mail-mode,.ticket-mail-runtime { grid-template-columns:1fr; }
   .ticket-mail-card { padding:16px; }
   .ticket-mail-status-row > small { margin-left:0; }

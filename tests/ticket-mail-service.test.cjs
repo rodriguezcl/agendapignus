@@ -75,7 +75,7 @@ test('el estado local informa que la ejecución automática no está configurada
 test('consultar, guardar, probar y procesar correo exige configurar Tickets', async () => {
   const f = await fixture()
   try {
-    for (const action of [null, 'save', 'test', 'activate', 'disable', 'run']) await assert.rejects(f.request(action && { action }, { id: 'tech', roleCode: 'technician' }), { statusCode: 403 })
+    for (const action of [null, 'save', 'save-signature', 'test', 'activate', 'disable', 'run']) await assert.rejects(f.request(action && { action }, { id: 'tech', roleCode: 'technician' }), { statusCode: 403 })
     await assert.rejects(f.service.request({ method: 'DELETE', user: admin }), { statusCode: 405 })
     assert.equal(f.seen.length, 0)
   } finally { f.close() }
@@ -123,6 +123,7 @@ test('guardar y sincronizar comparten bloqueo entre procesos y lo liberan al fal
     const mailStore = sqliteTicketMailStore(f.db)
     const owner = await mailStore.acquireMailbox(CHANNEL_LEASE, 10000)
     await assert.rejects(f.request({ action: 'save', version: 4, settings: settings() }), { statusCode: 409 })
+    await assert.rejects(f.request({ action: 'save-signature', version: 4, signature: { enabled: true, html: 'Firma' } }), { statusCode: 409 })
     await assert.rejects(f.service.process(), { statusCode: 409 })
     await mailStore.releaseMailbox(CHANNEL_LEASE, owner)
     await assert.rejects(f.service.process(), error => error.statusCode === 502 && !error.message.includes('privada'))
@@ -156,4 +157,46 @@ test('el correo nuevo usa el área elegida y una respuesta conserva su asignaci�
     const updated = (await f.ticketStore.query(admin, {}, { mode: 'detail', id: first.ticketId })).ticket
     assert.equal(updated.areaId, area.id)
   } finally { f.close() }
+})
+
+test('firma común se guarda sin reprobar correo y queda en cola e historial sólo para respuestas externas', async () => {
+  const f = await fixture(), previousSecret = process.env.PIGNUS_SESSION_SECRET
+  process.env.PIGNUS_SESSION_SECRET = env.PIGNUS_SESSION_SECRET
+  try {
+    const active = await f.activate('live')
+    await assert.rejects(f.request({ action: 'save-signature', version: active.version }), { code: 'MAIL_SIGNATURE_INVALID' })
+    const signed = await f.request({ action: 'save-signature', version: active.version, signature: { enabled: true, html: '<b>Atención Pignus</b><br>Equipo de soporte' } })
+    assert.equal(signed.enabled, true)
+    assert.deepEqual(signed.tests, active.tests)
+    const metadata = await f.ticketStore.query(admin, {}, { mode: 'metadata' })
+    assert.equal(metadata.config.mail.signatureEnabled, true)
+    assert.equal(metadata.config.mail.signature, undefined)
+    assert.equal(metadata.config.mail.outboundEnabled, true)
+    const runtime = await require('../api/_lib/ticket-mail-channel.cjs').createMailChannelStore({ db: f.db, env }).runtime()
+    const received = await f.ticketStore.ingestMail({ messageId: '<signature-case@example.com>', sender: { email: 'cliente@example.com', name: 'Cliente' }, subject: 'Consulta firma', text: 'Necesito ayuda', mode: 'live', mailboxKey: runtime.mailboxKey, areaId: 'technical' })
+    let ticket = (await f.ticketStore.query(admin, {}, { mode: 'detail', id: received.ticketId })).ticket
+    const command = (action, note) => ({ action, commandId: require('node:crypto').randomUUID(), id: ticket.id, version: ticket.version, note })
+    ticket = (await f.ticketStore.run(admin, {}, command('reply', 'Estamos revisando el caso.'))).ticket
+    const payload = JSON.parse(f.db.prepare('SELECT payload FROM pignus_ticket_mail_outbox').get().payload)
+    const response = ticket.messages.find(item => item.deliveryStatus === 'queued')
+    assert.equal(response.body, payload.text)
+    assert.equal(response.note, payload.text)
+    assert.match(response.body, /Estamos revisando el caso\.\n\nAtención Pignus\nEquipo de soporte/)
+    assert.match(payload.html, /<b>Atención Pignus<\/b>/)
+    ticket = (await f.ticketStore.run(admin, {}, { ...command('comment', 'Nota sólo interna'), visibility: 'internal' })).ticket
+    const note = ticket.messages.find(item => item.body === 'Nota sólo interna')
+    assert.equal(note.visibility, 'internal')
+    const state = { roles: [{ id: 'admin-role', code: 'administrator', name: 'Administrador', permissions: {} }], employees: [{ id: admin.id, name: admin.name, roleId: 'admin-role', status: 'Activo' }] }
+    ticket = (await f.ticketStore.run(admin, state, { ...command('assign', ''), assigneeId: admin.id })).ticket
+    ticket = (await f.ticketStore.run(admin, {}, command('resolve', 'Quedó solucionado'))).ticket
+    assert.equal(ticket.status, 'Resuelto')
+    assert.equal(ticket.resolution, 'Quedó solucionado')
+    const stored = f.db.prepare('SELECT data FROM pignus_ticket_entries WHERE ticket_id=?').all(ticket.id).map(row => JSON.parse(row.data))
+    assert.equal(stored.filter(item => item.body?.includes('Atención Pignus')).length, 1)
+    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM pignus_ticket_mail_outbox').get().n, 1)
+  } finally {
+    if (previousSecret === undefined) delete process.env.PIGNUS_SESSION_SECRET
+    else process.env.PIGNUS_SESSION_SECRET = previousSecret
+    f.close()
+  }
 })

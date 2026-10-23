@@ -52,9 +52,19 @@ El formulario separa **Correo entrante** de **Correo saliente** siguiendo la org
 
 Para **GoDaddy Professional Email**, la configuración oficial es `imap.secureserver.net`, puerto `993`, SSL/TLS, y `smtpout.secureserver.net`, puerto `465`, SSL/TLS; el usuario suele ser la dirección completa. Verificar el producto contratado: estas instrucciones no configuran una cuenta Microsoft 365. [Configuración oficial de GoDaddy](https://www.godaddy.com/en-ph/help/use-imap-settings-to-add-my-professional-email-to-a-client-32204).
 
-Guardar datos deja el canal pausado e invalida las pruebas anteriores. Se verifica la misma revisión guardada antes de permitir la activación; las dos pruebas deben haber resultado correctas durante las últimas 24 horas. Probar entrada autentica y abre la carpeta en sólo lectura; probar salida usa `SMTP.verify`, **sin enviar un mensaje**. Esta última prueba no acredita entrega, aceptación de un remitente específico ni recepción por el cliente. Ese alcance coincide con lo documentado para [verificación de Nodemailer](https://nodemailer.com/smtp#verifying-the-configuration).
+Guardar los datos de conexión deja el canal pausado e invalida las pruebas anteriores. Se verifica la misma revisión guardada antes de permitir la activación; las dos pruebas deben haber resultado correctas durante las últimas 24 horas. Probar entrada autentica y abre la carpeta en sólo lectura; probar salida usa `SMTP.verify`, **sin enviar un mensaje**. Esta última prueba no acredita entrega, aceptación de un remitente específico ni recepción por el cliente. Ese alcance coincide con lo documentado para [verificación de Nodemailer](https://nodemailer.com/smtp#verifying-the-configuration).
 
 Zammad también ofrece conservar mensajes, pero esa opción marca los importados como leídos; su verificación de cuenta envía correos de prueba. Agentec mantiene la lectura por UID sin modificar flags y no envía correos durante la prueba de conexión. La distinción permite conservar la convivencia acordada con Zammad. [Conservación y verificación en Zammad](https://admin-docs.zammad.org/en/latest/channels/email/accounts/account-setup.html#keep-messages-on-server).
+
+### Firma común de soporte
+
+En **Correo de soporte → Firma de las respuestas** se escribe o pega la firma compartida por todos los usuarios que responden desde el buzón. Puede copiarse el bloque visible de la firma de GoDaddy; la conexión IMAP/SMTP de Agentec no sincroniza esa configuración del webmail. El editor conserva formato compatible, tablas, enlaces y logos con URL HTTPS pública. No incorpora imágenes locales, `cid:` ni imágenes pegadas como datos; esas imágenes deben estar publicadas en HTTPS para incluirlas.
+
+Activar **Agregar la firma a las respuestas por correo** y presionar **Guardar firma** aplica el cambio a las respuestas nuevas. Este guardado es independiente: no pausa el canal ni modifica credenciales o pruebas de conexión. Requiere el permiso de configuración de Tickets y una cuenta de correo ya guardada. El servidor valida la versión y el contenido, elimina HTML activo y deriva la alternativa de texto; límites: 50.000 caracteres de HTML y 8.000 de texto.
+
+La respuesta queda firmada al registrarse en la cola. Los reintentos conservan ese contenido aunque luego cambie la firma; los mensajes ya encolados sin firma no se modifican. El historial conserva el texto firmado. Las notas internas y las resoluciones no agregan firma ni generan por sí solas un correo. El destinatario recibe versiones HTML y texto cuando la firma está habilitada; su cliente de correo puede bloquear imágenes remotas.
+
+**Guardar gestión** cierra la ficha únicamente cuando el servidor confirma el guardado y actualiza la bandeja. Si se solicitó responder, el aviso indica que el mensaje quedó en cola; su entrega se consulta en la conversación. Ante un error, la ficha conserva el contenido y los adjuntos para revisar o reintentar.
 
 ### Protección y persistencia de las credenciales
 
