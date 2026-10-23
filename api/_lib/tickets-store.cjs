@@ -6,7 +6,9 @@ const { validateAttachments } = require('./tickets-attachments.cjs')
 const { MAIL_SCHEMA, sqlParameters } = require('./ticket-mail-store.cjs')
 const sla = require('./ticket-sla.cjs')
 const communications = require('./ticket-communications.cjs')
+const { RESOLUTION_METHODS, resolutionMethod } = require('./ticket-resolution.cjs')
 const { requesterIds, mergeRequesterIds, sourceTicketIds, backfillMergedRequesters } = require('./ticket-requesters.cjs')
+const serviceSuggestions = require('./ticket-service-suggestion.cjs')
 const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS pignus_ticket_settings (id TEXT PRIMARY KEY, data TEXT NOT NULL)',
   'CREATE TABLE IF NOT EXISTS pignus_tickets (id TEXT PRIMARY KEY, number TEXT NOT NULL UNIQUE, customer_id TEXT, status TEXT NOT NULL, area_id TEXT, assignee_id TEXT, created_by_id TEXT, requester_id TEXT, legacy_id TEXT UNIQUE, updated_at TEXT NOT NULL, search_text TEXT NOT NULL, data TEXT NOT NULL)',
@@ -34,7 +36,7 @@ function sameMailContext(ticket, namespace, mode) {
 }
 function createTicketStore({ sql, db }) {
   const pg = Boolean(sql)
-  let readiness, queue = Promise.resolve()
+  let readiness, serviceDefaultsReady, queue = Promise.resolve()
   const executor = connection => async (query, args = []) => {
     if (pg) return connection.unsafe(sqlParameters(query), args)
     const stmt = connection.prepare(query)
@@ -85,6 +87,26 @@ function createTicketStore({ sql, db }) {
     return serialized(async () => { db.exec('BEGIN IMMEDIATE'); try { const result = await fn(execute); db.exec('COMMIT'); return result } catch (error) { db.exec('ROLLBACK'); throw error } })
   }
   async function settings(q = execute, locked = false) { return parse((await q(`SELECT data FROM pignus_ticket_settings WHERE id=?${pg && locked ? ' FOR UPDATE' : ''}`, ['config']))[0]) }
+  async function ensureServiceDefaults(state) {
+    // Se necesita el catálogo completo, no una proyección sin tipos de servicio.
+    if (!Array.isArray(state.services)) return
+    if (!serviceDefaultsReady) serviceDefaultsReady = (async () => {
+      const migration = 'ticket-service-defaults-v1'
+      if ((await execute('SELECT id FROM pignus_ticket_settings WHERE id=?', [migration])).length) return
+      await transaction(async q => {
+        const configuration = await settings(q, true)
+        if ((await q('SELECT id FROM pignus_ticket_settings WHERE id=?', [migration])).length) return
+        const next = serviceSuggestions.initializeServiceDefaults(configuration.config, state, d.defaultConfig())
+        if (JSON.stringify(next) !== JSON.stringify(configuration.config)) {
+          configuration.config = next
+          configuration.version++
+          await q('UPDATE pignus_ticket_settings SET data=? WHERE id=?', [JSON.stringify(configuration), 'config'])
+        }
+        await q('INSERT INTO pignus_ticket_settings (id,data) VALUES (?,?) ON CONFLICT(id) DO NOTHING', [migration, '{"complete":true}'])
+      })
+    })().catch(error => { serviceDefaultsReady = null; throw error })
+    return serviceDefaultsReady
+  }
   async function ticket(q, id, locked = false) { return parse((await q(`SELECT data FROM pignus_tickets WHERE id=? OR number=?${pg && locked ? ' FOR UPDATE' : ''}`, [String(id || ''), String(id || '').replace(/^Ticket#/i, '')]))[0]) }
   async function principal(q, item, locked = false) {
     const seen = new Set()
@@ -151,9 +173,9 @@ function createTicketStore({ sql, db }) {
     await q('UPDATE pignus_ticket_settings SET data=? WHERE id=?', [JSON.stringify(configuration),'config'])
     return String(number).padStart(5,'0')
   }
-  async function detailed(q, item, user) {
+  async function detailed(q, item, user, state = {}, config) {
     const aliases = (await q('SELECT number FROM pignus_ticket_aliases WHERE ticket_id=? ORDER BY number',[item.id])).map(row=>row.number)
-    return d.present(item,user,await entries(q,item.id),aliases,true)
+    return { ...d.present(item,user,await entries(q,item.id),aliases,true), suggestedServiceId: serviceSuggestions.suggestedServiceId(item, config || (await settings(q)).config, state) }
   }
   async function customerLock(q, customerId) { if (pg && customerId) await q('SELECT pg_advisory_xact_lock(hashtext(?))',[`ticket-customer:${customerId}`]) }
   async function duplicates(q, customerId, user, state, config, locked=false) {
@@ -162,6 +184,7 @@ function createTicketStore({ sql, db }) {
   }
   async function query(user,state,params={}) {
     await ensure()
+    await ensureServiceDefaults(state)
     return serialized(async()=>{
       await rememberEscalationRecipients(execute,state)
       const configuration = await settings(), config = { ...configuration.config, sla: configuration.config.sla || sla.defaultSlaConfig() }, mode=params.mode || 'list'
@@ -169,7 +192,7 @@ function createTicketStore({ sql, db }) {
         if (!d.can(user,'view')&&!d.can(user,'configure')) d.fail('No tenés acceso a Tickets.',403)
         let mail={enabled:false,outboundEnabled:false,signatureEnabled:false,mode:'test'}
         try { const m=await require('./ticket-mail-channel.cjs').createMailChannelStore({sql,db}).runtime(); mail={enabled:m.enabled,outboundEnabled:m.enabled&&m.mode==='live',signatureEnabled:m.signature?.enabled===true,mode:m.mode}; if(d.can(user,'configure')) mail={...mail,...await (pg?require('./ticket-mail-store.cjs').postgresTicketMailStore(sql):require('./ticket-mail-store.cjs').sqliteTicketMailStore(db)).status(m.mailboxKey)} } catch { mail.error='Falta completar la configuración del correo.' }
-        return { config:{...config,mail},configVersion:configuration.version,numberingLocked:(await execute('SELECT id FROM pignus_tickets LIMIT 1')).length>0,assignees:d.assignees(state,null,config),employees:d.can(user,'configure')?(state.employees||[]).map(e=>({id:String(e.id),name:e.name||`${e.firstName||''} ${e.lastName||''}`})):[],permissions:policy.resolvePermissions(user) }
+        return { config:{...config,mail},configVersion:configuration.version,numberingLocked:(await execute('SELECT id FROM pignus_tickets LIMIT 1')).length>0,assignees:d.assignees(state,null,config),services:serviceSuggestions.serviceOptions(state),employees:d.can(user,'configure')?(state.employees||[]).map(e=>({id:String(e.id),name:e.name||`${e.firstName||''} ${e.lastName||''}`})):[],permissions:policy.resolvePermissions(user) }
       }
       if(!d.can(user,'view')) d.fail('No tenés permiso para consultar tickets.',403)
       if(mode==='customers') {
@@ -180,7 +203,7 @@ function createTicketStore({ sql, db }) {
       if(mode==='services'){if(!d.can(user,'linkService'))d.fail('No tenés permiso para vincular servicios.',403);return {items:(state.history||[]).filter(r=>read.serviceReadable(r,user,state)&&(!params.customerId||String(read.customerForRecord(r,state)?.customerId||r.customerId)===String(params.customerId))).sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,100).map(r=>({id:String(r.id),date:r.date,label:`${r.date||''} · ${r.client||r.clientAccount||''} · ${r.service||r.serviceType||r.detail||'Servicio'}`}))}}
       if(mode==='duplicates') { const customer=d.duplicateCustomer(params,user,state,{allowNoCustomer:true});const customerId=String(customer?.customerId||customer?.id||''); return customerId?{...await duplicates(execute,customerId,user,state,config),customerId}:{customerId:'',candidates:[],duplicateToken:''} }
       if(mode==='duplicateDetail') { const item=await ticket(execute,params.id);d.assertDuplicate(item,params,user,state);return {ticket:d.duplicatePreview(item,await entries(execute,item.id))} }
-      if(mode==='detail') { let item=await ticket(execute,params.id);if(!item){const alias=(await execute('SELECT ticket_id FROM pignus_ticket_aliases WHERE number=?',[String(params.id||'').replace(/^Ticket#/i,'')]))[0];if(alias)item=await ticket(execute,alias.ticket_id)}item=await principal(execute,item);d.assertVisible(item,user,state,config);return {ticket:await detailed(execute,item,user)} }
+      if(mode==='detail') { let item=await ticket(execute,params.id);if(!item){const alias=(await execute('SELECT ticket_id FROM pignus_ticket_aliases WHERE number=?',[String(params.id||'').replace(/^Ticket#/i,'')]))[0];if(alias)item=await ticket(execute,alias.ticket_id)}item=await principal(execute,item);d.assertVisible(item,user,state,config);return {ticket:await detailed(execute,item,user,state,config)} }
       const field=key=>pg?`(data::jsonb ->> '${key}')`:`json_extract(data,'$.${key}')`
       let where=[],args=[]
       if(d.personalScope(user)) {
@@ -247,13 +270,15 @@ function createTicketStore({ sql, db }) {
     if(!/^[\w-]{8,100}$/.test(commandId))d.fail('Identificador de operación inválido.')
     const action=input.action,permission=d.ACTION_PERMISSIONS[action]
     if(action==='configure'?!d.can(user,'configure'):['create','contribute'].includes(action)?(!d.can(user,'view')||!d.can(user,'create')&&!d.can(user,'fromService')):!permission||!d.can(user,permission))d.fail('No tenés permiso para realizar esta acción.',403)
+    await ensure()
+    await ensureServiceDefaults(state)
     return transaction(async q=>{
       // Reintentos de un mismo comando se serializan sin bloquear casos independientes.
       await rememberEscalationRecipients(q,state)
       if(pg)await q('SELECT pg_advisory_xact_lock(hashtext(?))',[`ticket-command:${commandId}`])
       const configuration=await settings(q,['create','configure'].includes(action)),config=configuration.config
       const cached=(await q('SELECT * FROM pignus_ticket_commands WHERE id=?',[commandId]))[0],fingerprint=commandFingerprint(input)
-      if(cached){if(cached.actor_id!==String(user.id)||cached.fingerprint!==fingerprint)d.fail('El identificador ya pertenece a otra operación.',409); if(cached.ticket_id){const old=await principal(q,await ticket(q,cached.ticket_id));d.assertVisible(old,user,state,config);return {ticket:await detailed(q,old,user)}}return JSON.parse(cached.result||'{}')}
+      if(cached){if(cached.actor_id!==String(user.id)||cached.fingerprint!==fingerprint)d.fail('El identificador ya pertenece a otra operación.',409); if(cached.ticket_id){const old=await principal(q,await ticket(q,cached.ticket_id));d.assertVisible(old,user,state,config);return {ticket:await detailed(q,old,user,state,config)}}return JSON.parse(cached.result||'{}')}
       const now=new Date().toISOString()
       if(action==='configure') {
         if(Number(input.version??input.configVersion)!==configuration.version)d.fail('La configuración cambió. Actualizá antes de guardar.',409)
@@ -319,6 +344,7 @@ function createTicketStore({ sql, db }) {
         } else if(action==='wait') {item.status='En espera';item.waitReason=note;item.nextReviewAt=d.timestamp(input.nextReviewAt);eventLabel='Dejó el caso en espera'}
         else if(action==='resume') {item.status='En gestión';item.nextReviewAt='';eventLabel='Retomó la gestión'}
         else if(action==='resolve') {
+          const method=resolutionMethod(input.resolutionMethod)
           const actorId=String(user.id),actorName=user.name||[user.firstName,user.lastName].filter(Boolean).join(' ')||'Usuario'
           // Resolver un caso visible permite asumirlo al cerrarlo; no concede
           // permiso para reasignar otros casos ni sustituye al responsable actual.
@@ -326,9 +352,9 @@ function createTicketStore({ sql, db }) {
             item.assigneeId=actorId;item.assigneeName=actorName
             await addEntry(q,{...d.entry(item,user,`Asumió la responsabilidad al resolver y cerrar el ticket: ${actorName}.`,now,{kind:'event',action:'automatic-assignment',visibility:'internal'}),ticketId:item.id})
           }
-          item.status='Resuelto';item.resolvedAt=now;item.resolvedById=actorId;item.resolvedByName=actorName;item.resolution=note;item.nextReviewAt='';eventLabel='Resolvió el ticket'
+          item.status='Resuelto';item.resolvedAt=now;item.resolvedById=actorId;item.resolvedByName=actorName;item.resolution=note;item.resolutionMethod=method;item.nextReviewAt='';eventLabel='Resolvió el ticket'
         }
-        else if(action==='reopen') {if(item.status!=='Resuelto')d.fail('El ticket ya está abierto.',409);item.status='En gestión';item.resolvedAt='';delete item.resolvedByServiceId;delete item.resolvedById;delete item.resolvedByName;eventLabel='Reabrió el ticket'}
+        else if(action==='reopen') {if(item.status!=='Resuelto')d.fail('El ticket ya está abierto.',409);item.status='En gestión';item.resolvedAt='';delete item.resolvedByServiceId;delete item.resolvedById;delete item.resolvedByName;delete item.resolutionMethod;eventLabel='Reabrió el ticket'}
         else if(action==='linkCustomer') {const customer=d.customerFor(input,user,state);if(!customer)d.fail('Seleccioná una cuenta.');if(item.customerId&&item.customerId!==String(customer.customerId||customer.id))d.fail('El ticket ya tiene una cuenta vinculada.');const rule=d.classification(config,item.categoryId,item.subcategoryId);if(rule.effective.customerPolicy==='none')d.fail('Reclasificá el ticket para permitir una cuenta.');item.customerId=String(customer.customerId||customer.id);item.customerSnapshot=d.snapshot(customer);item.scope='customer';eventLabel='Vinculó un abonado o cliente'}
         else if(action==='linkService') {const record=(state.history||[]).find(r=>String(r.id)===String(input.serviceId));if(!d.can(user,'linkService')||!record||!read.serviceReadable(record,user,state))d.fail('No tenés acceso al servicio.',403);if(item.customerId&&item.customerId!==String(read.customerForRecord(record,state)?.customerId||record.customerId||''))d.fail('La cuenta del servicio no coincide.');await require('./ticket-service-lifecycle.cjs').adoptLegacyServiceLinks(q,item,{ticket});const related=record.serviceJourney?(state.history||[]).filter(r=>r.serviceJourney?.id===record.serviceJourney.id):[record];item.serviceIds=[...new Set([...item.serviceIds,...related.map(r=>String(r.id))])];item.resolutionServiceIds=[...new Set([...(item.resolutionServiceIds||[]),...related.map(r=>String(r.id))])];item.serviceSchedule=related.map(r=>({id:String(r.id),date:r.date,time:r.time,status:r.status,service:r.service}));eventLabel='Vinculó un servicio';if(!['Completado','Cancelado','Avance registrado'].includes(record.status)){item.status='En gestión';await communicate(q,item,'scheduled',commandId,now,{service:record},user)}}
         else if(action==='merge') {
@@ -350,14 +376,14 @@ function createTicketStore({ sql, db }) {
           await addEntry(q,{...d.entry(target,user,`Fusionó Ticket#${item.number}. ${note}`,now,{kind:'event'}),ticketId:target.id});await save(q,target)
           item.status='Fusionado';item.mergedIntoId=target.id;item.mergedIntoNumber=target.number;eventLabel=`Fusionado en Ticket#${target.number}`
         }
-        if(eventLabel)await addEntry(q,{...d.entry(item,user,[eventLabel,note].filter(Boolean).join(' · '),now,{kind:'event',action:eventLabel}),ticketId:item.id})
-        sla.transitionSla(item,beforeTicket,action,config,now,{humanUpdate:item.origin!=='email'&&['comment','reply','wait','resolve','linkService'].includes(action)&&visibility!=='internal',actorId:user.id})
+        if(eventLabel)await addEntry(q,{...d.entry(item,user,[eventLabel,action==='resolve'&&item.resolutionMethod?`Medio: ${RESOLUTION_METHODS[item.resolutionMethod]}`:'',note].filter(Boolean).join(' · '),now,{kind:'event',action:eventLabel,...(action==='resolve'&&item.resolutionMethod?{resolutionMethod:item.resolutionMethod}:{})}),ticketId:item.id})
+        sla.transitionSla(item,beforeTicket,action,config,now,{humanUpdate:(action==='resolve'&&['phone','chat'].includes(item.resolutionMethod))||(item.origin!=='email'&&['comment','reply','wait','resolve','linkService'].includes(action)&&visibility!=='internal'),actorId:user.id})
         item.participantIds=[...new Set([...item.participantIds,String(user.id)])];item.version++;item.updatedAt=now;await save(q,item)
         const noticeType={resolve:'resolved',reopen:'reopened',wait:'waiting'}[action]
         if(noticeType)await communicate(q,item,noticeType,commandId,now,{},user)
       }
       await q('INSERT INTO pignus_ticket_commands (id,actor_id,fingerprint,ticket_id) VALUES (?,?,?,?)',[commandId,String(user.id),fingerprint,item.id])
-      return {ticket:await detailed(q,item.status==='Fusionado'?await ticket(q,item.mergedIntoId):item,user)}
+      return {ticket:await detailed(q,item.status==='Fusionado'?await ticket(q,item.mergedIntoId):item,user,state,config)}
     })
   }
   async function syncLegacy(state, { connection } = {}) {
@@ -424,7 +450,7 @@ function createTicketStore({ sql, db }) {
       if(!item&&!mailCategory)d.fail('Configurá una categoría activa sin cuenta obligatoria para recibir correos.',409)
       const mailRule=mailCategory&&d.classification(configuration.config,mailCategory.id,mailCategory.subcategories.find(c=>c.id==='review'&&c.active)?.id||'')
       if(!item)item={id:crypto.randomUUID(),number:await nextNumber(q,configuration),version:1,title:mail.subject.slice(0,160),description:mail.text.slice(0,10000),scope:'unlinked',mailReviewRequired:identifierCollision||mail.mailReviewRequired||false,mailMode:mode,mailboxKey:namespace,customerId:'',customerSnapshot:null,origin:'email',categoryId:mailRule.category.id,subcategoryId:mailRule.subcategory?.id||'',eventType:'',zone:'',createdAt:now,updatedAt:now,requesterId:'',requesterName:mail.sender.name||mail.sender.email,requesterEmail:mail.sender.email,createdById:'email',createdByName:mail.sender.name||mail.sender.email,externalParticipants:[mail.sender.email],participantIds:[],areaId:configuration.config.areas.find(area=>area.active!==false&&area.id===mail.areaId)?.id||mailRule.effective.areaId||'',assigneeId:'',assigneeName:'',status:'Nuevo',priority:mailRule.effective.priority,ruleVersion:configuration.version,serviceIds:[]}
-      else {item.mailboxKey=namespace;item.mailMode=mode;item.version++;item.updatedAt=now;if(item.status==='Resuelto'||item.status==='En espera'){item.status='En gestión';item.resolvedAt='';delete item.resolvedByServiceId;delete item.resolvedById;delete item.resolvedByName;item.nextReviewAt='';await addEntry(q,{...d.entry(item,{id:'email',name:'Correo'},'El cliente agregó información y el caso vuelve a gestión.',now,{kind:'event',action:'reopen'}),ticketId:item.id})}}
+      else {item.mailboxKey=namespace;item.mailMode=mode;item.version++;item.updatedAt=now;if(item.status==='Resuelto'||item.status==='En espera'){item.status='En gestión';item.resolvedAt='';delete item.resolvedByServiceId;delete item.resolvedById;delete item.resolvedByName;delete item.resolutionMethod;item.nextReviewAt='';await addEntry(q,{...d.entry(item,{id:'email',name:'Correo'},'El cliente agregó información y el caso vuelve a gestión.',now,{kind:'event',action:'reopen'}),ticketId:item.id})}}
       sla.transitionSla(item,previousTicket,'inbound',configuration.config,now)
       const attachments=validateAttachments((mail.attachments||[]).map(f=>({fileName:f.fileName||f.name,mimeType:f.mimeType||f.mime,data:Buffer.isBuffer(f.data)?f.data.toString('base64'):f.data})))
       await save(q,item);await addEntry(q,{...d.entry(item,{id:'email',name:mail.sender.name||mail.sender.email},mail.text,now,{channel:'email',visibility:'public',messageId:mail.messageId,from:mail.sender.email,receivedAt:mail.receivedAt,reviewRequired:identifierCollision||mail.mailReviewRequired||false,truncated:mail.textTruncated||mail.truncated||false,attachments}),ticketId:item.id});await q('INSERT INTO pignus_ticket_mail_ids (message_id,ticket_id,sender) VALUES (?,?,?)',[messageKey,item.id,mail.sender.email])

@@ -45,7 +45,7 @@ import ServiceTypesField from "../../../components/ServiceTypesField.jsx";
 import { withLunchNotice } from "../../../domain/agenda/lunch-placement.mjs";
 import ServicePreparationButton from "../../../components/ServicePreparationButton.jsx";
 import { acknowledgedInteraction, afterInteractionPaint, interactionIsConfirmed, membershipMatches, weeklyTeamInteractionKey } from "../../../presentation/pending-interaction.mjs";
-import { ticketLinkFields, ticketReferenceDetail, ticketServiceDraft } from '../application/ticket-service-draft.mjs';
+import { suggestedServiceForTicket, ticketLinkFields, ticketReferenceDetail, ticketServiceDraft } from '../application/ticket-service-draft.mjs';
 import TicketServiceSchedule from './TicketServiceSchedule.jsx';
 
 export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, openRequest, onOpenRequestHandled, navigationGuardRef, persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, openDaily, authUser, vehicles, permissions = {}, confirmedRevision }) {
@@ -286,7 +286,7 @@ export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, o
       onOpenRequestHandled()
       if (!requirePermission('planning.create') || !requirePermission('tickets.linkService')) return
       try {
-        ticketServiceDraft(openRequest.ticket, customers, authUser)
+        ticketServiceDraft(openRequest.ticket, customers, authUser, services)
         setTicketSchedule({ ticket: openRequest.ticket, day: today, teamId: '', startTime: '' })
       } catch (error) { setNotice(error.message) }
       return
@@ -840,10 +840,10 @@ export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, o
     let ticketDraft = {}
     if (ticket) {
       if (!requirePermission('tickets.linkService')) return
-      try { ticketDraft = ticketServiceDraft(ticket, customers, authUser) }
+      try { ticketDraft = ticketServiceDraft(ticket, customers, authUser, services) }
       catch (error) { setNotice(error.message); return }
     }
-    const task = taskWithServiceEstimate({ ...blankTask(), ...ticketDraft, time: startTime }, null)
+    const task = taskWithServiceEstimate({ ...blankTask(), ...ticketDraft, time: startTime }, ticket ? suggestedServiceForTicket(ticket, services) : null)
     const teamSnapshot = dayPlan(day).teams[teamIndex]
     if (!teamSnapshot) { setNotice('El equipo ya no está disponible. Revisá la planificación.'); return }
     const available = availableGapsForTeam(day, teamIndex, new Date())
@@ -955,7 +955,7 @@ export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, o
       const advanced = validDay ? advancedGuardForDay(day) : null
       const unavailable = !validDay ? 'Elegí una fecha.' : day < today ? finishedDayMessage(day) : !hours ? 'La fecha no está habilitada para programar servicios.' : holiday?.blocked ? 'Primero definí la disponibilidad del feriado desde la agenda.' : advanced ? advancedSaturdayGuardMessage(advanced) : ''
       const gaps = !unavailable && teamIndex >= 0 ? availableGapsForTeam(day, teamIndex, planningClock) : []
-      return <TicketServiceSchedule selection={ticketSchedule} today={today} teams={teams} gaps={gaps} unavailable={unavailable} onChange={patch => setTicketSchedule(previous => ({ ...previous, ...patch }))} onClose={() => setTicketSchedule(null)} onContinue={() => addTask(day, teamIndex, ticketSchedule.startTime, ticketSchedule.ticket)} />
+      return <TicketServiceSchedule selection={ticketSchedule} suggestedService={suggestedServiceForTicket(ticketSchedule.ticket, services)} today={today} teams={teams} gaps={gaps} unavailable={unavailable} onChange={patch => setTicketSchedule(previous => ({ ...previous, ...patch }))} onClose={() => setTicketSchedule(null)} onContinue={() => addTask(day, teamIndex, ticketSchedule.startTime, ticketSchedule.ticket)} />
     })()}
     {techPicker && <button title="Cerrá el selector de técnicos y volvé a la agenda." className="picker-backdrop" aria-label="Cerrar selector de técnicos" onClick={() => setTechPicker(null)} />}
     {teamRemoval && <Confirm title="Quitar equipo" detail={`¿Querés quitar ${teamRemoval.label} de la planificación del ${prettyDate(teamRemoval.day)}? Se quitará el equipo y su asignación de técnicos de ese día. Si sólo tiene controles vehiculares pendientes, un administrador también los omitirá porque esos vehículos no se utilizarán. Otros servicios o controles completados impiden eliminarlo.`} destructive action={() => removeWeeklyTeam(teamRemoval.day, teamRemoval.teamIndex)} close={() => setTeamRemoval(null)} />}

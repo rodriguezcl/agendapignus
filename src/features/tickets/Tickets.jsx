@@ -5,7 +5,7 @@ import useDiscardGuard from '../../components/ui/useDiscardGuard.jsx'
 import ModuleIntroduction from '../../components/ModuleIntroduction.jsx'
 import Icon from '../../components/ui/Icon.jsx'
 import TicketSlaSummary, { TicketServiceSchedule } from './TicketSlaSummary.jsx'
-import { TICKET_STATES, TICKET_PRIORITIES, TICKET_ORIGINS, ticketNumber, ticketDate, ticketCustomer, ticketAccount, ticketRule, newCommandId, validateTicketFiles, encodeTicketFiles } from './ticket-ui.mjs'
+import { TICKET_STATES, TICKET_PRIORITIES, TICKET_ORIGINS, TICKET_RESOLUTION_METHODS, ticketNumber, ticketDate, ticketCustomer, ticketAccount, ticketRule, newCommandId, validateTicketFiles, encodeTicketFiles } from './ticket-ui.mjs'
 import { prepareTicketCommand } from './ticket-command-retry.mjs'
 import './tickets.css'
 
@@ -158,10 +158,17 @@ function NewTicket({ metadata, initial, onClose, onSaved }) {
   </form></TicketDialog>{reviewing && !accountPending && <DuplicateTicketReview candidate={reviewing} customerId={draft.customerId} serviceId={draft.serviceId} config={metadata.config} restoreFocusTo={reviewOpener.current} onClose={() => setReviewing(null)} selected={decision === String(reviewing.id)} onSelect={id => { chooseDecision(id); setReviewing(null) }} />}{guard.discardDialog}</>
 }
 
+export function TicketResolutionFields({ ticket, value, onChange, disabled = false }) {
+  const services = Array.isArray(ticket.serviceSchedule) ? ticket.serviceSchedule : ticket.serviceSchedule ? [ticket.serviceSchedule] : []
+  const pendingServices = services.filter(service => (!Array.isArray(ticket.resolutionServiceIds) || ticket.resolutionServiceIds.map(String).includes(String(service.id || service.serviceId))) && !['Completado', 'Cancelado', 'Reprogramado', 'Avance registrado'].includes(service.status))
+  return <><label>Medio de resolución *<select value={value} onChange={event => onChange(event.target.value)} required disabled={disabled}><option value="" disabled>Seleccionar medio</option>{Object.entries(TICKET_RESOLUTION_METHODS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><small>Podés resolver el caso por llamada, chat o correo, sin coordinar una visita.</small></label>{pendingServices.length > 0 && <p className="tickets-feedback" role="status">Hay servicios programados pendientes. Cerrar el ticket no los cancela; si la visita ya no es necesaria, actualizá la agenda.</p>}</>
+}
+
 function TicketDetail({ id, metadata, onClose, onChanged, onCoordinateService }) {
   const { can } = usePermissions()
   const [ticket, setTicket] = useState(null), [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState('')
   const [mode, setMode] = useState('comment'), [note, setNote] = useState(''), [visibility, setVisibility] = useState(can('tickets.internal') ? 'internal' : 'public'), [files, setFiles] = useState([])
+  const [resolutionMethod, setResolutionMethod] = useState('')
   const [assignee, setAssignee] = useState(''), [area, setArea] = useState(''), [reviewAt, setReviewAt] = useState(''), [classification, setClassification] = useState({}), [mergeSearch, setMergeSearch] = useState(''), [targets, setTargets] = useState([]), [target, setTarget] = useState(null), [mergeConfirmed, setMergeConfirmed] = useState(false)
   const [linkSearch, setLinkSearch] = useState(''), [linkCustomers, setLinkCustomers] = useState([]), [linkCustomer, setLinkCustomer] = useState(null), [services, setServices] = useState([]), [serviceId, setServiceId] = useState(''), [linkLoading, setLinkLoading] = useState(false)
   const command = useRef(null), lock = useRef(false), query = useDebounced(mergeSearch)
@@ -181,7 +188,7 @@ function TicketDetail({ id, metadata, onClose, onChanged, onCoordinateService })
     get({ view: 'services', customerId: ticket?.customerId, pageSize: 50 }).then(data => { if (!cancelled) setServices(data.items || []) }).catch(failure => { if (!cancelled) setError(failure.message) }).finally(() => { if (!cancelled) setLinkLoading(false) })
     return () => { cancelled = true }
   }, [mode, ticket?.customerId])
-  const dirty = Boolean(note || files.length || (ticket && (String(assignee) !== String(ticket.assigneeId || '') || area !== (ticket.areaId || '') || classification.categoryId !== ticket.categoryId || classification.subcategoryId !== (ticket.subcategoryId || '') || classification.priority !== ticket.priority)) || target || reviewAt || linkCustomer || serviceId)
+  const dirty = Boolean(note || files.length || resolutionMethod || (ticket && (String(assignee) !== String(ticket.assigneeId || '') || area !== (ticket.areaId || '') || classification.categoryId !== ticket.categoryId || classification.subcategoryId !== (ticket.subcategoryId || '') || classification.priority !== ticket.priority)) || target || reviewAt || linkCustomer || serviceId)
   const guard = useDiscardGuard({ dirty, busy, onDiscard: onClose })
   const mailEnabled = metadata.config?.mail?.enabled === true && metadata.config?.mail?.outboundEnabled === true && ticket?.mailMode !== 'test'
   const merged = Boolean(ticket?.mergedIntoId || ticket?.mergedInto || ticket?.status === 'Fusionado')
@@ -192,6 +199,10 @@ function TicketDetail({ id, metadata, onClose, onChanged, onCoordinateService })
     try {
       const attachments = await encodeTicketFiles(files)
       const payload = { action: mode, id: ticket.id, version: ticket.version, note: note.trim() }
+      if (mode === 'resolve') {
+        if (!Object.hasOwn(TICKET_RESOLUTION_METHODS, resolutionMethod)) throw new Error('Seleccioná cómo se resolvió el caso.')
+        payload.resolutionMethod = resolutionMethod
+      }
       if (mode === 'comment') Object.assign(payload, { visibility, attachments })
       if (mode === 'reply') Object.assign(payload, { attachments })
       if (mode === 'assign') Object.assign(payload, { assigneeId: assignee, areaId: area })
@@ -222,6 +233,7 @@ function TicketDetail({ id, metadata, onClose, onChanged, onCoordinateService })
     {ticket.customerSnapshot?.address && <p><b>Domicilio:</b> {ticket.customerSnapshot.address}{ticket.customerSnapshot.phone && ` · ${ticket.customerSnapshot.phone}`}</p>}
     <TicketSlaSummary summary={ticket.slaSummary} />
     <TicketServiceSchedule ticket={ticket} />
+    {ticket.status === 'Resuelto' && TICKET_RESOLUTION_METHODS[ticket.resolutionMethod] && <p className="tickets-feedback"><b>Medio de resolución:</b> {TICKET_RESOLUTION_METHODS[ticket.resolutionMethod]}</p>}
     {ticket.description && !ticket.messages?.length && <p className="tickets-text">{ticket.description}</p>}
     {Boolean(ticket.aliases?.length) && <p className="tickets-muted">Referencias conservadas: {ticket.aliases.map(item => typeof item === 'object' ? ticketNumber(item) : String(item).startsWith('Ticket#') ? item : `Ticket#${item}`).join(', ')}</p>}
     {Boolean(ticket.serviceIds?.length) && <p className="tickets-muted">{ticket.serviceIds.length} servicio{ticket.serviceIds.length === 1 ? '' : 's'} vinculado{ticket.serviceIds.length === 1 ? '' : 's'}</p>}
@@ -231,6 +243,7 @@ function TicketDetail({ id, metadata, onClose, onChanged, onCoordinateService })
     {!merged && Boolean(modeOptions.length) && <form className="tickets-management" onSubmit={run}><h3>Registrar gestión</h3><label>Acción<select value={modeOptions.some(([key]) => key === mode) ? mode : ''} disabled={busy} onChange={event => setMode(event.target.value)}><option value="" disabled>Seleccionar acción</option>{modeOptions.map(([key, label]) => <option key={key} value={key} disabled={key === 'reply' && !mailEnabled}>{label}{key === 'reply' && !mailEnabled ? ' · correo no habilitado' : ''}</option>)}</select></label>
       {mode === 'comment' && can('tickets.internal') && <label>Visibilidad<select value={visibility} disabled={busy} onChange={event => setVisibility(event.target.value)}><option value="internal">Nota interna · sólo equipo autorizado</option><option value="public">Información visible para el solicitante</option></select><small>Agregar una observación no envía un correo.</small></label>}
       {mode === 'resolve' && !ticket.assigneeId && <p className="tickets-feedback">Se te asignará como responsable al cerrar este ticket.</p>}
+      {mode === 'resolve' && <TicketResolutionFields ticket={ticket} value={resolutionMethod} onChange={setResolutionMethod} disabled={busy} />}
       {mode === 'reply' && <p className="tickets-feedback">Se enviará al correo de contacto del ticket: {ticket.requesterEmail || ticket.requester?.email || 'No informado'}. Revisá el destinatario antes de enviar.</p>}
       {mode === 'assign' && <div className="tickets-fields"><label>Área<select value={area} disabled={busy} onChange={event => { setArea(event.target.value); setAssignee('') }}><option value="">Sin área</option>{active(metadata.config.areas).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Responsable<select value={assignee} disabled={busy} onChange={event => setAssignee(event.target.value)}><option value="">Sin asignar</option>{selectableAssignees.filter(person => !area || !metadata.config.areas?.find(item => item.id === area)?.memberIds?.length || metadata.config.areas.find(item => item.id === area).memberIds.map(String).includes(String(person.id))).map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label></div>}
       {mode === 'classify' && <div className="tickets-fields"><CategoryFields config={metadata.config} value={classification} disabled={busy} includePriority onChange={changes => setClassification(previous => { const next = { ...previous, ...changes }; return changes.categoryId || Object.hasOwn(changes, 'subcategoryId') ? { ...next, priority: ticketRule(metadata.config, next.categoryId, next.subcategoryId).priority } : next })} /></div>}
@@ -241,7 +254,7 @@ function TicketDetail({ id, metadata, onClose, onChanged, onCoordinateService })
       <label>{mode === 'resolve' ? 'Resultado del cierre' : mode === 'wait' ? 'Motivo de la espera' : ['classify', 'reopen', 'merge'].includes(mode) ? 'Motivo de la gestión' : mode === 'reply' ? 'Respuesta al cliente' : 'Observación'}{needsNote ? ' *' : ' (opcional)'}<textarea value={note} maxLength={10000} required={needsNote} disabled={busy} onChange={event => setNote(event.target.value)} /></label>
       {['comment', 'reply'].includes(mode) && <FilePicker files={files} onChange={setFiles} disabled={busy} />}
       {mode === 'reply' && metadata.config?.mail?.signatureEnabled && <p className="tickets-muted">Se agregará la firma común del correo de soporte al final de esta respuesta.</p>}
-      <div className="tickets-form-footer"><button title="Guardá la gestión elegida con su observación y los datos indicados." type="submit" className={mode === 'merge' ? 'danger-button' : 'primary'} disabled={busy || !modeOptions.some(([key]) => key === mode) || (needsNote && !note.trim()) || (mode === 'merge' && (!target || !mergeConfirmed)) || (mode === 'linkCustomer' && !linkCustomer) || (mode === 'linkService' && !serviceId) || (mode === 'reply' && (!mailEnabled || !(ticket.requesterEmail || ticket.requester?.email)))}>{busy ? 'Guardando…' : mode === 'reply' ? 'Enviar respuesta al cliente' : mode === 'merge' ? 'Confirmar fusión' : mode === 'resolve' ? 'Resolver y cerrar' : 'Guardar gestión'}</button></div>
+      <div className="tickets-form-footer"><button title="Guardá la gestión elegida con su observación y los datos indicados." type="submit" className={mode === 'merge' ? 'danger-button' : 'primary'} disabled={busy || !modeOptions.some(([key]) => key === mode) || (needsNote && !note.trim()) || (mode === 'resolve' && !resolutionMethod) || (mode === 'merge' && (!target || !mergeConfirmed)) || (mode === 'linkCustomer' && !linkCustomer) || (mode === 'linkService' && !serviceId) || (mode === 'reply' && (!mailEnabled || !(ticket.requesterEmail || ticket.requester?.email)))}>{busy ? 'Guardando…' : mode === 'reply' ? 'Enviar respuesta al cliente' : mode === 'merge' ? 'Confirmar fusión' : mode === 'resolve' ? 'Resolver y cerrar' : 'Guardar gestión'}</button></div>
     </form>}
   </div>}</TicketDialog>{guard.discardDialog}</>
 }

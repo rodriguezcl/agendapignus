@@ -135,6 +135,7 @@ for (const engine of ['sqlite', 'postgres']) test(`Tickets y Agenda ${engine}: v
       const saved = await c.detail()
       assert.equal(saved.status, 'Resuelto')
       assert.equal(saved.resolvedByServiceId, c.record.id)
+      assert.equal(saved.resolutionMethod, 'onsite')
       assert.match(saved.resolution, /verificó la imagen/)
       assert.ok(saved.events.some(entry => entry.action === 'automatic-resolved' && entry.body.includes('El equipo técnico confirmó')))
       assert.equal(saved.sla.completedAt, at)

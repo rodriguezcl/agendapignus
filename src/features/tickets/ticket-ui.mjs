@@ -1,3 +1,6 @@
+import resolution from '../../../api/_lib/ticket-resolution.cjs'
+
+export const TICKET_RESOLUTION_METHODS = resolution.RESOLUTION_METHODS
 export const TICKET_STATES = ['Nuevo', 'En gestión', 'En espera', 'Resuelto', 'Fusionado']
 export const TICKET_PRIORITIES = ['Crítica', 'Alta', 'Media', 'Baja']
 export const TICKET_ORIGINS = { phone: 'Llamada', internal: 'Solicitud interna', technical: 'Informe técnico', technician: 'Informe técnico', email: 'Correo', followup: 'Seguimiento técnico' }

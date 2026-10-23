@@ -29,6 +29,34 @@ test('el informe técnico transmite la confirmación explícita y distingue el p
   assert.deepEqual(payload.ticketResolution, { resolved: false })
 })
 
+test('la visita toma el servicio sugerido del catálogo vigente y conserva su duración editable', async () => {
+  const { ticketServiceDraft } = await import('../src/features/agenda/application/ticket-service-draft.mjs')
+  const ticket = { id: 'ticket-1', number: '453276', status: 'Nuevo', customerId: 'customer-1', title: 'Sin imagen', suggestedServiceId: 'camera' }
+  const customers = [{ customerId: 'customer-1', account: 'PIG-1200', name: 'CLIENTE' }]
+  const services = [{ id: 'camera', name: 'Service de cámaras', status: 'Activo', estimatedMinutes: 90 }]
+  const before = JSON.stringify({ ticket, services })
+  const draft = ticketServiceDraft(ticket, customers, { id: 'support' }, services)
+  assert.equal(draft.serviceId, 'camera')
+  assert.equal(draft.service, 'Service de cámaras')
+  assert.deepEqual(draft.serviceTypes, [{ id: 'camera', name: 'Service de cámaras' }])
+  assert.equal(draft.estimatedMinutes, 90)
+  assert.equal(draft.estimatedMinutesCustomized, false)
+  assert.match(draft.detail, /^Ticket#453276/)
+  assert.equal(JSON.stringify({ ticket, services }), before)
+})
+
+test('sin sugerencia válida la visita exige elegir el servicio y nunca asume una instalación o tarea interna', async () => {
+  const { ticketServiceDraft } = await import('../src/features/agenda/application/ticket-service-draft.mjs')
+  const ticket = { id: 'ticket-1', number: '453276', status: 'Nuevo', customerId: 'customer-1', title: 'Cámaras sin imagen', suggestedServiceId: 'candidate' }
+  const customers = [{ customerId: 'customer-1', account: 'PIG-1200', name: 'CLIENTE' }]
+  for (const services of [[], [{ id: 'other', name: 'Instalación de cámaras', status: 'Activo' }], [{ id: 'candidate', name: 'Service de cámaras', status: 'Inactivo' }], [{ id: 'candidate', name: 'Control semanal de vehículo', status: 'Activo', system: true }], [{ id: 'candidate', name: 'Capacitación', status: 'Activo' }]]) {
+    const draft = ticketServiceDraft(ticket, customers, {}, services)
+    assert.equal(draft.serviceId, undefined)
+    assert.equal(draft.estimatedMinutes, undefined)
+    assert.equal(draft.sourceTicketId, 'ticket-1')
+  }
+})
+
 test('la planificación en varias jornadas conserva el vínculo con el reclamo', async () => {
   const { planServiceJourneyOperations } = await import('../src/features/state/application/service-journeys.mjs')
   const record = { id: 'work-task-1', sourceTaskId: 'task-1', sourceTicketId: 'ticket-1', ticketNumber: '453276', date: '2026-10-26', time: '08:30', scheduledTime: '08:30', estimatedMinutes: 60, status: 'Pendiente', teamId: 'team-1', team: 'Equipo 1', technicianIds: ['tech-1'], technicians: ['Técnico'], client: 'PIG-1200 CLIENTE', customerId: 'customer-1', service: 'Service de cámaras', detail: 'Ticket#453276 · Sin imagen' }

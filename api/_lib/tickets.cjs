@@ -3,6 +3,7 @@ const permissions = require('./permission-catalog.cjs')
 const read = require('./granular-read-policy.cjs')
 const sla = require('./ticket-sla.cjs')
 const { requesterIds, sourceTicketIds } = require('./ticket-requesters.cjs')
+const { eligibleService } = require('./ticket-service-suggestion.cjs')
 
 const STATUSES = ['Nuevo', 'En gestión', 'En espera', 'Resuelto', 'Fusionado']
 const PRIORITIES = ['Crítica', 'Alta', 'Media', 'Baja']
@@ -36,6 +37,9 @@ function defaultConfig() {
   return {
     categories: [
       category('alarm', 'Alarmas', 'Media', 'required', [['not-working', 'Sistema sin funcionamiento', 'Alta'], ['repeated', 'Activaciones reiteradas', 'Media'], ['other', 'Otra incidencia', 'Media']]),
+      category('cameras', 'Cámaras / CCTV', 'Media', 'required', [['no-image', 'Cámara sin imagen', 'Alta'], ['recording', 'Problema de grabación', 'Alta'], ['remote-access', 'Acceso remoto', 'Media'], ['other', 'Otra incidencia', 'Media']]),
+      category('electric-fence', 'Cerco eléctrico', 'Media', 'required', [['not-working', 'Falla de funcionamiento', 'Alta'], ['repeated', 'Activaciones reiteradas', 'Media'], ['damage', 'Daño físico', 'Alta'], ['other', 'Otra incidencia', 'Media']]),
+      category('totems', 'Tótems', 'Media', 'required', [['not-working', 'Equipo fuera de servicio', 'Alta'], ['communication', 'Falla de comunicación', 'Alta'], ['other', 'Otra incidencia', 'Media']]),
       category('work', 'Trabajos realizados', 'Media', 'required', [['incomplete', 'Trabajo incompleto', 'Media'], ['visit', 'Coordinar visita', 'Media'], ['issue', 'Gestionar problema', 'Media']]),
       category('commercial', 'Solicitudes comerciales', 'Baja', 'optional', [['quote', 'Cotizar adicional', 'Baja']], 'administration'),
       category('internal', 'Soporte interno', 'Media', 'optional', [['printing', 'Problema de impresión', 'Media'], ['other', 'Otra solicitud interna', 'Media']], 'administration'),
@@ -59,7 +63,7 @@ function validateConfig(input, state, previous = defaultConfig()) {
   const areas = input.areas.map(item => ({ id: item.id, name: text(item.name, 120, 'Nombre del área', true), active: item.active !== false, memberIds: [...new Set((item.memberIds || []).map(id))] }))
   for (const area of areas) if (area.memberIds.some(member => !employees.has(member))) fail('Un integrante del área ya no existe.')
   const areaIds = new Set(areas.map(item => item.id))
-  const classification = (item, inherited) => {
+  const classification = (item, inherited, old) => {
     const result = { id: item.id, name: text(item.name, 120, 'Nombre', true), active: item.active !== false }
     const priority = item.priority || inherited?.priority || 'Media'
     if (!PRIORITIES.includes(priority)) fail('Seleccioná una prioridad válida.')
@@ -71,13 +75,17 @@ function validateConfig(input, state, previous = defaultConfig()) {
     if (result.customerPolicy && !['required', 'optional', 'none'].includes(result.customerPolicy)) fail('La política de cuenta es inválida.')
     result.showEvent = item.showEvent ?? (inherited ? undefined : false)
     result.showZone = item.showZone ?? (inherited ? undefined : false)
+    const defaultServiceId = item.defaultServiceId == null ? (inherited ? undefined : '') : text(item.defaultServiceId, 160, 'Servicio sugerido')
+    if (defaultServiceId && !(state.services || []).some(service => id(service.id) === defaultServiceId && eligibleService(service)) && defaultServiceId !== old?.defaultServiceId) fail('Seleccioná un tipo de servicio activo para la visita técnica.')
+    result.defaultServiceId = defaultServiceId
     return result
   }
   const categories = input.categories.map(item => {
-    const result = classification(item)
+    const old = previous.categories.find(category => category.id === item.id)
+    const result = classification(item, undefined, old)
     const children = item.subcategories || []
     ids(children, 'subcategorías', 100)
-    result.subcategories = children.map(child => classification(child, result))
+    result.subcategories = children.map(child => classification(child, result, old?.subcategories?.find(value => value.id === child.id)))
     return result
   })
   if (!categories.some(item => item.active)) fail('Debe existir al menos una categoría activa.')

@@ -168,6 +168,7 @@ async function synchronizeTicketServices({ q, pg, previous, next, user, now, rep
     if (hasNewEvidence && d.OPEN_STATUSES.includes(item.status) && readyToResolve(item, next.history || [], [...acceptedIds])) {
       item.status = 'Resuelto'; item.resolvedAt = now; item.nextReviewAt = ''
       item.resolution = reported.technicalObservation
+      item.resolutionMethod = 'onsite'
       item.resolvedByServiceId = id(reported.id)
       item.resolvedById = id(reported.ticketResolution.byId)
       item.resolvedByName = reported.ticketResolution.byName || 'Técnico'
