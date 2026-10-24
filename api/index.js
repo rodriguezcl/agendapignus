@@ -1172,12 +1172,18 @@ async function handleCustomerImport(req, res, sql, user) {
   let responseMode = ''
   if (!isGranular(user) && (undo ? user.roleCode !== 'administrator' : !userCan(user, 'accountsImport'))) return send(res, 403, { error: undo ? 'Solamente un administrador puede deshacer una importación.' : 'No tenés permiso para importar abonados.' })
   try {
+    const body = undo ? {} : requestBody(req)
+    const recovery = require('./_lib/customer-import-recovery.cjs')
+    if (body.checkRecovery || body.operationId || body.resolveOperation) await recovery.ensure(sql)
+    if (body.checkRecovery === true) return send(res, 200, { recoveryProtocol: 1 })
     const result = await sql.begin(async transaction => {
       await transaction`set local lock_timeout = '10s'`
       await transaction`set local statement_timeout = '50s'`
       await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
       const revisionRows = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
       const currentRevision = Number(revisionRows[0]?.value || 0)
+      const recovered = await recovery.prepare(transaction, user, body)
+      if (recovered) return recovered
       const currentState = await readState(transaction)
       const currentCustomers = currentState.customers || []
       let nextCustomers
@@ -1188,7 +1194,6 @@ async function handleCustomerImport(req, res, sql, user) {
         try { backup = JSON.parse(backupRows[0].value) } catch { backup = null }
         nextCustomers = restoreCustomerImportBackup(currentCustomers, backup)
       } else {
-        const body = requestBody(req)
         responseMode = String(body.responseMode || '')
         if (!Number.isInteger(Number(body.revision)) || Number(body.revision) !== currentRevision) { const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de importar.'); error.statusCode = 409; throw error }
         if (!Array.isArray(body.customers)) throw new Error('La importación no contiene una lista válida de abonados.')
@@ -1209,9 +1214,10 @@ async function handleCustomerImport(req, res, sql, user) {
       // Las pestañas nuevas ya conservan localmente la colección validada y no
       // necesitan descargarla otra vez. Las anteriores siguen recibiéndola para
       // no interpretar una respuesta compacta como una colección vacía.
-      return responseMode === 'compact-v1' && !undo
+      const response = responseMode === 'compact-v1' && !undo
         ? { revision: nextRevision, customerCount: nextCustomers.length, canUndo: true }
         : { revision: nextRevision, customers: isGranular(user) ? nextCustomers.filter(customer => granularRead.customerReadable(customer, user, { ...currentState, customers: nextCustomers })).map(customer => granularRead.sanitizeCustomer(customer, user)) : nextCustomers, canUndo: !undo }
+      return recovery.complete(transaction, user, body, response)
     })
     return send(res, 200, result)
   } catch (error) {

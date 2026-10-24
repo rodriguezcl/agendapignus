@@ -1659,8 +1659,13 @@ function handleCustomerImport(req, res, user) {
   const undo = req.method === 'DELETE'
   if (!isGranular(user) && (undo ? user.roleCode !== 'administrator' : !userCan(user, 'accountsImport'))) return send(res, 403, { error: undo ? 'Solamente un administrador puede deshacer una importación.' : 'No tenés permiso para importar abonados.' })
   const execute = body => {
+    const recovery = require('./api/_lib/customer-import-recovery.cjs')
+    recovery.ensureLocal(db)
+    if (body.checkRecovery === true) return send(res, 200, { recoveryProtocol: 1 })
     db.exec('BEGIN IMMEDIATE')
     try {
+      const recovered = recovery.prepareLocal(db, user, body)
+      if (recovered) { db.exec('COMMIT'); return send(res, 200, recovered) }
       const currentCustomers = rows('customers')
       const currentRevision = currentStateRevision()
       let nextCustomers
@@ -1688,11 +1693,12 @@ function handleCustomerImport(req, res, user) {
       writeAudit(user, undo ? 'Deshizo importación' : 'Importó', 'Abonados / Clientes', 'importacion-maestra', { total: currentCustomers.length }, { total: nextCustomers.length, modified: changes.upsert.length, removed: changes.remove.length })
       const revision = currentRevision + 1
       db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
-      db.exec('COMMIT')
       const responseState = isGranular(user) ? readState() : null
-      return send(res, 200, body.responseMode === 'compact-v1' && !undo
+      const response = recovery.completeLocal(db, user, body, body.responseMode === 'compact-v1' && !undo
         ? { revision, customerCount: nextCustomers.length, canUndo: true }
         : { revision, customers: isGranular(user) ? nextCustomers.filter(customer => granularRead.customerReadable(customer, user, responseState)).map(customer => granularRead.sanitizeCustomer(customer, user)) : nextCustomers, canUndo: !undo })
+      db.exec('COMMIT')
+      return send(res, 200, response)
     } catch (error) {
       db.exec('ROLLBACK')
       return send(res, error.statusCode || 400, { error: error.message || 'No se pudo procesar la importación.' })

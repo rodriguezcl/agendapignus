@@ -3,6 +3,20 @@ const assert = require('node:assert/strict')
 const { request, worker, publicStatus, handle } = require('../api/_lib/customer-sync.cjs')
 const { pgliteAdapter } = require('./helpers/pglite-adapter.cjs')
 
+test('recuperación automática con tres reintentos breves y reinicio del contador al completar', () => {
+  const state = {}; let now = Date.now()
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    const { job } = worker(state, { action: 'poll' }, now)
+    worker(state, { action: 'finish', jobId: job.id, status: 'error', code: 'RECOVERY_UNAVAILABLE' }, now + 10)
+    assert.equal(state.nextAutomaticAt, attempt <= 3 ? now + 10 + 300000 : now + 3600000)
+    assert.equal(state.lastSuccess, undefined)
+    now = state.nextAutomaticAt
+  }
+  const { job } = worker(state, { action: 'poll' }, now)
+  worker(state, { action: 'finish', jobId: job.id, status: 'imported', count: 1 }, now + 1)
+  assert.equal(state.recoveryAttempts, 0)
+})
+
 test('solicitudes repetidas comparten trabajo y solo una consulta lo toma', () => {
   const state = {}, now = Date.now()
   const first = request(state, now, 'operator')

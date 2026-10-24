@@ -3,10 +3,12 @@ const fs = require('node:fs/promises')
 const path = require('node:path')
 const os = require('node:os')
 const readline = require('node:readline/promises')
+const { randomUUID } = require('node:crypto')
 const { chromium } = require('playwright')
 const { fail, validateReport, retryDownload } = require('./lib.cjs')
 const { ensureSession } = require('./auth.cjs')
 const { acquireLock } = require('./lock.cjs')
+const recovery = require('./recovery.cjs')
 const home = path.join(process.env.LOCALAPPDATA || os.homedir(), 'AgentecSoftguard')
 const file = name => path.join(home, name)
 const args = new Set(process.argv.slice(2))
@@ -99,12 +101,43 @@ async function importReport(context, config, report, apply) {
     const count = Number((await preview.innerText()).match(/(\d+) fila\(s\) válidas/)?.[1])
     if (count !== report.count) throw fail('PREVIEW_MISMATCH', 'La vista previa de Agentec no coincide con el reporte.')
     if (!apply) return
-    // Write-ahead marker: an ambiguous POST is never automatically repeated.
-    await write('pending-import.json', { hash: report.hash, count: report.count, at: new Date().toISOString() })
-    await modal.getByRole('button', { name: 'Confirmar importación', exact: true }).click()
-    try { await page.getByText('Importación confirmada y guardada. Administración puede deshacerla mientras no haya otra importación o modificación de clientes.', { exact: true }).waitFor({ timeout: 65000 }) }
-    catch { throw fail('IMPORT_UNCERTAIN', 'No se pudo confirmar el resultado. Revisá la auditoría de Agentec antes de habilitar otro intento.') }
+    await recovery.checkProtocol(page)
+    const marker = { operationId: randomUUID(), hash: report.hash, count: report.count, at: new Date().toISOString() }
+    const url = new URL(recovery.endpoint, config.agentecUrl).href
+    // Attach the durable ID to the existing, permission-checked import request.
+    await page.route(url, async route => {
+      const request = route.request()
+      if (request.method() !== 'POST') return route.fallback()
+      const body = request.postDataJSON()
+      if (!Array.isArray(body?.customers)) return route.fallback()
+      await route.fallback({ postData: JSON.stringify({ ...body, responseMode: 'compact-v1', operationId: marker.operationId }), headers: { ...request.headers(), 'content-type': 'application/json' } })
+    })
+    await write('pending-import.json', marker)
+    const response = page.waitForResponse(response => response.url() === url && response.request().method() === 'POST' && response.request().postDataJSON()?.operationId === marker.operationId && !response.request().postDataJSON()?.resolveOperation, { timeout: 65000 })
+    response.catch(() => {})
+    try {
+      await modal.getByRole('button', { name: 'Confirmar importación', exact: true }).click()
+      const result = await response
+      if (!result.ok() || !recovery.completed(await result.json(), marker.operationId)) throw Error('Unconfirmed import')
+    } catch {
+      // Serializes with the original POST and seals a missing operation before retry.
+      if (await recovery.resolve(page, marker) === 'aborted') {
+        await fs.rename(file('pending-import.json'), file('last-resolved-import.json'))
+        throw fail('IMPORT_RETRY', 'El servidor confirmó que no se guardó el intento. Se reintentará con datos actualizados.')
+      }
+    }
   } catch (error) { await inspectFailure(page, error); throw error
+  } finally { await page.close().catch(() => {}) }
+}
+async function recoverPending(context, config, marker) {
+  const page = await context.newPage()
+  try {
+    await page.goto(config.agentecUrl, { waitUntil: 'domcontentloaded', timeout: 45000 })
+    await ensureSession(page, 'agentec', page.getByRole('button', { name: 'Abonados y clientes', exact: true }))
+    const status = await recovery.resolve(page, marker)
+    if (status === 'completed') await write('last-import.json', { hash: marker.hash, count: marker.count, at: new Date().toISOString() })
+    await fs.rename(file('pending-import.json'), file('last-resolved-import.json'))
+    console.log(status === 'completed' ? 'Importación anterior confirmada por el servidor; no se repetirá.' : 'Intento anterior cerrado sin cambios; se descargará un reporte nuevo.')
   } finally { await page.close().catch(() => {}) }
 }
 async function main() {
@@ -124,7 +157,8 @@ async function main() {
       if (await read('pending-import.json', null)) throw fail('IMPORT_UNCERTAIN', 'Hay una importación pendiente de revisión.')
       await write('config.json', { ...config, importEnabled: true }); console.log('Importación automática habilitada.'); return
     }
-    if (await read('pending-import.json', null)) throw fail('IMPORT_UNCERTAIN', 'Hay una importación pendiente de revisión; no se repetirá automáticamente.')
+    const pendingImport = await read('pending-import.json', null)
+    if (pendingImport && !pendingImport.operationId) throw fail('IMPORT_UNCERTAIN', 'Hay una importación del conector anterior pendiente de revisión.')
     if (diagnostic) { config.attempts = 1; console.log('DIAGNOSTICO VISIBLE: un intento, sin importar datos.') }
     context = await chromium.launchPersistentContext(file('browser-profile'), { channel: 'chrome', headless: !args.has('--login') && !diagnostic, acceptDownloads: true, locale: 'es-AR', timezoneId: 'America/Argentina/Buenos_Aires' })
     context.setDefaultTimeout(20000)
@@ -135,6 +169,8 @@ async function main() {
       try { await input.question('Iniciá sesión en ambos sitios. No guardes contraseñas en el código. Volvé aquí y presioná Enter al terminar.\n') } finally { input.close() }
       return
     }
+    // Diagnostic/preview runs do not resolve or import anything on the server.
+    if (pendingImport && config.importEnabled === true && !args.has('--preview') && !diagnostic) await recoverPending(context, config, pendingImport)
     runDir = await fs.mkdtemp(path.join(home, 'download-'))
     const last = await read('last-import.json', {})
     const report = await exportReport(context, config, last.count || 0, runDir)
@@ -160,4 +196,4 @@ async function main() {
   }
 }
 if (require.main === module) main().catch(e => { console.error(e.code || 'AUTOMATION_ERROR', e.code ? e.message : 'Revisá el estado de la sincronización.'); process.exitCode = 1 })
-module.exports = { openAccounts, exportReport, importReport }
+module.exports = { openAccounts, exportReport, importReport, recoverPending }

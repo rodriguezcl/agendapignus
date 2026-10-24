@@ -9,7 +9,11 @@ const labels = { pending: 'Pendiente', running: 'Sincronizando', completed: 'Com
 const errors = {
   WORKER_TIMEOUT: 'La PC no confirmó el resultado. Revisá el conector antes de volver a intentar.',
   REQUEST_EXPIRED: 'La PC no atendió la solicitud en una hora.',
-  IMPORT_UNCERTAIN: 'La importación requiere revisar su resultado en la PC.',
+  IMPORT_UNCERTAIN: 'Hay un intento del conector anterior sin comprobante verificable. Requiere revisar su resultado antes de repetirlo.',
+  IMPORT_RETRY: 'El servidor confirmó que el intento no se guardó. El conector volverá a intentarlo automáticamente con datos actualizados.',
+  RECOVERY_UNAVAILABLE: 'No se pudo verificar el resultado con el servidor. El conector lo consultará nuevamente sin duplicar la importación.',
+  RECOVERY_UPDATE_REQUIRED: 'Esta versión del conector requiere publicar la actualización de Agentec.',
+  WORKER_INTERRUPTED: 'Se interrumpió el conector. En el próximo intento verificará el comprobante antes de importar.',
   AUTH_REJECTED: 'Revisá los accesos del conector.',
   DOWNLOAD_TIMEOUT: 'SoftGuard no completó la descarga.',
   LOCKED: 'Ya había otra ejecución en esa PC.'
@@ -64,11 +68,12 @@ export default function CustomerSync({ administrator, onComplete }) {
     {open && createPortal(<div className="modal-layer" onClick={event => { if (event.target === event.currentTarget) close() }}><div className="modal customer-sync-modal" role="dialog" aria-modal="true" aria-label="Sincronización de abonados">
       <button className="close-modal" aria-label="Cerrar" onClick={close}><Icon name="close" /></button>
       <h2>Sincronización de abonados</h2>
-      <p>{connection}</p><p>{status?.presenceEnabled ? 'Detección de bajas habilitada: requiere dos reportes completos consecutivos.' : 'Detección de bajas pendiente: actualizá el conector Windows y completá una sincronización.'}</p>
+      <p>{connection}</p><p>{status?.presenceEnabled ? 'Detección de bajas habilitada: requiere dos reportes completos consecutivos.' : 'Detección de bajas pendiente: necesita reportes completos y consecutivos del conector. Un intento fallido interrumpe esa verificación.'}</p>
       <p>Estado: <strong>{labels[status?.job?.status] || 'Sin solicitudes'}</strong></p>
       <p>Última conexión de la PC: {date(status?.lastSeen)}</p>
       <p>Última sincronización correcta: {date(status?.lastSuccess?.at)}{status?.lastSuccess?.count != null && ` · ${status.lastSuccess.count} cuentas`}</p>
       {status?.job?.status === 'error' && <p role="alert">{errors[status.job.code] || 'El conector informó un error. Revisá el estado en la PC.'} {status.job.code}</p>}
+      {status?.job?.status === 'error' && status?.nextAutomaticAt && <p>Próximo intento automático: {date(status.nextAutomaticAt)}.</p>}
       {status?.job?.status === 'pending' && <p>La PC atenderá la solicitud al conectarse. Si no responde en una hora, la solicitud vence.</p>}
       {administrator && <section><h3>Conectar la PC Windows</h3><p>Generá una clave y cargala en la PC con Conectar.ps1. La clave solo permite atender solicitudes y comunicar resultados; la importación conserva sus permisos habituales.</p>
         {status?.configured && !token && <p>Generar otra clave reemplaza el acceso del conector anterior.</p>}

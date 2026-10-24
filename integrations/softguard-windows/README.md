@@ -1,8 +1,18 @@
 # Sincronizacion SoftGuard / Agentec para Windows
 
+## Recuperacion automatica de importaciones (protocolo 1)
+
+Publicar primero Agentec y luego actualizar una sola vez la PC: extraer el paquete en Descargas (fuera de C:\AgentecSoftguard) y abrir Actualizar.cmd con el mismo usuario Windows de la tarea. El actualizador espera las ejecuciones activas, conserva un respaldo del codigo y reemplaza solo los archivos del conector. No cambia credenciales, configuracion, tareas ni marcadores pendientes; conserva si la tarea estaba habilitada. No requiere escribir comandos.
+
+Cada nueva importacion lleva un identificador unico. Agentec guarda su comprobante en la misma transaccion que los abonados y la auditoria. Si se pierde la respuesta, el conector consulta ese comprobante: reconoce lo ya guardado o cierra el intento que no se guardo antes de descargar un reporte nuevo. El cierre impide que una solicitud demorada escriba despues. Si el servidor no responde, conserva el marcador y vuelve a consultar; nunca interpreta un timeout como prueba de que no hubo cambios.
+
+La recuperacion tiene tres reintentos a los cinco minutos; luego vuelve al intervalo horario. Los errores de credenciales, permisos o reportes invalidos siguen requiriendo atencion. Los marcadores creados por versiones anteriores no tienen comprobante y no se desbloquean automaticamente. Las pruebas y el diagnostico nunca resuelven operaciones ni importan. El marcador resuelto se conserva en last-resolved-import.json; remote-job.json sigue conservando resultados pendientes de comunicar.
+
+No se purgan los comprobantes automaticamente: tambien impiden repetir solicitudes antiguas. No contienen el padron, contrasenas ni claves de conexion.
+
 ## Estado de esta entrega
 
-Incluye sincronizacion horaria y solicitudes desde el boton Sincronizar abonados. La sincronizacion por navegador ya fue probada en la PC destino. El control remoto nuevo fue verificado con PostgreSQL aislado y pruebas simuladas; necesita publicar la plataforma y vincular esa PC para validarlo de extremo a extremo. No contiene credenciales.
+Incluye sincronizacion horaria, solicitudes desde el boton Sincronizar abonados y recuperacion mediante comprobantes del servidor. La sincronizacion por navegador ya fue probada en la PC destino. La recuperacion fue verificada con PostgreSQL aislado y navegador con datos sinteticos; necesita publicar la plataforma y actualizar esa PC para activarla. No contiene credenciales.
 
 ## Actualizar la PC que ya funciona
 
@@ -58,8 +68,8 @@ Luego seguir los pasos de vinculacion anteriores. Sin clave de conexion, Program
 - El reporte debe estar completo, tener columnas Dealer/Cuenta y Nombre, solo cuentas PIG unicas y total igual al listado filtrado. No se fija en 1064: ese fue el total observado durante la instalacion.
 - Tres intentos de descarga, pausas de 10 y 20 segundos. Confirma la ventana Exportar Reporte sin cambiar casillas. Si una contrasena se rechaza, termina la ejecucion sin insistir dentro de los reintentos.
 - El importador conserva su respaldo, control de concurrencia y permisos. No elimina físicamente cuentas ni vincula reservas automaticamente. El conector actualizado informa la lista validada: Agentec marca Baja en SoftGuard tras dos reportes completos consecutivos sin esa cuenta y la reactiva si reaparece. Los reportes fallidos o de conectores antiguos no confirman bajas. Una caida mayor al 10% frente al ultimo reporte importado requiere revision.
-- pending-import.json bloquea la importacion si se perdio su confirmacion. Revisar auditoria antes de resolver ese marcador. remote-job.json conserva el resultado que falta comunicar al servidor: no borrarlo para reintentar una escritura.
-- Un corte despues de iniciar un trabajo puede marcar WORKER_INTERRUPTED; no se presume exito ni se repite automaticamente la escritura incierta. Revisar el resultado en Agentec.
+- pending-import.json conserva el identificador para consultar el comprobante tras perder una confirmacion. El conector nuevo resuelve automaticamente los marcadores con operationId. Solo los marcadores antiguos sin identificador requieren revisar auditoria. remote-job.json conserva el resultado que falta comunicar al servidor: no borrarlo para reintentar una escritura.
+- Un corte despues de iniciar un trabajo puede marcar WORKER_INTERRUPTED; el siguiente intento comprueba el resultado antes de escribir. No se presume exito ni se repite una escritura incierta sin resolverla.
 - El bloqueo exclusivo se libera al terminar el proceso. Los reportes temporales se eliminan al finalizar; un corte abrupto puede dejar carpetas download-* con datos sensibles. Retirarlas solo cuando no haya ejecucion activa.
 - Las contrasenas se cifran con DPAPI para el mismo usuario y PC. No copiar el perfil ni los XML a otra PC. No se imprimen contrasenas ni contenido del reporte en los registros.
 - Agentec muestra estado, ultimo contacto, ultima sincronizacion correcta y errores. No envia alertas por correo. Ante caidas de Internet o del sitio, vuelve a consultar en la proxima ejecucion. Cambios de clave, permisos o pantallas pueden requerir intervencion.

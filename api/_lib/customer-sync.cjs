@@ -33,12 +33,19 @@ function worker(state, body, now) {
     state.job = { ...state.job, status: body.status === 'error' ? 'error' : 'completed', result: body.status, finishedAt: now,
       count: Number.isInteger(count) && count >= 0 && count < 10000000 ? count : null,
       code: body.status === 'error' ? String(body.code || 'WORKER_ERROR').replace(/[^A-Z_]/g, '').slice(0, 64) : null }
-    if (body.status !== 'error') state.lastSuccess = { at: now, count: state.job.count }
+    if (body.status !== 'error') {
+      state.lastSuccess = { at: now, count: state.job.count }
+      state.recoveryAttempts = 0
+    } else if (['IMPORT_RETRY', 'RECOVERY_UNAVAILABLE', 'WORKER_INTERRUPTED'].includes(state.job.code)) {
+      state.recoveryAttempts = (state.recoveryAttempts || 0) + 1
+      // Bounded quick retries; prolonged outages fall back to the hourly schedule.
+      if (state.recoveryAttempts <= 3) state.nextAutomaticAt = now + 5 * 60000
+    }
   }
   return { ok: true }
 }
 function publicStatus(state, configured, now) {
-  return { configured, presenceEnabled: state.presenceEnabled === true, online: Boolean(state.lastSeen && now - state.lastSeen < 180000), lastSeen: state.lastSeen || null, lastSuccess: state.lastSuccess || null, job: state.job || null }
+  return { configured, presenceEnabled: state.presenceEnabled === true, nextAutomaticAt: state.nextAutomaticAt || null, online: Boolean(state.lastSeen && now - state.lastSeen < 180000), lastSeen: state.lastSeen || null, lastSuccess: state.lastSuccess || null, job: state.job || null }
 }
 async function ensure(sql) {
   return require('./schema-readiness.cjs').ensureCommittedSchema(sql, 'customer-sync', async sql => {

@@ -1539,6 +1539,29 @@ test('la importación requiere permiso, pide una revisión vigente y el administ
   assert.ok(!(await state(administratorCookie)).customers.some(customer => customer.customerId === importedCustomer.customerId))
 })
 
+test('importación recuperable: permiso, respuesta perdida, rechazo tardío y auditoría única', async () => {
+  const admin = await login('qa-admin@pignus.test')
+  const weekly = await login('qa-weekly@pignus.test')
+  const post = (body, cookie = admin) => api('/api/customers/import', cookie, { method: 'POST', body: JSON.stringify(body) })
+  assert.equal((await post({ checkRecovery: true }, weekly)).status, 403)
+  assert.equal((await (await post({ checkRecovery: true })).json()).recoveryProtocol, 1)
+  const before = await state(admin)
+  const body = { operationId: crypto.randomUUID(), revision: before.revision, customers: before.customers, responseMode: 'compact-v1' }
+  const applied = await post(body)
+  assert.equal(applied.status, 200, await applied.clone().text())
+  const receipt = await applied.json()
+  assert.equal(receipt.operationStatus, 'completed')
+  assert.deepEqual(await (await post(body)).json(), receipt)
+  assert.deepEqual(await (await post({ operationId: body.operationId, resolveOperation: true })).json(), receipt)
+  assert.equal((await state(admin)).revision, before.revision + 1)
+  assert.equal((await post({ ...body, revision: before.revision + 1 })).status, 409)
+  const lateId = crypto.randomUUID()
+  assert.equal((await (await post({ operationId: lateId, resolveOperation: true })).json()).operationStatus, 'aborted')
+  assert.equal((await post({ ...body, operationId: lateId, revision: before.revision + 1 })).status, 409)
+  assert.equal((await state(admin)).revision, before.revision + 1)
+  assert.equal((await api('/api/customers/import', admin, { method: 'DELETE' })).status, 200)
+})
+
 test('elimina copias de una misma tarea sin confundir servicios distintos', () => {
   const teams = dedupeAgendaTeams([
     { teamId: 'uno', tasks: [{ historyId: 'work-1', taskId: 'task-1', client: 'CLIENTE A' }, { historyId: 'work-1', taskId: 'task-1', client: 'CLIENTE A' }] },
