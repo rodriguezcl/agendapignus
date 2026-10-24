@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client'
 import './style.css'
 import App from './App.jsx'
 import AppErrorBoundary from './components/AppErrorBoundary.jsx'
+import { installPushNavigation } from './infrastructure/browser/push-navigation.mjs'
 import { installRequiredFeedback } from './presentation/components/forms/required-feedback.mjs'
 import './presentation/components/forms/required-feedback.css'
 import './components/ui/modal-chrome.css'
@@ -11,6 +12,7 @@ import './mobile-layout.css'
 import './presentation/components/forms/select-containment.css'
 
 const disposeRequiredFeedback = installRequiredFeedback()
+installPushNavigation()
 if (import.meta.hot) import.meta.hot.dispose(disposeRequiredFeedback)
 
 ReactDOM.createRoot(document.getElementById('root')).render(

@@ -16,6 +16,10 @@
   ],
   "headers": [
     {
+      "source": "/push-sw.js",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0" }, { "key": "Service-Worker-Allowed", "value": "/" }]
+    },
+    {
       "source": "/version.json",
       "headers": [{ "key": "Cache-Control", "value": "no-store, max-age=0" }]
     },

@@ -27,7 +27,7 @@
     "test": "node --test --test-concurrency=4 tests/*.test.cjs",
     "test:ux": "node scripts/ux-quality-gate.cjs && node --test tests/ux-constitution.test.cjs tests/ux-quality-gate.test.cjs",
     "test:concurrency": "node --test tests/state-concurrency-hardening.test.cjs tests/security.integration.test.cjs",
-    "prebuild": "node scripts/build-mail-sanitizer.cjs",
+    "prebuild": "node scripts/build-mail-sanitizer.cjs && node scripts/build-push-notifications.cjs",
     "build": "vite build",
     "analyze:build": "node scripts/inspect-build.cjs",
     "preview": "vite preview",
@@ -46,7 +46,8 @@
     "postgres": "^3.4.9",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "sanitize-html": "2.18.1"
+    "sanitize-html": "2.18.1",
+    "web-push": "3.6.7"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

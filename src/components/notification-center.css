@@ -50,15 +50,16 @@
   box-shadow: 0 10px 32px rgb(0 0 0 / 22%);
   text-align: left;
 }
-.notification-panel .notification-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid var(--ap-border); }
+.notification-panel .notification-header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--ap-border); }
+.notification-panel .notification-heading { min-width: 0; }
 .notification-panel .notification-header h2 { margin: 0; font-size: 16px; line-height: 1.4; color: var(--ap-text); }
 .notification-panel .notification-header p { margin: 2px 0 0; font-size: 12px; line-height: 1.5; color: var(--ap-muted); }
-.topbar .profile .notification-panel .notification-close { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--ap-border); background: var(--ap-surface-alt); color: var(--ap-text); border-radius: 6px; }
+.notification-panel .notification-header-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; }
+.notification-center .notification-panel .notification-header .notification-header-actions > button { display: inline-flex; flex: 0 0 44px; align-items: center; justify-content: center; width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; margin: 0; border: 1px solid var(--ap-border); background: var(--ap-surface-alt); color: var(--ap-text); border-radius: 6px; }
+.notification-center .notification-panel .notification-header .notification-header-actions > .notification-sound-toggle[aria-pressed='true'] { color: var(--ap-accent); background: var(--ap-accent-soft); }
+.notification-panel .notification-header-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.notification-panel .notification-sound-message { margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--ap-border); color: var(--ap-muted); font-size: 12px; line-height: 1.5; }
 .notification-panel .notification-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.notification-panel .notification-sound-controls { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--ap-border); }
-.notification-center .notification-panel .notification-sound-controls > button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: auto; min-height: 44px; padding: 8px 12px; border: 1px solid var(--ap-border); border-radius: 6px; background: var(--ap-surface-alt); color: var(--ap-text); font-size: 12px; white-space: normal; }
-.notification-panel .notification-sound-controls small { flex-basis: 100%; color: var(--ap-muted); font-size: 11px; line-height: 1.5; }
-.notification-panel .notification-sound-controls button:disabled { opacity: .5; cursor: not-allowed; }
 .topbar .profile .notification-panel .notification-item {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
@@ -90,8 +91,14 @@
 .notification-panel .notification-empty p { margin: 0; line-height: 1.5; font-size: 12px; }
 .notification-panel .notification-footer { padding: 12px 16px; border-top: 1px solid var(--ap-border); background: var(--ap-surface-alt); }
 .notification-panel .notification-footer small { display: block; color: var(--ap-muted); font-size: 11px; line-height: 1.5; }
+.notification-panel .notification-footer { flex: 0 0 auto; max-height: 45dvh; overflow-y: auto; }
+.notification-device-settings { margin-bottom: 10px; font-size: 12px; }
+.notification-device-settings summary { cursor: pointer; color: var(--ap-text); line-height: 1.5; padding-block: 5px; }
+.notification-device-settings p { color: var(--ap-muted); font-size: 12px; line-height: 1.5; margin: 8px 0; }
+.notification-device-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.notification-center .notification-panel .notification-device-actions > button { display: inline-flex; align-items: center; justify-content: center; width: auto; min-height: 44px; padding: 8px 10px; border: 1px solid var(--ap-border); border-radius: 6px; background: var(--ap-surface); color: var(--ap-text); font-size: 12px; white-space: normal; }
+.notification-device-actions button:disabled { opacity: .5; cursor: not-allowed; }
 .topbar .profile .notification-center button:focus-visible { outline: 2px solid var(--ap-accent); outline-offset: -3px; }
 @media (max-width: 640px) {
   .notification-center .notification-panel { position: fixed; top: 70px; right: 12px; width: calc(100vw - 24px); max-height: calc(100dvh - 86px); }
-  .topbar .profile .notification-panel .notification-close { width: 44px; height: 44px; }
 }

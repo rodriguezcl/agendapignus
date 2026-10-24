@@ -382,6 +382,7 @@ async function handleLogin(req, res, sql) {
     // Una identidad sólo puede conservar una sesión activa. El último ingreso
     // invalida los tokens anteriores del mismo empleado en cualquier dispositivo.
     const revoked = await transaction`delete from pignus_sessions where employee_id = ${String(user.id)} returning token_hash`
+    for (const previousSession of revoked) await require('./_lib/web-push.cjs').revokeSession(transaction, previousSession.token_hash)
     await transaction`insert into pignus_sessions (token_hash, employee_id, expires_at) values (${tokenHash(token)}, ${String(user.id)}, ${expiresAt})`
     await appendAudit(transaction, [auditEntry(user, 'Inició sesión', 'Sesión', String(user.id), null, { sessionExpiresAt: expiresAt.toISOString(), replacedSessions: revoked.length })])
   })
@@ -440,6 +441,8 @@ async function handleLogout(req, res, sql) {
   res.setHeader('Set-Cookie', 'pignus_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0')
   const token = cookies(req.headers.cookie).pignus_session
   if (!token) return send(res, 200, { ok: true })
+
+  await require('./_lib/web-push.cjs').revokeSession(sql, tokenHash(token))
 
   // El cierre no necesita reconstruir toda la sesión mediante varias consultas.
   // Primero revoca el token y obtiene en el mismo viaje los datos mínimos para
@@ -1223,6 +1226,13 @@ module.exports = async function handler(req, res) {
     if (process.env.VERCEL && !productionSecretsAreValid()) return send(res, 500, { error: 'La API no tiene configurados secretos de seguridad válidos.' })
     const sql = database()
     const route = routePath(req)
+    if (route === '/push/process') {
+      const push = require('./_lib/web-push.cjs')
+      if (!push.workerAuthorized(req)) return send(res, 401, { error: 'Acceso no autorizado.' })
+      if (req.method !== 'POST') return send(res, 405, { error: 'Método no permitido.' })
+      try { return send(res, 200, await push.processPush({ sql, readState })) }
+      catch { return send(res, 500, { error: 'No se pudo procesar el envío de notificaciones.' }) }
+    }
     if (route === '/customers/sync/worker') {
       if (req.method !== 'POST') return send(res, 405, { error: 'Método no permitido.' })
       try { return send(res, 200, await require('./_lib/customer-sync.cjs').handle({ sql, mode: 'worker', body: requestBody(req), bearer: String(req.headers.authorization || '').replace(/^Bearer /, ''), reconcileReport: async (tx, report, previous, now) => {
@@ -1264,6 +1274,11 @@ module.exports = async function handler(req, res) {
     }
     const session = await requireSession(req, res, sql)
     if (!session) return
+    if (route === '/push/subscription') {
+      if (req.method !== 'GET' && req.headers.origin && req.headers.origin !== `https://${req.headers.host}` && !(process.env.VERCEL === undefined && req.headers.origin === `http://${req.headers.host}`)) return send(res, 403, { error: 'Origen no permitido.' })
+      try { return send(res, 200, await require('./_lib/web-push.cjs').request({ sql, user: session.user, sessionHash: session.hash, method: req.method, input: requestBody(req), readState })) }
+      catch (error) { return send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo configurar este dispositivo.' }) }
+    }
     if (route === '/customers/sync' || route === '/customers/sync/token') {
       if (!(isGranular(session.user) ? canPermission(session.user, 'customers.import') : userCan(session.user, 'accountsImport'))) return send(res, 403, { error: 'No tenés permiso para sincronizar abonados.' })
       const mode = route.endsWith('/token') ? (req.method === 'POST' ? 'token' : '') : req.method === 'GET' ? 'status' : req.method === 'POST' ? 'request' : ''

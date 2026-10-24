@@ -1,12 +1,17 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
 import Icon from './ui/Icon.jsx'
 import useNotificationSound from './useNotificationSound.js'
+import WebPushControls from './WebPushControls.jsx'
+import { pendingPush, clearPendingPush } from '../infrastructure/browser/push-navigation.mjs'
 import './notification-center.css'
 
 /** Active operational notices; opening one never marks its cause as resolved. */
 export default function NotificationCenter({ notifications = [], onSelect, userKey, readySources }) {
   const sound = useNotificationSound({ notifications, userKey, readySources })
   const [open, setOpen] = useState(false)
+  const [pushRequest, setPushRequest] = useState(pendingPush)
+  const [pushMessage, setPushMessage] = useState('')
+  const pushOpenedAt = useRef(Date.now())
   const root = useRef(null)
   const toggle = useRef(null)
   const panel = useRef(null)
@@ -16,6 +21,24 @@ export default function NotificationCenter({ notifications = [], onSelect, userK
     setOpen(false)
     if (restoreFocus) toggle.current?.focus()
   }
+
+  useEffect(() => {
+    const receive = event => { pushOpenedAt.current = Date.now(); setPushMessage(''); setPushRequest(event.detail); setOpen(true) }
+    window.addEventListener('pignus-push-open', receive)
+    return () => window.removeEventListener('pignus-push-open', receive)
+  }, [])
+  useEffect(() => {
+    if (!pushRequest) return
+    if (pushRequest.userId !== String(userKey)) {
+      setPushMessage('Este aviso pertenece a otra cuenta. Ingresá con la cuenta que lo recibió.'); setOpen(true); setPushRequest(null); clearPendingPush(); return
+    }
+    const notice = notifications.find(item => item.id === pushRequest.noticeId)
+    if (notice) { setPushRequest(null); clearPendingPush(); onSelect?.(notice); return }
+    if (!pushRequest.noticeId) { setOpen(true); setPushRequest(null); clearPendingPush(); return }
+    setOpen(true)
+    const timer = setTimeout(() => { setPushMessage('El aviso ya no está pendiente o no está disponible para tu cuenta.'); setPushRequest(null); clearPendingPush() }, Math.max(0, 15000 - (Date.now() - pushOpenedAt.current)))
+    return () => clearTimeout(timer)
+  }, [pushRequest, notifications, userKey, onSelect])
 
   useEffect(() => {
     if (!open) return undefined
@@ -54,15 +77,23 @@ export default function NotificationCenter({ notifications = [], onSelect, userK
       {count > 0 && <span className="notification-badge" aria-hidden="true">{count > 99 ? '99+' : count}</span>}
     </button>
     {open && <section className="notification-panel" id={id} ref={panel} role="dialog" aria-label="Notificaciones">
-      <header className="notification-header"><div><h2>Notificaciones</h2><p>{count} aviso{count === 1 ? '' : 's'} activo{count === 1 ? '' : 's'}</p></div><button type="button" className="notification-close" aria-label="Cerrar notificaciones" title="Cerrá las notificaciones y volvé a la pantalla actual." onClick={() => close(true)}><Icon name="close" size={17} /></button></header>
-      <div className="notification-sound-controls"><button type="button" className="notification-sound-toggle" aria-pressed={sound.enabled} onClick={sound.toggle}><Icon name={sound.enabled ? 'volume' : 'muted'} size={17} />{sound.enabled ? 'Silenciar' : 'Activar sonido'}</button><button type="button" disabled={!sound.enabled} onClick={sound.test}>Probar sonido</button><small>Sonido breve para nuevos avisos. Preferencia guardada en este navegador.</small>{sound.message && <small role="status">{sound.message}</small>}</div>
+      <header className="notification-header">
+        <div className="notification-heading"><h2>Notificaciones</h2><p>{count} aviso{count === 1 ? '' : 's'} activo{count === 1 ? '' : 's'}</p></div>
+        <div className="notification-header-actions">
+          <button type="button" className="notification-sound-toggle" aria-label={sound.enabled ? 'Silenciar' : 'Activar sonido'} title={sound.enabled ? 'Sonido activado. Silenciar nuevos avisos.' : 'Activar sonido para nuevos avisos en este navegador.'} aria-pressed={sound.enabled} onClick={sound.toggle}><Icon name={sound.enabled ? 'volume' : 'muted'} size={18} /></button>
+          <button type="button" aria-label="Probar sonido" title="Probar sonido" disabled={!sound.enabled} onClick={sound.test}><Icon name="play" size={18} /></button>
+          <button type="button" className="notification-close" aria-label="Cerrar notificaciones" title="Cerrar notificaciones" onClick={() => close(true)}><Icon name="close" size={18} /></button>
+        </div>
+      </header>
+      {sound.message && <p className="notification-sound-message" role="status">{sound.message}</p>}
+      {pushMessage && <p className="notification-sound-message" role="status">{pushMessage}</p>}
       <div className="notification-list">
         {count ? notifications.map(notification => <button type="button" key={notification.id} className="notification-item" data-tone={notification.tone || 'info'} title={`Abrir: ${notification.title}`} onClick={() => activate(notification)}>
           <span className="notification-marker" aria-hidden="true"><Icon name={notification.target?.type === 'collection' ? 'wallet' : notification.tone === 'danger' ? 'alert' : 'calendar'} size={17} /></span>
           <span className="notification-copy"><strong>{notification.title}</strong><span>{notification.detail}</span></span>
         </button>) : <div className="notification-empty"><Icon name="check" size={24} /><strong>No hay avisos activos</strong><p>Acá aparecerán los avisos que requieran seguimiento.</p></div>}
       </div>
-      <footer className="notification-footer"><small>Las novedades de Tickets se marcan como leídas al abrir el caso. Los pendientes se mantienen hasta su resolución.</small></footer>
+      <footer className="notification-footer"><WebPushControls key={userKey} userKey={userKey} /><small>Las novedades de Tickets se marcan como leídas al abrir el caso. Los pendientes se mantienen hasta su resolución.</small></footer>
     </section>}
   </div>
 }
