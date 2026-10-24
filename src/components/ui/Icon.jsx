@@ -5,6 +5,8 @@ import React from 'react'
  * Mantener el mapa de trazos centralizado evita duplicar SVGs en cada módulo.
  */
 const paths = {
+  volume: 'M11 5 6 9H3v6h3l5 4V5Zm4 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14',
+  muted: 'M11 5 6 9H3v6h3l5 4V5Zm5 4 6 6m0-6-6 6',
   bell: 'M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4',
   map: 'm3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15',
   wallet: 'M3 6h16v14H3V6Zm0 0V4h14v2m-2 5h6v5h-6v-5Zm3 2.5h.01',

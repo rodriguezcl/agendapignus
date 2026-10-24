@@ -24,7 +24,7 @@ export function usePasswordResetRequests({ enabled, accountKey }) {
         if (generation.current !== epoch || revision.current !== startedAtRevision) return
         if (response.status === 403) { setState({ accountKey, requests: [] }); return }
         if (!response.ok) throw new Error(data.error || 'No se pudieron consultar las solicitudes.')
-        setState({ accountKey, requests: Array.isArray(data.requests) ? data.requests : [] })
+        setState({ accountKey, ready: true, requests: Array.isArray(data.requests) ? data.requests : [] })
       } catch (loadError) {
         console.warn('No se pudieron actualizar las solicitudes de contraseña.', loadError)
       } finally { loading = false }
@@ -60,5 +60,5 @@ export function usePasswordResetRequests({ enabled, accountKey }) {
     }
   }, [enabled])
 
-  return { requests: enabled && state.accountKey === accountKey ? state.requests : [], error: enabled ? error : '', resolve, refresh: () => refreshRef.current() }
+  return { ready: Boolean(enabled && state.accountKey === accountKey && state.ready), requests: enabled && state.accountKey === accountKey ? state.requests : [], error: enabled ? error : '', resolve, refresh: () => refreshRef.current() }
 }

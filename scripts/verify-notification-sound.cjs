@@ -1,0 +1,29 @@
+const fs=require('fs'),path=require('path'),assert=require('node:assert/strict');
+const {buildSync}=require('esbuild'),{chromium}=require('playwright');
+const root=path.resolve(__dirname,'..'),out=path.join(root,'tmp/visual-qa/notification-sound');fs.mkdirSync(out,{recursive:true});
+const cssImports=[...fs.readFileSync(path.join(root,'src/main.jsx'),'utf8').matchAll(/import\s+['"]([^'"]+\.css)['"]/g)].map(m=>`import '${m[1]}';`).join('\n');
+const entry=`import React,{useState} from 'react';import{createRoot}from'react-dom/client';import NotificationCenter from './components/NotificationCenter.jsx';${cssImports}
+const query=new URLSearchParams(location.search),theme=query.get('theme')||'light';document.body.dataset.theme=theme;
+function Review(){const [items,setItems]=useState([{id:'a',title:'Cobranza pendiente de prueba',detail:'Información de prueba',target:{type:'collection'}}]);const [ready,setReady]=useState({operational:true});const [user,setUser]=useState('qa-a');window.updateNotices=setItems;window.updateReady=setReady;window.switchUser=setUser;return <div className='app-shell' data-theme={theme}><main><header className='topbar'><h1>Prueba de notificaciones</h1><div className='profile'><NotificationCenter key={user} userKey={user} notifications={items} readySources={ready}/></div></header></main></div>};createRoot(document.getElementById('root')).render(<React.StrictMode><Review/></React.StrictMode>);`;
+const built=buildSync({stdin:{contents:entry,loader:'jsx',resolveDir:path.join(root,'src')},bundle:true,write:false,outdir:'out',format:'iife',external:['/logo-pignus.png','/pignus-owl-white.svg'],define:{'process.env.NODE_ENV':'"development"'},loader:{'.css':'css'},logLevel:'silent'});
+const js=built.outputFiles.find(f=>f.path.endsWith('.js')).text,css=built.outputFiles.find(f=>f.path.endsWith('.css')).text;
+(async()=>{const browser=await chromium.launch({channel:'msedge',headless:true});try{for(const [width,theme]of [[1440,'light'],[390,'dark']]){
+ const context=await browser.newContext({viewport:{width,height:900}}),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.addInitScript(()=>{window.tones=0;const native=AudioContext.prototype.createOscillator;AudioContext.prototype.createOscillator=function(){window.tones++;return native.call(this)}});
+ await page.route('**/*',route=>{const url=new URL(route.request().url());return route.fulfill(url.pathname==='/qa.js'?{contentType:'text/javascript',body:js}:url.pathname==='/qa.css'?{contentType:'text/css',body:css}:url.pathname==='/review'?{contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/qa.css"><div id="root"></div><script src="/qa.js"></script>'}:{body:''})});
+ await page.goto('https://sound-review.test/review?theme='+theme);await page.locator('.notification-toggle').click();
+ assert.equal(await page.evaluate(()=>tones),0);
+ await page.getByRole('button',{name:'Activar sonido',exact:true}).click();await page.waitForFunction(()=>tones===2);
+ await page.evaluate(()=>updateNotices([{id:'a',title:'Inicial'},{id:'b',title:'Nueva'},{id:'c',title:'Otra nueva'}]));await page.waitForFunction(()=>tones===4);
+ await page.evaluate(()=>updateNotices([{id:'c',title:'Otra nueva'},{id:'a',title:'Texto corregido'},{id:'b',title:'Nueva'}]));await page.waitForTimeout(1100);assert.equal(await page.evaluate(()=>tones),4);
+ await page.evaluate(()=>{updateReady({operational:true,tickets:true});updateNotices([{id:'a'},{id:'b'},{id:'c'},{id:'ticket1',target:{type:'ticket'}}])});await page.waitForTimeout(1100);assert.equal(await page.evaluate(()=>tones),4);
+ await page.evaluate(()=>updateNotices([{id:'ticket2',target:{type:'ticket'}}]));await page.waitForFunction(()=>tones===6);
+ await page.getByRole('button',{name:'Silenciar',exact:true}).click();await page.evaluate(()=>updateNotices([{id:'muted',title:'Silenciada'}]));await page.waitForTimeout(1100);assert.equal(await page.evaluate(()=>tones),6);
+ await page.getByRole('button',{name:'Activar sonido',exact:true}).click();await page.waitForFunction(()=>tones===8);
+ await page.screenshot({path:path.join(out,width+'-'+theme+'.png')});
+ const geometry=await page.locator('.notification-panel').evaluate(el=>({width:innerWidth,left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,overflow:el.scrollWidth-el.clientWidth}));assert(geometry.left>=0&&geometry.right<=geometry.width&&geometry.overflow<=1);
+ await page.reload();await page.locator('.notification-toggle').click();assert.equal(await page.getByRole('button',{name:'Silenciar',exact:true}).count(),1);await page.waitForTimeout(1100);assert.equal(await page.evaluate(()=>tones),0);
+ await page.evaluate(()=>updateNotices([{id:'post-reload',title:'Nueva tras recarga'}]));await page.waitForFunction(()=>tones===2);
+ await page.evaluate(()=>switchUser('qa-b'));await page.locator('.notification-toggle').click();assert.equal(await page.getByRole('button',{name:'Activar sonido',exact:true}).count(),1);
+ assert.deepEqual(errors,[]);console.log('OK',width,theme,'audio real, silencio, carga asincrónica, recarga y aislamiento por usuario');await context.close();
+}}finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});

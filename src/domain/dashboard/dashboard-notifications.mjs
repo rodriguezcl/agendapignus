@@ -97,7 +97,7 @@ export function selectDashboardNotifications({ history = [], vehicles = [], cust
   if (administrator) {
     for (const record of history.filter(item => isAdvanceRequestActive(item, now ?? Number.NaN))) {
       notices.push({
-        id: `advance:${record.id}`, title: 'Solicitud para adelantar servicio', tone: 'warning',
+        id: `advance:${record.id}`, soundKeys: [`advance:${record.id}:${record.advanceRequest.requestedAt}`], title: 'Solicitud para adelantar servicio', tone: 'warning',
         detail: `${record.advanceRequest.requestedByName || 'Un técnico'} solicita adelantar el servicio de ${record.client || 'un cliente'} antes de las ${record.advanceRequest.scheduledTime || record.time}.`,
         target: { type: 'advance-request', recordId: String(record.id) }
       })
@@ -136,7 +136,7 @@ export function selectDashboardNotifications({ history = [], vehicles = [], cust
   for (const group of DASHBOARD_PENDING_NOTICES) {
     if (!receives(categories[group.key]) || !pending[group.key].length) continue
     notices.push({
-      id: `pending:${group.key}`, title: `${group.title}: ${pending[group.key].length} servicio(s)`,
+      id: `pending:${group.key}`, soundKeys: pending[group.key].map(record => `pending:${group.key}:${record.id}`), title: `${group.title}: ${pending[group.key].length} servicio(s)`,
       detail: group.detail, tone: group.tone,
       target: can('history') ? { type: 'history', pendingGroup: group.key, date: today } : dashboard(`pending-${group.key}`)
     })
@@ -151,7 +151,7 @@ export function selectDashboardNotifications({ history = [], vehicles = [], cust
   }
   const verification = receives('softguard') ? softguardVerificationCases(visibleCustomers) : []
   if (verification.length) notices.push({
-    id: 'softguard-verification', title: `Pendiente de verificación en SoftGuard: ${verification.length} cuenta(s)`,
+    id: 'softguard-verification', soundKeys: verification.map(item => `softguard-verification:${item.customerId || item.account}`), title: `Pendiente de verificación en SoftGuard: ${verification.length} cuenta(s)`,
     detail: 'Hay cuentas PIG que coinciden con clientes CLI provenientes de una baja de servicio.', tone: 'warning',
     target: { type: 'softguard' }
   })
