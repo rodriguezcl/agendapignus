@@ -27,7 +27,7 @@ test('push detects grouped additions and new ticket messages without re-alerting
 test('PostgreSQL subscriptions: silent enrollment, due dates, ownership, retries, expiry, revocation and inactive users',async()=>{
   const {PGlite}=await import('@electric-sql/pglite'),pg=await PGlite.create(),sql=pgliteAdapter(pg)
   try{
-    await pg.exec('create role anon; create role authenticated; create table pignus_preferences(key text primary key,value text);')
+    await pg.exec('create role anon; create role authenticated; create table pignus_preferences(key text primary key,value text); create table pignus_sessions(token_hash text,employee_id text);')
     await pg.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261024_web_push.sql'),'utf8'))
     await pg.exec("insert into pignus_push_config values(true,'public','private','https://example.test')")
     const roles=[{id:'r',name:'Cobranzas',code:'collections',permissions:{__catalogV2:true,'collections.view':true,'records.read':true,'records.financial':true}}]
@@ -63,6 +63,10 @@ test('PostgreSQL subscriptions: silent enrollment, due dates, ownership, retries
     await push.revokeSession(sql,'session')
     assert.equal((await pg.query('select count(*)::int as count from pignus_push_subscriptions')).rows[0].count,1)
     await push.revokeSession(sql,'renewed')
+    assert.equal((await call('POST',{action:'status',endpoint:input.endpoint})).enabled,false)
+    await call('POST',{action:'subscribe',subscription:input})
+    await pg.exec("insert into pignus_sessions values('new-session','u')")
+    await push.revokeSession(sql,'new-session')
     assert.equal((await call('POST',{action:'status',endpoint:input.endpoint})).enabled,false)
     await call('POST',{action:'subscribe',subscription:input}); employee.status='Inactivo'; assert.equal((await run()).removed,1)
     assert.equal((await pg.query('select count(*)::int as count from pignus_push_subscriptions')).rows[0].count,0)

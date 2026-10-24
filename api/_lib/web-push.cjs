@@ -108,7 +108,10 @@ async function request({ sql, user, sessionHash, method, input = {}, readState }
   return { enabled: true }
 }
 async function revokeSession(sql, sessionHash) {
-  if (await configured(sql)) await sql`delete from pignus_push_subscriptions where session_hash=${sessionHash}`
+  // The app permits one active session per account. Explicit logout also
+  // removes subscriptions left behind by an older, expired session.
+  if (await configured(sql)) await sql`delete from pignus_push_subscriptions where session_hash=${sessionHash}
+    or user_id in (select employee_id from pignus_sessions where token_hash=${sessionHash})`
 }
 async function processPush({ sql, readState, send = sendPush, select = notificationsFor, maxRunMs = 35000 }) {
   const config = await configured(sql)

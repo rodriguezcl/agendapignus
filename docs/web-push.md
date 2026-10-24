@@ -7,7 +7,7 @@ La campana permite activar, desactivar y enviar una prueba desde **Notificacione
 - La primera activación solicita el permiso del sistema mediante un clic. No se solicita al iniciar sesión.
 - El sistema operativo controla la presentación, el sonido y las restricciones de entrega. No se garantiza entrega instantánea ni que un modo de concentración permita mostrar el aviso.
 - La primera suscripción toma los pendientes existentes como referencia silenciosa. Se avisan las novedades posteriores; abrir la bandeja no confirma cobranzas ni resuelve servicios.
-- El cierre explícito de sesión revoca las suscripciones asociadas a esa sesión. El reemplazo de una sesión al ingresar en otro dispositivo también las revoca. La caducidad por inactividad permite seguir recibiendo avisos genéricos mientras la cuenta continúe activa.
+- La plataforma permite una sola sesión activa por cuenta. El cierre explícito de esa sesión revoca sus suscripciones, incluidas las que quedaron asociadas a una sesión anterior vencida. El reemplazo de una sesión al ingresar en otro dispositivo revoca las suscripciones de la sesión desplazada. La caducidad por inactividad permite seguir recibiendo avisos genéricos mientras la cuenta continúe activa.
 
 ## Servidor
 
