@@ -104,7 +104,8 @@ function validateConfig(input, state, previous = defaultConfig()) {
   }
   const startingNumber = Number(input.startingNumber ?? previous.startingNumber)
   if (!Number.isSafeInteger(startingNumber) || startingNumber < 1 || startingNumber > 999999999999) fail('El número inicial debe ser un entero positivo de hasta 12 dígitos.')
-  return { categories, areas, events, startingNumber, sla: sla.validateSlaConfig(input.sla ?? previous.sla ?? sla.defaultSlaConfig()) }
+  const targets = input.sla ?? previous.sla ?? sla.defaultSlaConfig()
+  return { categories, areas, events, startingNumber, sla: sla.validateSlaConfig({ ...targets, calendar: previous.sla?.calendar || sla.defaultSlaConfig().calendar }) }
 }
 function classification(config, categoryId, subcategoryId) {
   const category = config.categories.find(item => item.id === categoryId && item.active)
@@ -226,7 +227,8 @@ function metadataAttachment(file) {
   const { data, content, ...rest } = file
   return { ...rest, name: file.fileName || file.name, mime: file.mimeType || file.mime, bytes: file.byteSize || file.bytes }
 }
-function present(ticket, user, entries = [], aliases = [], detailed = false) {
+function present(ticket, user, entries = [], aliases = [], detailed = false, config) {
+  if(config&&ticket.sla&&ticket.sla.clock!=='business'&&OPEN_STATUSES.includes(ticket.status)) { ticket=clone(ticket);sla.initSla(ticket,config) }
   const result = { ...ticket, displayNumber: `Ticket#${ticket.number}`, customerName: ticket.customerSnapshot?.name || '', eventAt: ticket.occurredAt, slaSummary: sla.slaView(ticket) }
   result.title = require('./ticket-registration-form.cjs').registrationFormTitle(ticket, permissions.can(user, 'records.contact'))
   if (ticket.origin === 'technical') result.title = require('./ticket-technical-title.cjs').technicalTicketTitle(ticket)

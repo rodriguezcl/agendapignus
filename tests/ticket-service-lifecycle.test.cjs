@@ -46,6 +46,45 @@ const completed = (record, options = {}) => {
   return next
 }
 
+for (const engine of ['sqlite', 'postgres']) test(`SLA ${engine}: usa la jornada persistida y retira sólo avisos del reloj anterior`, async () => {
+  const f = await fixture(engine)
+  try {
+    const workday = { weekdays: { 1: { start: '10:00', end: '16:00' } } }
+    if (engine === 'postgres') {
+      await f.query('CREATE SCHEMA normalized_shadow')
+      await f.query('CREATE TABLE normalized_shadow.storage_control (id INTEGER, active_model TEXT)')
+      await f.query("INSERT INTO normalized_shadow.storage_control VALUES (1,'normalized')")
+      await f.query('CREATE TABLE normalized_shadow.configuration_evidence (config_key TEXT, original_payload JSONB)')
+      await f.query('INSERT INTO normalized_shadow.configuration_evidence VALUES (?,?::jsonb)', ['_workday', JSON.stringify(workday)])
+    } else {
+      await f.query('CREATE TABLE agendas (id TEXT, data TEXT)')
+      await f.query('INSERT INTO agendas VALUES (?,?)', ['current', JSON.stringify({ weekly: { _workday: workday } })])
+    }
+    const c = await createCase(f, 'business-clock')
+    assert.equal(c.ticket.sla.policy.calendar.weekdays[1].start, '10:00')
+    const item = JSON.parse((await f.query('SELECT data FROM pignus_tickets WHERE id=?', [c.ticket.id]))[0].data)
+    item.sla.clock = item.sla.policy.clock = 'elapsed'
+    item.sla.startedAt = '2026-10-26T11:00:00.000Z'
+    item.sla.firstResponseDueAt = '2026-10-26T12:00:00.000Z'
+    await f.query('UPDATE pignus_tickets SET data=? WHERE id=?', [JSON.stringify(item), item.id])
+    for (const [id, eventLabel] of [['old-sla', 'Primera respuesta pendiente'], ['keep', 'Nuevo comentario']]) {
+      await f.query('INSERT INTO pignus_ticket_notifications (id,ticket_id,recipient_id,created_at,data) VALUES (?,?,?,?,?)', [id, item.id, operator.id, item.sla.startedAt, JSON.stringify({ eventLabel })])
+    }
+    const noticeCount = (await f.query('SELECT id FROM pignus_ticket_notifications')).length
+    const migratedAt = '2026-10-26T12:00:00.000Z' // 09:00: todavía fuera de la jornada configurada.
+    await f.store.processSla(migratedAt)
+    const saved = JSON.parse((await f.query('SELECT data FROM pignus_tickets WHERE id=?', [item.id]))[0].data)
+    assert.equal(saved.sla.clock, 'business')
+    assert.equal(saved.sla.startedAt, item.sla.startedAt)
+    assert.ok(saved.sla.firstResponseDueAt > '2026-10-26T13:00:00.000Z')
+    assert.equal(saved.sla.clockMigration.notificationsRetiredAt, migratedAt)
+    const notices = await f.query("SELECT id,read_at FROM pignus_ticket_notifications WHERE id IN ('keep','old-sla') ORDER BY id")
+    assert.deepEqual(notices.map(n => [n.id, n.read_at]), [['keep', null], ['old-sla', migratedAt]])
+    await f.store.processSla(migratedAt)
+    assert.equal((await f.query('SELECT id FROM pignus_ticket_notifications')).length, noticeCount)
+  } finally { await f.close() }
+})
+
 test('la evidencia usa autor, fecha y texto del informe del servidor y exige tickets explícitos para vínculos manuales', () => {
   const record = { technicalStatus: 'Completado', technicalObservation: 'Se verificó el panel.' }
   assert.throws(() => resolutionEvidence({ resolved: true }, record, technician, at), /tickets asociados/)
@@ -318,13 +357,13 @@ for (const engine of ['sqlite', 'postgres']) test(`Tickets y Agenda ${engine}: v
       assert.equal(item.sla.startedAt, adoptionAt)
       assert.equal(item.sla.adoptedAt, adoptionAt)
       assert.equal((await c.notices(support)).length, 0)
-      const overdueAt = '2026-11-05T12:00:00.000Z'
+      const overdueAt = '2026-11-12T12:00:00.000Z'
       await f.store.processSla(overdueAt)
       const notices = await c.notices(support)
       assert.equal(notices.length, 3)
       await f.store.processSla(overdueAt)
       assert.equal((await c.notices(support)).length, notices.length)
-      assert.equal((await c.detail()).sla.resolutionDueAt, '2026-11-04T12:00:00.000Z')
+      assert.equal((await c.detail()).sla.resolutionDueAt, '2026-11-11T13:00:00.000Z')
       const latest = await c.detail()
       await f.store.run(support, c.state, cmd('markNotificationsRead', { id: latest.id }))
       assert.equal((await c.notices(support)).length, 0)

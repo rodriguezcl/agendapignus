@@ -88,7 +88,11 @@ function createTicketStore({ sql, db }) {
     if (pg) return sql.begin(async tx => { await tx`set local lock_timeout = '5s'`; return fn(executor(tx)) })
     return serialized(async () => { db.exec('BEGIN IMMEDIATE'); try { const result = await fn(execute); db.exec('COMMIT'); return result } catch (error) { db.exec('ROLLBACK'); throw error } })
   }
-  async function settings(q = execute, locked = false) { return parse((await q(`SELECT data FROM pignus_ticket_settings WHERE id=?${pg && locked ? ' FOR UPDATE' : ''}`, ['config']))[0]) }
+  async function settings(q = execute, locked = false) {
+    const value=parse((await q(`SELECT data FROM pignus_ticket_settings WHERE id=?${pg && locked ? ' FOR UPDATE' : ''}`, ['config']))[0])
+    if(value) value.config.sla={...sla.validateSlaConfig(value.config.sla||sla.defaultSlaConfig()),calendar:await require('./ticket-business-clock.cjs').readCalendar(q,pg)}
+    return value
+  }
   async function ensureServiceDefaults(state) {
     // Se necesita el catálogo completo, no una proyección sin tipos de servicio.
     if (!Array.isArray(state.services)) return
@@ -181,7 +185,14 @@ function createTicketStore({ sql, db }) {
       let adopted = 0, reminders = 0
       for (const row of rows) {
         const item = parse(row)
-        if (!item.sla) { sla.initSla(item,config,now); adopted++ }
+        if (!item.sla) adopted++
+        sla.initSla(item,config,now)
+        if(item.sla.clockMigration&&!item.sla.clockMigration.notificationsRetiredAt) {
+          // Older notices have eventLabel but no machine-readable type.
+          const label=pg?"data::jsonb->>'eventLabel'":"json_extract(data,'$.eventLabel')"
+          await q("UPDATE pignus_ticket_notifications SET read_at=? WHERE ticket_id=? AND read_at IS NULL AND "+label+" IN ('Plazo de resolución vencido','Primera respuesta pendiente','Actualización del caso pendiente')",[now,item.id])
+          item.sla.clockMigration.notificationsRetiredAt=now
+        }
         item.sla.lastCheckedAt=now
         await save(q,item)
         for (const due of sla.dueReminders(item,now)) {
@@ -201,7 +212,7 @@ function createTicketStore({ sql, db }) {
   }
   async function detailed(q, item, user, state = {}, config) {
     const aliases = (await q('SELECT number FROM pignus_ticket_aliases WHERE ticket_id=? ORDER BY number',[item.id])).map(row=>row.number)
-    return { ...d.present(item,user,await entries(q,item.id),aliases,true), registrationForm: policy.can(user,'planning.commercial') && policy.can(user,'records.contact') ? item.registrationForm || registration.detectRegistrationForm(item.title,item.description) : undefined, suggestedServiceId: registration.detectRegistrationForm(item.title,item.description) ? registration.installationSuggestion(state) : serviceSuggestions.suggestedServiceId(item, config || (await settings(q)).config, state) }
+    return { ...d.present(item,user,await entries(q,item.id),aliases,true,config || (await settings(q)).config), registrationForm: policy.can(user,'planning.commercial') && policy.can(user,'records.contact') ? item.registrationForm || registration.detectRegistrationForm(item.title,item.description) : undefined, suggestedServiceId: registration.detectRegistrationForm(item.title,item.description) ? registration.installationSuggestion(state) : serviceSuggestions.suggestedServiceId(item, config || (await settings(q)).config, state) }
   }
   async function customerLock(q, customerId) { if (pg && customerId) await q('SELECT pg_advisory_xact_lock(hashtext(?))',[`ticket-customer:${customerId}`]) }
   async function duplicates(q, customerId, user, state, config, locked=false) {
@@ -289,7 +300,7 @@ function createTicketStore({ sql, db }) {
       const total=Number((await execute('SELECT COUNT(*) AS count FROM pignus_tickets'+clause(),args))[0].count)
       const page=Math.max(1,Math.floor(Number(params.page)||1)),pageSize=Math.min(50,safeNum(params.pageSize||20))
       const items=(await execute('SELECT data FROM pignus_tickets'+clause()+' ORDER BY CASE '+field('priority')+" WHEN 'Crítica' THEN 0 WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END,updated_at DESC,id LIMIT ? OFFSET ?",[...args,pageSize,(page-1)*pageSize])).map(parse)
-      return {items:items.map(t=>d.present(t,user)),total,page,pageSize,counts}
+      return {items:items.map(t=>d.present(t,user,[],[],false,config)),total,page,pageSize,counts}
     })
   }
   async function run(user,state,input, formState) {
