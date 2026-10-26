@@ -8,6 +8,8 @@ import { compactVehiclePhoto } from '../infrastructure/media/image-upload.mjs'
 import { requestJson } from '../infrastructure/http/json-request.mjs'
 import { ticketDate, ticketNumber } from '../features/tickets/ticket-ui.mjs'
 import './technician-report.css'
+import alarmZoneModel from '../../api/_lib/alarm-zones.cjs'
+import AlarmZonesEditor from './AlarmZonesEditor.jsx'
 import '../features/followups/followups.css'
 
 const attachmentUrl = (recordId, fileId) => `/api/attachments/service/${encodeURIComponent(String(recordId))}${fileId ? `/${encodeURIComponent(String(fileId))}` : ''}`
@@ -19,7 +21,7 @@ export function TechnicalDuplicatePreview({ ticket }) {
   </section>
 }
 
-export default function TechnicianReportModal({ record, type, serviceLabel, pendingAttachments = [], onPendingAttachmentsChange, attachmentsPreparing = false, onPreparingChange, onClose, onSubmit }) {
+export default function TechnicianReportModal({ record, type, serviceLabel, initialAlarmZones, pendingAttachments = [], onPendingAttachmentsChange, attachmentsPreparing = false, onPreparingChange, onClose, onSubmit }) {
   const { can } = useActionPermissions()
   const [needsFollowup, setNeedsFollowup] = useState(false)
   const [followupType, setFollowupType] = useState('Cotizar adicional')
@@ -66,6 +68,11 @@ export default function TechnicianReportModal({ record, type, serviceLabel, pend
     return () => { active = false }
   }, [ticketChoice, record.customerId, record.id, ticketContextPending, selectedTicketContext, previewRetry])
   const vehicleControl = Boolean(record.vehicleControl && type === 'Completado')
+  const needsZones = alarmZoneModel.installation(record) && ['Completado', 'Avance registrado'].includes(type)
+  const [alarmZones, setAlarmZones] = useState(() => initialAlarmZones || alarmZoneModel.initialZones(record))
+  const [zonesDirty, setZonesDirty] = useState(false)
+  let zonesValid = true
+  if (needsZones) { try { alarmZoneModel.validateZones(alarmZones, type === 'Completado') } catch { zonesValid = false } }
   const [observation, setObservation] = useState('')
   const [mileage, setMileage] = useState('')
   const [photo, setPhoto] = useState('')
@@ -85,11 +92,11 @@ export default function TechnicianReportModal({ record, type, serviceLabel, pend
   const photoRequestRef = useRef(null)
   const pendingRef = useRef(pendingAttachments)
   pendingRef.current = pendingAttachments
-  const dirty = Boolean(needsFollowup || complaintResolved || observation.trim() || mileage || photo || pendingAttachments.length)
+  const dirty = Boolean(zonesDirty || needsFollowup || complaintResolved || observation.trim() || mileage || photo || pendingAttachments.length)
   const busy = saving || photoBusy || attachmentsPreparing
   const valid = vehicleControl
     ? Boolean(photo) && /^\d+$/.test(mileage) && Number(mileage) > Number(record.vehicleMileageAtScheduling || 0)
-    : Boolean(observation.trim()) && !linkedTicketsLoading && (!needsFollowup || Boolean(followupDescription.trim()) && !ticketChecking && !ticketContextPending && !ticketError && (!(followupCandidates.length || hasLinkedComplaint) || Boolean(ticketChoice)) && (!ticketChoice || ticketChoice === 'different' || Boolean(ticketPreview) && !previewLoading && !previewError && previewContext === selectedTicketContext))
+    : zonesValid && Boolean(observation.trim()) && !linkedTicketsLoading && (!needsFollowup || Boolean(followupDescription.trim()) && !ticketChecking && !ticketContextPending && !ticketError && (!(followupCandidates.length || hasLinkedComplaint) || Boolean(ticketChoice)) && (!ticketChoice || ticketChoice === 'different' || Boolean(ticketPreview) && !previewLoading && !previewError && previewContext === selectedTicketContext))
   const requestClose = () => { if (!busy) dirty ? setDiscarding(true) : onClose() }
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; photoRequestRef.current?.abort() } }, [])
@@ -152,6 +159,7 @@ export default function TechnicianReportModal({ record, type, serviceLabel, pend
         onPendingAttachmentsChange(pendingRef.current)
       })
       await onSubmit({ observation, vehicleMileage: mileage, vehiclePhoto: photo,
+        ...(needsZones ? { alarmZones } : {}),
         ...(type === 'Completado' && hasLinkedComplaint ? { ticketResolution: { resolved: complaintResolved && (!needsFollowup || ticketChoice === 'different') && !linkedTicketsError, ticketIds: linkedTickets.length ? linkedTickets.map(ticket => String(ticket.id)) : [String(record.sourceTicketId)].filter(Boolean) } } : {}),
         ...(needsFollowup ? { followup: { type: followupType, description: followupDescription, duplicateToken, relatedTicketId: ticketChoice === 'different' ? '' : ticketChoice, ...(ticketChoice && ticketChoice !== 'different' ? { relatedTicketVersion: ticketPreview.version } : {}), ...(ticketChoice === 'different' ? { relation: 'different' } : {}) } } : {}) })
     } catch (failure) {
@@ -188,6 +196,7 @@ export default function TechnicianReportModal({ record, type, serviceLabel, pend
             </fieldset>
           </div>
         </> : <>
+          {needsZones && <AlarmZonesEditor value={alarmZones} onChange={value => { setAlarmZones(value); setZonesDirty(true) }} disabled={saving} complete={type === 'Completado'} />}
           <label><RequiredLabel>Observación</RequiredLabel><textarea required value={observation} disabled={saving} onChange={event => setObservation(event.target.value)} placeholder="Detallá el trabajo realizado, el resultado y cualquier recomendación para futuras visitas." /></label>
           {linkedTicketsLoading && <p role="status">Consultando el reclamo asociado…</p>}
           {linkedTicketsError && <p className="field-error" role="alert">{linkedTicketsError} El informe se puede guardar; el ticket quedará pendiente de revisión. <button type="button" className="secondary" title="Volvé a consultar los tickets asociados a este servicio." disabled={busy} onClick={() => setLinkedTicketsRetry(value => value + 1)}>Reintentar</button></p>}

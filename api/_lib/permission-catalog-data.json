@@ -1039,7 +1039,7 @@
     },
     {
       "id": "customers.softguard.resolve",
-      "label": "Registrar baja realizada en SoftGuard",
+      "label": "Confirmar bajas y carga de zonas en SoftGuard",
       "groups": [
         "accounts"
       ],
@@ -1047,7 +1047,7 @@
         "accounts.view"
       ],
       "any": [],
-      "note": "Confirma la gestión externa de una baja pendiente y conserva su fecha y responsable. No realiza la baja en SoftGuard ni habilita importaciones.",
+      "note": "Confirma bajas realizadas y zonas cargadas manualmente en SoftGuard, conservando fecha y responsable. Consultar zonas requiere acceso a informes técnicos. No opera SoftGuard ni habilita importaciones.",
       "sensitive": false
     },
     {
@@ -1667,7 +1667,8 @@
         "weekly",
         "agenda",
         "history",
-        "technical"
+        "technical",
+        "accounts"
       ],
       "all": [
         "records.read"
@@ -1676,7 +1677,8 @@
         "weekly.view",
         "agenda.view",
         "history.view",
-        "technical.view"
+        "technical.view",
+        "accounts.view"
       ],
       "note": "Unifica la autorización de archivos actuales y fotos antiguas.",
       "sensitive": false
@@ -1977,7 +1979,7 @@
         "accounts.view"
       ],
       "any": [],
-      "note": "Permite recibir avisos de bajas pendientes y verificación de SoftGuard. No habilita resolverlos ni importar abonados.",
+      "note": "Permite recibir avisos de bajas pendientes, verificación y zonas disponibles para SoftGuard. Las zonas requieren acceso a informes técnicos. No habilita resolver avisos ni importar abonados.",
       "sensitive": false
     },
     {

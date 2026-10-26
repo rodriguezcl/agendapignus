@@ -4,7 +4,7 @@ const id = value => String(value ?? '')
 const any = (user, keys) => keys.some(key => permissions.can(user, key))
 const FINANCIAL_FIELDS = new Set(['amount', 'paymentMethod', 'monthlyFee', 'monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'collection', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy', 'form', 'formEmail'])
 const CONTACT_FIELDS = new Set(['address', 'phone', 'email', 'contact', 'contactName', 'contactPhone', 'location', 'coordinates', 'latitude', 'longitude', 'lat', 'lng', 'mapsUrl', 'googleMapsUrl', 'formEmail'])
-const DOCUMENT_FIELDS = new Set(['technicalObservation', 'technicalReport', 'servicePhotoUrl', 'servicePhotoUploadedBy', 'servicePhotoCanDelete', 'attachments', 'documents', 'photos'])
+const DOCUMENT_FIELDS = new Set(['technicalObservation', 'alarmZones', 'technicalReport', 'servicePhotoUrl', 'servicePhotoUploadedBy', 'servicePhotoCanDelete', 'attachments', 'documents', 'photos'])
 const omitFields = (value, fields) => Array.isArray(value) ? value.map(item => omitFields(item, fields)) : value && typeof value === 'object'
   ? Object.fromEntries(Object.entries(value).filter(([key]) => !fields.has(key)).map(([key, item]) => [key, omitFields(item, fields)])) : value
 const account = value => String(value || '').trim().toUpperCase()
@@ -187,11 +187,18 @@ function granularVisibleState(state, user) {
     ...Object.fromEntries(['customerId', 'clientAccount', 'account', 'client', 'vehicleControl', 'monthlyFee', 'monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy'].filter(key => record[key] !== undefined).map(key => [key, record[key]]))
   })) : []
   const subscriptionIds = new Set(subscriptionHistory.map(record => id(record.id)))
+  const historyWithZones = new Map([...visibleHistory.map(record => sanitizeService(record, user, state)), ...subscriptionHistory, ...metricHistory.filter(record => !subscriptionIds.has(id(record.id)))].map(record => [id(record.id), record]))
+  if (can('accounts.view') && can('service.documents.read')) {
+    for (const record of state.history || []) {
+      if (!record.alarmZones || !serviceInReadScope(record, user, state) || !customerReadable(customerForRecord(record, state), user, state)) continue
+      historyWithZones.set(id(record.id), { ...historyWithZones.get(id(record.id)), ...Object.fromEntries(['id','date','status','technicalStatus','customerId','client','clientAccount','alarmZones'].filter(key => record[key] !== undefined).map(key => [key,record[key]])) })
+    }
+  }
   return {
     revision: state.revision, roles, employees, customers,
     services: any(user, ['services.view', 'planning.create', 'planning.edit', 'history.edit', 'history.category']) ? state.services || [] : can('dashboard.view') ? (state.services || []).map(({ id, name, code, category }) => ({ id, name, code, category })) : [],
     vehicles: (state.vehicles || []).filter(vehicle => vehicleReadable(vehicle, user, state)).map(vehicle => sanitizeVehicle(vehicle, user)),
-    history: [...visibleHistory.map(record => sanitizeService(record, user, state)), ...subscriptionHistory, ...metricHistory.filter(record => !subscriptionIds.has(id(record.id)))],
+    history: [...historyWithZones.values()],
     agenda: any(user, ['weekly.view', 'agenda.view', 'settings.view']) ? { date: state.agenda?.date, teams: can('agenda.view') ? teams(state.agenda?.teams) : [], weekly } : null,
     preferences: {}
   }

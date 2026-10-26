@@ -46,7 +46,7 @@ const RECORD_GROUPS = {
   assignment: ['technicianIds', 'technicians'],
   confirm: ['awaitingConfirmation', 'confirmedAt', 'confirmedById', 'confirmedByName'],
   journey: ['serviceJourney'], reservation: ['subscriberReservation'],
-  technical: ['technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'journeyClosedAt', 'startedAt', 'startedById', 'startedByName', 'advanceRequest', 'originalScheduledTime', 'vehicleMileage', 'vehiclePhotoUrl', 'vehicleControlReportedAt', 'technicianRequest'],
+  technical: ['technicalStatus', 'technicalObservation', 'alarmZones', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'journeyClosedAt', 'startedAt', 'startedById', 'startedByName', 'advanceRequest', 'originalScheduledTime', 'vehicleMileage', 'vehiclePhotoUrl', 'vehicleControlReportedAt', 'technicianRequest'],
   system: ['id', 'historyId', 'taskId', 'sourceTaskId', 'sourceHistoryId', 'createdBy', 'createdAt', 'updatedAt', 'status', 'collection', 'supervisorVisible', 'sourceTicketId', 'ticketNumber', 'ticketResolution'],
   general: ['service', 'serviceId', 'services', 'serviceIds', 'serviceTypes', 'estimatedMinutes', 'estimatedMinutesCustomized', 'detail', 'description', 'address', 'phone', 'location', 'category', 'vehicleId', 'vehicleControl', 'guard', 'guardAdvance', 'advancedGuard']
 }
@@ -159,7 +159,7 @@ function prepareServiceProposal(before, after, user, state) {
   if (before?.date && after.date && before.date !== after.date && !after.vehicleControl) {
     requirePermission(user, 'planning.reschedule')
     const now = new Date().toISOString()
-    const visitKeys = ['date', 'time', 'scheduledTime', 'teamId', 'team', 'technicianIds', 'technicians', 'status', 'startedAt', 'startedById', 'startedByName', 'technicalStatus', 'technicianRequest', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt']
+    const visitKeys = ['date', 'time', 'scheduledTime', 'teamId', 'team', 'technicianIds', 'technicians', 'status', 'startedAt', 'startedById', 'startedByName', 'technicalStatus', 'technicianRequest', 'technicalObservation', 'alarmZones', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt']
     const visit = Object.fromEntries(visitKeys.filter(key => before[key] !== undefined).map(key => [key, before[key]]))
     after = { ...after, status: 'Pendiente', scheduledDate: '', technicianRequest: '', technicalStatus: '', technicalObservation: '', technicalReportedAt: '', technicalReportedById: '', technicalReportedByName: '', startedAt: '', startedById: '', startedByName: '', completedAt: '', rescheduledFrom: before.date, reprogrammedAt: now, reschedulingHistory: [...(before.reschedulingHistory || []), { ...visit, reprogrammedAt: now }] }
   }

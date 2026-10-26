@@ -92,6 +92,26 @@ test('normalized repository projects the application state and synchronizes only
   } finally { await pg.close() }
 })
 
+test('normalized repository preserves alarm zones, drafts and SoftGuard acknowledgement through unrelated writes', async () => {
+  const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
+  try {
+    await pg.exec(fs.readFileSync(path.join(__dirname, '../supabase/proposals/normalized-shadow-v1.sql'), 'utf8'))
+    const previous = fixture()
+    await insertShadowCandidate(pg, buildShadowCandidate(previous))
+    const next = structuredClone(previous); next.revision++
+    next.history[0].alarmZones = require('../api/_lib/alarm-zones.cjs').reportZones({service:'Instalación de alarma'},'Completado',[{number:3,name:'Acceso',attribute:'Demorada',sensor:'Magnético cableado',sensorOther:''}],{id:'e',name:'Técnico'},'2026-10-26T16:00:00Z').alarmZones
+    await synchronizeNormalizedState(pg, previous, next)
+    const saved = await readNormalizedState(pg)
+    assert.deepEqual(saved.history[0].alarmZones,next.history[0].alarmZones)
+    const acknowledged = structuredClone(saved); acknowledged.revision++
+    acknowledged.history[0].alarmZones.softguard={completedAt:'2026-10-26T17:00:00Z',completedById:'admin',completedByName:'Administración'}
+    await synchronizeNormalizedState(pg,saved,acknowledged)
+    const unrelated=structuredClone(acknowledged);unrelated.revision++;unrelated.customers[0].name='Cliente actualizado'
+    await synchronizeNormalizedState(pg,acknowledged,unrelated)
+    assert.deepEqual((await readNormalizedState(pg)).history[0].alarmZones,acknowledged.history[0].alarmZones)
+  } finally { await pg.close() }
+})
+
 test('crea y elimina las credenciales después de resolver la clave foránea del empleado', async () => {
   const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
   try {

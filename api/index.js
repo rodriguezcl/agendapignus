@@ -737,7 +737,7 @@ async function handleTechnicianStart(req, res, sql, user) {
 
 async function handleTechnicianStatus(req, res, sql, user) {
   if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
-  const { recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution } = requestBody(req)
+  const { recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution, alarmZones } = requestBody(req)
   const allowed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramación solicitada']
   if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
   try {
@@ -800,6 +800,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
       }
       const now = new Date().toISOString()
       const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? type : 'Requiere revisión', technicianRequest: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
+      Object.assign(next, require('./_lib/alarm-zones.cjs').reportZones(record, type, alarmZones, user, now))
       if (followup != null) next.followup = require('./_lib/followups.cjs').createFollowup(record, followup, user, currentState, now)
       if (ticketResolution != null) next.ticketResolution = require('./_lib/ticket-service-lifecycle.cjs').resolutionEvidence(ticketResolution, next, user, now, next.followup)
       const entries = [auditEntry(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, next)]
@@ -814,7 +815,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
           normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, after.kind === 'subscriber' ? 'Restituyó abonado al corregir retiro' : 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
         }
       }
-      await persistStateCollections(transaction, currentState, nextState, currentRevision + 1, undefined, { followupRecordId: record.id, ticketActor: user, ticketReportRecordId: record.id })
+      await persistStateCollections(transaction, currentState, nextState, currentRevision + 1, undefined, { followupRecordId: record.id, ticketActor: user, ticketReportRecordId: record.id, alarmZonesWriteId: record.id })
       if (photo) await upsertVehicleControlPhoto(transaction, photo)
       await appendAudit(transaction, entries)
       return next
@@ -1137,6 +1138,32 @@ async function handleSoftguardRetirement(req, res, sql, user) {
   }
 }
 
+async function handleAlarmZones(req, res, sql, user) {
+  const zones = require('./_lib/alarm-zones-policy.cjs')
+  try {
+    if (req.method === 'GET') {
+      const params = Object.fromEntries(new URL(req.url, 'http://localhost').searchParams)
+      return send(res, 200, { reports: zones.reportsFor(await readState(sql), params, user).map(zones.present) })
+    }
+    const input = requestBody(req)
+    const result = await sql.begin(async transaction => {
+      await transaction`set local lock_timeout = '5s'`
+      await transaction`set local statement_timeout = '25s'`
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      const locked = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const current = await readState(transaction)
+      const change = zones.confirmLoaded(current, input, user)
+      const revision = Number(locked[0]?.value || 0) + 1
+      if (change.before !== change.after) {
+        await persistStateCollections(transaction, current, change.state, revision, undefined, { alarmZonesWriteId: change.before.id })
+        await appendAudit(transaction, [auditEntry(user, 'Confirmó zonas cargadas en SoftGuard', 'Servicio / historial', String(change.before.id), change.before, change.after)])
+      }
+      return { report: zones.present(change.after) }
+    })
+    return send(res, 200, result)
+  } catch (error) { return send(res, error.statusCode || 400, { error: error.message || 'No se pudieron consultar las zonas.' }) }
+}
+
 async function handleSubscriptionCorrection(req, res, sql, user) {
   if ((!isGranular(user) && user.roleCode === 'technician') || !userCan(user, 'accountsEdit')) return send(res, 403, { error: 'No tenés permiso para corregir datos del abono.' })
   try {
@@ -1413,6 +1440,7 @@ module.exports = async function handler(req, res) {
     }
     if (['GET', 'POST'].includes(req.method) && route === '/followups') return send(res, 410, { error: 'Los seguimientos se gestionan desde Tickets. Actualizá la plataforma.' })
     if (req.method === 'POST' && route === '/collections/manage') return await handleCollectionManagement(req, res, sql, session.user)
+    if (['GET','POST'].includes(req.method) && route === '/customers/alarm-zones') return await handleAlarmZones(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/customers/softguard-retirement') return await handleSoftguardRetirement(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/customers/subscription-correction') return await handleSubscriptionCorrection(req, res, sql, session.user)
     if (['GET', 'POST', 'DELETE'].includes(req.method) && route === '/customers/import') return await handleCustomerImport(req, res, sql, session.user)

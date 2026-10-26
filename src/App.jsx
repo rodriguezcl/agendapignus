@@ -1,3 +1,4 @@
+import AlarmZonesSection from './components/AlarmZonesSection.jsx'
 import { currentLocalDate, initials } from "./presentation/formatting.mjs";
 import { submitModalFromEnter } from './infrastructure/browser/modal-submit.mjs';
 import { collectionRepository } from "./infrastructure/repositories/collection-repository.mjs";
@@ -1534,7 +1535,9 @@ function NotificationActionDialog({ notification, history, customers, passwordRe
     <section className="modal notification-action-modal" role="dialog" aria-modal="true" aria-busy={busy || undefined} aria-labelledby="notification-action-title">
       <button type="button" className="close-modal" aria-label="Cerrar notificación" title="Cerrá el detalle; el aviso permanece hasta que se resuelva." disabled={busy} onClick={close}><Icon name="close" /></button>
       <p className="eyebrow">NOTIFICACIONES</p><h2 id="notification-action-title">{notification.title}</h2>
-      {target.type === 'softguard-retirement'
+      {target.type === 'alarm-zones'
+        ? <AlarmZonesSection recordId={target.recordId} onBusyChange={setBusy} onResolved={close} />
+        : target.type === 'softguard-retirement'
         ? <SoftGuardRetirementReminder key={`${retirementCustomer?.customerId}:${retirementCustomer?.convertedFromAccount}:${retirementCustomer?.subscriptionEndedAt}`} customer={retirementCustomer} showHeading={false} onResolved={close} onBusyChange={setBusy} />
         : target.type === 'advance-request'
         ? <ServiceAdvanceRequestsReminder history={history.filter(record => String(record.id) === target.recordId)} />

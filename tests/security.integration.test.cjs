@@ -15,6 +15,39 @@ let temporaryDirectory
 let serverProcess
 let serverErrorOutput = ''
 
+test('Zonas HTTP: cierre obligatorio, consulta por cuenta, confirmación auditada e idempotencia', async () => {
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const service = {id:'qa-alarm-zones',customerId:'qa-customer-a',clientAccount:'PIG-9001',client:'PIG-9001 ZONAS QA',date:'2020-01-07',time:'08:30',service:'Instalación de alarma',serviceId:'qa-alarm',status:'Pendiente',technicianIds:['qa-tech'],technicians:['QA Técnico'],startedAt:'2020-01-07T12:00:00Z'}
+  upsertJson(db,'work_history','id',service)
+  seedGranularUser(db,'qa-zones-reader',['accounts.view','records.read','service.documents.read','notifications.softguard'])
+  db.close()
+  const tech = await login('qa-tech@pignus.test'), admin = await login('qa-admin@pignus.test'), reader = await login('qa-zones-reader@pignus.test')
+  const report = alarmZones => api('/api/technician/status',tech,{method:'POST',body:JSON.stringify({recordId:service.id,type:'Completado',observation:'Instalación probada',alarmZones})})
+  let response=await report(undefined);assert.equal(response.status,400);assert.match((await response.json()).error,/zona/)
+  response=await report([{number:1,name:'',attribute:'Demorada',sensor:'PIR cableado',sensorOther:''}]);assert.equal(response.status,400)
+  const zones=[{number:1,name:'Puerta principal',attribute:'Demorada',sensor:'Magnético cableado',sensorOther:''}]
+  const emptyZone=number=>({number,name:'',attribute:'',sensor:'',sensorOther:''})
+  response=await report([{...zones[0],number:2}]);assert.equal(response.status,400)
+  response=await report([...zones,{...emptyZone(2),name:'Patio'}]);assert.equal(response.status,400)
+  response=await report([...zones,emptyZone(2),emptyZone(3)]);assert.equal(response.status,200,JSON.stringify(await response.clone().json()))
+  const saved=(await response.json()).record
+  assert.deepEqual(saved.alarmZones.zones,zones);assert.equal(saved.alarmZones.reportedById,'qa-tech')
+  response=await report(zones);assert.equal(response.status,200);assert.equal((await response.json()).record.alarmZones.reportedAt,saved.alarmZones.reportedAt)
+  response=await api('/api/customers/alarm-zones?customerId=qa-customer-a',reader);assert.equal(response.status,200)
+  assert.deepEqual((await response.json()).reports.find(r=>r.recordId===service.id).report.zones,zones)
+  const confirm=(cookie,reportedAt)=>api('/api/customers/alarm-zones',cookie,{method:'POST',body:JSON.stringify({recordId:service.id,reportedAt})})
+  assert.equal((await confirm(reader,saved.alarmZones.reportedAt)).status,403)
+  assert.equal((await confirm(admin,'stale')).status,409)
+  response=await confirm(admin,saved.alarmZones.reportedAt);assert.equal(response.status,200)
+  const completed=(await response.json()).report.report.softguard
+  assert.equal(completed.completedById,'qa-admin')
+  response=await confirm(admin,saved.alarmZones.reportedAt);assert.equal(response.status,200);assert.deepEqual((await response.json()).report.report.softguard,completed)
+  const latest=(await state(admin)).history.find(r=>r.id===service.id)
+  response=await api('/api/history/'+service.id,admin,{method:'PATCH',body:JSON.stringify({base:latest,record:{...latest,alarmZones:{...latest.alarmZones,zones:[]}}})})
+  assert.equal(response.status,409)
+  assert.deepEqual((await state(admin)).history.find(r=>r.id===service.id).alarmZones.zones,zones)
+})
+
 test('Corrección de categoría: conserva el completado y restituye el abonado con auditoría', async () => {
   const fixture = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
   const customer = { customerId: 'qa-category-customer', account: 'CLI-993781', kind: 'client', name: 'MUDANZA QA', convertedFromAccount: 'PIG-993781', convertedFromType: 'Abonado' }
@@ -1664,7 +1697,7 @@ test('varias jornadas: el técnico informa avance, no completa antes de tiempo y
   for (const record of [first,last]) agenda.weekly[record.date]={teams:[{teamId:record.teamId,label:record.team,memberIds:['qa-tech'],members:['QA Técnico'],tasks:[{...record,taskId:record.sourceTaskId,historyId:record.id}]}]}
   db.prepare("UPDATE agendas SET data = ? WHERE id = 'current'").run(JSON.stringify(agenda))
   db.close()
-  const report=(recordId,type)=>api('/api/technician/status',cookie,{method:'POST',body:JSON.stringify({recordId,type,observation:'Avance de prueba'})})
+  const report=(recordId,type)=>api('/api/technician/status',cookie,{method:'POST',body:JSON.stringify({recordId,type,observation:'Avance de prueba',alarmZones:[{number:1,name:'Puerta',attribute:'Demorada',sensor:'Magnético cableado',sensorOther:''}]})})
   const initial = (await state(admin)).history.find(item => item.id === first.id)
   const identityResponse = await api('/api/history/'+first.id,admin,{method:'PATCH',body:JSON.stringify({base:initial,record:{...initial,customerId:'qa-customer-b',client:'Cliente compartido QA'}})})
   assert.equal(identityResponse.status,200,JSON.stringify(await identityResponse.json()))

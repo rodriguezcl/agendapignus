@@ -8,6 +8,7 @@ import { softguardVerificationCases } from '../customers/softguard-verification.
 import { pendingSoftguardRetirements } from '../customers/softguard-retirement.mjs'
 import { canReadRecord } from '../access/record-scope.mjs'
 import policy from '../../../api/_lib/permission-catalog.cjs'
+import alarmZones from '../../../api/_lib/alarm-zones.cjs'
 
 export const DASHBOARD_PENDING_NOTICES = [
   { key: 'today', title: 'Pendientes de gestión', detail: 'Servicios de hoy que todavía requieren gestión.', tone: 'warning' },
@@ -93,6 +94,13 @@ export function selectDashboardNotifications({ history = [], vehicles = [], cust
     })
   }
   const dashboard = (section, id) => ({ type: 'dashboard', section, ...(id == null ? {} : { id: String(id) }) })
+  if (receives('softguard') && can('service.documents.read')) {
+    for (const record of history.filter(alarmZones.pendingReport)) notices.push({
+      id: `alarm-zones:${record.id}:${record.alarmZones.reportedAt}`, title: 'Zonas disponibles para cargar en SoftGuard', tone: 'info',
+      detail: `${record.client || 'Instalación de alarma'} · ${record.alarmZones.zones.length} zona(s) informadas por ${record.alarmZones.reportedByName || 'el técnico'}. Pendiente de registrar la carga en SoftGuard.`,
+      target: { type: 'alarm-zones', recordId: String(record.id) }
+    })
+  }
 
   if (administrator) {
     for (const record of history.filter(item => isAdvanceRequestActive(item, now ?? Number.NaN))) {

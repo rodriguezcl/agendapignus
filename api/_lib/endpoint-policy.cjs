@@ -36,6 +36,12 @@ function assertEndpointPermission(user, method, route) {
     return require('records.financial')
   }
   if (route === '/customers/subscription-correction') return require('subscriptions.correct')
+  if (route === '/customers/alarm-zones') {
+    require('service.documents.read')
+    if (method === 'GET') return
+    if (method === 'POST') return require('customers.softguard.resolve')
+    return write.fail('customers.softguard.resolve')
+  }
   if (route === '/customers/softguard-retirement') return method === 'POST' ? require('customers.softguard.resolve') : write.fail('customers.softguard.resolve')
   if (route === '/customers/sync' || route === '/customers/sync/token') return require('customers.import')
   if (route === '/customers/import') return require(method === 'GET' ? 'customers.backup' : method === 'DELETE' ? 'customers.undo' : 'customers.import')

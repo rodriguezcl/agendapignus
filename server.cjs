@@ -859,7 +859,7 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
   inspectPlan({ teams: agenda.teams || [] })
   Object.entries(agenda.weekly || {}).forEach(([key, value]) => { if (!key.startsWith('_')) inspectPlan(value) })
   const incomingById = new Map(incomingHistory.map(record => [String(record.id), record]))
-  const protectedFields = ['journeyClosedAt', 'status', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'startedAt', 'startedById', 'startedByName', 'advanceRequest', 'originalScheduledTime']
+  const protectedFields = ['journeyClosedAt', 'status', 'technicalStatus', 'technicalObservation', 'alarmZones', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'startedAt', 'startedById', 'startedByName', 'advanceRequest', 'originalScheduledTime']
   const result = []
   for (const previous of currentHistory) {
     const id = String(previous.id)
@@ -2077,6 +2077,28 @@ const server = http.createServer((req, res) => {
     }).catch(error => { const failure = ticketError(error); return send(res, failure.status, failure.body) })
   }
   if (['GET', 'POST'].includes(req.method) && url.pathname === '/api/followups') { if (!requireSession(req, res)) return; return send(res, 410, { error: 'Los seguimientos se gestionan desde Tickets. Actualizá la plataforma.' }) }
+  if (['GET','POST'].includes(req.method) && url.pathname === '/api/customers/alarm-zones') {
+    const user = requireSession(req, res)
+    if (!user) return
+    const zones = require('./api/_lib/alarm-zones-policy.cjs')
+    if (req.method === 'GET') {
+      try { return send(res, 200, { reports: zones.reportsFor(readState(), Object.fromEntries(url.searchParams), user).map(zones.present) }) }
+      catch (error) { return send(res, error.statusCode || 400, { error: error.message }) }
+    }
+    return readJson(req, 20_000).then(input => {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const change = zones.confirmLoaded(readState(), input, user)
+        if (change.before !== change.after) {
+          db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(change.after), String(change.before.id))
+          writeAudit(user, 'Confirmó zonas cargadas en SoftGuard', 'Servicio / historial', String(change.before.id), change.before, change.after)
+          db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(currentStateRevision() + 1))
+        }
+        db.exec('COMMIT')
+        return send(res, 200, { report: zones.present(change.after) })
+      } catch (error) { db.exec('ROLLBACK'); throw error }
+    }).catch(error => send(res, error.statusCode || 400, { error: error.message }))
+  }
   if (req.method === 'POST' && url.pathname === '/api/customers/softguard-retirement') {
     const user = requireSession(req, res)
     if (!user) return
@@ -2360,7 +2382,7 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
-    return readJson(req, 1_600_000).then(async ({ recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution }) => {
+    return readJson(req, 1_600_000).then(async ({ recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution, alarmZones }) => {
       const ticketStore = require('./api/_lib/tickets-http.cjs').storeFor(db, 'db')
       await ticketStore.ensure()
       const priorState = readState()
@@ -2409,6 +2431,7 @@ const server = http.createServer((req, res) => {
       }
       const now = new Date().toISOString()
       const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? type : 'Requiere revisión', technicianRequest: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
+      Object.assign(updated, require('./api/_lib/alarm-zones.cjs').reportZones(record, type, alarmZones, user, now))
       if (followup != null) updated.followup = require('./api/_lib/followups.cjs').createFollowup(record, followup, user, readState(), now)
       if (ticketResolution != null) updated.ticketResolution = require('./api/_lib/ticket-service-lifecycle.cjs').resolutionEvidence(ticketResolution, updated, user, now, updated.followup)
       db.exec('BEGIN')
