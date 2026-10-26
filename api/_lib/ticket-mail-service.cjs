@@ -55,8 +55,13 @@ function createMailService({ sql, db, ticketStore, env = process.env, runMail, t
       const config = await channel.runtime()
       if (manual && config.enabled && config.mode === 'live' && !confirmSend) fail('Confirmá la recepción y el envío de las respuestas pendientes antes de sincronizar.', 409)
       try {
-        const result = await worker({ config: { ...config, maxRunMs: Math.min(config.maxRunMs, maxRunMs) }, mailStore, ticketStore })
-        return sla === undefined ? result : { ...result, sla }
+        const started=Date.now()
+        const experience=await require('./installation-experience-worker.cjs').processExperienceMail({
+          store:require('./installation-experience-store.cjs').createExperienceStore({sql,db}),config,maxRunMs:Math.min(10000,maxRunMs/2),
+          readState:async()=>sql ? require('./storage-router.cjs').readApplicationState(sql) : {history:db.prepare('SELECT data FROM work_history').all().map(row=>JSON.parse(row.data))}
+        })
+        const result = await worker({ config: { ...config, maxRunMs: Math.max(1000,Math.min(config.maxRunMs, maxRunMs)-(Date.now()-started)) }, mailStore, ticketStore })
+        return { ...result, experience, ...(sla === undefined ? {} : { sla }) }
       } catch (problem) {
         const safe = safeMailError(problem)
         throw Object.assign(new Error(safe.message), { statusCode: 502, code: safe.code })

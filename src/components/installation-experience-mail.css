@@ -1,0 +1,12 @@
+.experience-mail-section { border-top:1px solid var(--ap-border); padding-top:20px; margin-top:20px; min-width:0; }
+.experience-mail-item { border:1px solid var(--ap-border); border-radius:8px; padding:16px; margin:12px 0; background:var(--ap-surface-alt); overflow-wrap:anywhere; }
+.experience-mail-item dl { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px; }
+.experience-mail-item dt { font-size:12px;color:var(--ap-muted); }
+.experience-mail-item dd { margin:4px 0; }
+.experience-mail-item form { display:grid;gap:12px; }
+.experience-mail-item label { display:grid;gap:6px; }
+.experience-mail-item input { width:100%;min-width:0;min-height:44px;box-sizing:border-box; }
+.experience-mail-item summary { cursor:pointer; padding:12px 0; }
+.experience-mail-item .experience-mail-verify { display:flex;align-items:flex-start;gap:10px; }
+.experience-mail-verify input[type=checkbox] { width:18px;height:18px;min-height:18px;flex:none;margin:2px 0; }
+@media(max-width:480px){.experience-mail-item dl{grid-template-columns:1fr}.experience-mail-item button{width:100%;white-space:normal}}

@@ -52,7 +52,7 @@ function createSmtpAdapter(config) {
         envelope: { from: config.address, to: [payload.to] }, subject: payload.subject, text: payload.text,
         ...(typeof payload.html === 'string' ? { html: sanitizeSignatureHtml(payload.html) } : {}),
         messageId: row.message_id, inReplyTo: payload.inReplyTo || undefined, references: payload.references || [], attachments,
-        headers: { 'X-Agentec-Ticket': row.ticket_id, 'X-Auto-Response-Suppress': 'All', ...(payload.automatic === true ? { 'Auto-Submitted': 'auto-replied' } : {}) },
+        headers: { ...(row.ticket_id ? { 'X-Agentec-Ticket': row.ticket_id } : { 'X-Agentec-Installation': row.service_id }), 'X-Auto-Response-Suppress': 'All', ...(payload.automatic === true ? { 'Auto-Submitted': row.ticket_id ? 'auto-replied' : 'auto-generated' } : {}) },
         disableFileAccess: true, disableUrlAccess: true })
     },
     close() { transport?.close() }

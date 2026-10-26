@@ -2295,6 +2295,34 @@
       "any": [],
       "note": "Sólo incluye tickets visibles para el rol.",
       "sensitive": false
+    },
+    {
+      "id": "customers.experience.manage",
+      "label": "Gestionar correo de experiencia de instalación",
+      "groups": [
+        "accounts"
+      ],
+      "all": [
+        "accounts.view",
+        "records.contact"
+      ],
+      "any": [],
+      "note": "Permite registrar o corregir el destinatario de invitaciones sin enviar o rechazadas. No reenvía entregas inciertas ni correos ya aceptados.",
+      "sensitive": false
+    },
+    {
+      "id": "notifications.experience",
+      "label": "Correo de experiencia pendiente de revisión",
+      "groups": [
+        "notifications"
+      ],
+      "all": [
+        "accounts.view",
+        "records.contact"
+      ],
+      "any": [],
+      "note": "Avisa si falta el correo del cliente o si la invitación requiere revisión. Gestionar el envío requiere un permiso independiente.",
+      "sensitive": false
     }
   ]
 }

@@ -58,7 +58,7 @@ async function persistStateCollections(transaction, current, next, nextRevision,
   const [ticketSchema] = await transaction`select to_regclass('public.pignus_ticket_notifications') as relation`
   if (!ticketSchema?.relation) await ticketStore.ensure()
   if (policyOptions?.ticketReportRecordId) await ticketStore.syncLegacy({ ...next, history: next.history.filter(record => String(record.id) === String(policyOptions.ticketReportRecordId)) }, { connection: transaction })
-  await ticketStore.syncServices(current, next, { connection: transaction, user: policyOptions?.ticketActor, reportRecordId: policyOptions?.ticketReportRecordId })
+  await require('./_lib/service-completion-effects.cjs').syncServiceEffects(ticketStore, current, next, { connection: transaction, user: policyOptions?.ticketActor, reportRecordId: policyOptions?.ticketReportRecordId }, 'sql')
   const versionedNext = { ...next, revision: Number(nextRevision) }
   return coordinateStateWrite(transaction, current, versionedNext, {
     mode: 'controlled',
@@ -1440,6 +1440,10 @@ module.exports = async function handler(req, res) {
     }
     if (['GET', 'POST'].includes(req.method) && route === '/followups') return send(res, 410, { error: 'Los seguimientos se gestionan desde Tickets. Actualizá la plataforma.' })
     if (req.method === 'POST' && route === '/collections/manage') return await handleCollectionManagement(req, res, sql, session.user)
+    if (['GET','POST'].includes(req.method) && route === '/customers/experience-mail') {
+      try { return send(res, 200, await require('./_lib/installation-experience-http.cjs').experienceRequest({connection:sql,kind:'sql',state:await readState(sql),user:session.user,method:req.method,input:req.method==='POST'?requestBody(req):{},query:Object.fromEntries(new URL(req.url,'http://localhost').searchParams)})) }
+      catch(error) { return send(res,error.statusCode||500,{error:error.statusCode?error.message:'No se pudo consultar el correo de experiencia.'}) }
+    }
     if (['GET','POST'].includes(req.method) && route === '/customers/alarm-zones') return await handleAlarmZones(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/customers/softguard-retirement') return await handleSoftguardRetirement(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/customers/subscription-correction') return await handleSubscriptionCorrection(req, res, sql, session.user)

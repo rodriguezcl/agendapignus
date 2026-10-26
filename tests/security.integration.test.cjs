@@ -46,6 +46,11 @@ test('Zonas HTTP: cierre obligatorio, consulta por cuenta, confirmación auditad
   response=await api('/api/history/'+service.id,admin,{method:'PATCH',body:JSON.stringify({base:latest,record:{...latest,alarmZones:{...latest.alarmZones,zones:[]}}})})
   assert.equal(response.status,409)
   assert.deepEqual((await state(admin)).history.find(r=>r.id===service.id).alarmZones.zones,zones)
+  response=await api('/api/customers/experience-mail?customerId=qa-customer-a',admin);assert.equal(response.status,200)
+  const invitations=(await response.json()).items.filter(item=>item.recordId===service.id)
+  assert.equal(invitations.length,1);assert.equal(invitations[0].status,'needs_email')
+  assert.equal((await api('/api/customers/experience-mail?customerId=qa-customer-a',tech)).status,403)
+  assert.equal((await api('/api/customers/experience-mail?customerId=qa-customer-a',reader)).status,403)
 })
 
 test('Corrección de categoría: conserva el completado y restituye el abonado con auditoría', async () => {

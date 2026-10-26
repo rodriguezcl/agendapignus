@@ -110,7 +110,7 @@ test('el proceso usa la configuración cifrada de la UI y separa las credenciale
     assert.equal(f.seen[0].smtpPort, 587)
     assert.equal(f.seen[0].smtpSecurity, 'starttls')
     assert.equal(f.seen[0].areaId, 'technical')
-    assert.equal(f.seen[0].maxRunMs, 20000)
+    assert(f.seen[0].maxRunMs > 0 && f.seen[0].maxRunMs <= 20000)
     const stopped = await f.request({ action: 'disable', version: active.version })
     assert.equal(stopped.enabled, false)
     await f.service.process()

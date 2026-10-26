@@ -2,6 +2,16 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const notice = (id, type = 'collection', extra = {}) => ({ id, target: { type }, ...extra })
 
+test('las incidencias de invitaciones establecen su propia carga inicial silenciosa', async () => {
+  const { createNotificationSoundTracker } = await import('../src/domain/dashboard/notification-sound.mjs')
+  const next = createNotificationSoundTracker()
+  assert.equal(next([], { operational: true, experience: false }), false)
+  const initial = [notice('experience-mail:1', 'experience-mail')]
+  assert.equal(next(initial), false)
+  assert.equal(next([...initial, notice('experience-mail:2', 'experience-mail')]), true)
+  assert.equal(next(initial), false)
+})
+
 test('silencia la carga inicial de cada origen y detecta novedades sin depender del contador', async () => {
   const { createNotificationSoundTracker } = await import('../src/domain/dashboard/notification-sound.mjs')
   const next = createNotificationSoundTracker()

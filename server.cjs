@@ -1337,7 +1337,7 @@ async function saveState(state, user) {
   try {
     // El registro se realiza dentro de la misma transacción que los datos:
     // nunca queda una acción auditada que no haya sido guardada (ni al revés).
-    await ticketStore.syncServices(previousState, { ...state, history: normalizedHistory }, { connection: db, user })
+    await require('./api/_lib/service-completion-effects.cjs').syncServiceEffects(ticketStore, previousState, { ...state, history: normalizedHistory }, { connection: db, user }, 'db')
     auditChanges(previousState.roles, state.roles, 'id', 'Rol', user)
     auditChanges([...previousEmployees.values()], securedEmployees, 'id', 'Empleado', user)
     auditChanges(previousState.services, state.services, 'id', 'Tipo de servicio', user)
@@ -1898,7 +1898,7 @@ const server = http.createServer((req, res) => {
         }
         if (agenda && JSON.stringify(agenda) !== agendaRow.data) db.prepare('UPDATE agendas SET data = ? WHERE id = ?').run(JSON.stringify(agenda), 'current')
         reconcileRetirementCustomers([...currentById.values()], user)
-        await ticketStore.syncServices(previousState, readState(), { connection: db, user })
+        await require('./api/_lib/service-completion-effects.cjs').syncServiceEffects(ticketStore, previousState, readState(), { connection: db, user }, 'db')
         const revision = currentStateRevision() + 1
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
         db.exec('COMMIT')
@@ -1935,7 +1935,7 @@ const server = http.createServer((req, res) => {
         const currentState = readState()
         if (isGranular(user)) granularWrite.assertServiceChange(current, null, user, currentState)
         const removed = removeHistoryRecord(currentState, recordId)
-        await ticketStore.syncServices(currentState, removed.state, { connection: db, user })
+        await require('./api/_lib/service-completion-effects.cjs').syncServiceEffects(ticketStore, currentState, removed.state, { connection: db, user }, 'db')
         db.prepare('DELETE FROM service_photos WHERE record_id = ?').run(recordId)
         db.prepare('DELETE FROM work_history WHERE id = ?').run(recordId)
         db.prepare('INSERT OR REPLACE INTO agendas (id, data) VALUES (?, ?)').run('current', JSON.stringify(removed.state.agenda || {}))
@@ -1977,7 +1977,7 @@ const server = http.createServer((req, res) => {
         }
         writeAudit(user, 'Modificó', 'Servicio / historial', recordId, current, next)
         reconcileRetirementCustomers([current], user)
-        await ticketStore.syncServices(previousState, readState(), { connection: db, user, now })
+        await require('./api/_lib/service-completion-effects.cjs').syncServiceEffects(ticketStore, previousState, readState(), { connection: db, user, now }, 'db')
         const revision = currentStateRevision() + 1
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
         db.exec('COMMIT')
@@ -2077,6 +2077,13 @@ const server = http.createServer((req, res) => {
     }).catch(error => { const failure = ticketError(error); return send(res, failure.status, failure.body) })
   }
   if (['GET', 'POST'].includes(req.method) && url.pathname === '/api/followups') { if (!requireSession(req, res)) return; return send(res, 410, { error: 'Los seguimientos se gestionan desde Tickets. Actualizá la plataforma.' }) }
+  if (['GET','POST'].includes(req.method) && url.pathname === '/api/customers/experience-mail') {
+    const user=requireSession(req,res);if(!user)return
+    ;(req.method==='POST'?readJson(req,10000):Promise.resolve({})).then(async input=>{
+      return send(res,200,await require('./api/_lib/installation-experience-http.cjs').experienceRequest({connection:db,kind:'db',state:readState(),user,method:req.method,input,query:Object.fromEntries(url.searchParams)}))
+    }).catch(error=>send(res,error.statusCode||500,{error:error.statusCode?error.message:'No se pudo consultar el correo de experiencia.'}))
+    return
+  }
   if (['GET','POST'].includes(req.method) && url.pathname === '/api/customers/alarm-zones') {
     const user = requireSession(req, res)
     if (!user) return
@@ -2438,7 +2445,7 @@ const server = http.createServer((req, res) => {
       try {
         const nextState = { ...priorState, history: priorState.history.map(item => String(item.id) === String(record.id) ? updated : item) }
         await ticketStore.syncLegacy({ ...nextState, history: [updated] }, { connection: db })
-        await ticketStore.syncServices(priorState, nextState, { connection: db, user, now, reportRecordId: record.id })
+        await require('./api/_lib/service-completion-effects.cjs').syncServiceEffects(ticketStore, priorState, nextState, { connection: db, user, now, reportRecordId: record.id }, 'db')
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(updated), String(record.id))
         if (record.serviceJourney || type === 'Cancelado') {
           const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')

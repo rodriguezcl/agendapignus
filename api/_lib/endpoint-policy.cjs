@@ -36,6 +36,12 @@ function assertEndpointPermission(user, method, route) {
     return require('records.financial')
   }
   if (route === '/customers/subscription-correction') return require('subscriptions.correct')
+  if (route === '/customers/experience-mail') {
+    require('accounts.view');require('records.contact')
+    if(method==='GET')return
+    if(method==='POST')return require('customers.experience.manage')
+    return write.fail('customers.experience.manage')
+  }
   if (route === '/customers/alarm-zones') {
     require('service.documents.read')
     if (method === 'GET') return
