@@ -118,12 +118,14 @@ function userForEmployee(employee, roles) {
 
 function technicianSafeRecord(record = {}, user = { roleCode: 'technician' }) {
   const { servicePreparation: _servicePreparation, internalNote: _internalNote, internalChecklist: _internalChecklist, monthlyFee: _monthlyFee, ...visible } = record
-  for (const field of ['collection', 'monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy']) delete visible[field]
+  for (const field of ['collection', 'collectionReview', 'collectionCancellation', 'monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy']) delete visible[field]
+  if (visible.workCompletion) visible.workCompletion = { items: visible.workCompletion.items, at: visible.workCompletion.at, byId: visible.workCompletion.byId, byName: visible.workCompletion.byName }
   const cashPayment = normalizedRoleName(visible.paymentMethod) === 'efectivo'
   const handwrittenForm = normalizedRoleName(visible.form).startsWith('incompleto')
-  if (!cashPayment) {
+  if (!cashPayment || record.collectionReview || record.collectionCancellation) {
     delete visible.paymentMethod
     delete visible.amount
+    delete visible.serviceCharges
   }
   if (!handwrittenForm) delete visible.form
   delete visible.formEmail
@@ -193,7 +195,8 @@ function projectStateForUser(state, user, ticketUser = user) {
       const account = String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()
       return (customerId && customerIds.has(customerId)) || (account && accounts.has(account))
     }).map(record => {
-      const { collection: _collection, servicePreparation: _servicePreparation, internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, formEmail: _formEmail, ...visible } = record
+      const { serviceCharges: _serviceCharges, collectionReview: _collectionReview, collectionCancellation: _collectionCancellation, collection: _collection, servicePreparation: _servicePreparation, internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, formEmail: _formEmail, ...visible } = record
+      if (visible.workCompletion) visible.workCompletion = { items: visible.workCompletion.items, at: visible.workCompletion.at, byName: visible.workCompletion.byName }
       return visible
     })
     return { revision: state.revision, roles: [], employees: [], services: [], vehicles: [], customers: trackedCustomers, history, agenda: null, preferences: {} }

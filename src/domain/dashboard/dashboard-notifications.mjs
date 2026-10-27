@@ -1,4 +1,4 @@
-import { collectionRecords, collectionConfirmed, collectionMoney, collectionService } from '../collections/collections.mjs'
+import { collectionRecords, collectionConfirmed, collectionVoided, collectionNeedsReview, collectionMoney, collectionService } from '../collections/collections.mjs'
 import { dashboardPendingGroups } from './dashboard-metrics.mjs'
 import { isAdvanceRequestActive } from '../agenda/advance-request-active.mjs'
 import { reservationFormReady } from '../agenda/reservation-form-ready.mjs'
@@ -81,11 +81,14 @@ export function selectDashboardNotifications({ history = [], vehicles = [], cust
   if (!can('records.financial') || !can('records.contact')) history = history.map(record => ({ ...record, form: undefined, formEmail: undefined }))
   const visibleCustomers = visibleNotificationCustomers(customers, history, subject)
   const collectionDate = record => collectionService(record, history)?.date
-  const notices = receives('collections') ? collectionRecords(history).filter(record => !collectionConfirmed(record) && collectionDate(record) && collectionDate(record) <= today).map(record => ({
-    id: `collection:${record.id}`, title: 'Cobranza pendiente de pago', tone: 'warning',
+  const notices = receives('collections') ? collectionRecords(history).filter(record => (!collectionConfirmed(record) || collectionNeedsReview(record)) && !collectionVoided(record) && collectionDate(record) && collectionDate(record) <= today).map(record => ({
+    id: `collection:${record.id}`, title: collectionNeedsReview(record) ? 'Revisar importe: quedaron trabajos pendientes' : 'Cobranza pendiente de pago', tone: 'warning',
     detail: `${record.client || 'Servicio'} · ${dateLabel(collectionDate(record))} · ${collectionMoney(record.amount)} · ${record.paymentMethod}.`,
     target: { type: 'collection', recordId: String(record.id) }
   })) : []
+  if (receives('rescheduling') && can('history.view')) {
+    for (const record of history.filter(r => r.workCompletion?.items.some(item => item.status === 'pending') && (!r.followup || r.followup.status === 'Resuelto') && !r.workCompletion.management)) notices.push({ id: 'pending-work:' + record.id, title: 'Trabajos pendientes de coordinación', detail: record.client + ' · ' + record.workCompletion.items.filter(item => item.status === 'pending').map(item => item.name).join(', '), tone: 'warning', target: { type: 'history', recordId: String(record.id) } })
+  }
   if (receives('followups') && can('followups.view')) {
     for (const record of history.filter(item => item.followup && item.followup.status !== 'Resuelto')) notices.push({
       id: `followup:${record.id}`, title: `Seguimiento ${record.followup.status.toLowerCase()}: ${record.followup.type}`, tone: 'warning',

@@ -40,13 +40,13 @@ function restoreHidden(proposed, current, visible) {
 const RECORD_GROUPS = {
   notes: ['internalNote'], checklist: ['internalChecklist'], ready: ['servicePreparation'],
   account: ['customerId', 'client', 'clientAccount', 'clientNameAtService'],
-  commercial: ['amount', 'paymentMethod', 'monthlyFee', 'form', 'formEmail'],
+  commercial: ['serviceCharges', 'amount', 'paymentMethod', 'monthlyFee', 'form', 'formEmail'],
   freeze: ['freezeMonthlyFee', 'frozenMonths', 'monthlyFeeEffectiveFrom'],
   schedule: ['date', 'time', 'scheduledTime', 'scheduledDate', 'teamId', 'team', 'rescheduledFrom', 'reprogrammedAt', 'reschedulingHistory'],
   assignment: ['technicianIds', 'technicians'],
   confirm: ['awaitingConfirmation', 'confirmedAt', 'confirmedById', 'confirmedByName'],
   journey: ['serviceJourney'], reservation: ['subscriberReservation'],
-  technical: ['technicalStatus', 'technicalObservation', 'alarmZones', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'journeyClosedAt', 'startedAt', 'startedById', 'startedByName', 'advanceRequest', 'originalScheduledTime', 'vehicleMileage', 'vehiclePhotoUrl', 'vehicleControlReportedAt', 'technicianRequest'],
+  technical: ['workCompletion', 'technicalStatus', 'technicalObservation', 'alarmZones', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'journeyClosedAt', 'startedAt', 'startedById', 'startedByName', 'advanceRequest', 'originalScheduledTime', 'vehicleMileage', 'vehiclePhotoUrl', 'vehicleControlReportedAt', 'technicianRequest'],
   system: ['id', 'historyId', 'taskId', 'sourceTaskId', 'sourceHistoryId', 'createdBy', 'createdAt', 'updatedAt', 'status', 'collection', 'supervisorVisible', 'sourceTicketId', 'ticketNumber', 'ticketResolution'],
   general: ['service', 'serviceId', 'services', 'serviceIds', 'serviceTypes', 'estimatedMinutes', 'estimatedMinutesCustomized', 'detail', 'description', 'address', 'phone', 'location', 'category', 'vehicleId', 'vehicleControl', 'guard', 'guardAdvance', 'advancedGuard']
 }

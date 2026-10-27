@@ -23,6 +23,7 @@ const removalAliases = (record, matchedTasks = []) => [...new Set([
 function removeHistoryRecord(state, recordId) {
   const current = (state?.history || []).find(record => sameId(record.id, recordId))
   if (!current) return { state, record: null, changed: false }
+  if (current.workCompletion) throw Object.assign(new Error('El informe por trabajo debe conservarse en el historial.'), { statusCode: 409 })
   require('./followups.cjs').assertFollowupChange(current, null)
   require('./collection-policy.cjs').assertCollectionChange(current, null)
   if (current.serviceJourney) throw new Error('No se puede eliminar una jornada vinculada. Cancelala para conservar el historial del servicio.')

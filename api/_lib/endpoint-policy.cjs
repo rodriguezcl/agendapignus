@@ -28,6 +28,7 @@ function assertEndpointPermission(user, method, route) {
   if (route === '/history/export') return require('records.export')
   if (route === '/history/category-correction') return require('history.category')
   if (route === '/history/bulk') return require('history.bulk')
+  if (route === '/history/work-completion') return write.requirePermission(user, 'history.edit')
   if (route.startsWith('/history/')) return method === 'DELETE' ? require('history.delete') : write.requireAny(user, ['history.edit', 'history.complete', 'history.reopen', 'history.cancel', 'planning.reschedule', 'planning.confirm', 'planning.reservation.link', 'planning.notes', 'planning.checklist'])
   if (route === '/collections/manage') return write.requireAny(user, ['collections.confirm', 'collections.amount', 'collections.method'])
   if (/^\/collections\/[^/]+\/receipts\/[^/]+$/.test(route)) {
@@ -90,6 +91,8 @@ function assertCollectionAction(user, state, input) {
   if (!catalog.isGranular(user)) return
   const record = (state.history || []).find(row => id(row.id) === id(input.recordId))
   assertServiceAccess(user, record, state, { write: true })
+  if (record?.collectionReview && input.action === 'correct') write.requirePermission(user, 'collections.amount')
+  if (input.action === 'void') { write.requirePermission(user, 'collections.amount'); write.requirePermission(user, 'collections.method') }
   if (input.action === 'confirm' || input.action === 'receipt' || input.receipt != null) write.requirePermission(user, 'collections.confirm')
   if (Number(input.amount) !== Number(record?.amount)) write.requirePermission(user, 'collections.amount')
   if (input.paymentMethod !== record?.paymentMethod) write.requirePermission(user, 'collections.method')

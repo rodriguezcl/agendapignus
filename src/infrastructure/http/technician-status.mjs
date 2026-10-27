@@ -4,7 +4,7 @@ export const VEHICLE_STATUS_TIMEOUT_MS = 45_000
 
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 
-export async function submitTechnicianStatus({ recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution, alarmZones, vehicleControl = false, fetcher = fetch, retryDelay = 700, requestTimeout = vehicleControl ? VEHICLE_STATUS_TIMEOUT_MS : TECHNICIAN_STATUS_TIMEOUT_MS }) {
+export async function submitTechnicianStatus({ recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution, alarmZones, workResults, vehicleControl = false, fetcher = fetch, retryDelay = 700, requestTimeout = vehicleControl ? VEHICLE_STATUS_TIMEOUT_MS : TECHNICIAN_STATUS_TIMEOUT_MS }) {
   if (!vehicleControl && !String(observation || '').trim()) throw new Error('La observación es obligatoria para informar el servicio.')
   let lastError
 
@@ -17,7 +17,7 @@ export async function submitTechnicianStatus({ recordId, type, observation, vehi
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         signal: controller.signal,
-        body: JSON.stringify({ recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution, alarmZones })
+        body: JSON.stringify({ recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution, alarmZones, workResults })
       })
       const data = await response.json().catch(() => ({}))
       if (response.ok && data.record) return data.record

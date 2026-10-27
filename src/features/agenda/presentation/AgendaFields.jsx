@@ -3,7 +3,8 @@ import { usePermissions } from '../../../presentation/contexts/permissions-conte
 import ReschedulingHistory from "../../../components/ReschedulingHistory.jsx";
 import { technicalReporter, prettyReportDateTime, historyRecordForTask, agendaServiceProgress, taskStatus, statusClassName, taskForScheduleOccupancy } from "../application/agenda-model.mjs";
 import { completionLabel } from "../../../domain/agenda/completion-label.mjs";
-import { serviceTypesFor } from "../../../domain/services/multi-service.mjs";
+import '../../../components/work-completion.css'
+import { serviceTypesFor, serviceChargePatch, serviceChargesTotal } from "../../../domain/services/multi-service.mjs";
 import { serviceColorClass, normalizeInternalChecklist, createInternalChecklistItem, serviceExtraAvailability, normalizeFormValue, FORM_OPTIONS, PAYMENT_OPTIONS, normalizeCurrencyAmount, formatCurrencyAmount } from "../../services/application/service-fields.mjs";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { normalizeSearchText } from "../../../domain/shared/normalization.mjs";
@@ -212,6 +213,7 @@ export function InternalPreparationFields({ task, onChange, buffered = false, re
 }
 
 export function ServiceExtraFields({ className, task, service, onChange, buffered = false, readOnly = false }) {
+  const costHelpId = React.useId()
   const { can } = usePermissions()
   const commercialDisabled = readOnly || !can('planning.commercial')
   const available = serviceTypesFor(task).reduce((all, type) => { const flags = serviceExtraAvailability(type, task?.installationZone); return Object.fromEntries(Object.keys(flags).map(key => [key, all[key] || flags[key]])) }, serviceExtraAvailability(service, task?.installationZone))
@@ -242,12 +244,20 @@ export function ServiceExtraFields({ className, task, service, onChange, buffere
     if (key === 'paymentMethod') {
       const paymentValue = enabled ? task?.paymentMethod || '' : ''
       const legacyValue = paymentValue && !PAYMENT_OPTIONS.includes(paymentValue) ? paymentValue : ''
-      return <label className="service-extra-field" key={key}>{label}<select value={paymentValue} disabled={!enabled || commercialDisabled} title={props.title} onChange={event => onChange({ paymentMethod: event.target.value, ...(!event.target.value || event.target.value === 'No aplica' ? { amount: '' } : {}) })}><option value="">{enabled ? 'Seleccionar' : 'No aplica'}</option>{legacyValue && <option value={legacyValue}>{legacyValue}</option>}{enabled && PAYMENT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
+      return <label className="service-extra-field" key={key}>{label}<select value={paymentValue} disabled={!enabled || commercialDisabled} title={props.title} onChange={event => onChange({ paymentMethod: event.target.value, ...(!event.target.value || event.target.value === 'No aplica' ? { amount: '', serviceCharges: undefined } : {}) })}><option value="">{enabled ? 'Seleccionar' : 'No aplica'}</option>{legacyValue && <option value={legacyValue}>{legacyValue}</option>}{enabled && PAYMENT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
+    }
+    if (key === 'amount' && serviceTypesFor(task).length > 1) {
+      const total = serviceChargesTotal(task.serviceCharges)
+      return <fieldset key={key} className="work-completion-fields service-costs"><legend>Costo de cada trabajo</legend><p>Ingresá el costo de cada trabajo. Usá 0 si es sin cargo; el total se calcula automáticamente.</p>
+        {!task.serviceCharges && Number(task.amount) > 0 && <p>Monto anterior sin desglose: {formatCurrencyAmount(task.amount)}. Completá los costos para recalcularlo.</p>}
+        {serviceTypesFor(task).map(type => <label key={type.id}><RequiredLabel>{type.name}</RequiredLabel><CurrencyInput required disabled={commercialDisabled} inputMode="decimal" placeholder="Ingresar costo o 0" value={task.serviceCharges?.find(row => String(row.id) === String(type.id))?.amount ?? ''} onCommit={amount => onChange(serviceChargePatch(task, type.id, amount))} /></label>)}
+        <label className="service-costs-total">Monto total<input type="text" readOnly value={formatCurrencyAmount(total)} placeholder="Calculado automáticamente" aria-describedby={costHelpId} /></label><small id={costHelpId}>Suma automática de los costos ingresados.</small>
+      </fieldset>
     }
     if (key === 'amount') {
       const required = task?.paymentMethod !== 'A confirmar'
       const amountProps = { ...props, inputMode: 'decimal', required, placeholder: required ? 'Ingresar monto' : 'Opcional' }
-      return <label className="service-extra-field" key={key}>{required ? <RequiredLabel>{label}</RequiredLabel> : label}<CurrencyInput {...amountProps} buffered={buffered} onCommit={value => onChange({ amount: value })} /></label>
+      return <label className="service-extra-field" key={key}>{required ? <RequiredLabel>{label}</RequiredLabel> : label}<CurrencyInput {...amountProps} buffered={buffered} onCommit={value => onChange({ amount: value, serviceCharges: undefined })} /></label>
     }
     if (key === 'monthlyFee') {
       const monthlyFeeProps = { ...props, required: enabled, inputMode: 'decimal', placeholder: enabled ? 'Ingresar abono mensual' : props.placeholder }

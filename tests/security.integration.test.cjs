@@ -15,6 +15,38 @@ let temporaryDirectory
 let serverProcess
 let serverErrorOutput = ''
 
+test('Cierre mixto HTTP: resultados obligatorios, revisión de cobranza y gestión auditada', async () => {
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const types = [{ id: 'qa-work-alarm', name: 'Service de alarma' }, { id: 'qa-work-camera', name: 'Service de cámaras' }]
+  for (const type of types) upsertJson(db, 'services', 'id', { ...type, status: 'Activo' })
+  const base = { customerId: 'qa-customer-a', clientAccount: 'PIG-9001', client: 'PIG-9001 MIXTO QA', date: '2026-10-14', time: '08:30', serviceId: types[0].id, service: types[0].name, serviceTypes: types, status: 'Pendiente', technicianIds: ['qa-tech'], technicians: ['QA Técnico'], startedAt: '2026-10-14T12:00:00Z', amount: '83160', paymentMethod: 'Efectivo' }
+  upsertJson(db, 'work_history', 'id', { ...base, id: 'qa-work-mixed' })
+  upsertJson(db, 'work_history', 'id', { ...base, id: 'qa-work-allocated', serviceCharges: [{ id: types[0].id, amount: '0' }, { id: types[1].id, amount: '83160' }] })
+  db.close()
+  const tech = await login('qa-tech@pignus.test'), admin = await login('qa-admin@pignus.test')
+  const results = [{ id: types[0].id, status: 'completed' }, { id: types[1].id, status: 'pending' }]
+  const report = (id, workResults) => api('/api/technician/status', tech, { method: 'POST', body: JSON.stringify({ recordId: id, type: 'Completado', observation: 'Alarma reparada, cámaras sin realizar', workResults }) })
+  let response = await report('qa-work-mixed'); assert.equal(response.status, 400)
+  response = await report('qa-work-mixed', results); assert.equal(response.status, 200, await response.clone().text())
+  const saved = (await response.json()).record; assert.equal(saved.serviceTypes.length, 1); assert.equal(saved.workCompletion.items[1].status, 'pending'); assert.equal(saved.amount, undefined)
+  response = await report('qa-work-mixed', results); assert.equal(response.status, 200); assert.equal((await response.json()).record.completedAt, saved.completedAt)
+  let latest = (await state(admin)).history.find(r => r.id === saved.id); assert.ok(latest.collectionReview); assert.equal(latest.amount, '83160')
+  const { collectionBase } = await import('../src/domain/collections/collections.mjs')
+  const input = { recordId: latest.id, base: collectionBase(latest), amount: '83160', paymentMethod: 'Efectivo', action: 'confirm' }
+  response = await api('/api/collections/manage', admin, { method: 'POST', body: JSON.stringify(input) }); assert.equal(response.status, 409)
+  const voidInput = { ...input, action: 'void', note: 'Alarma sin cargo; el monto pertenece a cámaras no realizadas' }
+  assert.equal((await api('/api/collections/manage', tech, { method: 'POST', body: JSON.stringify(voidInput) })).status, 403)
+  response = await api('/api/collections/manage', admin, { method: 'POST', body: JSON.stringify(voidInput) }); assert.equal(response.status, 200, await response.clone().text())
+  latest = (await state(admin)).history.find(r => r.id === saved.id); assert.equal(latest.amount, '0'); assert.equal(latest.collectionCancellation.original.amount, '83160')
+  const management = { recordId: latest.id, reportedAt: latest.workCompletion.at, note: 'Nueva visita coordinada en el ticket' }
+  assert.equal((await api('/api/history/work-completion', tech, { method: 'POST', body: JSON.stringify(management) })).status, 403)
+  response = await api('/api/history/work-completion', admin, { method: 'POST', body: JSON.stringify(management) }); assert.equal(response.status, 200, await response.clone().text())
+  assert.equal((await response.json()).report.management.byId, 'qa-admin')
+  assert.equal((await api('/api/history/work-completion', admin, { method: 'POST', body: JSON.stringify(management) })).status, 409)
+  response = await report('qa-work-allocated', results); assert.equal(response.status, 200, await response.clone().text())
+  latest = (await state(admin)).history.find(r => r.id === 'qa-work-allocated'); assert.equal(latest.amount, '0'); assert.equal(latest.paymentMethod, 'No aplica'); assert.equal(latest.collectionCancellation.original.amount, '83160')
+})
+
 test('Zonas HTTP: cierre obligatorio, consulta por cuenta, confirmación auditada e idempotencia', async () => {
   const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
   const service = {id:'qa-alarm-zones',customerId:'qa-customer-a',clientAccount:'PIG-9001',client:'PIG-9001 ZONAS QA',date:'2020-01-07',time:'08:30',service:'Instalación de alarma',serviceId:'qa-alarm',status:'Pendiente',technicianIds:['qa-tech'],technicians:['QA Técnico'],startedAt:'2020-01-07T12:00:00Z'}

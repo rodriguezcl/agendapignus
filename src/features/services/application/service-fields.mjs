@@ -1,7 +1,7 @@
 import { createTaskId } from "../../../infrastructure/browser/identity.mjs";
 import { normalizeServiceName } from "../../../domain/shared/normalization.mjs";
 import { serviceCode, isTrainingService } from "../../../domain/services/service.mjs";
-import { serviceTypesFor } from "../../../domain/services/multi-service.mjs";
+import { serviceTypesFor, serviceChargesComplete } from "../../../domain/services/multi-service.mjs";
 import { isEquipmentRetirementName } from "../../../domain/services/equipment-retirement.mjs";
 import { normalizeServiceEstimatedMinutes } from "../../../domain/agenda/service-scheduling.mjs";
 
@@ -46,7 +46,7 @@ export const PAYMENT_OPTIONS = ['Efectivo', 'Transferencia', 'Débito', 'Crédit
 export const technicianVisibleServiceExtras = task => {
   const paymentMethod = String(task?.paymentMethod || '').trim()
   const form = String(task?.form || '').trim()
-  const cashPayment = normalizeServiceName(paymentMethod) === 'efectivo'
+  const cashPayment = normalizeServiceName(paymentMethod) === 'efectivo' && !task?.collectionReview && !task?.collectionCancellation && !(task?.workCompletion?.items.some(item => item.status === 'pending') && !task.serviceCharges)
   const handwrittenForm = normalizeServiceName(form).startsWith('incompleto')
   return {
     paymentMethod: cashPayment ? 'Efectivo' : '',
@@ -98,6 +98,7 @@ export const applicableServiceExtras = (task, service) => {
   const paymentMethod = available.paymentMethod ? task?.paymentMethod || '' : ''
   return {
     paymentMethod,
+    serviceCharges: paymentMethod && paymentMethod !== 'No aplica' ? task?.serviceCharges : undefined,
     amount: paymentMethod && paymentMethod !== 'No aplica' ? task?.amount || '' : '',
     monthlyFee: available.monthlyFee ? task?.monthlyFee || '' : '',
     freezeMonthlyFee: available.freezeMonthlyFee ? task?.freezeMonthlyFee ?? null : false,
@@ -133,7 +134,8 @@ export const weeklyTaskMissingFields = (task, service) => {
     if (typeof task.freezeMonthlyFee !== 'boolean') missing.push('meses congelados (Sí o No)')
     if (task.freezeMonthlyFee === true && !(Number.isInteger(Number(task.frozenMonths)) && Number(task.frozenMonths) > 0)) missing.push('cantidad de meses congelados')
   }
-  if (requiresPaymentAmount(task, service)) missing.push('monto')
+  if (task?.paymentMethod && task.paymentMethod !== 'No aplica' && serviceTypesFor(task).length > 1 && !serviceChargesComplete(task)) missing.push('costo de cada trabajo (usá 0 si es sin cargo)')
+  if (serviceTypesFor(task).length <= 1 && requiresPaymentAmount(task, service)) missing.push('monto')
   if (invalidFormEmail(task, service)) missing.push('email del formulario válido')
   return missing
 }

@@ -3,6 +3,7 @@ const fieldPermissions = {
   internalChecklist: 'planning.checklist',
   paymentMethod: 'planning.commercial',
   amount: 'planning.commercial',
+  serviceCharges: 'planning.commercial',
   monthlyFee: 'planning.commercial',
   form: 'planning.commercial',
   formEmail: 'planning.commercial',

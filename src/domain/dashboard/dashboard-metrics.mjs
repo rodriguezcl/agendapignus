@@ -45,6 +45,7 @@ export function dashboardPendingGroups(records, today) {
 }
 
 export function historyReminderRecords(records, filter) {
+  if (filter?.recordId) return records.filter(record => String(record.id) === String(filter.recordId))
   if (!filter || !['today', 'overdue', 'rescheduling', 'confirmation'].includes(filter.pendingGroup)) return records
   return dashboardPendingGroups(records, filter.date)[filter.pendingGroup]
 }

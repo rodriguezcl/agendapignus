@@ -737,7 +737,7 @@ async function handleTechnicianStart(req, res, sql, user) {
 
 async function handleTechnicianStatus(req, res, sql, user) {
   if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
-  const { recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution, alarmZones } = requestBody(req)
+  const { recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution, alarmZones, workResults } = requestBody(req)
   const allowed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramación solicitada']
   if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
   try {
@@ -761,7 +761,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
       // Si el primer envío se guardó pero el teléfono perdió la respuesta, el
       // reintento devuelve el mismo resultado sin duplicar auditoría ni cambios.
       if (record.technicalStatus) {
-        if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return record
+        if ((record.technicalStatus === type || type === 'Completado' && record.workCompletion) && String(record.technicalReportedById) === String(user.id)) return record
         const error = new Error('Este servicio ya fue informado desde otra sesión.'); error.statusCode = 409; throw error
       }
       const completingVehicleControl = Boolean(record.vehicleControl && type === 'Completado')
@@ -800,13 +800,15 @@ async function handleTechnicianStatus(req, res, sql, user) {
       }
       const now = new Date().toISOString()
       const next = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? type : 'Requiere revisión', technicianRequest: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
-      Object.assign(next, require('./_lib/alarm-zones.cjs').reportZones(record, type, alarmZones, user, now))
+      if (type === 'Completado') require('./_lib/work-completion.cjs').applyResults(record, next, workResults, user, now)
+      Object.assign(next, require('./_lib/alarm-zones.cjs').reportZones(next, type === 'Completado' && next.status !== 'Completado' ? 'Avance registrado' : type, alarmZones, user, now))
       if (followup != null) next.followup = require('./_lib/followups.cjs').createFollowup(record, followup, user, currentState, now)
+      if (next.workCompletion?.items.some(item => item.status === 'pending') && ticketResolution?.resolved) throw new Error('El reclamo no puede resolverse mientras haya trabajos pendientes.')
       if (ticketResolution != null) next.ticketResolution = require('./_lib/ticket-service-lifecycle.cjs').resolutionEvidence(ticketResolution, next, user, now, next.followup)
       const entries = [auditEntry(user, 'Informó estado técnico', 'Servicio / historial', String(record.id), record, next)]
       if (vehicleChange) entries.push(auditEntry(user, 'Actualizó kilometraje por control semanal', 'Vehículo', String(record.vehicleId), vehicleChange.before, vehicleChange.after))
-      workingState.history = workingState.history.map(item => String(item.id) === String(next.id) ? next : item)
-      if ((record.serviceJourney || type === 'Cancelado') && workingState.agenda) workingState.agenda = synchronizeAgendaHistoryRecord(workingState.agenda, record, next)
+      workingState.history = require('./_lib/work-completion.cjs').applyToHistory(workingState.history, record, next)
+      if ((record.serviceJourney || next.workCompletion || type === 'Cancelado') && workingState.agenda) workingState.agenda = synchronizeAgendaHistoryRecord(workingState.agenda, record, next)
       let nextState = workingState
       if (next.status === 'Completado' && normalizedServiceName(next.service).includes('retiro de equipo')) {
         const normalized = normalizeRetirementCustomers(nextState, currentState)
@@ -815,7 +817,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
           normalized.conversions.forEach(({ before, after }) => entries.push(auditEntry(user, after.kind === 'subscriber' ? 'Restituyó abonado al corregir retiro' : 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after)))
         }
       }
-      await persistStateCollections(transaction, currentState, nextState, currentRevision + 1, undefined, { followupRecordId: record.id, ticketActor: user, ticketReportRecordId: record.id, alarmZonesWriteId: record.id })
+      await persistStateCollections(transaction, currentState, nextState, currentRevision + 1, undefined, { followupRecordId: record.id, ticketActor: user, ticketReportRecordId: record.id, alarmZonesWriteId: record.id, workCompletionWriteId: record.id, collectionCorrectionIds: next.collectionReview && record.serviceJourney ? nextState.history.filter(item => item.serviceJourney?.id === record.serviceJourney.id).map(item => item.id) : [] })
       if (photo) await upsertVehicleControlPhoto(transaction, photo)
       await appendAudit(transaction, entries)
       return next
@@ -1423,6 +1425,19 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST' && route === '/technician/advance-request') return await handleServiceAdvance(req, res, sql, session.user)
     if (req.method === 'POST' && route === '/admin/advance-request/approve') return await handleServiceAdvance(req, res, sql, session.user, 'approved')
     if (req.method === 'POST' && route === '/admin/advance-request/deny') return await handleServiceAdvance(req, res, sql, session.user, 'denied')
+    if (req.method === 'POST' && route === '/history/work-completion') {
+      const input = requestBody(req)
+      const result = await sql.begin(async tx => {
+        await tx`set local lock_timeout = '5s'`
+        await tx`select value from pignus_preferences where key='state_revision' for update`
+        const current = await readState(tx)
+        const change = require('./_lib/work-completion-management.cjs').manageWorkCompletion(current, input, session.user)
+        await persistStateCollections(tx, current, change.state, Number(current.revision) + 1, undefined, { workCompletionWriteId: change.before.id })
+        await appendAudit(tx, [auditEntry(session.user, 'Gestionó trabajos pendientes de la visita', 'Servicio / historial', String(change.before.id), change.before.workCompletion, change.after.workCompletion)])
+        return (isGranular(session.user) ? granularRead.sanitizeService(change.after, session.user, change.state) : change.after).workCompletion
+      })
+      return send(res, 200, { report: result })
+    }
     if (req.method === 'POST' && route === '/history/category-correction') return await handleCategoryCorrection(req, res, sql, session.user)
     if (route === '/tickets' || route.startsWith('/tickets/')) {
       const { ticketRequest, ticketError, attachmentHeaders } = require('./_lib/tickets-http.cjs')

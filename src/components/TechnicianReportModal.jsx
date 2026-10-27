@@ -8,6 +8,8 @@ import { compactVehiclePhoto } from '../infrastructure/media/image-upload.mjs'
 import { requestJson } from '../infrastructure/http/json-request.mjs'
 import { ticketDate, ticketNumber } from '../features/tickets/ticket-ui.mjs'
 import './technician-report.css'
+import workModel from '../../api/_lib/work-completion.cjs'
+import './work-completion.css'
 import alarmZoneModel from '../../api/_lib/alarm-zones.cjs'
 import AlarmZonesEditor from './AlarmZonesEditor.jsx'
 import '../features/followups/followups.css'
@@ -23,9 +25,22 @@ export function TechnicalDuplicatePreview({ ticket }) {
 
 export default function TechnicianReportModal({ record, type, serviceLabel, initialAlarmZones, pendingAttachments = [], onPendingAttachmentsChange, attachmentsPreparing = false, onPreparingChange, onClose, onSubmit }) {
   const { can } = useActionPermissions()
+  const workTypes = workModel.typesFor(record)
+  const perWork = type === 'Completado' && !record.vehicleControl && workTypes.length > 1
+  const [workResults, setWorkResults] = useState(() => workTypes.map(t => ({ id: t.id, status: '' })))
+  const hasPendingWork = perWork && workResults.some(r => r.status === 'pending')
+  const workValid = !perWork || workResults.every(r => ['completed','pending'].includes(r.status))
+  const completedTypes = perWork ? workTypes.filter(t => workResults.some(r => String(r.id) === String(t.id) && r.status === 'completed')) : workTypes
+  const zoneRecord = perWork ? { ...record, service: '', serviceTypes: completedTypes } : record
   const [needsFollowup, setNeedsFollowup] = useState(false)
   const [followupType, setFollowupType] = useState('Cotizar adicional')
   const [followupDescription, setFollowupDescription] = useState('')
+  const automaticFollowup = useRef(false)
+  useEffect(() => {
+    if (!hasPendingWork) { if (automaticFollowup.current) { setNeedsFollowup(false); setFollowupDescription(''); automaticFollowup.current = false } return }
+    setComplaintResolved(false)
+    if (can('tickets.fromService') && !record.followup && !record.hasFollowup && !needsFollowup) { automaticFollowup.current = true; setNeedsFollowup(true); setFollowupType('Coordinar visita'); setFollowupDescription(previous => previous || 'Quedaron pendientes: ' + workTypes.filter(t => workResults.some(r => String(r.id) === String(t.id) && r.status === 'pending')).map(t => t.name).join(', ')) }
+  }, [hasPendingWork])
   const [linkedTickets, setLinkedTickets] = useState([])
   const [linkedTicketsLoading, setLinkedTicketsLoading] = useState(false)
   const [linkedTicketsError, setLinkedTicketsError] = useState('')
@@ -68,7 +83,7 @@ export default function TechnicianReportModal({ record, type, serviceLabel, init
     return () => { active = false }
   }, [ticketChoice, record.customerId, record.id, ticketContextPending, selectedTicketContext, previewRetry])
   const vehicleControl = Boolean(record.vehicleControl && type === 'Completado')
-  const needsZones = alarmZoneModel.installation(record) && ['Completado', 'Avance registrado'].includes(type)
+  const needsZones = alarmZoneModel.installation(zoneRecord) && ['Completado', 'Avance registrado'].includes(type)
   const [alarmZones, setAlarmZones] = useState(() => initialAlarmZones || alarmZoneModel.initialZones(record))
   const [zonesDirty, setZonesDirty] = useState(false)
   let zonesValid = true
@@ -92,11 +107,11 @@ export default function TechnicianReportModal({ record, type, serviceLabel, init
   const photoRequestRef = useRef(null)
   const pendingRef = useRef(pendingAttachments)
   pendingRef.current = pendingAttachments
-  const dirty = Boolean(zonesDirty || needsFollowup || complaintResolved || observation.trim() || mileage || photo || pendingAttachments.length)
+  const dirty = Boolean(workResults.some(r => r.status) || zonesDirty || needsFollowup || complaintResolved || observation.trim() || mileage || photo || pendingAttachments.length)
   const busy = saving || photoBusy || attachmentsPreparing
   const valid = vehicleControl
     ? Boolean(photo) && /^\d+$/.test(mileage) && Number(mileage) > Number(record.vehicleMileageAtScheduling || 0)
-    : zonesValid && Boolean(observation.trim()) && !linkedTicketsLoading && (!needsFollowup || Boolean(followupDescription.trim()) && !ticketChecking && !ticketContextPending && !ticketError && (!(followupCandidates.length || hasLinkedComplaint) || Boolean(ticketChoice)) && (!ticketChoice || ticketChoice === 'different' || Boolean(ticketPreview) && !previewLoading && !previewError && previewContext === selectedTicketContext))
+    : workValid && zonesValid && Boolean(observation.trim()) && !linkedTicketsLoading && (!needsFollowup || Boolean(followupDescription.trim()) && !ticketChecking && !ticketContextPending && !ticketError && (!(followupCandidates.length || hasLinkedComplaint) || Boolean(ticketChoice)) && (!ticketChoice || ticketChoice === 'different' || Boolean(ticketPreview) && !previewLoading && !previewError && previewContext === selectedTicketContext))
   const requestClose = () => { if (!busy) dirty ? setDiscarding(true) : onClose() }
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; photoRequestRef.current?.abort() } }, [])
@@ -158,9 +173,9 @@ export default function TechnicianReportModal({ record, type, serviceLabel, init
         pendingRef.current = pendingRef.current.filter(file => file.id !== savedId)
         onPendingAttachmentsChange(pendingRef.current)
       })
-      await onSubmit({ observation, vehicleMileage: mileage, vehiclePhoto: photo,
+      await onSubmit({ observation, ...(perWork ? { workResults } : {}), vehicleMileage: mileage, vehiclePhoto: photo,
         ...(needsZones ? { alarmZones } : {}),
-        ...(type === 'Completado' && hasLinkedComplaint ? { ticketResolution: { resolved: complaintResolved && (!needsFollowup || ticketChoice === 'different') && !linkedTicketsError, ticketIds: linkedTickets.length ? linkedTickets.map(ticket => String(ticket.id)) : [String(record.sourceTicketId)].filter(Boolean) } } : {}),
+        ...(type === 'Completado' && hasLinkedComplaint ? { ticketResolution: { resolved: !hasPendingWork && complaintResolved && (!needsFollowup || ticketChoice === 'different') && !linkedTicketsError, ticketIds: linkedTickets.length ? linkedTickets.map(ticket => String(ticket.id)) : [String(record.sourceTicketId)].filter(Boolean) } } : {}),
         ...(needsFollowup ? { followup: { type: followupType, description: followupDescription, duplicateToken, relatedTicketId: ticketChoice === 'different' ? '' : ticketChoice, ...(ticketChoice && ticketChoice !== 'different' ? { relatedTicketVersion: ticketPreview.version } : {}), ...(ticketChoice === 'different' ? { relation: 'different' } : {}) } } : {}) })
     } catch (failure) {
       if (alive.current && failure.status === 409 && needsFollowup) { setTicketRetry(value => value + 1); setConfirming(false); setTicketChoice('') }
@@ -176,7 +191,7 @@ export default function TechnicianReportModal({ record, type, serviceLabel, init
     <div className="modal-layer" onClick={event => { event.stopPropagation(); if (event.target === event.currentTarget) requestClose() }}>
       <section className="modal technician-status-modal" role="dialog" aria-modal="true" aria-label="Informar servicio" aria-busy={busy}>
         <button type="button" className="close-modal" aria-label="Cerrar informe" title="Cerrá el informe; si hay cambios pendientes, podrás conservarlos o descartarlos." disabled={busy} onClick={requestClose}><Icon name="close" /></button>
-        <p className="eyebrow">ACTUALIZAR SERVICIO</p><h2>{type === 'Avance registrado' ? 'Registrar avance de la jornada' : type}</h2>
+        <p className="eyebrow">ACTUALIZAR SERVICIO</p><h2>{perWork ? 'Resultado de la visita' : type === 'Avance registrado' ? 'Registrar avance de la jornada' : type}</h2>
         <p>{record.client} · {serviceLabel}</p>
         {vehicleControl ? <>
           <p className="vehicle-control-report-help">Informá el kilometraje y elegí una foto del interior. Podés usar una foto de este control o tomar una nueva.</p>
@@ -196,22 +211,23 @@ export default function TechnicianReportModal({ record, type, serviceLabel, init
             </fieldset>
           </div>
         </> : <>
+          {perWork && <fieldset className="work-completion-fields"><legend>Resultado de cada trabajo</legend><p>Indicá qué se realizó. Los trabajos pendientes no se marcarán como completados.</p>{workTypes.map(t => <label key={t.id}>{t.name}<select required disabled={busy} value={workResults.find(r => String(r.id) === String(t.id))?.status || ''} onChange={e => setWorkResults(rows => rows.map(r => String(r.id) === String(t.id) ? { ...r, status: e.target.value } : r))}><option value="">Seleccionar resultado</option><option value="completed">Realizado</option><option value="pending">Quedó pendiente</option></select></label>)}{hasPendingWork && <p role="status">Detallá el motivo en la observación. Administración recibirá el pendiente para coordinarlo. El importe se ajustará según los trabajos realizados; si no está desglosado, quedará en revisión.</p>}</fieldset>}
           {needsZones && <AlarmZonesEditor value={alarmZones} onChange={value => { setAlarmZones(value); setZonesDirty(true) }} disabled={saving} complete={type === 'Completado'} />}
           <label><RequiredLabel>Observación</RequiredLabel><textarea required value={observation} disabled={saving} onChange={event => setObservation(event.target.value)} placeholder="Detallá el trabajo realizado, el resultado y cualquier recomendación para futuras visitas." /></label>
           {linkedTicketsLoading && <p role="status">Consultando el reclamo asociado…</p>}
           {linkedTicketsError && <p className="field-error" role="alert">{linkedTicketsError} El informe se puede guardar; el ticket quedará pendiente de revisión. <button type="button" className="secondary" title="Volvé a consultar los tickets asociados a este servicio." disabled={busy} onClick={() => setLinkedTicketsRetry(value => value + 1)}>Reintentar</button></p>}
           {type === 'Completado' && hasLinkedComplaint && <fieldset className="followup-request"><legend>Resultado del reclamo</legend>
             <p>{linkedTickets.length ? linkedTickets.map(ticket => ticket.displayNumber || `Ticket#${ticket.number}`).join(' · ') : `Ticket#${record.ticketNumber || 'asociado'}`}</p>
-            <label><input type="checkbox" checked={complaintResolved} disabled={busy || linkedTicketsLoading || Boolean(linkedTicketsError) || (needsFollowup && ticketChoice !== 'different')} onChange={event => setComplaintResolved(event.target.checked)} />El reclamo asociado quedó resuelto</label>
+            <label><input type="checkbox" checked={complaintResolved} disabled={hasPendingWork || busy || linkedTicketsLoading || Boolean(linkedTicketsError) || (needsFollowup && ticketChoice !== 'different')} onChange={event => setComplaintResolved(event.target.checked)} />El reclamo asociado quedó resuelto</label>
             <small>Confirmalo únicamente si se resolvió el inconveniente. El ticket se cerrará cuando no queden visitas ni acciones pendientes del mismo caso.</small>
             {needsFollowup && ticketChoice !== 'different' && <p>El seguimiento pendiente mantiene abierto el reclamo. Si es otro pedido, identificá que se trata de un caso diferente.</p>}
           </fieldset>}
-          {can('tickets.fromService') && !record.followup && !record.hasFollowup && <fieldset className="followup-request"><legend>Acciones posteriores</legend><label><input type="checkbox" checked={needsFollowup} disabled={saving} onChange={event => setNeedsFollowup(event.target.checked)} />Solicitar acción / seguimiento</label><small>Agrega información a un caso abierto o crea un ticket vinculado a este servicio.</small>{needsFollowup && <>
+          {can('tickets.fromService') && !record.followup && !record.hasFollowup && <fieldset className="followup-request"><legend>Acciones posteriores</legend><label><input type="checkbox" checked={needsFollowup} disabled={saving || hasPendingWork} onChange={event => setNeedsFollowup(event.target.checked)} />Solicitar acción / seguimiento</label><small>Agrega información a un caso abierto o crea un ticket vinculado a este servicio.</small>{needsFollowup && <>
             {ticketChecking && <p role="status">Consultando tickets abiertos…</p>}{ticketError && <p role="alert" className="field-error">{ticketError} <button type="button" className="secondary" disabled={busy} onClick={() => setTicketRetry(value => value + 1)}>Reintentar consulta</button></p>}
             {!ticketContextPending && Boolean(followupCandidates.length || hasLinkedComplaint) && <label>Ya existen tickets abiertos: revisá si corresponden al mismo caso<select required value={ticketChoice} disabled={busy || ticketChecking} onChange={event=>setTicketChoice(event.target.value)}><option value="">Seleccionar</option>{followupCandidates.map(item=><option key={item.id} value={item.id}>{ticketNumber(item)} · {item.title}</option>)}<option value="different">Es un caso diferente: crear otro ticket</option></select><small>Si es el mismo problema, tu información se sumará al caso y podrás seguir su atención. Si es otro motivo, creá una solicitud nueva.</small></label>}
             {previewLoading && <p role="status">Consultando información del caso…</p>}{previewError && <p role="alert" className="field-error">{previewError} <button type="button" className="secondary" disabled={busy} onClick={() => setPreviewRetry(value => value + 1)}>Reintentar detalle</button><button type="button" className="secondary" disabled={busy} onClick={() => setTicketRetry(value => value + 1)}>Actualizar casos abiertos</button></p>}
             {ticketPreview && previewContext === selectedTicketContext && !ticketContextPending && <TechnicalDuplicatePreview ticket={ticketPreview} />}
-            <label>Tipo de solicitud<select value={followupType} disabled={saving} onChange={event => setFollowupType(event.target.value)}>{['Cotizar adicional', 'Coordinar visita', 'Gestionar problema', 'Otra acción'].map(type => <option key={type}>{type}</option>)}</select></label><label>Acción solicitada<textarea required maxLength={2000} value={followupDescription} disabled={saving} onChange={event => setFollowupDescription(event.target.value)} placeholder="Por ejemplo: cotizar dos cámaras adicionales para el patio." /></label></>}</fieldset>}
+            <label>Tipo de solicitud<select value={followupType} disabled={saving} onChange={event => { automaticFollowup.current = false; setFollowupType(event.target.value) }}>{['Cotizar adicional', 'Coordinar visita', 'Gestionar problema', 'Otra acción'].map(type => <option key={type}>{type}</option>)}</select></label><label>Acción solicitada<textarea required maxLength={2000} value={followupDescription} disabled={saving} onChange={event => { automaticFollowup.current = false; setFollowupDescription(event.target.value) }} placeholder="Por ejemplo: cotizar dos cámaras adicionales para el patio." /></label></>}</fieldset>}
           <Attachments entityId={record.id} pendingFiles={pendingAttachments} onPendingFilesChange={onPendingAttachmentsChange} onPreparingChange={onPreparingChange} disabled={saving} />
         </>}
         {pendingAttachments.length > 0 && <p className="technician-report-pending" role="status">Se guardarán {pendingAttachments.length} adjunto(s) pendiente(s) junto con el informe.</p>}
@@ -219,7 +235,7 @@ export default function TechnicianReportModal({ record, type, serviceLabel, init
         <div className="modal-actions"><button type="button" title="Cerrá el informe; si hay cambios pendientes, podrás conservarlos o descartarlos." className="secondary" disabled={busy} onClick={requestClose}>Cancelar</button><button type="button" title="Revisá la confirmación antes de guardar el informe y actualizar el estado del servicio." className="primary" disabled={!valid || busy} onClick={() => { setError(''); setConfirming(true) }}>Continuar</button></div>
       </section>
     </div>
-    {confirming && <div className="modal-layer technician-report-confirmation"><section className="modal confirm-modal" role="dialog" aria-modal="true" aria-label="Confirmar estado"><h2>Confirmar estado</h2><p>¿Confirmás que querés informar “{type}”? Luego quedará registrado y cualquier cambio deberá ser revisado por Administración.</p>{error && <p className="field-error" role="alert">{error}</p>}<div className="confirm-actions"><button type="button" title="Volvé a revisar o corregir los datos sin perder el informe que estás preparando." className="secondary" disabled={saving} onClick={() => setConfirming(false)}>Volver al informe</button><button type="button" title="Guardá los adjuntos pendientes y luego registrá el informe y el estado del servicio." className="primary" disabled={saving} onClick={save}>{saving ? 'Guardando…' : 'Sí, confirmar estado'}</button></div></section></div>}
+    {confirming && <div className="modal-layer technician-report-confirmation"><section className="modal confirm-modal" role="dialog" aria-modal="true" aria-label="Confirmar estado"><h2>Confirmar estado</h2><p>{hasPendingWork ? `Se registrarán ${completedTypes.length} trabajo(s) realizado(s) y ${workResults.filter(r => r.status === 'pending').length} pendiente(s). Los pendientes requerirán coordinación; la cobranza se ajustará o quedará en revisión.` : `¿Confirmás que querés informar “${type}”? Luego quedará registrado y cualquier cambio deberá ser revisado por Administración.`}</p>{error && <p className="field-error" role="alert">{error}</p>}<div className="confirm-actions"><button type="button" title="Volvé a revisar o corregir los datos sin perder el informe que estás preparando." className="secondary" disabled={saving} onClick={() => setConfirming(false)}>Volver al informe</button><button type="button" title="Guardá los adjuntos pendientes y luego registrá el informe y el estado del servicio." className="primary" disabled={saving} onClick={save}>{saving ? 'Guardando…' : 'Sí, confirmar estado'}</button></div></section></div>}
     {discarding && <div className="modal-layer technician-report-discard"><section className="modal confirm-modal" role="alertdialog" aria-modal="true" aria-label="Informe sin guardar"><h2>Informe sin guardar</h2><p>El informe y los adjuntos pendientes todavía no se guardaron. ¿Querés seguir editando o descartarlos? Las fotos ya guardadas se conservan.</p><div className="confirm-actions"><button type="button" title="Conservá todos los datos y adjuntos pendientes para continuar preparando el informe." className="secondary" onClick={() => setDiscarding(false)}>Seguir editando</button><button type="button" title="Descartá este borrador y los adjuntos pendientes; las fotos ya guardadas se conservan." className="danger-button" onClick={() => { onPendingAttachmentsChange([]); onClose() }}>Descartar informe</button></div></section></div>}
   </>
 }

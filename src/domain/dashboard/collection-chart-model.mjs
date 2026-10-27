@@ -1,5 +1,5 @@
 import { canReadRecord } from '../access/record-scope.mjs'
-import { COLLECTIONS_START_DATE, collectionConfirmed, collectionRecords, collectionServiceResolver } from '../collections/collections.mjs'
+import { COLLECTIONS_START_DATE, collectionConfirmed, collectionVoided, collectionNeedsReview, collectionRecords, collectionServiceResolver } from '../collections/collections.mjs'
 
 const states = ['confirmed', 'pending', 'future']
 const emptyTotals = () => Object.fromEntries(states.map(state => [state, { amount: 0, count: 0 }]))
@@ -80,6 +80,7 @@ export function buildCollectionOverview(history = [], { month, today, user, cust
   const resolveService = collectionServiceResolver(records)
   let hasEarlierExplicitRecords = false
   for (const owner of collectionRecords(records, resolveService)) {
+    if (collectionVoided(owner) || collectionNeedsReview(owner) && !collectionConfirmed(owner)) continue
     const effective = resolveService(owner) || owner
     if (user && (!canReadRecord(owner, user, customers) || !canReadRecord(effective, user, customers))) continue
     const date = effective.date

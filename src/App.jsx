@@ -1385,7 +1385,7 @@ export default function App() {
     } else if (target.type === 'collection' && (isAdministrator || modulePermissions.collections)) {
       setCollectionOpenRequest({ id: target.recordId }); setModule('collections')
     } else if (target.type === 'history' && (isAdministrator || modulePermissions.history)) {
-      setHistoryEntryFilter({ pendingGroup: target.pendingGroup, date: target.date }); setModule('history')
+      setHistoryEntryFilter({ pendingGroup: target.pendingGroup, date: target.date, recordId: target.recordId }); setModule('history')
     } else if (target.type === 'reservation' && (isAdministrator || modulePermissions.weekly)) {
       const record = history.find(item => String(item.id) === target.recordId)
       if (record) { setWeeklyOpenRequest({ id: record.id }); setModule('weekly') }

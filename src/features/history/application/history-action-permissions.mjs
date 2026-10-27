@@ -2,6 +2,7 @@ import completion from '../../../../api/_lib/service-completion.cjs'
 import { permittedPlanningPatch } from '../../agenda/application/planning-permissions.mjs'
 
 export function canCompleteHistoryRecord(record, can, now) {
+  if ((record.serviceTypes || []).length > 1) return false
   if (!can('history.complete') || record.vehicleControl || record.awaitingConfirmation === true) return false
   if (can('history.completeEarly')) return true
   try { completion.assertServiceCanBeCompleted(record, now); return true } catch { return false }

@@ -61,6 +61,7 @@
 .notification-panel .notification-sound-message { margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--ap-border); color: var(--ap-muted); font-size: 12px; line-height: 1.5; }
 .notification-panel .notification-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .topbar .profile .notification-panel .notification-item {
+  --notification-color: var(--notification-light, #616161);
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
   gap: 10px;
@@ -70,6 +71,7 @@
   margin: 0;
   border: 0;
   border-bottom: 1px solid var(--ap-border);
+  border-inline-start: 3px solid var(--notification-color);
   border-radius: 0;
   background: var(--ap-surface);
   color: var(--ap-text);
@@ -80,9 +82,8 @@
   cursor: pointer;
 }
 .topbar .profile .notification-panel .notification-item:hover { background: var(--ap-surface-alt); }
-.notification-item .notification-marker { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 6px; color: var(--ap-accent); background: var(--ap-accent-soft); }
-.notification-item[data-tone='danger'] .notification-marker { color: #cf645c; background: transparent; border: 1px solid #cf645c; }
-.notification-item[data-tone='info'] .notification-marker { color: #5798c9; background: transparent; border: 1px solid #5798c9; }
+.notification-item .notification-marker { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 6px; color: var(--notification-color); background: color-mix(in srgb, var(--notification-color) 12%, var(--ap-surface)); }
+:is([data-theme='dark'], body.dark) .topbar .profile .notification-panel .notification-item { --notification-color: var(--notification-dark, #c6c6c6); }
 .notification-panel .notification-copy { display: grid; min-width: 0; gap: 5px; }
 .notification-panel .notification-copy strong { color: var(--ap-text); font-size: 13px; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }
 .notification-panel .notification-copy > span { color: var(--ap-muted); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }

@@ -4,6 +4,7 @@ import useNotificationSound from './useNotificationSound.js'
 import WebPushControls from './WebPushControls.jsx'
 import { pendingPush, clearPendingPush } from '../infrastructure/browser/push-navigation.mjs'
 import './notification-center.css'
+import { notificationAppearance, notificationColorStyle } from './notification-appearance.mjs'
 
 /** Active operational notices; opening one never marks its cause as resolved. */
 export default function NotificationCenter({ notifications = [], onSelect, userKey, readySources }) {
@@ -88,10 +89,12 @@ export default function NotificationCenter({ notifications = [], onSelect, userK
       {sound.message && <p className="notification-sound-message" role="status">{sound.message}</p>}
       {pushMessage && <p className="notification-sound-message" role="status">{pushMessage}</p>}
       <div className="notification-list">
-        {count ? notifications.map(notification => <button type="button" key={notification.id} className="notification-item" data-tone={notification.tone || 'info'} title={`Abrir: ${notification.title}`} onClick={() => activate(notification)}>
-          <span className="notification-marker" aria-hidden="true"><Icon name={notification.target?.type === 'collection' ? 'wallet' : notification.tone === 'danger' ? 'alert' : 'calendar'} size={17} /></span>
+        {count ? notifications.map(notification => {
+          const appearance = notificationAppearance(notification)
+          return <button type="button" key={notification.id} className="notification-item" data-category={appearance.category} style={notificationColorStyle(appearance)} data-tone={notification.tone || 'info'} title={`${appearance.label} · Abrir: ${notification.title}`} onClick={() => activate(notification)}>
+          <span className="notification-marker" aria-hidden="true"><Icon name={appearance.icon} size={18} /></span>
           <span className="notification-copy"><strong>{notification.title}</strong><span>{notification.detail}</span></span>
-        </button>) : <div className="notification-empty"><Icon name="check" size={24} /><strong>No hay avisos activos</strong><p>Acá aparecerán los avisos que requieran seguimiento.</p></div>}
+        </button>}) : <div className="notification-empty"><Icon name="check" size={24} /><strong>No hay avisos activos</strong><p>Acá aparecerán los avisos que requieran seguimiento.</p></div>}
       </div>
       <footer className="notification-footer"><WebPushControls key={userKey} userKey={userKey} /><small>Las novedades de Tickets se marcan como leídas al abrir el caso. Los pendientes se mantienen hasta su resolución.</small></footer>
     </section>}

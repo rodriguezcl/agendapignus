@@ -1,4 +1,4 @@
-import { collectionConfirmed } from './collections.mjs'
+import { collectionConfirmed, collectionVoided, collectionNeedsReview } from './collections.mjs'
 
 const validDate = value => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
@@ -23,6 +23,7 @@ export function collectionSegments(records = [], { today, resolveService = recor
     const state = collectionConfirmed(record) ? 'confirmed' : 'pending'
     const cents = amountCents(record.amount)
     target.records.push(record)
+    if (collectionVoided(record) || collectionNeedsReview(record) && !collectionConfirmed(record)) continue
     target.total += cents
     target[state].count++
     target[state].total += cents

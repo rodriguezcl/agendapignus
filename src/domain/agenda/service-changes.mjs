@@ -1,10 +1,10 @@
 // Compare editable values only; persistence/audit metadata does not make a draft dirty.
-export const serviceEditableFields = ['time', 'serviceId', 'service', 'customerId', 'client', 'address', 'phone', 'detail', 'internalNote', 'paymentMethod', 'amount', 'monthlyFee', 'freezeMonthlyFee', 'frozenMonths', 'form', 'formEmail', 'installationZone', 'estimatedMinutes', 'servicePhotoUrl', 'servicePhotoAttachedAt']
+export const serviceEditableFields = ['time', 'serviceId', 'service', 'customerId', 'client', 'address', 'phone', 'detail', 'internalNote', 'paymentMethod', 'serviceCharges', 'amount', 'monthlyFee', 'freezeMonthlyFee', 'frozenMonths', 'form', 'formEmail', 'installationZone', 'estimatedMinutes', 'servicePhotoUrl', 'servicePhotoAttachedAt']
 
 export function serviceHasChanges(task, saved) {
   if (!saved) return true
   if (Boolean(task.awaitingConfirmation) !== Boolean(saved.awaitingConfirmation)) return true
-  const value = (item, key) => key === 'freezeMonthlyFee' ? (item?.[key] ?? null) : key === 'frozenMonths' ? Number(item?.[key] || 0) : String(item?.[key] ?? '')
+  const value = (item, key) => key === 'serviceCharges' ? JSON.stringify(item?.[key] ?? null) : key === 'freezeMonthlyFee' ? (item?.[key] ?? null) : key === 'frozenMonths' ? Number(item?.[key] || 0) : String(item?.[key] ?? '')
   if (serviceEditableFields.some(key => value(task, key) !== value(saved, key))) return true
   if (Boolean(task?.servicePhotoAttached) !== Boolean(saved?.servicePhotoAttached)) return true
   const checklist = value => (value || []).map(item => ({ text: String(item?.text || ''), completed: Boolean(item?.completed) }))
@@ -13,7 +13,7 @@ export function serviceHasChanges(task, saved) {
 
 export function restoreSavedService(task, saved) {
   const restored = { ...task }
-  for (const key of serviceEditableFields) restored[key] = saved[key] ?? (key === 'freezeMonthlyFee' ? null : '')
+  for (const key of serviceEditableFields) restored[key] = saved[key] ?? (key === 'serviceCharges' ? undefined : key === 'freezeMonthlyFee' ? null : '')
   return {
     ...restored,
     awaitingConfirmation: saved.awaitingConfirmation === true,

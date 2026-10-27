@@ -1,0 +1,11 @@
+.work-completion-fields { border: 1px solid var(--ap-border, #dce0e5); border-radius: 8px; padding: 16px; margin: 16px 0; display: grid; gap: 12px; min-width: 0; }
+.work-completion-fields legend { font-weight: 700; padding: 0 6px; }
+.work-completion-fields p { margin: 0; font-size: .875rem; }
+.work-completion-fields label { display: grid; gap: 6px; min-width: 0; }
+.work-completion-fields select, .work-completion-fields input { width: 100%; min-width: 0; min-height: 44px; }
+.work-result-summary { margin: 14px 0; padding: 14px; border: 1px solid var(--ap-border, #dce0e5); border-radius: 8px; }
+.work-result-summary ul { padding-left: 20px; margin-bottom: 0; }
+.work-result-summary li { margin-top: 6px; }
+.service-costs { grid-column: 1 / -1; margin: 0; }
+.service-costs-total { border-top: 1px solid var(--ap-border, #dce0e5); padding-top: 12px; font-weight: 700; }
+.service-costs-total input { font-weight: 700; }

@@ -31,7 +31,7 @@ export function HistoryManagementDetail({ record, setHistory, close, customers, 
   const writable = canWriteRecord(record, user, customers)
   const can = (key, legacy = true) => canAction(key, legacy) && (key.startsWith('records.') || key.endsWith('.read') || writable)
   const canEdit = ['history.edit', 'planning.notes', 'planning.checklist', 'planning.linkAccount', 'planning.reservation.link'].some(key => can(key))
-  const canComplete = granular ? canCompleteHistoryRecord(record, can) : true
+  const canComplete = (record.serviceTypes || []).length < 2 && (granular ? canCompleteHistoryRecord(record, can) : true)
   const [correctingCategory, setCorrectingCategory] = useState(false)
   const completedRecord = record.status === 'Completado' || record.technicalStatus === 'Completado'
   const canCorrectCategory = completedRecord && can('history.category', authUser?.roleCode === 'administrator') && !record.subscriberReservation && !record.vehicleControl && !record.serviceJourney && Boolean(persistHistoryRecord)

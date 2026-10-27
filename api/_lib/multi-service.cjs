@@ -1,6 +1,7 @@
 function validateServiceTypes(state) {
   const catalog = new Map((state.services || []).map(item => [String(item.id), item]))
   const check = item => {
+    require('./work-completion.cjs').validateCharges(item)
     if (item.serviceTypes == null) return
     if (!Array.isArray(item.serviceTypes) || !item.serviceTypes.length) throw new Error('Seleccioná al menos un tipo de servicio.')
     const ids = item.serviceTypes.map(type => String(type?.id))

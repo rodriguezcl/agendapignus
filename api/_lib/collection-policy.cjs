@@ -3,7 +3,7 @@ const canonical = value => Array.isArray(value) ? value.map(canonical) : value &
 const same = (a, b) => JSON.stringify(canonical(a ?? null)) === JSON.stringify(canonical(b ?? null))
 function assertCollectionChange(before, after, authorized = false) {
   if (authorized) return
-  const changedTrace = !same(before?.collection, after?.collection)
+  const changedTrace = !same(before?.collection, after?.collection) || !same(before?.collectionCancellation, after?.collectionCancellation) || !same(before?.collectionReview, after?.collectionReview)
   const changedTerms = before?.collection && after && (Number(before.amount) !== Number(after.amount) || before.paymentMethod !== after.paymentMethod)
   if (changedTrace || changedTerms) throw Object.assign(new Error('Esta cobranza debe gestionarse desde Cobranzas para conservar su historial. No se guardaron los cambios.'), { statusCode: 409, code: 'COLLECTION_PROTECTED' })
 }

@@ -757,17 +757,7 @@ function readState() {
 }
 
 function technicianSafeRecord(record = {}, user = { roleCode: 'technician' }) {
-  const { internalNote: _internalNote, internalChecklist: _internalChecklist, monthlyFee: _monthlyFee, ...visible } = record
-  for (const field of ['collection', 'monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy']) delete visible[field]
-  const cashPayment = normalizedRoleName(visible.paymentMethod) === 'efectivo'
-  const handwrittenForm = normalizedRoleName(visible.form).startsWith('incompleto')
-  if (!cashPayment) {
-    delete visible.paymentMethod
-    delete visible.amount
-  }
-  if (!handwrittenForm) delete visible.form
-  delete visible.formEmail
-  return sanitizeTechnicianFollowup(visible, user)
+  return require('./api/_lib/core.cjs').technicianSafeRecord(record, user)
 }
 
 function internalPlanningIsValid(record = {}) {
@@ -820,7 +810,8 @@ function localStateProjection(state, user) {
       const account = String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()
       return (customerId && customerIds.has(customerId)) || (account && accounts.has(account))
     }).map(record => {
-      const { collection: _collection, internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, formEmail: _formEmail, ...visible } = record
+      const { serviceCharges: _serviceCharges, collectionReview: _collectionReview, collectionCancellation: _collectionCancellation, collection: _collection, internalNote: _internalNote, internalChecklist: _internalChecklist, paymentMethod: _paymentMethod, amount: _amount, monthlyFee: _monthlyFee, form: _form, formEmail: _formEmail, ...visible } = record
+      if (visible.workCompletion) visible.workCompletion = { items: visible.workCompletion.items, at: visible.workCompletion.at, byName: visible.workCompletion.byName }
       return visible
     })
     return { revision: state.revision, roles: [], employees: [], services: [], vehicles: [], customers: trackedCustomers, history, agenda: null, preferences: {} }
@@ -1988,6 +1979,19 @@ const server = http.createServer((req, res) => {
       }
     }).catch(error => send(res, error.statusCode || 400, { code: error.code, error: error.message || 'No se pudo actualizar el servicio.' }))
   }
+  if (req.method === 'POST' && url.pathname === '/api/history/work-completion') {
+    const user = requireSession(req, res); if (!user) return
+    return readJson(req).then(input => {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const change = require('./api/_lib/work-completion-management.cjs').manageWorkCompletion(readState(), input, user)
+        db.prepare('UPDATE work_history SET data=? WHERE id=?').run(JSON.stringify(change.after), String(change.after.id))
+        writeAudit(user, 'Gestionó trabajos pendientes de la visita', 'Servicio / historial', String(change.after.id), change.before.workCompletion, change.after.workCompletion)
+        db.prepare('INSERT OR REPLACE INTO preferences(key,value) VALUES (?,?)').run('state_revision', String(currentStateRevision() + 1))
+        db.exec('COMMIT'); return send(res, 200, { report: (isGranular(user) ? granularRead.sanitizeService(change.after, user, change.state) : change.after).workCompletion })
+      } catch(error) { db.exec('ROLLBACK'); throw error }
+    }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo guardar la gestión.' }))
+  }
   if (req.method === 'POST' && url.pathname === '/api/history/category-correction') {
     const user = requireSession(req, res)
     if (!user) return
@@ -2389,7 +2393,7 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
-    return readJson(req, 1_600_000).then(async ({ recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution, alarmZones }) => {
+    return readJson(req, 1_600_000).then(async ({ recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution, alarmZones, workResults }) => {
       const ticketStore = require('./api/_lib/tickets-http.cjs').storeFor(db, 'db')
       await ticketStore.ensure()
       const priorState = readState()
@@ -2407,7 +2411,7 @@ const server = http.createServer((req, res) => {
           : []
         if (record.vehicleControl && !vehicleControlIsOpen(record, Date.now(), technicianDayRecords)) return send(res, 409, { error: `El control vehicular se habilita el ${vehicleControlWindowLabel(record)}.` })
         if (record.technicalStatus) {
-          if (record.technicalStatus === type && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record: technicianSafeRecord(record, user) })
+          if ((record.technicalStatus === type || type === 'Completado' && record.workCompletion) && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record: technicianSafeRecord(record, user) })
           return send(res, 409, { error: 'Este servicio ya fue informado desde otra sesión.' })
         }
       endpointPolicy.assertTechnicalAction(user, record, isGranular(user) ? readState() : undefined, type)
@@ -2438,16 +2442,19 @@ const server = http.createServer((req, res) => {
       }
       const now = new Date().toISOString()
       const updated = { ...record, technicalStatus: type, technicalObservation: String(observation || '').trim() || (completingVehicleControl ? 'Control semanal del vehículo informado.' : ''), technicalReportedAt: now, technicalReportedById: user.id, technicalReportedByName: user.name || user.email || 'Técnico', completedAt: type === 'Completado' ? now : record.completedAt, status: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? type : 'Requiere revisión', technicianRequest: ['Completado', 'Avance registrado', 'Cancelado'].includes(type) ? '' : type, ...(vehicleChange ? { vehicleMileage: vehicleChange.mileage, vehiclePhotoUrl: `/api/vehicle-control/photo/${encodeURIComponent(String(record.id))}`, vehicleControlReportedAt: now } : {}) }
-      Object.assign(updated, require('./api/_lib/alarm-zones.cjs').reportZones(record, type, alarmZones, user, now))
+      if (type === 'Completado') require('./api/_lib/work-completion.cjs').applyResults(record, updated, workResults, user, now)
+      Object.assign(updated, require('./api/_lib/alarm-zones.cjs').reportZones(updated, type === 'Completado' && updated.status !== 'Completado' ? 'Avance registrado' : type, alarmZones, user, now))
       if (followup != null) updated.followup = require('./api/_lib/followups.cjs').createFollowup(record, followup, user, readState(), now)
+      if (updated.workCompletion?.items.some(item => item.status === 'pending') && ticketResolution?.resolved) throw new Error('El reclamo no puede resolverse mientras haya trabajos pendientes.')
       if (ticketResolution != null) updated.ticketResolution = require('./api/_lib/ticket-service-lifecycle.cjs').resolutionEvidence(ticketResolution, updated, user, now, updated.followup)
       db.exec('BEGIN')
       try {
-        const nextState = { ...priorState, history: priorState.history.map(item => String(item.id) === String(record.id) ? updated : item) }
+        const nextState = { ...priorState, history: require('./api/_lib/work-completion.cjs').applyToHistory(priorState.history, record, updated) }
         await ticketStore.syncLegacy({ ...nextState, history: [updated] }, { connection: db })
         await require('./api/_lib/service-completion-effects.cjs').syncServiceEffects(ticketStore, priorState, nextState, { connection: db, user, now, reportRecordId: record.id }, 'db')
         db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(updated), String(record.id))
-        if (record.serviceJourney || type === 'Cancelado') {
+        if (updated.collectionReview && record.serviceJourney) for (const item of nextState.history.filter(item => item.serviceJourney?.id === record.serviceJourney.id && String(item.id) !== String(record.id))) db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(item), String(item.id))
+        if (record.serviceJourney || updated.workCompletion || type === 'Cancelado') {
           const agendaRow = db.prepare('SELECT data FROM agendas WHERE id = ?').get('current')
           if (agendaRow?.data) {
             const agenda = synchronizeAgendaHistoryRecord(JSON.parse(agendaRow.data), record, updated)

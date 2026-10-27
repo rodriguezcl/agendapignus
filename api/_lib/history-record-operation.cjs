@@ -8,7 +8,7 @@ function historyRecordMatchesTask(task, record) {
 function synchronizeAgendaHistoryRecord(value, previous, next) {
   if (Array.isArray(value)) return value.map(item => synchronizeAgendaHistoryRecord(item, previous, next))
   if (!value || typeof value !== 'object') return value
-  const shared = previous.serviceJourney && value.serviceJourney?.id === previous.serviceJourney.id ? require('./journey-identity.cjs').identityPatch(previous, next) : {}
+  const shared = previous.serviceJourney && value.serviceJourney?.id === previous.serviceJourney.id ? { ...require('./journey-identity.cjs').identityPatch(previous, next), ...(next.collectionReview ? { collectionReview: next.collectionReview } : {}) } : {}
   const updated = historyRecordMatchesTask(value, previous) ? {
     ...value,
     ...shared,
@@ -24,6 +24,7 @@ function synchronizeAgendaHistoryRecord(value, previous, next) {
     serviceId: next.serviceId ?? value.serviceId,
     ...(next.serviceTypes ? { serviceTypes: next.serviceTypes } : {}),
     service: next.service ?? value.service,
+    ...(next.workCompletion ? { workCompletion: next.workCompletion, amount: next.amount, paymentMethod: next.paymentMethod, serviceCharges: next.serviceCharges, collectionReview: next.collectionReview, collectionCancellation: next.collectionCancellation } : {}),
     estimatedMinutes: next.estimatedMinutes ?? value.estimatedMinutes,
     estimatedMinutesCustomized: next.estimatedMinutesCustomized ?? value.estimatedMinutesCustomized,
     technicianIds: next.technicianIds ?? value.technicianIds,
