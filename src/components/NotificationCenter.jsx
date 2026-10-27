@@ -2,6 +2,7 @@ import React, { useEffect, useId, useRef, useState } from 'react'
 import Icon from './ui/Icon.jsx'
 import useNotificationSound from './useNotificationSound.js'
 import WebPushControls from './WebPushControls.jsx'
+import useWebPush from './useWebPush.js'
 import { pendingPush, clearPendingPush } from '../infrastructure/browser/push-navigation.mjs'
 import './notification-center.css'
 import { notificationAppearance, notificationColorStyle } from './notification-appearance.mjs'
@@ -9,6 +10,7 @@ import { notificationAppearance, notificationColorStyle } from './notification-a
 /** Active operational notices; opening one never marks its cause as resolved. */
 export default function NotificationCenter({ notifications = [], onSelect, userKey, readySources }) {
   const sound = useNotificationSound({ notifications, userKey, readySources })
+  const push = useWebPush(userKey)
   const [open, setOpen] = useState(false)
   const [pushRequest, setPushRequest] = useState(pendingPush)
   const [pushMessage, setPushMessage] = useState('')
@@ -96,7 +98,7 @@ export default function NotificationCenter({ notifications = [], onSelect, userK
           <span className="notification-copy"><strong>{notification.title}</strong><span>{notification.detail}</span></span>
         </button>}) : <div className="notification-empty"><Icon name="check" size={24} /><strong>No hay avisos activos</strong><p>Acá aparecerán los avisos que requieran seguimiento.</p></div>}
       </div>
-      <footer className="notification-footer"><WebPushControls key={userKey} userKey={userKey} /><small>Las novedades de Tickets se marcan como leídas al abrir el caso. Los pendientes se mantienen hasta su resolución.</small></footer>
+      <footer className="notification-footer"><WebPushControls push={push} /><small>Las novedades de Tickets se marcan como leídas al abrir el caso. Los pendientes se mantienen hasta su resolución.</small></footer>
     </section>}
   </div>
 }

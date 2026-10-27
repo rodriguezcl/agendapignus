@@ -1,7 +1,5 @@
 import React from 'react'
-import useWebPush from './useWebPush.js'
-export default function WebPushControls({ userKey }) {
-  const push = useWebPush(userKey)
+export default function WebPushControls({ push }) {
   return <details className="notification-device-settings">
     <summary>Notificaciones del dispositivo{push.enabled ? ' · Activas' : ''}</summary>
     <div>

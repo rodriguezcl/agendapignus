@@ -12,14 +12,26 @@ export default function useNotificationSound({ notifications, userKey, readySour
   active.current = enabled
 
   useEffect(() => {
-    audio.current = createNotificationChime()
-    const unlock = () => { if (active.current) void audio.current?.unlock() }
-    document.addEventListener('click', unlock)
-    document.addEventListener('keydown', unlock)
-    const sync = event => { if (event.key === storageKey) { active.current = event.newValue === 'on'; setEnabled(active.current); clearTimeout(timer.current); timer.current = null } }
+    const player = createNotificationChime()
+    audio.current = player
+    try { active.current = localStorage.getItem(storageKey) === 'on'; setEnabled(active.current) } catch { /* Keep the in-memory choice. */ }
+    const unlock = async () => {
+      if (!active.current || document.hidden) return
+      if (await player.unlock() && audio.current === player && active.current) setMessage('')
+    }
+    // Restore the saved choice immediately; browsers that need a gesture can
+    // unlock on any normal interaction, even if a child stops propagation.
+    void unlock()
+    document.addEventListener('pointerdown', unlock, true)
+    document.addEventListener('click', unlock, true)
+    document.addEventListener('keydown', unlock, true)
+    document.addEventListener('visibilitychange', unlock)
+    window.addEventListener('focus', unlock)
+    const sync = event => { if (event.key === storageKey) { active.current = event.newValue === 'on'; setEnabled(active.current); clearTimeout(timer.current); timer.current = null; setMessage(''); void unlock() } }
     window.addEventListener('storage', sync)
     return () => {
-      document.removeEventListener('click', unlock); document.removeEventListener('keydown', unlock)
+      document.removeEventListener('pointerdown', unlock, true); document.removeEventListener('click', unlock, true); document.removeEventListener('keydown', unlock, true)
+      document.removeEventListener('visibilitychange', unlock); window.removeEventListener('focus', unlock)
       window.removeEventListener('storage', sync)
       clearTimeout(timer.current); audio.current?.dispose(); audio.current = null
     }
@@ -31,7 +43,7 @@ export default function useNotificationSound({ notifications, userKey, readySour
     if (!arrived || timer.current) return
     timer.current = setTimeout(() => {
       timer.current = null
-      if (active.current && !audio.current?.play()) setMessage('Presioná Probar sonido para habilitar el audio en este navegador.')
+      if (active.current && !audio.current?.play()) setMessage('El sonido sigue activado. Tocá o hacé clic en la plataforma para habilitar el audio del navegador.')
     }, 800)
   }, [notifications, readySources, enabled])
 
