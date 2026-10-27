@@ -15,6 +15,7 @@ function synchronizeAgendaHistoryRecord(value, previous, next) {
     status: next.status,
     ...(next.serviceJourney ? { serviceJourney: next.serviceJourney } : {}),
     ...(next.serviceJourney ? { journeyClosedAt: next.journeyClosedAt || '', technicalStatus: next.technicalStatus || '', technicalReportedAt: next.technicalReportedAt || '' } : {}),
+    ...(next.workCompletion?.corrections?.length ? Object.fromEntries(['technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'technicianRequest', 'alarmZones'].map(key => [key, next[key]])) : {}),
     awaitingConfirmation: next.awaitingConfirmation === true,
     scheduledDate: next.scheduledDate || '',
     customerId: next.customerId ?? value.customerId,

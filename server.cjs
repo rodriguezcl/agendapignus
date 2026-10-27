@@ -1992,18 +1992,22 @@ const server = http.createServer((req, res) => {
       } catch(error) { db.exec('ROLLBACK'); throw error }
     }).catch(error => send(res, error.statusCode || 400, { error: error.message || 'No se pudo guardar la gestión.' }))
   }
-  if (req.method === 'POST' && url.pathname === '/api/history/category-correction') {
+  if (req.method === 'POST' && ['/api/history/category-correction', '/api/history/completion-correction'].includes(url.pathname)) {
+    const completing = url.pathname === '/api/history/completion-correction'
     const user = requireSession(req, res)
     if (!user) return
     if (!isGranular(user) && (user.roleCode !== 'administrator' || !userCan(user, 'historyManage'))) return send(res, 403, { error: 'Sólo Administración puede corregir categorías.' })
     return readJson(req, 500_000).then(async input => {
       // Load the module before opening the synchronous SQLite transaction.
       const { correctServiceCategory } = await import('./src/domain/history/category-correction.mjs')
+      const ticketStore = completing ? require('./api/_lib/tickets-http.cjs').storeFor(db, 'db') : null
+      if (ticketStore) await ticketStore.ensure()
       db.exec('BEGIN IMMEDIATE')
       try {
         const current = readState()
-        const correction = require('./api/_lib/category-correction.cjs').prepareCategoryCorrection(current, input, user, correctServiceCategory)
-        endpointPolicy.assertServiceAccess(user, correction.before, current, { write: true, permission: 'history.category' })
+        const correction = completing ? require('./api/_lib/completion-correction.cjs').prepareCompletionCorrection(current, input, user) : require('./api/_lib/category-correction.cjs').prepareCategoryCorrection(current, input, user, correctServiceCategory)
+        endpointPolicy.assertServiceAccess(user, correction.before, current, { write: true, permission: completing ? 'history.complete' : 'history.category' })
+        if (completing) await require('./api/_lib/service-completion-effects.cjs').syncServiceEffects(ticketStore, current, correction.state, { connection: db, user, now: correction.after.completedAt, reportRecordId: correction.before.id }, 'db')
         for (const record of correction.state.history) db.prepare('UPDATE work_history SET data = ? WHERE id = ?').run(JSON.stringify(record), String(record.id))
         for (const { before, after } of correction.conversions) {
           db.prepare('DELETE FROM customers WHERE account = ?').run(String(before.account))
@@ -2012,7 +2016,7 @@ const server = http.createServer((req, res) => {
         }
         for (const review of correction.state.reviews || []) db.prepare('UPDATE reviews SET data = ? WHERE id = ?').run(JSON.stringify(review), String(review.id))
         db.prepare('INSERT OR REPLACE INTO agendas (id, data) VALUES (?, ?)').run('current', JSON.stringify(correction.state.agenda))
-        writeAudit(user, 'Corrigió categoría', 'Servicio / historial', String(correction.before.id), correction.before, correction.after)
+        writeAudit(user, completing ? 'Corrigió resultado técnico' : 'Corrigió categoría', 'Servicio / historial', String(correction.before.id), correction.before, correction.after)
         const revision = currentStateRevision() + 1
         db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
         db.exec('COMMIT')

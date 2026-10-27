@@ -869,7 +869,7 @@ function managedHistoryRecord(current, proposed, user, now, accessState) {
   return next
 }
 
-async function handleCategoryCorrection(req, res, sql, user) {
+async function handleCategoryCorrection(req, res, sql, user, completing = false) {
   if (!isGranular(user) && (user.roleCode !== 'administrator' || !userCan(user, 'historyManage'))) return send(res, 403, { error: 'Sólo Administración puede corregir categorías.' })
   try {
     const result = await sql.begin(async transaction => {
@@ -880,10 +880,10 @@ async function handleCategoryCorrection(req, res, sql, user) {
       const revision = Number(locked[0]?.value || 0) + 1
       const current = await readState(transaction)
       const { correctServiceCategory } = await import('../src/domain/history/category-correction.mjs')
-      const correction = require('./_lib/category-correction.cjs').prepareCategoryCorrection(current, requestBody(req), user, correctServiceCategory)
-      endpointPolicy.assertServiceAccess(user, correction.before, current, { write: true, permission: 'history.category' })
+      const correction = completing ? require('./_lib/completion-correction.cjs').prepareCompletionCorrection(current, requestBody(req), user) : require('./_lib/category-correction.cjs').prepareCategoryCorrection(current, requestBody(req), user, correctServiceCategory)
+      endpointPolicy.assertServiceAccess(user, correction.before, current, { write: true, permission: completing ? 'history.complete' : 'history.category' })
       await persistStateCollections(transaction, current, correction.state, revision, undefined, correction.policyOptions)
-      await appendAudit(transaction, [auditEntry(user, 'Corrigió categoría', 'Servicio / historial', String(correction.before.id), correction.before, correction.after), ...correction.conversions.map(({ before, after }) => auditEntry(user, after.kind === 'subscriber' ? 'Restituyó abonado al corregir retiro' : 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after))])
+      await appendAudit(transaction, [auditEntry(user, completing ? 'Corrigió resultado técnico' : 'Corrigió categoría', 'Servicio / historial', String(correction.before.id), correction.before, correction.after), ...correction.conversions.map(({ before, after }) => auditEntry(user, after.kind === 'subscriber' ? 'Restituyó abonado al corregir retiro' : 'Convirtió abonado en cliente por baja', 'Abonado / Cliente', String(after.customerId), before, after))])
       return { revision, state: correction.state }
     })
     return send(res, 200, { ok: true, revision: result.revision, state: visibleStateForUser({ ...result.state, revision: result.revision }, user) })
@@ -1438,6 +1438,7 @@ module.exports = async function handler(req, res) {
       })
       return send(res, 200, { report: result })
     }
+    if (req.method === 'POST' && route === '/history/completion-correction') return await handleCategoryCorrection(req, res, sql, session.user, true)
     if (req.method === 'POST' && route === '/history/category-correction') return await handleCategoryCorrection(req, res, sql, session.user)
     if (route === '/tickets' || route.startsWith('/tickets/')) {
       const { ticketRequest, ticketError, attachmentHeaders } = require('./_lib/tickets-http.cjs')

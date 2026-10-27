@@ -26,6 +26,7 @@ function assertEndpointPermission(user, method, route) {
     return
   }
   if (route === '/history/export') return require('records.export')
+  if (route === '/history/completion-correction') return require('history.complete')
   if (route === '/history/category-correction') return require('history.category')
   if (route === '/history/bulk') return require('history.bulk')
   if (route === '/history/work-completion') return write.requirePermission(user, 'history.edit')

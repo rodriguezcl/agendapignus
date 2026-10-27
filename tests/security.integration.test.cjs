@@ -15,6 +15,29 @@ let temporaryDirectory
 let serverProcess
 let serverErrorOutput = ''
 
+test('Corrección administrativa HTTP: reprogramación errónea, zonas, auditoría y concurrencia', async () => {
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  const types = [{ id: 'qa-correction-install', name: 'Instalación de alarma' }, { id: 'qa-correction-other', name: 'Otro service' }]
+  for (const type of types) upsertJson(db, 'services', 'id', { ...type, status: 'Activo' })
+  const record = { id: 'qa-correction-completion', customerId: 'qa-customer-a', client: 'PIG-9001 QA', date: '2020-01-07', time: '09:30', status: 'Pendiente', serviceId: types[0].id, service: types[0].name, serviceTypes: types, technicianIds: ['qa-tech'], technicalStatus: 'Reprogramación solicitada', technicalObservation: 'Reprogramar', technicalReportedByName: 'QA Técnico', technicianRequest: 'Reprogramación solicitada', workCompletion: { at: '2020-01-07T15:00:00Z', items: types.map(t => ({ ...t, status: 'pending' })) } }
+  upsertJson(db, 'work_history', 'id', record); db.close()
+  const admin = await login('qa-admin@pignus.test'), tech = await login('qa-tech@pignus.test')
+  const base = (await state(admin)).history.find(r => r.id === record.id)
+  const command = { recordId: record.id, base, reason: 'Reprogramación informada por error. Se verificó la instalación terminada.', completedIds: types.map(t => t.id), alarmZones: [{ number: 1, name: 'Puerta', attribute: 'Demorada', sensor: 'Magnético cableado', sensorOther: '' }] }
+  const sendCorrection = (cookie, input = command) => api('/api/history/completion-correction', cookie, { method: 'POST', body: JSON.stringify(input) })
+  assert.equal((await sendCorrection(tech)).status, 403)
+  assert.equal((await sendCorrection(admin, { ...command, alarmZones: [] })).status, 400)
+  const response = await sendCorrection(admin)
+  assert.equal(response.status, 200, await response.clone().text())
+  const latest = (await state(admin)).history.find(r => r.id === record.id)
+  assert.equal(latest.status, 'Completado'); assert.equal(latest.technicianRequest, '')
+  assert.equal(latest.workCompletion.corrections[0].actor.id, 'qa-admin')
+  assert.equal(latest.workCompletion.corrections[0].previous.technicalObservation, 'Reprogramar')
+  assert.deepEqual(latest.alarmZones.zones, command.alarmZones)
+  assert.equal((await sendCorrection(admin)).status, 409)
+  assert.equal((await api('/api/history/' + record.id, admin, { method: 'PATCH', body: JSON.stringify({ base: latest, record: { ...latest, workCompletion: { ...latest.workCompletion, corrections: [] } } }) })).status, 409)
+})
+
 test('Cierre mixto HTTP: resultados obligatorios, revisión de cobranza y gestión auditada', async () => {
   const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
   const types = [{ id: 'qa-work-alarm', name: 'Service de alarma' }, { id: 'qa-work-camera', name: 'Service de cámaras' }]

@@ -1062,7 +1062,7 @@ export default function App() {
     try {
       const payload = await persistStateCommand(() => updates
         ? historyRecordRepository.updateMany(updates)
-        : categoryCorrection ? historyRecordRepository.correctCategory(base, categoryCorrection) : historyRecordRepository.update(base, record))
+        : categoryCorrection?.operation === 'completion-correction' ? historyRecordRepository.correctCompletion(base, categoryCorrection) : categoryCorrection ? historyRecordRepository.correctCategory(base, categoryCorrection) : historyRecordRepository.update(base, record))
       setNotice(updates
         ? `${updates.length} servicios se actualizaron correctamente.`
         : 'El servicio se actualizó correctamente.')

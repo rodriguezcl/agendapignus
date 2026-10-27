@@ -6,6 +6,42 @@ const { replaceCollections, readState } = require('../api/_lib/database.cjs')
 const { buildShadowCandidate, insertShadowCandidate } = require('../api/_lib/normalization-rehearsal.cjs')
 const { readNormalizedState } = require('../api/_lib/normalized-state-repository.cjs')
 
+test('PostgreSQL: corrección administrativa conserva resultado y zonas en almacenamiento normalizado', async () => {
+  const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
+  try {
+    await pg.exec('create role anon; create role authenticated;')
+    await pg.exec(fs.readFileSync('supabase/migrations/202608250001_pignus_schema.sql', 'utf8'))
+    const sql = pgliteAdapter(pg), initial = fixture()
+    initial.services = [{ id: 'alarm', code: 'alarm-installation', name: 'Instalación de alarma', estimatedMinutes: 60, status: 'Activo' }, { id: 'other', code: 'other', name: 'Otro service', estimatedMinutes: 60, status: 'Activo' }]
+    Object.assign(initial.history[0], { date: '2026-10-14', serviceId: 'alarm', service: initial.services[0].name, serviceTypes: initial.services.map(({ id, name }) => ({ id, name })), technicalStatus: 'Reprogramación solicitada', technicianRequest: 'Reprogramación solicitada' })
+    initial.agenda = { date: '2026-10-14', teams: [{ teamId: 'team', label: 'Equipo 1', memberIds: ['one'], members: ['Técnico'], tasks: [{ ...initial.history[0], taskId: 'task', historyId: 'work' }] }], weekly: {} }
+    await replaceCollections(sql, initial)
+    await pg.query("insert into pignus_preferences(key,value) values('state_revision','1') on conflict(key) do update set value='1'")
+    await pg.exec(fs.readFileSync('supabase/proposals/normalized-shadow-v1.sql', 'utf8'))
+    const candidate = buildShadowCandidate(initial); await insertShadowCandidate(pg, candidate)
+    await pg.query("update normalized_shadow.storage_control set active_model='normalized', active_revision=$1, active_fingerprint=$2 where id=1", [initial.revision, candidate.analysis.sourceFingerprint])
+    const filename = path.resolve('api/index.js'), compiled = new Module(filename, module)
+    compiled.filename = filename; compiled.paths = Module._nodeModulePaths(path.dirname(filename))
+    compiled._compile(fs.readFileSync(filename, 'utf8') + '\nmodule.exports.correctForTest=handleCategoryCorrection;', filename)
+    const base = (await readState(sql)).history[0]
+    const body = { recordId: base.id, base, completedIds: ['alarm', 'other'], reason: 'Resultado equivocado; instalación verificada.', alarmZones: [{ number: 1, name: 'Puerta', attribute: 'Demorada', sensor: 'Magnético cableado', sensorOther: '' }] }
+    const call = async () => {
+      const response = {}, res = { setHeader() {}, status(code) { response.status = code; return this }, json(value) { response.body = value; return value } }
+      await compiled.exports.correctForTest({ method: 'POST', body }, res, sql, { id: 'admin', roleCode: 'administrator', name: 'Administración' }, true)
+      return response
+    }
+    const response = await call(); assert.equal(response.status, 200, JSON.stringify(response.body))
+    const saved = await readState(sql), normalized = await readNormalizedState(pg)
+    assert.deepEqual(normalized, saved)
+    assert.equal(saved.history[0].status, 'Completado')
+    assert.equal(saved.history[0].workCompletion.corrections[0].previous.technicalStatus, 'Reprogramación solicitada')
+    assert.deepEqual(saved.history[0].alarmZones.zones, body.alarmZones)
+    assert.equal(saved.agenda.teams[0].tasks[0].technicianRequest, '')
+    assert.equal((await call()).status, 409)
+    assert.equal((await readState(sql)).revision, saved.revision)
+  } finally { await pg.close() }
+})
+
 test('PostgreSQL: cierre por trabajo atómico y conservado en almacenamiento normalizado', async () => {
   const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
   try {
