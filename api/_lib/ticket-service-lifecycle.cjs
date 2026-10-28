@@ -145,7 +145,12 @@ async function synchronizeTicketServices({ q, pg, previous, next, user, now, rep
         item.resolutionServiceIds = [...new Set([...(item.resolutionServiceIds || []), key])]
         newLinks.push(key)
       }
-      if (record && item.customerId && item.customerId !== id(read.customerForRecord(record, next)?.customerId || record.customerId)) d.fail('El servicio vinculado debe conservar la cuenta del ticket.', 409)
+      if (record && (item.customerId || item.registrationForm?.serviceId) && item.customerId !== id(read.customerForRecord(record, next)?.customerId || record.customerId)) {
+        const pigLink = item.registrationForm?.confirmedAt && before && id(item.customerId) === id(before.customerId) && !require('./registration-confirmation.cjs').linked(before,previous) && require('./registration-confirmation.cjs').linked(record,next)
+        if (!pigLink) d.fail('El servicio vinculado debe conservar la cuenta del ticket.', 409)
+        const customer=read.customerForRecord(record,next)
+        item.customerId=id(record.customerId);item.customerSnapshot=d.snapshot(customer);item.scope='customer'
+      }
       if (!d.OPEN_STATUSES.includes(item.status)) continue
       const wasScheduled = before && !canceled(before)
       const isScheduled = record && !canceled(record)
@@ -158,13 +163,8 @@ async function synchronizeTicketServices({ q, pg, previous, next, user, now, rep
           if(!require('./ticket-registration-form.cjs').installation(record,next)) d.fail('El formulario de alta requiere una instalación de alarma pendiente.',409)
           if(!require('./permission-catalog.cjs').can(user,'planning.commercial')) d.fail('No tenés permiso para aplicar el formulario.',403)
           item.registrationForm.serviceId=key;item.registrationForm.pendingCoordination=false
-          if(!item.registrationForm.receiptSentAt){
-            const receipt=await store.communicate(q,item,'form-received','registration-form-confirmed',now,{service:record},user)
-            if(!receipt.queued)d.fail('Activá el correo operativo del ticket antes de confirmar la instalación.',409)
-            item.registrationForm.receiptSentAt=now
-            item.status='En gestión';item.nextReviewAt='';item.waitReason=''
-            continue
-          }
+          item.status='En gestión';item.nextReviewAt='';item.waitReason=''
+          continue
         }
         if (type !== 'canceled') { item.status = 'En gestión'; item.nextReviewAt = ''; item.waitReason = '' }
         await store.communicate(q, item, type, `service:${key}:${type}:${item.version + 1}`, now, { service: schedule(record || before), date: (record || before).date, time: (record || before).time }, user)

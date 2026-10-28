@@ -2074,7 +2074,10 @@ const server = http.createServer((req, res) => {
     return (req.method === 'GET' ? Promise.resolve({}) : readJson(req, 4_000_000)).then(input => ticketRequest({ connection: db, kind: 'db', user, state: readState(), method: req.method, route: url.pathname.replace(/^\/api/, ''), query: Object.fromEntries(url.searchParams), input, formState: {
       load: async () => readState(),
       save: async (_connection,current,next,before,after) => {
-        db.prepare('UPDATE work_history SET data=? WHERE id=?').run(JSON.stringify(after),String(after.id))
+        const previousRecords = new Map(current.history.map(record => [String(record.id), JSON.stringify(record)]))
+        for (const record of next.history) {
+          if (previousRecords.get(String(record.id)) !== JSON.stringify(record)) db.prepare('UPDATE work_history SET data=? WHERE id=?').run(JSON.stringify(record),String(record.id))
+        }
         db.prepare('UPDATE agendas SET data=? WHERE id=?').run(JSON.stringify(next.agenda),'current')
         writeAudit(user,'Aplicó formulario de alta','Servicio / historial',String(after.id),before,after)
         db.prepare('INSERT OR REPLACE INTO preferences (key,value) VALUES (?,?)').run('state_revision',String(currentStateRevision()+1))

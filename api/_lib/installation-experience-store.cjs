@@ -16,7 +16,11 @@ function createExperienceStore({sql,db}) {
   }
   return {ensure,query,
     async enqueue(previous,next,now=new Date().toISOString()) {
-      const items=completionInvitations(previous,next); if(!items.length)return
+      const registrations=require('./registration-confirmation.cjs').confirmations(previous,next)
+      // Preserve receipts already queued by the previous ticket workflow.
+      const tickets=registrations.length ? (await query('SELECT data FROM pignus_tickets WHERE data LIKE ?', ['%"receiptSentAt"%'])).map(row=>JSON.parse(row.data)) : []
+      const items=[...completionInvitations(previous,next),...registrations.filter(item=>!tickets.some(ticket=>ticket.registrationForm?.receiptSentAt && (item.serviceIds.includes(String(ticket.registrationForm.serviceId)) || (ticket.serviceIds||[]).some(id=>item.serviceIds.includes(String(id))))))]
+      if(!items.length)return
       await ensure()
       for(const item of items) await query(`INSERT INTO ${TABLE} (id,service_id,customer_id,status,payload,created_at,updated_at,next_attempt_at,history) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`,[item.id,item.serviceId,item.customerId,item.recipient?'queued':'needs_email',JSON.stringify(item),now,now,now,JSON.stringify([{at:now,action:'created'}])])
     },

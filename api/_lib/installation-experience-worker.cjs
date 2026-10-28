@@ -15,12 +15,13 @@ async function processExperienceMail({store,config,readState,smtpFactory=require
       try {
         const state=await readState()
         const record=state.history.find(item=>String(item.id)===row.service_id)
-        if(!completed(record) || !installation(record)) {
+        const registration=row.payload.kind==='registration'
+        if(registration ? !require('./registration-confirmation.cjs').eligible(record,row.payload,state) : !completed(record) || !installation(record)) {
           await store.finish(row,'cancelled',null,new Date(now()).toISOString());counts.cancelled++;continue
         }
         if(!emailAddress(row.payload.recipient) || emailAddress(row.payload.recipient)===emailAddress(config.address)) throw Object.assign(new Error('Destinatario inválido.'),{code:'EENVELOPE'})
         smtp ||= smtpFactory({...config,senderName:'Equipo Pignus'})
-        const result=await smtp.send({service_id:row.service_id,message_id:`<experience-${row.id}@${config.address.split('@')[1]}>`,payload:message(row.payload)})
+        const result=await smtp.send({service_id:row.service_id,message_id:`<${registration?'registration':'experience'}-${row.id}@${config.address.split('@')[1]}>`,payload:registration?require('./registration-confirmation.cjs').message(row.payload,record):message(row.payload)})
         if(!(result?.accepted||[]).some(value=>emailAddress(typeof value==='string'?value:value.address)===row.payload.recipient)) {
           status=result?.rejected?.length?'failed':'uncertain';failure=safeMailError({code:status==='failed'?'MAIL_REJECTED':'MAIL_SEND_UNCERTAIN'})
         }

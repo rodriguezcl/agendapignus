@@ -1289,6 +1289,7 @@ export default function App() {
     const timer = window.setInterval(refreshWhenVisible, 5000)
     window.addEventListener('focus', refreshWhenVisible)
     window.addEventListener('pageshow', refreshWhenVisible)
+    window.addEventListener('agenda-form-linked', refreshWhenVisible)
     window.addEventListener('online', refreshWhenVisible)
     document.addEventListener('visibilitychange', refreshWhenVisible)
     return () => {
@@ -1296,6 +1297,7 @@ export default function App() {
       window.clearInterval(timer)
       window.removeEventListener('focus', refreshWhenVisible)
       window.removeEventListener('pageshow', refreshWhenVisible)
+      window.removeEventListener('agenda-form-linked', refreshWhenVisible)
       window.removeEventListener('online', refreshWhenVisible)
       document.removeEventListener('visibilitychange', refreshWhenVisible)
     }

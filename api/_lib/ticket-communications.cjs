@@ -76,6 +76,9 @@ function eventContent(type, ticket, context = {}, channel = 'platform') {
 function canAutomaticallyEmail(ticket, runtime, type, inbound) {
   const customerNotice = ticket.origin === 'phone' && ticket.customerEmailNotifications === true && Boolean(ticket.customerId)
   if (ticket.registrationForm && !ticket.registrationForm.confirmedAt) return false
+  // An intake ticket is an internal step; its confirmation/closure must not
+  // send a premature receipt. The saved PIG link owns the confirmation email.
+  if (ticket.registrationForm && ['received','form-received','scheduled','waiting','resolved'].includes(type)) return false
   if (REMINDERS.has(type) || (!customerNotice && ticket.origin !== 'email') || ticket.mailMode !== 'live' || !ticket.mailboxKey ||
       ticket.mailReviewRequired || ticket.autoReplySuppressed || !runtime?.enabled || runtime.mode !== 'live' ||
       runtime.mailboxKey !== ticket.mailboxKey) return false

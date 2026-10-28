@@ -8,7 +8,7 @@ function visible(row,state,user) {
   const customer=record && access.customerForRecord(record,state)
   return Boolean(record && customer && access.customerReadable(customer,user,state) && access.serviceInReadScope(record,user,state))
 }
-const present=row=>({id:row.id,recordId:row.service_id,customerId:row.customer_id,status:row.status,createdAt:row.created_at,updatedAt:row.updated_at,sentAt:row.sent_at,sender:row.sender,attempts:row.attempts,error:row.last_error?.message||'',client:row.payload.client,account:row.payload.account,recipient:row.payload.recipient,technicians:row.payload.technicians,history:row.history})
+const present=row=>({kind:row.payload.kind||'experience',id:row.id,recordId:row.service_id,customerId:row.customer_id,status:row.status,createdAt:row.created_at,updatedAt:row.updated_at,sentAt:row.sent_at,sender:row.sender,attempts:row.attempts,error:row.last_error?.message||'',client:row.payload.client,account:row.payload.account,recipient:row.payload.recipient,technicians:row.payload.technicians,history:row.history})
 async function experienceRequest({connection,kind,state,user,method,input={},query={}}) {
   if(!can(user,'accounts.view') || !can(user,'records.contact'))fail('No tenés acceso a los correos de esta cuenta.')
   await require('./tickets-http.cjs').storeFor(connection,kind).ensure()

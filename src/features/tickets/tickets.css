@@ -126,3 +126,8 @@
   overflow-wrap: anywhere;
   white-space: normal;
 }
+
+.registration-service-options { display:grid; gap:8px; max-height:260px; overflow:auto; }
+.registration-service-option { display:flex; flex-direction:column; align-items:flex-start; gap:4px; width:100%; min-height:44px; text-align:left; white-space:normal; overflow-wrap:anywhere; }
+.registration-service-option[aria-pressed="true"] { border-color:var(--ap-primary,#956600); box-shadow:inset 3px 0 var(--ap-primary,#956600); }
+.registration-form-link .tickets-feedback p { margin-block:6px; }

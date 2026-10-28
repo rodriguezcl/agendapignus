@@ -240,7 +240,13 @@ function createTicketStore({ sql, db }) {
       }
       if(mode==='formServices'){
         if(!d.can(user,'linkService')||!policy.can(user,'planning.commercial')||!policy.can(user,'records.contact'))d.fail('No tenés permiso para aplicar formularios.',403)
-        return {items:(state.history||[]).filter(r=>registration.installation(r,state)&&read.serviceWritable(r,user,state)&&(!params.customerId||String(read.customerForRecord(r,state)?.customerId||r.customerId)===String(params.customerId))).sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time).localeCompare(String(b.time))).map(r=>({id:String(r.id),label:[r.client||r.clientAccount,r.date,r.time,r.service].filter(Boolean).join(' · '),form:r.form||'',formEmail:r.formEmail||'',snapshot:JSON.stringify({form:r.form||'',formEmail:r.formEmail||'',date:r.date||'',time:r.time||''})}))}
+        const needle=d.normalized(params.search), seen=new Set()
+        const items=(state.history||[]).filter(r=>registration.installation(r,state)&&registration.relatedServices(state,r).every(visit=>read.serviceWritable(visit,user,state))&&(!params.customerId||String(read.customerForRecord(r,state)?.customerId||r.customerId)===String(params.customerId)))
+          .sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time).localeCompare(String(b.time)))
+          .filter(r=>{const key=r.serviceJourney?.id||r.id;if(seen.has(key))return false;seen.add(key);return true})
+          .map(r=>({id:String(r.id),label:[r.client||r.clientAccount,r.date,r.time,r.service].filter(Boolean).join(' · '),customerId:String(read.customerForRecord(r,state)?.customerId||r.customerId||''),reservation:Boolean(r.subscriberReservation),date:r.date,time:r.time,form:r.form||'',formEmail:r.formEmail||'',existingFormEmails:[...new Set(registration.relatedServices(state,r).map(visit=>visit.formEmail).filter(Boolean))],snapshot:registration.serviceSnapshot(state,r)}))
+          .filter(r=>(!params.serviceId||registration.relatedServices(state,state.history.find(record=>String(record.id)===r.id)).some(visit=>String(visit.id)===String(params.serviceId)))&&(!needle||d.normalized(r.label).includes(needle)))
+        return {items:items.slice(0,50),total:items.length}
       }
       if(mode==='services'){if(!d.can(user,'linkService'))d.fail('No tenés permiso para vincular servicios.',403);return {items:(state.history||[]).filter(r=>read.serviceReadable(r,user,state)&&(!params.customerId||String(read.customerForRecord(r,state)?.customerId||r.customerId)===String(params.customerId))).sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,100).map(r=>({id:String(r.id),date:r.date,label:`${r.date||''} · ${r.client||r.clientAccount||''} · ${r.service||r.serviceType||r.detail||'Servicio'}`}))}}
       if(mode==='duplicates') { const customer=d.duplicateCustomer(params,user,state,{allowNoCustomer:true});const customerId=String(customer?.customerId||customer?.id||''); return customerId?{...await duplicates(execute,customerId,user,state,config),customerId}:{customerId:'',candidates:[],duplicateToken:''} }
@@ -290,7 +296,7 @@ function createTicketStore({ sql, db }) {
       if(mode==='notifications'){
         if(!policy.can(user,'notifications.tickets'))return {notifications:[]}
         const notices=[]
-        for(const notice of await communications.readNotifications(execute,user.id)) { const item=await principal(execute,await ticket(execute,notice.target.ticketId)); if(item&&d.visible(item,user,state,config))notices.push({...notice,title:communications.notificationTitle(item,notice.eventLabel||notice.title.replace(/^Ticket#\d+\s*·\s*/,''),state,policy.can(user,'records.contact')),target:{...notice.target,ticketId:item.id}}) }
+        for(const notice of await communications.readNotifications(execute,user.id)) { const item=await principal(execute,await ticket(execute,notice.target.ticketId)); if(item&&!registration.applied(item)&&d.visible(item,user,state,config))notices.push({...notice,title:communications.notificationTitle(item,notice.eventLabel||notice.title.replace(/^Ticket#\d+\s*·\s*/,''),state,policy.can(user,'records.contact')),target:{...notice.target,ticketId:item.id}}) }
         where.push("status IN ('Nuevo','En gestión','En espera')")
         const items=(await execute('SELECT data FROM pignus_tickets'+clause()+' ORDER BY CASE '+field('priority')+" WHEN 'Crítica' THEN 0 WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END,updated_at DESC LIMIT 50",args)).map(parse)
         const noticed=new Set(notices.map(n=>n.target.ticketId))
@@ -405,31 +411,36 @@ function createTicketStore({ sql, db }) {
           if(!policy.can(user,'planning.commercial')||!policy.can(user,'records.contact')) d.fail('No tenés permiso para gestionar formularios y datos de contacto.',403)
           const detected=registration.detectRegistrationForm(item.title,item.description)
           if(!detected || detected.multiple) d.fail('Revisá el aviso: se requiere un único formulario por ticket.')
-          if(item.registrationForm?.serviceId || item.registrationForm?.confirmedAt && !input.serviceId) d.fail('Este formulario ya fue confirmado. Usá Coordinar servicio para agendarlo.',409)
+          if(item.registrationForm?.serviceId && !registration.relatedServices(state,(state.history||[]).find(r=>String(r.id)===String(input.serviceId))||{}).some(r=>String(r.id)===String(item.registrationForm.serviceId)) || item.registrationForm?.confirmedAt && !input.serviceId) d.fail('Este formulario ya fue vinculado. Revisá la instalación registrada.',409)
           const address=require('./ticket-mail.cjs').emailAddress(input.formEmail)
           if(!address || detected.candidates.length && !detected.candidates.includes(address)) d.fail('Seleccioná el correo de Ver respuesta del aviso.')
-          const customer=d.customerFor({customerId:input.customerId||item.customerId},user,state)
-          if(!customer) d.fail('Primero vinculá una cuenta al formulario.')
-          if(item.customerId && item.customerId!==String(customer.customerId||customer.id))d.fail('La cuenta del formulario no coincide con la del ticket.',409)
-          if(!item.customerId&&!d.can(user,'classify'))d.fail('No tenés permiso para vincular la cuenta.',403)
-          if(input.deferUntilScheduled===true&&!policy.can(user,'planning.create'))d.fail('No tenés permiso para coordinar una instalación.',403)
           const record=input.serviceId?(state.history||[]).find(r=>String(r.id)===String(input.serviceId)):null
-          if(input.serviceId && (!record || !registration.installation(record,state) || !read.serviceWritable(record,user,state) || !policy.can(user,'planning.commercial'))) d.fail('No tenés acceso comercial a una instalación pendiente.',403)
-          if(record && String(read.customerForRecord(record,state)?.customerId||record.customerId)!==String(customer.customerId||customer.id)) d.fail('La cuenta del servicio no coincide.')
-          if(record && (record.formEmail && record.formEmail!==address || record.form==='Completo') && input.replaceForm!==true) d.fail('El servicio ya tiene un formulario. Confirmá el reemplazo.',409)
-          if(record && input.serviceSnapshot!==JSON.stringify({form:record.form||'',formEmail:record.formEmail||'',date:record.date||'',time:record.time||''})) d.fail('El servicio cambió. Volvé a seleccionarlo antes de confirmar.',409)
+          if(input.serviceId && (!record || !registration.installation(record,state) || !registration.relatedServices(state,record).every(visit=>read.serviceWritable(visit,user,state)))) d.fail('No tenés acceso comercial a una instalación pendiente.',403)
+          const serviceCustomer=record&&read.customerForRecord(record,state)
+          const customer=d.customerFor({customerId:record?(serviceCustomer?.customerId||record.customerId||''):(input.customerId||item.customerId)},user,state)
+          if(!customer && !record?.subscriberReservation) d.fail('Seleccioná una instalación o reserva de la agenda.')
+          const customerId=String(customer?.customerId||customer?.id||'')
+          if(input.customerId && String(input.customerId)!==customerId || item.customerId && item.customerId!==customerId)d.fail('La cuenta del formulario no coincide con la del servicio.',409)
+          if(!item.customerId&&customer&&!d.can(user,'classify'))d.fail('No tenés permiso para vincular la cuenta.',403)
+          if(input.deferUntilScheduled===true&&!policy.can(user,'planning.create'))d.fail('No tenés permiso para coordinar una instalación.',403)
+          if(record && registration.relatedServices(state,record).some(visit=>visit.formEmail && require('./ticket-mail.cjs').emailAddress(visit.formEmail)!==address) && input.replaceForm!==true) d.fail('La instalación tiene otro correo de formulario. Confirmá su reemplazo.',409)
+          if(record && input.serviceSnapshot!==registration.serviceSnapshot(state,record)) d.fail('El servicio cambió. Volvé a seleccionarlo antes de confirmar.',409)
           if(record && !formState) d.fail('No está disponible la actualización de agenda.',503)
-          item.customerId=String(customer.customerId||customer.id);item.customerSnapshot=d.snapshot(customer);item.scope='customer'
-          item.registrationForm={...item.registrationForm,...detected,email:address,confirmedAt:now,confirmedById:String(user.id),serviceId:record?String(record.id):'',pendingCoordination:!record}
-          item.requesterEmail=address;item.requesterName=customer.name||'';item.externalParticipants=[address];item.autoReplySuppressed=false;item.mailReviewRequired=false
-          item.status=record?'En gestión':'En espera';item.waitReason=record?'':'Pendiente de coordinar instalación'
-          if(record){const patch=registration.formServicePatch(state,record,address);await formState.save(q.connection,state,patch.next,record,patch.after);state=patch.next;item.serviceIds=[...new Set([...item.serviceIds,String(record.id)])];item.serviceSchedule=[{id:String(record.id),date:record.date,time:record.time,status:record.status,service:record.service}]}
-          if(!item.registrationForm.receiptSentAt && input.deferUntilScheduled!==true){
-            const result=await communicate(q,item,'form-received','registration-form-confirmed',now,{service:record},user)
-            if(!result.queued) d.fail('El correo debe estar operativo y corresponder al buzón del ticket para confirmar el formulario.',409)
-            item.registrationForm.receiptSentAt=now
+          item.customerId=customerId;item.customerSnapshot=customer?d.snapshot(customer):null;item.scope=customer?'customer':'unlinked'
+          item.registrationForm={...item.registrationForm,...detected,email:address,confirmedAt:now,confirmedById:String(user.id),confirmedByName:user.name||'Usuario',serviceId:record?String(record.id):'',pendingCoordination:!record}
+          item.requesterEmail=address;item.requesterName=customer?.name||record?.clientNameAtService||record?.client||'';item.externalParticipants=[address];item.autoReplySuppressed=false;item.mailReviewRequired=false
+          item.status=record?'Resuelto':'En espera';item.waitReason=record?'':'Pendiente de coordinar instalación'
+          if(record){
+            const patch=registration.formServicePatch(state,record,address)
+            await formState.save(q.connection,state,patch.next,record,patch.after);state=patch.next
+            const related=registration.relatedServices(state,record)
+            item.serviceIds=[...new Set([...item.serviceIds,...related.map(visit=>String(visit.id))])]
+            item.serviceSchedule=related.map(visit=>({id:String(visit.id),date:visit.date,time:visit.time,status:visit.status,service:visit.service}))
+            item.resolvedAt=now;item.resolvedById=String(user.id);item.resolvedByName=user.name||'Usuario';item.resolution='Formulario vinculado a la instalación. Correo y estado actualizados en la agenda.';item.nextReviewAt=''
+            await q('UPDATE pignus_ticket_notifications SET read_at=? WHERE ticket_id=? AND read_at IS NULL',[now,item.id])
           }
-          eventLabel=record?'Aplicó el formulario a la instalación y confirmó su recepción':'Confirmó el formulario pendiente de coordinación'
+          // The receipt is queued by the saved PIG link, not by processing this ticket.
+          eventLabel=record?'Vinculó el formulario a la instalación y resolvió el aviso':'Confirmó el formulario pendiente de coordinación'
         }
         else if(action==='linkService') {const record=(state.history||[]).find(r=>String(r.id)===String(input.serviceId));if(!d.can(user,'linkService')||!record||!read.serviceReadable(record,user,state))d.fail('No tenés acceso al servicio.',403);if(item.customerId&&item.customerId!==String(read.customerForRecord(record,state)?.customerId||record.customerId||''))d.fail('La cuenta del servicio no coincide.');await require('./ticket-service-lifecycle.cjs').adoptLegacyServiceLinks(q,item,{ticket});const related=record.serviceJourney?(state.history||[]).filter(r=>r.serviceJourney?.id===record.serviceJourney.id):[record];item.serviceIds=[...new Set([...item.serviceIds,...related.map(r=>String(r.id))])];item.resolutionServiceIds=[...new Set([...(item.resolutionServiceIds||[]),...related.map(r=>String(r.id))])];item.serviceSchedule=related.map(r=>({id:String(r.id),date:r.date,time:r.time,status:r.status,service:r.service}));eventLabel='Vinculó un servicio';if(!['Completado','Cancelado','Avance registrado'].includes(record.status)){item.status='En gestión';await communicate(q,item,'scheduled',commandId,now,{service:record},user)}}
         else if(action==='merge') {
@@ -452,7 +463,7 @@ function createTicketStore({ sql, db }) {
           item.status='Fusionado';item.mergedIntoId=target.id;item.mergedIntoNumber=target.number;eventLabel=`Fusionado en Ticket#${target.number}`
         }
         if(eventLabel)await addEntry(q,{...d.entry(item,user,[eventLabel,action==='resolve'&&item.resolutionMethod?`Medio: ${RESOLUTION_METHODS[item.resolutionMethod]}`:'',note].filter(Boolean).join(' · '),now,{kind:'event',action:eventLabel,...(action==='resolve'&&item.resolutionMethod?{resolutionMethod:item.resolutionMethod}:{})}),ticketId:item.id})
-        sla.transitionSla(item,beforeTicket,action,config,now,{humanUpdate:(action==='resolve'&&['phone','chat'].includes(item.resolutionMethod))||(item.origin!=='email'&&['comment','reply','wait','resolve','linkService'].includes(action)&&visibility!=='internal'),actorId:user.id})
+        sla.transitionSla(item,beforeTicket,action==='formReceipt'&&item.status==='Resuelto'?'resolve':action,config,now,{humanUpdate:action==='formReceipt'&&item.status==='Resuelto'||(action==='resolve'&&['phone','chat'].includes(item.resolutionMethod))||(item.origin!=='email'&&['comment','reply','wait','resolve','linkService'].includes(action)&&visibility!=='internal'),actorId:user.id})
         item.participantIds=[...new Set([...item.participantIds,String(user.id)])];item.version++;item.updatedAt=now;await save(q,item)
         const noticeType={resolve:'resolved',reopen:'reopened',wait:'waiting'}[action]
         if(noticeType)await communicate(q,item,noticeType,commandId,now,{},user)

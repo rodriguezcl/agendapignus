@@ -29,7 +29,7 @@ test('títulos identifican el formulario y al respondente, incluidos avisos anti
  assert.equal(forms.registrationFormTitle({title:'Otro caso',description:body}),'Otro caso')
  assert.equal(forms.registrationFormTitle({title,registrationForm:{kind:'docta',multiple:true,candidates:['a@example.com','b@example.com'],confirmedAt:'2026-10-23',email:'b@example.com'}}),'Formulario Docta Urbanización completo: b@example.com')
 })
-for(const engine of ['sqlite','postgres'])test(engine+': formulario, agenda y correo se confirman atómicamente sin notificar a Google',async()=>{
+for(const engine of ['sqlite','postgres'])test(engine+': procesar el formulario y coordinar no envía correo antes de vincular el PIG',async()=>{
  const values={TICKETS_MAIL_ENABLED:'true',TICKETS_MAIL_MODE:'live',TICKETS_MAIL_ADDRESS:'support@example.com',TICKETS_MAIL_USER:'support@example.com',TICKETS_MAIL_PASSWORD:'fixture-only'},prior={}
  for(const [key,value] of Object.entries(values)){prior[key]=process.env[key];process.env[key]=value}
  let db,pg,store,q
@@ -51,32 +51,29 @@ for(const engine of ['sqlite','postgres'])test(engine+': formulario, agenda y co
  const notifications=await store.query(user,state,{mode:'notifications'})
  assert.ok(notifications.notifications.some(item=>item.title.includes(detail.title)))
  const adapter={load:async()=>JSON.parse((await q('SELECT data FROM form_test_state'))[0].data),save:async(_tx,_old,next)=>q('UPDATE form_test_state SET data=?',[JSON.stringify(next)])}
- const payload={action:'formReceipt',id:detail.id,version:detail.version,commandId:crypto.randomUUID(),customerId:'c1',formEmail:'cliente@example.com',serviceId:'s1',serviceSnapshot:JSON.stringify({form:'',formEmail:'',date:record.date,time:record.time})}
+ const payload={action:'formReceipt',id:detail.id,version:detail.version,commandId:crypto.randomUUID(),customerId:'c1',formEmail:'cliente@example.com',serviceId:'s1',serviceSnapshot:forms.serviceSnapshot(state,record)}
  await assert.rejects(store.run(user,state,{...payload,commandId:crypto.randomUUID(),formEmail:'wrong@example.com'},adapter),/Ver respuesta/)
  await assert.rejects(store.run(user,state,{...payload,commandId:crypto.randomUUID(),serviceSnapshot:'stale'},adapter),/cambió/)
  const limited={id:'admin',name:'Soporte',roleCode:'custom',permissions:{__catalogV2:true,'tickets.view':true,'tickets.linkService':true,'records.contact':true}}
  await assert.rejects(store.run(limited,state,{...payload,commandId:crypto.randomUUID()},adapter),e=>e.statusCode===403)
  process.env.TICKETS_MAIL_ENABLED='false'
- await assert.rejects(store.run(user,state,payload,adapter),/operativo/)
- assert.equal(JSON.parse((await q('SELECT data FROM form_test_state'))[0].data).history[0].form,'')
- process.env.TICKETS_MAIL_ENABLED='true'
  const result=await store.run(user,state,payload,adapter)
  assert.equal(result.ticket.registrationForm.serviceId,'s1')
  const saved=JSON.parse((await q('SELECT data FROM form_test_state'))[0].data);assert.equal(saved.history[0].form,'Completo');assert.equal(saved.agenda.weekly['2026-10-27'].teams[0].tasks[0].formEmail,'cliente@example.com')
- let mails=await q('SELECT payload FROM pignus_ticket_mail_outbox');assert.equal(mails.length,1);let mail=JSON.parse(mails[0].payload);assert.equal(mail.to,'cliente@example.com');assert.match(mail.text,/10:30/)
- await store.run(user,saved,payload,adapter);assert.equal((await q('SELECT * FROM pignus_ticket_mail_outbox')).length,1)
+ let mails=await q('SELECT payload FROM pignus_ticket_mail_outbox');assert.equal(mails.length,0);process.env.TICKETS_MAIL_ENABLED='true'
+ await store.run(user,saved,payload,adapter);assert.equal((await q('SELECT * FROM pignus_ticket_mail_outbox')).length,0)
  const choices=await store.query(user,state,{mode:'formServices',customerId:'c1'});assert.equal(choices.items[0].id,'s1')
  const third=await store.ingestMail({subject:title,text:body,sender:{email:'forms@google.com'},messageId:'<form3@google.com>',mode:'live',mailboxKey:runtime.mailboxKey,attachments:[]})
  let deferred=(await store.query(user,state,{mode:'detail',id:third.ticketId})).ticket
  deferred=(await store.run(user,state,{action:'formReceipt',commandId:crypto.randomUUID(),id:deferred.id,version:deferred.version,customerId:'c1',formEmail:'cliente@example.com',deferUntilScheduled:true},adapter)).ticket
- assert.equal((await q('SELECT * FROM pignus_ticket_mail_outbox')).length,1)
+ assert.equal((await q('SELECT * FROM pignus_ticket_mail_outbox')).length,0)
  const linked={...record,id:'s-new',sourceTicketId:deferred.id,ticketNumber:deferred.number,form:'Completo',formEmail:'cliente@example.com'}
  await store.syncServices({...state,history:[]},{...state,history:[linked]},{user})
- mails=await q('SELECT payload FROM pignus_ticket_mail_outbox');assert.equal(mails.length,2);assert.match(JSON.parse(mails.at(-1).payload).text,/10:30/)
- await store.syncServices({...state,history:[linked]},{...state,history:[linked]},{user});assert.equal((await q('SELECT * FROM pignus_ticket_mail_outbox')).length,2)
+ mails=await q('SELECT payload FROM pignus_ticket_mail_outbox');assert.equal(mails.length,0)
+ await store.syncServices({...state,history:[linked]},{...state,history:[linked]},{user});assert.equal((await q('SELECT * FROM pignus_ticket_mail_outbox')).length,0)
  const second=await store.ingestMail({subject:title,text:body,sender:{email:'forms@google.com'},messageId:'<form2@google.com>',mode:'live',mailboxKey:runtime.mailboxKey,attachments:[]})
  let pending=(await store.query(user,state,{mode:'detail',id:second.ticketId})).ticket
  pending=(await store.run(user,state,{action:'formReceipt',commandId:crypto.randomUUID(),id:pending.id,version:pending.version,customerId:'c1',formEmail:'cliente@example.com'},adapter)).ticket
- assert.equal(pending.status,'En espera');mails=await q('SELECT payload FROM pignus_ticket_mail_outbox');mail=JSON.parse(mails.at(-1).payload);assert.match(mail.text,/5493512352959/);assert.match(mail.html,/Continuar por WhatsApp/)
+ assert.equal(pending.status,'En espera');assert.equal((await q('SELECT payload FROM pignus_ticket_mail_outbox')).length,0)
  }finally{if(db)db.close();if(pg)await pg.close();for(const key of Object.keys(values)){if(prior[key]===undefined)delete process.env[key];else process.env[key]=prior[key]}}
 })

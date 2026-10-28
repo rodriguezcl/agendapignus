@@ -13,14 +13,19 @@ function installation(record, state) {
  return values.some(value=>/instalacion de alarmas?/.test(normalize(value))) && !['Cancelado','Completado','Avance registrado'].includes(record.status)
 }
 function formServicePatch(state, record, email) {
- const next=structuredClone(state), after={...record,form:'Completo',formEmail:email}
- next.history=next.history.map(item=>String(item.id)===String(record.id)?after:item)
- next.agenda=require('./history-record-operation.cjs').synchronizeAgendaHistoryRecord(next.agenda||{},record,after)
+ const next=structuredClone(state), records=relatedServices(state,record), ids=new Set(records.map(item=>String(item.id)))
+ next.history=next.history.map(item=>ids.has(String(item.id))?{...item,form:'Completo',formEmail:email}:item)
+ for(const before of records) next.agenda=require('./history-record-operation.cjs').synchronizeAgendaHistoryRecord(next.agenda||{},before,next.history.find(item=>String(item.id)===String(before.id)))
+ const after=next.history.find(item=>String(item.id)===String(record.id))
  // Sincronizar también los campos comerciales de todas las copias vinculadas.
- function sync(value){if(!value||typeof value!=='object')return; if(String(value.historyId||'')===String(record.id)||record.sourceTaskId&&String(value.taskId||'')===String(record.sourceTaskId)){value.form='Completo';value.formEmail=email} Object.values(value).forEach(sync)}
+ const tasks=new Set(records.map(item=>String(item.sourceTaskId||'')).filter(Boolean))
+ function sync(value){if(!value||typeof value!=='object')return; if(ids.has(String(value.historyId||''))||tasks.has(String(value.taskId||''))){value.form='Completo';value.formEmail=email} Object.values(value).forEach(sync)}
  sync(next.agenda)
  return {next,after}
 }
+function relatedServices(state,record) {return (record.serviceJourney ? (state.history||[]).filter(item=>item.serviceJourney?.id===record.serviceJourney.id) : [record]).sort((a,b)=>String(a.id).localeCompare(String(b.id)))}
+function serviceSnapshot(state,record) {return JSON.stringify(relatedServices(state,record).map(item=>({id:String(item.id),customerId:item.customerId||'',subscriberReservation:Boolean(item.subscriberReservation),status:item.status||'',service:item.service||'',serviceTypes:item.serviceTypes||[],form:item.form||'',formEmail:item.formEmail||'',date:item.date||'',time:item.time||'',journey:item.serviceJourney||null})))}
+function applied(ticket) {return Boolean(ticket.registrationForm?.serviceId && ticket.status==='Resuelto')}
 function installationSuggestion(state) { const found=(state.services||[]).filter(s=>s.status==='Activo'&&/^(instalacion de alarma|instalacion de alarmas)$/.test(normalize(s.name)));return found.length===1?String(found[0].id):'' }
 function registrationFormTitle(ticket, showEmail = true) {
  const form = ticket.registrationForm || detectRegistrationForm(ticket.title, ticket.description)
@@ -29,4 +34,4 @@ function registrationFormTitle(ticket, showEmail = true) {
  const address = emailAddress(form.confirmedAt && form.email) || (!form.multiple && form.candidates?.length === 1 ? emailAddress(form.candidates[0]) : '')
  return `Formulario ${name} completo${showEmail ? `: ${address || 'Correo por identificar'}` : ''}`
 }
-module.exports={detectRegistrationForm,installation,formServicePatch,installationSuggestion,registrationFormTitle}
+module.exports={detectRegistrationForm,installation,formServicePatch,installationSuggestion,registrationFormTitle,relatedServices,serviceSnapshot,applied}
