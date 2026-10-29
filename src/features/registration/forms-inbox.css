@@ -5,3 +5,5 @@
 .forms-inbox .panel{background:var(--ap-surface,#fff);border:1px solid var(--ap-border,#d8dfe6);border-radius:8px}.forms-inbox-filters :is(input,select){box-sizing:border-box;border:1px solid var(--ap-border,#d8dfe6);border-radius:6px;padding:10px 12px;background:var(--ap-surface,#fff);color:var(--ap-text,#263442);font:inherit}.forms-inbox-filters label{font-size:13px;font-weight:600}
 
 @media(max-width:600px){.forms-inbox-filters :is(input,select){font-size:16px}}
+
+.legacy-registration{min-width:0;overflow-wrap:anywhere}.legacy-registration .forms-inbox-actions{margin-top:20px}.legacy-registration select{max-width:100%;min-height:44px}.legacy-registration .tickets-form{min-width:0}

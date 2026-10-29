@@ -73,13 +73,16 @@ async function autoCreate(previous,next,connection,kind) {
   const store=createStore({[kind]:connection});await store.ensure()
   for(const record of added)await store.create(record,record.installationZone,{},next)
 }
-async function notices(connection,kind,state,user) {
+async function notices(connection,kind,state,user,transactionQuery) {
   if(!policy.can(user,'notifications.registration'))return []
   const store=createStore({[kind]:connection});await store.ensure()
-  return (await store.list()).filter(row=>row.status==='submitted'&&row.version>row.reviewed_version&&currentRecord(row,state)&&visible(row,state,user)).map(row=>{
+  const rows=await store.list()
+  const legacy=policy.can(user,'forms.view') ? require('./registration-inbox.cjs').legacyItems(state,user,await require('./tickets-http.cjs').storeFor(connection,kind).registrationInbox(transactionQuery,state,user),rows) : []
+  return [...require('./registration-inbox.cjs').legacyNotices(legacy), ...rows.filter(row=>row.status==='submitted'&&(row.version>row.reviewed_version||currentRecord(row,state)?.subscriberReservation)&&currentRecord(row,state)&&visible(row,state,user)).map(row=>{
     const record=currentRecord(row,state)
-    return {id:`registration:${row.id}:${row.version}`,title:row.version>1?'Formulario corregido · revisar SoftGuard':'Formulario de alta recibido',detail:`${record.client||'Instalación'} · Revisá los datos para cargar en SoftGuard.`,tone:'info',source:'registration',target:{type:'registration',id:row.id,recordId:String(record.id)}}
-  })
+    const pendingPig=row.reviewed_version>=row.version
+    return {id:`registration:${row.id}:${row.version}`,title:pendingPig?'Formulario gestionado · vincular PIG':row.version>1?'Formulario corregido · revisar SoftGuard':'Formulario de alta recibido',detail:`${record.client||'Instalación'} · ${pendingPig?'Vinculá la cuenta creada en SoftGuard con la instalación.':'Revisá los datos para cargar en SoftGuard.'}`,tone:'info',source:'registration',recordIds:recordsFor(row,state).map(r=>String(r.id)),target:{type:'registration',id:row.id,recordId:String(record.id)}}
+  })]
 }
 async function handle({connection,kind,user,method,input={},query={},publicRequest=false,ip='',formState}) {
   if(!['GET','POST'].includes(method)||publicRequest&&method!=='POST')fail('Método no permitido.',405)
@@ -116,19 +119,25 @@ async function handle({connection,kind,user,method,input={},query={},publicReque
       await require('./installation-experience-store.cjs').createExperienceStore({[kind]:q.connection}).enqueue(state,next)
       return {submitted:true}
     }
-    if(method==='GET'&&query.notices==='1')return {items:await notices(q.connection,kind,state,user)}
-    if(method==='GET'&&!query.id&&!query.serviceId&&!query.customerId&&query.list!=='1')fail('Seleccioná un servicio o una cuenta.')
+    if(method==='GET'&&query.notices==='1')return {items:await notices(q.connection,kind,state,user,q)}
+    if(method==='GET'&&!query.id&&!query.serviceId&&!query.customerId&&!query.legacyId&&query.list!=='1')fail('Seleccioná un servicio o una cuenta.')
     let rows=(await store.list()).filter(row=>visible(row,state,user))
-    if(method==='GET'&&query.list==='1') {
+    if(method==='GET'&&(query.list==='1'||query.legacyId)) {
       if(!policy.can(user,'forms.view'))fail('No tenés permiso para consultar la bandeja de formularios.',403)
       // The inbox never decrypts answers or exposes public link tokens.
       const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
       const search=normalize(String(query.search||'').trim().slice(0,160))
-      const items=rows.map(row=>{
+      const legacy=require('./registration-inbox.cjs').legacyItems(state,user,await tickets.registrationInbox(q,state,user),await store.list())
+      if(query.legacyId) {
+        const item=legacy.find(item=>item.id===query.legacyId)
+        if(!item)fail('El formulario no está disponible dentro de tu alcance. Actualizá la bandeja.',404)
+        return {item}
+      }
+      const items=[...legacy,...rows.map(row=>{
         const active=currentRecord(row,state),record=active||recordsFor(row,state)[0]
         const customer=access.customerForRecord(record,state)
-        return {id:row.id,kind:row.kind,client:record.client||record.clientNameAtService||'Instalación',account:customer?.account||record.account||'',serviceId:String(record.id),date:record.date,time:record.time,updatedAt:row.updated_at,version:row.version,status:!active?'cancelled':row.status==='submitted'&&row.reviewed_version>=row.version?'reviewed':row.status}
-      }).filter(item=>(!query.kind||item.kind===query.kind)&&(!search||normalize([item.client,item.account,item.date].join(' ')).includes(search)))
+        return {id:row.id,source:'native',kind:row.kind,client:record.client||record.clientNameAtService||'Instalación',account:customer?.account||record.account||'',serviceId:String(record.id),date:record.date,time:record.time,updatedAt:row.updated_at,version:row.version,pendingPig:Boolean(record.subscriberReservation),status:!active?'cancelled':row.status==='submitted'&&row.reviewed_version>=row.version&&!record.subscriberReservation?'reviewed':row.status}
+      })].filter(item=>(!query.kind||item.kind===query.kind)&&(!search||normalize([item.client,item.account,item.date,item.email,...(item.tickets||[]).map(t=>t.number)].join(' ')).includes(search))).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))||a.id.localeCompare(b.id))
       const counts=Object.fromEntries(['open','submitted','correction','reviewed','cancelled'].map(status=>[status,items.filter(item=>item.status===status).length]))
       const filtered=items.filter(item=>!query.status||item.status===query.status)
       const total=filtered.length,pageSize=20,pages=Math.max(1,Math.ceil(total/pageSize)),page=Math.min(pages,Math.max(1,Math.floor(Number(query.page)||1)))

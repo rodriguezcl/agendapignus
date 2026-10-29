@@ -566,6 +566,15 @@ function createTicketStore({ sql, db }) {
       if(JSON.stringify(item.sla)!==JSON.stringify(before.sla)){item.version++;await save(q,item)}
     })
   }
-  return {ensure,query,run,syncLegacy,syncServices,processSla,attachment,ingestMail,applyDelivery,transaction}
+  async function registrationInbox(q, state, user) {
+    if (!policy.can(user,'tickets.view') || !policy.can(user,'planning.commercial') || !policy.can(user,'records.contact')) return []
+    if (!q) { await ensure(); q=execute }
+    const config=(await settings(q)).config
+    return (await q('SELECT data FROM pignus_tickets ORDER BY updated_at DESC')).map(parse)
+      .filter(item=>item.status!=='Fusionado' && d.visible(item,user,state,config))
+      .map(item=>({id:item.id,number:item.number,status:item.status,updatedAt:item.updatedAt,form:item.registrationForm||registration.detectRegistrationForm(item.title,item.description)}))
+      .filter(item=>item.form)
+  }
+  return {ensure,query,run,syncLegacy,syncServices,processSla,attachment,ingestMail,applyDelivery,transaction,registrationInbox}
 }
 module.exports={createTicketStore,SCHEMA}

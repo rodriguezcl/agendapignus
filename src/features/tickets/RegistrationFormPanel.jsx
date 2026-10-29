@@ -2,8 +2,9 @@ import React, { useEffect, useRef, useState } from 'react'
 import { requestJson } from '../../infrastructure/http/json-request.mjs'
 import { newCommandId } from './ticket-ui.mjs'
 
-export default function RegistrationFormPanel({ ticket, can, onSaved, onBusyChange }) {
+export default function RegistrationFormPanel({ ticket, can, onSaved, onBusyChange, suggestedServiceId }) {
   const info = ticket.registrationForm
+  const preferredServiceId = info.serviceId || suggestedServiceId || ''
   const allowed = can('tickets.linkService') && can('planning.commercial') && can('records.contact')
   const [search, setSearch] = useState(''), [items, setItems] = useState([]), [total, setTotal] = useState(0)
   const [selected, setSelected] = useState(null), [replace, setReplace] = useState(false)
@@ -12,19 +13,19 @@ export default function RegistrationFormPanel({ ticket, can, onSaved, onBusyChan
   const command = useRef(null), saving = useRef(false)
   useEffect(() => {
     if (!allowed || info.multiple || ticket.status === 'Resuelto') return
-    if (search.trim().length < 2 && !info.serviceId) { setItems([]); setTotal(0); setLoading(false); return }
+    if (search.trim().length < 2 && !preferredServiceId) { setItems([]); setTotal(0); setLoading(false); return }
     let active = true
     setLoading(true)
     const timer = setTimeout(() => {
-      const query = new URLSearchParams({ view:'formServices', search:search.trim(), ...(ticket.customerId ? {customerId:ticket.customerId} : {}), ...(!search.trim() && info.serviceId ? {serviceId:info.serviceId} : {}) })
+      const query = new URLSearchParams({ view:'formServices', search:search.trim(), ...(ticket.customerId ? {customerId:ticket.customerId} : {}), ...(!search.trim() && preferredServiceId ? {serviceId:preferredServiceId} : {}) })
       requestJson('/api/tickets?' + query).then(data => {
         if (!active) return
         setItems(data.items || []); setTotal(data.total || 0)
-        if (!search.trim() && info.serviceId && data.items?.length === 1) setSelected(data.items[0])
+        if (!search.trim() && preferredServiceId && data.items?.length === 1) setSelected(data.items[0])
       }).catch(failure => { if (active) { setError(failure.message); setItems([]); setTotal(0) } }).finally(() => { if (active) setLoading(false) })
     }, 250)
     return () => { active = false; clearTimeout(timer) }
-  }, [search, ticket.customerId, ticket.version, info.serviceId, info.multiple, ticket.status, allowed, retry])
+  }, [search, ticket.customerId, ticket.version, preferredServiceId, info.multiple, ticket.status, allowed, retry])
   if (!allowed) return null
   if (info.multiple) return <section className="tickets-feedback"><h3>Formulario de alta recibido</h3><p>El aviso contiene varias respuestas. Revisá cada respuesta por separado antes de asociarla a una instalación.</p></section>
   if (ticket.status === 'Resuelto') return info.serviceId ? <section className="tickets-feedback"><h3>Formulario vinculado</h3><p>El correo {info.email} quedó guardado en la instalación. Este aviso ya fue resuelto.</p>{info.confirmedByName && <small>Vinculado por {info.confirmedByName}.</small>}</section> : null

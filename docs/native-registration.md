@@ -78,3 +78,15 @@ El banco se sugiere localmente por los primeros tres dígitos del CBU; el usuari
 Actualización: `python scripts/update-registration-catalogs.py` descarga fuentes públicas, valida las cantidades y asociaciones y reemplaza el archivo sólo si todas las fuentes responden correctamente. Revisar el diff y desplegar la actualización; no hay una tarea automática instalada. Una falla deja intacta la última copia. La actualización de nombres no modifica respuestas históricas.
 
 Pruebas: `tests/forms-inbox.test.cjs`, `tests/registration-catalogs.test.cjs` y los casos SQLite/PostgreSQL de `tests/native-registration.test.cjs`. Verificación visual: `scripts/verify-forms-inbox.cjs` y `scripts/verify-native-registration.cjs`, con datos ficticios y todas las solicitudes interceptadas.
+
+## Transición desde Google
+
+La bandeja incluye también las instalaciones anteriores con formulario completo y correo, y los tickets reconocidos como avisos de Google. Se identifican como **Google / registro anterior**. No se importan respuestas ni adjuntos de Google y consultar la bandeja no modifica servicios, tickets ni envía correos.
+
+Se reúnen las jornadas del mismo servicio. Los tickets se agrupan con la instalación cuando tienen una vinculación explícita o existe una única coincidencia de correo y tipo de formulario en toda la agenda. La coincidencia sólo organiza la pantalla: el usuario debe verificar y confirmar la vinculación mediante la operación de tickets existente. Los casos ambiguos permanecen separados. Si una instalación ya tiene formulario propio, su respuesta no se sustituye por datos de Google; cualquier ticket anterior sin gestión sigue disponible como referencia separada.
+
+El detalle permite vincular el formulario sin salir de la bandeja, abrir la instalación para vincular el PIG y consultar el historial del ticket. Los registros y tickets conservan sus permisos y alcances originales; disponer de `forms.view` no habilita acceso adicional a tickets ni a respuestas protegidas.
+
+Los avisos de formularios abren su caso en **Formularios**, incluso si los filtros actuales lo excluyen. Mientras existe un aviso unificado autorizado, la campana y Web Push omiten los avisos de reserva y tickets que éste cubre. Sin el permiso de formularios se conservan los avisos y destinos anteriores. El caso sigue pendiente si falta vincular el PIG, incluso después de resolver el ticket de Google o confirmar la carga de un formulario propio en SoftGuard. Los formularios propios cancelados no generan avisos de alta.
+
+`tests/registration-transition.test.cjs` verifica agrupación, ambigüedad, permisos, cancelación, continuidad hasta vincular PIG y ausencia de escrituras/correos en las consultas, tanto en SQLite como en PostgreSQL. La prueba visual de bandeja incluye Google y apertura directa, con datos ficticios.
