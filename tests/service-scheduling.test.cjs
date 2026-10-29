@@ -25,18 +25,18 @@ test('distingue un servicio persistido de un alta o cambio de horario realizado 
   assert.equal(agendaTaskWasAlreadyScheduled({ ...task, taskId: 'new', historyId: '', customerId: 'c2' }, '2026-09-01', { teams: [{ tasks: [task] }] }, []), false)
 })
 
-test('usa la duración real y conserva la reserva operativa mínima', async () => {
+test('reserva la duración cargada, incluidos servicios menores a una hora', async () => {
   const { serviceScheduleConflicts, taskOccupiedInterval } = await import('../src/service-scheduling.mjs')
   const team = tasks => [{ tasks }]
 
-  assert.equal(taskOccupiedInterval({ time: '09:00', estimatedMinutes: 30 }).endTime, '10:00')
+  assert.equal(taskOccupiedInterval({ time: '09:00', estimatedMinutes: 15 }).endTime, '09:15')
+  assert.equal(taskOccupiedInterval({ time: '09:00', estimatedMinutes: 30 }).endTime, '09:30')
   assert.equal(taskOccupiedInterval({ time: '09:00', estimatedMinutes: 120 }).endTime, '11:00')
   const minimumConflict = serviceScheduleConflicts(team([
     { serviceId: 'a', time: '09:00', estimatedMinutes: 30 },
     { serviceId: 'b', time: '09:45', estimatedMinutes: 30 }
-  ]))[0]
-  assert.equal(minimumConflict.firstTask.serviceId, 'a')
-  assert.equal(minimumConflict.secondTask.serviceId, 'b')
+  ]))
+  assert.equal(minimumConflict.length, 0)
   assert.equal(serviceScheduleConflicts(team([
     { serviceId: 'a', time: '09:00', estimatedMinutes: 120 },
     { serviceId: 'b', time: '10:30', estimatedMinutes: 60 }

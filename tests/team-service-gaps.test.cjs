@@ -34,7 +34,7 @@ test('intersecta disponibilidad de todos los integrantes y mantiene los índices
   ])
 })
 
-test('libera cancelaciones y fin anticipado; no ofrece fragmentos menores a una hora', async () => {
+test('libera cancelaciones y fin anticipado; ofrece ventanas para servicios cortos', async () => {
   const { teamServiceGaps } = await import('../src/domain/agenda/service-gaps.mjs')
   const teams = [
     { memberIds: ['santos'], tasks: [] },
@@ -42,7 +42,7 @@ test('libera cancelaciones y fin anticipado; no ofrece fragmentos menores a una 
   ]
   assert.equal(teamServiceGaps(teams, 0, options)[0].start, '08:30')
   teams[1].tasks = [service('08:30', 210, { status: 'Completado', date: options.day, completedAt: '2026-10-23T13:00:00-03:00' }), service('14:45', 75)]
-  assert.equal(teamServiceGaps(teams, 0, options).some(gap => gap.start === '14:00'), false)
+  assert.deepEqual(teamServiceGaps(teams, 0, options).find(gap => gap.start === '14:00'), {beforeIndex:0,start:'14:00',end:'14:45'})
   teams[1].tasks = [service('08:30', 210, { status: 'Completado', date: options.day, completedAt: '2026-10-23T10:00:00-03:00' })]
   assert.equal(teamServiceGaps(teams, 0, options)[0].start, '10:00')
 })
@@ -85,7 +85,7 @@ test('la disponibilidad de guardia respeta el reloj, las duraciones y el cierre 
   ]
   const gaps = extra => teamServiceGaps(teams, 1, { ...options, ...extra }).map(g => [g.start, g.end])
   assert.deepEqual(gaps({ now: '2026-10-23T19:10:00Z' }), [['16:15', '17:30'], ['18:30', '20:00']])
-  assert.deepEqual(gaps({ now: '2026-10-23T22:15:00Z' }), [])
+  assert.deepEqual(gaps({ now: '2026-10-23T22:15:00Z' }), [['19:15', '20:00']])
   assert.deepEqual(gaps({ max: '19:30' }), [['16:00', '17:30'], ['18:30', '19:30']])
   assert.deepEqual(gaps({ max: '21:00' }), [['16:00', '17:30'], ['18:30', '20:00']])
   teams[1].tasks[0].estimatedMinutes = 90

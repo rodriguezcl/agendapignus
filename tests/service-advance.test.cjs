@@ -80,7 +80,7 @@ test('terminar 11:52 permite adelantar a 11:57 sin mover la cita siguiente', asy
   const { serviceScheduleConflicts } = await import('../src/domain/agenda/service-scheduling.mjs')
   const { validateChangedAgendaSchedules } = require('../api/_lib/scheduling-validation.cjs')
   const date = '2099-09-25'
-  const completed = { taskId: 'done', service: 'Alarma', date, time: '11:21', estimatedMinutes: 15, status: 'Completado', completedAt: `${date}T14:52:10Z` }
+  const completed = { taskId: 'done', service: 'Alarma', date, time: '11:21', estimatedMinutes: 60, status: 'Completado', completedAt: `${date}T14:52:10Z` }
   const pending = requestServiceAdvance({ ...record, date, estimatedMinutes: 15 }, technician, `${date}T14:53:00Z`)
   const approved = resolveServiceAdvance(pending, administrator, 'approved', `${date}T14:57:00Z`)
   const later = { taskId: 'later', service: 'Alarma', date, time: '14:00', estimatedMinutes: 15 }

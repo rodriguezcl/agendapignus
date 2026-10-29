@@ -1,4 +1,4 @@
-import { taskOccupiedInterval, minutesAsTime, serviceSlotReleased } from './service-scheduling.mjs'
+import { taskOccupiedInterval, minutesAsTime, serviceSlotReleased, MINIMUM_SERVICE_RESERVATION_MINUTES } from './service-scheduling.mjs'
 import { teamHasAdvancedFridayGuard } from './weekend-guard.mjs'
 import workday from '../../../api/_lib/workday.cjs'
 
@@ -13,7 +13,7 @@ export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:00', b
   const minutes = value => /^\d{2}:\d{2}$/.test(value || '') ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : null
   let lower = minutes(fullAvailability ? bookable || min : min) ?? 0
   const lunchStart = minutes(breakStart), lunchEnd = minutes(breakEnd)
-  const minimumGap = fullAvailability ? 60 : 90
+  const minimumGap = fullAvailability ? MINIMUM_SERVICE_RESERVATION_MINUTES : 90
   // El viernes hasta las 20:00 queda disponible solo para quien adelantó la guardia.
   const friday = day && new Date(`${day}T12:00:00`).getDay() === 5
   const upper = Math.min(minutes(max) ?? 1440, friday ? (advancedFridayGuard ? 20 : 16) * 60 : 1440)
@@ -45,8 +45,7 @@ export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:00', b
   let end = fullAvailability ? lower : firstReleased !== null && (!occupied.length || firstReleased <= occupied[0].interval.start) ? firstReleased : null
   for (const { index, interval } of occupied) {
     const start = Math.max(end ?? lower, lower), stop = Math.min(interval.start, upper)
-    // Lunch is not bookable: require 90 continuous minutes on either side,
-    // rather than adding together time separated by the 13:00–14:00 break.
+    // Require a continuous usable window; never add time across lunch.
     if (end !== null) {
       const available = [[start, Math.min(stop, lunchStart)], [Math.max(start, lunchEnd), stop]]
       for (const [from, to] of available) {
