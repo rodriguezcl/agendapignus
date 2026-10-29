@@ -8,7 +8,7 @@ import LegacyRegistration from './LegacyRegistration.jsx'
 import { TITLES } from '../../../shared/registration/schema.mjs'
 import './forms-inbox.css'
 
-const states = { open: 'Por completar', submitted: 'Recibidos · gestión pendiente', correction: 'En corrección', reviewed: 'Gestionados en SoftGuard', cancelled: 'Cancelados' }
+const states = { submitted: 'Recibidos · gestión pendiente', reviewed: 'Gestionados en SoftGuard', open: 'Por completar', correction: 'En corrección', cancelled: 'Cancelados' }
 export default function FormsInbox({ onOpenService, onOpenTicket, openRequest, onOpenRequestHandled }) {
   const { can } = usePermissions()
   const [search,setSearch]=useState(''),[kind,setKind]=useState(''),[status,setStatus]=useState(''),[page,setPage]=useState(1),[retry,setRetry]=useState(0)

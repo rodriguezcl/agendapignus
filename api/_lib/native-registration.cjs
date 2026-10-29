@@ -5,6 +5,7 @@ const access=require('./granular-read-policy.cjs')
 const {relatedServices,formServicePatch}=require('./ticket-registration-form.cjs')
 const {sqlParameters}=require('./ticket-mail-store.cjs')
 const TABLE='pignus_registration_forms', RESPONSES='pignus_registration_responses'
+const inboxStatusOrder={submitted:0,reviewed:1,open:2,correction:3,cancelled:4}
 const secrets=['subscriberPassword','operatorPassword','cardNumber','cardHolder','cardExpiry','cardDni','cbu','bankHolder','bankDocumentType','bankDocument','bank']
 const fail=(message,statusCode=400)=>{throw Object.assign(new Error(message),{statusCode})}
 const hash=value=>crypto.createHash('sha256').update(value).digest('hex')
@@ -137,7 +138,7 @@ async function handle({connection,kind,user,method,input={},query={},publicReque
         const active=currentRecord(row,state),record=active||recordsFor(row,state)[0]
         const customer=access.customerForRecord(record,state)
         return {id:row.id,source:'native',kind:row.kind,client:record.client||record.clientNameAtService||'Instalación',account:customer?.account||record.account||'',serviceId:String(record.id),date:record.date,time:record.time,updatedAt:row.updated_at,version:row.version,pendingPig:Boolean(record.subscriberReservation),status:!active?'cancelled':row.status==='submitted'&&row.reviewed_version>=row.version&&!record.subscriberReservation?'reviewed':row.status}
-      })].filter(item=>(!query.kind||item.kind===query.kind)&&(!search||normalize([item.client,item.account,item.date,item.email,...(item.tickets||[]).map(t=>t.number)].join(' ')).includes(search))).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))||a.id.localeCompare(b.id))
+      })].filter(item=>(!query.kind||item.kind===query.kind)&&(!search||normalize([item.client,item.account,item.date,item.email,...(item.tickets||[]).map(t=>t.number)].join(' ')).includes(search))).sort((a,b)=>(inboxStatusOrder[a.status]??5)-(inboxStatusOrder[b.status]??5)||String(b.updatedAt).localeCompare(String(a.updatedAt))||a.id.localeCompare(b.id))
       const counts=Object.fromEntries(['open','submitted','correction','reviewed','cancelled'].map(status=>[status,items.filter(item=>item.status===status).length]))
       const filtered=items.filter(item=>!query.status||item.status===query.status)
       const total=filtered.length,pageSize=20,pages=Math.max(1,Math.ceil(total/pageSize)),page=Math.min(pages,Math.max(1,Math.floor(Number(query.page)||1)))

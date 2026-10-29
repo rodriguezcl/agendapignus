@@ -12,11 +12,15 @@ test('inbox paginates summaries, filters status/type/search, enforces scope and 
       state.history.push(record);await store.create(record,record.installationZone,{name:'Fixture'})
     }
     // Invalid encrypted payload proves the summary does not attempt decryption.
-    await store.query("UPDATE pignus_registration_forms SET version=1,status='submitted' WHERE id='service:s1'")
+    await store.query("UPDATE pignus_registration_forms SET version=1,status='submitted',updated_at='2026-01-01' WHERE id='service:s1'")
+    await store.query("UPDATE pignus_registration_forms SET version=1,reviewed_version=1,status='submitted',updated_at='2026-12-01' WHERE id='service:s2'")
     await store.query("INSERT INTO pignus_registration_responses (form_id,version,submitted_at,encrypted,terms_version,terms_hash,terms_text) VALUES ('service:s1',1,'2026-10-28','not-an-encrypted-answer','test','test','test')")
     const admin={id:'a',roleCode:'administrator'},call=(query,user=admin)=>native.handle({connection:db,kind:'db',user,method:'GET',query:{list:'1',...query},formState:{load:async()=>state}})
     const page1=await call({}),page2=await call({page:'2'})
     assert.equal(page1.total,23);assert.equal(page1.items.length,20);assert.equal(page2.items.length,3)
+    // Even an old pending case must appear before newer managed records and before pagination.
+    assert.equal(page1.items[0].id,'service:s1');assert.equal(page1.items[1].id,'service:s2')
+    assert.equal(page2.items.at(-1).status,'cancelled')
     assert.equal(new Set([...page1.items,...page2.items].map(r=>r.id)).size,23)
     assert.equal(page1.counts.submitted,1);assert.equal(page1.counts.cancelled,1)
     assert.ok(page1.items.every(row=>!('revisions' in row)&&!('link' in row)&&!('token_hash' in row)))
