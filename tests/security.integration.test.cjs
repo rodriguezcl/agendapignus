@@ -15,6 +15,70 @@ let temporaryDirectory
 let serverProcess
 let serverErrorOutput = ''
 
+test('Reservas de ventas HTTP: permisos, agenda persistida, enlace y reintento sin duplicar', async () => {
+  const future = new Date(Date.now() + 7 * 86400000)
+  const holidays = require('../api/_lib/holidays.cjs').localHolidayFallback(future.getUTCFullYear())
+  while ([0, 6].includes(future.getUTCDay()) || holidays.some(h => h.date === future.toISOString().slice(0, 10))) future.setUTCDate(future.getUTCDate() + 1)
+  const date = future.toISOString().slice(0, 10), db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  upsertJson(db, 'services', 'id', { id: 'sales-install', name: 'Instalación de alarma', status: 'Activo' })
+  const agenda = JSON.parse(db.prepare("SELECT data FROM agendas WHERE id='current'").get().data)
+  agenda.weekly ||= {}; agenda.weekly[date] = { teams: [{ teamId: 'sales-qa-team', label: 'Equipo prueba', memberIds: ['qa-tech'], members: ['Técnico prueba'], tasks: [] }] }
+  db.prepare("UPDATE agendas SET data=? WHERE id='current'").run(JSON.stringify(agenda)); db.close()
+  const admin = await login('qa-admin@pignus.test'), tech = await login('qa-tech@pignus.test')
+  const route = '/api/sales/bookings', input = { date, client: 'Reserva QA', phone: '3511234567', address: 'Calle ficticia 123', coordinates: [-31.42, -64.18], locationConfirmed: true, estimatedMinutes: 60, installationZone: 'docta' }
+  const post = (cookie, data) => api(route, cookie, { method: 'POST', body: JSON.stringify(data) })
+  assert.equal((await api(route)).status, 401)
+  assert.equal((await post(tech, { ...input, action: 'slots' })).status, 403)
+  const response = await post(admin, { ...input, action: 'slots' })
+  assert.equal(response.status, 200, await response.clone().text())
+  const slot = (await response.json()).slots.find(s => s.teamId === 'sales-qa-team')
+  assert.ok(slot)
+  const command = { ...input, action: 'reserve', time: slot.time, teamId: slot.teamId, requestId: 'http-sales-test-request' }
+  const first = await post(admin, command); assert.equal(first.status, 200, await first.clone().text())
+  const reservation = (await first.json()).reservation
+  const retry = await post(admin, command); assert.equal((await retry.json()).reservation.id, reservation.id)
+  const current = await state(admin), record = current.history.find(r => r.id === reservation.id)
+  assert.equal(record.awaitingConfirmation, true)
+  assert.equal(current.agenda.weekly[date].teams.find(t => t.teamId === slot.teamId).tasks[0].historyId, record.id)
+  const publicRead = await api('/api/registration/public', null, { method: 'POST', body: JSON.stringify({ action: 'read', token: reservation.link.split('#')[1] }) })
+  assert.equal(publicRead.status, 200); assert.equal((await publicRead.json()).appointment.awaitingConfirmation, true)
+})
+
+test('Formulario nativo HTTP: enlace público, permisos, envío atómico e idempotente', async () => {
+  const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
+  upsertJson(db, 'work_history', 'id', { id:'qa-native', customerId:'qa-customer-a', client:'PIG-9001 QA', service:'Instalación de alarma', installationZone:'docta', date:'2099-01-15', time:'10:00', status:'Pendiente', form:'Pendiente' })
+  db.close()
+  const admin=await login('qa-admin@pignus.test'),tech=await login('qa-tech@pignus.test')
+  const staff='/api/registration/forms',publicPath='/api/registration/public'
+  const post=(path,cookie,input,headers={})=>api(path,cookie,{method:'POST',body:JSON.stringify(input),headers})
+  assert.equal((await api(staff)).status,401)
+  assert.equal((await api(staff+'?serviceId=qa-native',tech)).status,403)
+  assert.equal((await api(publicPath)).status,405)
+  assert.equal((await post(publicPath,null,{action:'read',token:'invalid'},{Origin:'https://foreign.invalid'})).status,403)
+  let response=await post(staff,admin,{action:'create',serviceId:'qa-native'})
+  assert.equal(response.status,200,await response.clone().text())
+  const item=(await response.json()).items[0],token=item.link.split('#')[1]
+  response=await post(publicPath,null,{action:'read',token})
+  assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/)
+  const form=await response.json()
+  const input={action:'submit',token,version:form.version,termsVersion:form.termsVersion,values:{name:'Cliente ficticio',document:'30123456',email:'fixture@example.com',phone:'3511234567',block:'15',lot:'12',side:'Lado Córdoba',propertyType:'Residencial',subscriberPassword:'secreto-ficticio',operatorPassword:'operador-ficticio',contact1:'Contacto de prueba',contactPhone1:'3517654321',guardAccepted:true,termsAccepted:true,declarationAccepted:true}}
+  const before=await state(admin)
+  const responses=await Promise.all([post(publicPath,null,input),post(publicPath,null,input)])
+  for(const result of responses)assert.equal(result.status,200,await result.clone().text())
+  const after=await state(admin)
+  assert.equal(after.revision,before.revision+1)
+  assert.equal(after.history.find(r=>r.id==='qa-native').formEmail,'fixture@example.com')
+  assert.equal(after.history.find(r=>r.id==='qa-native').form,'Completo')
+  assert.ok(!JSON.stringify(after).includes('secreto-ficticio'))
+  const persisted=new DatabaseSync(path.join(temporaryDirectory,'agenda-tecnica.db'))
+  try {
+    assert.equal(persisted.prepare('SELECT count(*) AS total FROM pignus_registration_responses WHERE form_id=?').get(item.id).total,1)
+    const audit=persisted.prepare('SELECT data FROM audit_log').all().map(r=>JSON.parse(r.data))
+    assert.equal(audit.filter(e=>e.action==='Formulario recibido'&&e.entityId===item.id).length,1)
+    assert.ok(!JSON.stringify(audit).includes('secreto-ficticio'))
+  }finally{persisted.close()}
+})
+
 test('Corrección administrativa HTTP: reprogramación errónea, zonas, auditoría y concurrencia', async () => {
   const db = new DatabaseSync(path.join(temporaryDirectory, 'agenda-tecnica.db'))
   const types = [{ id: 'qa-correction-install', name: 'Instalación de alarma' }, { id: 'qa-correction-other', name: 'Otro service' }]
@@ -564,7 +628,7 @@ test.beforeEach(async () => {
   const publicDirectory = path.join(temporaryDirectory, 'public')
   fs.mkdirSync(publicDirectory)
   fs.writeFileSync(path.join(publicDirectory, 'index.html'), '<!doctype html><html><body><div id="root"></div></body></html>')
-  serverProcess = spawn(process.execPath, ['server.cjs'], { cwd: root, env: { ...process.env, TICKETS_MAIL_ENABLED: 'false', TICKETS_MAIL_ENCRYPTION_KEY: 'clave-ficticia-de-correo-para-pruebas-http', TICKETS_MAIL_WORKER_SECRET: 'clave-ficticia-del-proceso-para-pruebas-http', PIGNUS_PORT: String(port), PIGNUS_HOST: '127.0.0.1', PIGNUS_DATA_DIR: temporaryDirectory, PIGNUS_PUBLIC_DIR: publicDirectory }, stdio: ['ignore', 'pipe', 'pipe'] })
+  serverProcess = spawn(process.execPath, ['server.cjs'], { cwd: root, env: { ...process.env, PIGNUS_REGISTRATION_ENCRYPTION_KEY: 'fixture-registration-http-only-32-characters', TICKETS_MAIL_ENABLED: 'false', TICKETS_MAIL_ENCRYPTION_KEY: 'clave-ficticia-de-correo-para-pruebas-http', TICKETS_MAIL_WORKER_SECRET: 'clave-ficticia-del-proceso-para-pruebas-http', PIGNUS_PORT: String(port), PIGNUS_HOST: '127.0.0.1', PIGNUS_DATA_DIR: temporaryDirectory, PIGNUS_PUBLIC_DIR: publicDirectory }, stdio: ['ignore', 'pipe', 'pipe'] })
   serverErrorOutput = ''
   serverProcess.stderr.on('data', chunk => { serverErrorOutput = (serverErrorOutput + chunk).slice(-8000) })
   await waitForServer()

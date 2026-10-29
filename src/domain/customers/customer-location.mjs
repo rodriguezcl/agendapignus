@@ -37,6 +37,7 @@ export function customerLocationFields(customer) {
 }
 
 export function serviceDirections(record) {
+  if (validCoordinates(record.visitLocation?.coordinates) && record.visitLocation.address === record.address) return { coordinates: record.visitLocation.coordinates, label: 'Ubicación indicada en la reserva', url: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(record.visitLocation.coordinates.join(','))}` }
   const location = nobuTownLocation(record) || doctaLocation(record)
   if (location) return location // Neighborhood references take priority over imported coordinates or text geocoding.
   return record.address ? { url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(record.address)}`, label: 'Cómo llegar' } : null

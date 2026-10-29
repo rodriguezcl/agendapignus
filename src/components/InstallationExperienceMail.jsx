@@ -17,7 +17,7 @@ function MailItem({item,active,onSaved,onBusyChange,canManage}) {
     finally{saving.current=false;setBusy(false);onBusyChange?.(false)}
   }
   return <article className="experience-mail-item">
-    <h4>{item.kind==='registration'?'Confirmación de alta y vinculación PIG':'Invitación a compartir la experiencia'}</h4><strong>{item.kind==='registration'&&item.status==='cancelled'?'No enviado: instalación cancelada o vinculación modificada':labels[item.status]||item.status}</strong>
+    <h4>{item.kind==='appointment'?'Confirmación de visita técnica':item.kind==='registration'?'Confirmación de alta y vinculación PIG':'Invitación a compartir la experiencia'}</h4><strong>{item.kind==='registration'&&item.status==='cancelled'?'No enviado: instalación cancelada o vinculación modificada':labels[item.status]||item.status}</strong>
     <p>{item.account} · {item.client}</p>
     <dl><div><dt>Destinatario</dt><dd>{item.recipient||'Sin registrar'}</dd></div>{item.kind!=='registration'&&<div><dt>Técnicos participantes</dt><dd>{item.technicians.join(' / ')||'Equipo técnico'}</dd></div>}<div><dt>Correo generado</dt><dd>{date(item.createdAt)}</dd></div>{item.sentAt&&<div><dt>Enviado</dt><dd>{date(item.sentAt)} · {item.sender}</dd></div>}</dl>
     {!active&&['queued','retry','needs_email','failed'].includes(item.status)&&<p>El correo de soporte debe estar activo en modo operativo para enviar este correo.</p>}

@@ -1256,11 +1256,28 @@ async function handleCustomerImport(req, res, sql, user) {
   }
 }
 
+
+async function handleNativeRegistration(req,res,sql,user=null,sales=false) {
+  const http=require('./_lib/native-registration-http.cjs')
+  try {
+    http.headers(req,res)
+    const result=await require(sales?'./_lib/sales-booking.cjs':'./_lib/native-registration.cjs').handle({connection:sql,kind:'sql',user,method:req.method,input:req.method==='POST'?requestBody(req):{},query:Object.fromEntries(new URL(req.url,'http://localhost').searchParams),publicRequest:!user,ip:req.headers['x-forwarded-for']?.split(',')[0]||req.socket?.remoteAddress,formState:{
+      load:async tx=>{await tx`insert into pignus_preferences (key,value) values ('state_revision','0') on conflict do nothing`;await tx`select value from pignus_preferences where key='state_revision' for update`;return readState(tx)},
+      save:async(tx,current,next,event)=>{
+        await persistStateCollections(tx,current,next,Number(current.revision||0)+1)
+        await appendAudit(tx,[auditEntry(user||{id:'public-form',name:'Formulario del cliente'},event.action,'Formulario de alta',event.id,{}, {version:event.version})])
+      }
+    }})
+    return send(res,200,result)
+  }catch(error){return send(res,error.statusCode||500,http.errorBody(error))}
+}
+
 module.exports = async function handler(req, res) {
   try {
     if (process.env.VERCEL && !productionSecretsAreValid()) return send(res, 500, { error: 'La API no tiene configurados secretos de seguridad válidos.' })
     const sql = database()
     const route = routePath(req)
+    if(route === '/registration/public')return handleNativeRegistration(req,res,sql)
     if (route === '/push/process') {
       const push = require('./_lib/web-push.cjs')
       if (!push.workerAuthorized(req)) return send(res, 401, { error: 'Acceso no autorizado.' })
@@ -1322,6 +1339,8 @@ module.exports = async function handler(req, res) {
     }
     try { endpointPolicy.assertEndpointPermission(session.user, req.method, route) } catch (error) { return send(res, error.statusCode || 403, { error: error.message, code: error.code, permission: error.permission }) }
     if (isOperator(session.user) && !operatorRouteAllowed(req.method, route)) return send(res, 403, { error: 'Operador sólo puede consultar la Agenda semanal.' })
+    if(route === '/sales/bookings')return handleNativeRegistration(req,res,sql,session.user,true)
+    if(route === '/registration/forms')return handleNativeRegistration(req,res,sql,session.user)
     await require('./_lib/tickets-http.cjs').storeFor(sql, 'sql').ensure()
     const receiptRoute = /^\/collections\/([^/]+)\/receipts\/([^/]+)$/.exec(route)
     if (receiptRoute) {

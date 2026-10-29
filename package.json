@@ -35,6 +35,7 @@
     "mail:tickets:schedule": "node --env-file-if-exists=.env.local scripts/configure-ticket-mail-schedule.cjs"
   },
   "dependencies": {
+    "card-validator": "^10.0.4",
     "dompurify": "3.4.17",
     "html-to-text": "10.0.1",
     "imapflow": "2.9.0",

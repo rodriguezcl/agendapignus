@@ -299,6 +299,8 @@ export const serviceActor = user => {
 }
 
 export const serviceTrace = record => ({
+  ...(record?.salesBooking ? { salesBooking: record.salesBooking } : {}),
+  ...(record?.visitLocation ? { visitLocation: record.visitLocation } : {}),
   ...(record?.serviceJourney ? { serviceJourney: record.serviceJourney } : {}),
   createdBy: record?.createdBy,
   subscriberReservation: Boolean(record?.subscriberReservation),

@@ -7,7 +7,7 @@
   "functions": {
     "api/index.js": {
       "maxDuration": 60,
-      "includeFiles": "{scripts/professional-pdf.cjs,api/_vendor/**}"
+      "includeFiles": "{scripts/professional-pdf.cjs,api/_vendor/**,shared/registration/**,src/domain/agenda/service-scheduling.mjs,src/domain/agenda/weekend-guard.mjs,src/domain/agenda/annual-guards.mjs}"
     }
   },
   "rewrites": [

@@ -5,9 +5,9 @@ const custom = permissions => ({ roleCode: 'role-test', role: 'Prueba', permissi
 
 test('catalogue contains unique capabilities with known acyclic prerequisites', () => {
   assert.equal(policy.validateCatalog(), true)
-  assert.equal(policy.CATALOG.length, 153)
-  assert.equal(policy.MODULES.length, 15)
-  assert.equal(policy.PERMISSION_GROUPS.length, 16)
+  assert.equal(policy.CATALOG.length, 162)
+  assert.equal(policy.MODULES.length, 17)
+  assert.equal(policy.PERMISSION_GROUPS.length, 18)
   assert.equal(policy.MODULES.some(([id]) => id === 'notifications'), false)
   assert.equal(policy.PERMISSION_GROUPS.some(([id]) => id === 'notifications'), true)
   assert.equal(policy.BY_ID['notifications.view'], undefined)
@@ -122,6 +122,8 @@ const noticePrerequisites = {
   'weekly.view': true,
   'records.read': true,
   'collections.view': true,
+  'records.contact': true,
+  'registration.read': true,
   'records.financial': true,
   'vehicles.view': true,
   'vehicle.insurance.read': true,
@@ -131,7 +133,7 @@ const noticePrerequisites = {
 }
 
 test('existing granular roles inherit only notices supported by their effective reading permissions', () => {
-  assert.equal(policy.NOTIFICATION_IDS.length, 10)
+  assert.equal(policy.NOTIFICATION_IDS.length, 12)
   const role = custom(noticePrerequisites)
   for (const id of policy.NOTIFICATION_IDS) assert.equal(policy.can(role, id), true, id)
   const noAccess = custom(Object.fromEntries(policy.NOTIFICATION_IDS.map(id => [id, true])))

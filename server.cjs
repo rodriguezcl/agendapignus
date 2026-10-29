@@ -2067,6 +2067,22 @@ const server = http.createServer((req, res) => {
       store: require('./api/_lib/collection-receipt-store.cjs').sqliteCollectionReceiptStore(db)
     }).catch(error => send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo consultar el comprobante.' }))
   }
+  if(['/api/registration/public','/api/registration/forms','/api/sales/bookings'].includes(url.pathname)) {
+    const publicRequest=url.pathname.endsWith('/public'),user=publicRequest?null:requireSession(req,res)
+    if(!publicRequest&&!user)return
+    const http=require('./api/_lib/native-registration-http.cjs')
+    try{http.headers(req,res)}catch(error){return send(res,error.statusCode||500,http.errorBody(error))}
+    return (req.method==='POST'?readJson(req,40000):Promise.resolve({})).then(input=>require(url.pathname==='/api/sales/bookings'?'./api/_lib/sales-booking.cjs':'./api/_lib/native-registration.cjs').handle({connection:db,kind:'db',user,method:req.method,input,query:Object.fromEntries(url.searchParams),publicRequest,ip:req.socket.remoteAddress,formState:{
+      load:async()=>readState(),
+      save:async(_connection,current,next,event)=>{
+        const previous=new Map(current.history.map(r=>[String(r.id),JSON.stringify(r)]))
+        for(const record of next.history)if(previous.get(String(record.id))!==JSON.stringify(record))db.prepare('INSERT INTO work_history (id,data) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(String(record.id),JSON.stringify(record))
+        db.prepare('UPDATE agendas SET data=? WHERE id=?').run(JSON.stringify(next.agenda),'current')
+        db.prepare('INSERT OR REPLACE INTO preferences (key,value) VALUES (?,?)').run('state_revision',String(currentStateRevision()+1))
+        writeAudit(user||{id:'public-form',name:'Formulario del cliente'},event.action,'Formulario de alta',event.id,{}, {version:event.version})
+      }
+    }})).then(result=>send(res,200,result)).catch(error=>send(res,error.statusCode||500,http.errorBody(error)))
+  }
   if (url.pathname === '/api/tickets' || url.pathname.startsWith('/api/tickets/')) {
     const user = requireSession(req, res)
     if (!user) return

@@ -11,6 +11,11 @@
       "Planificación, equipos, reservas, jornadas, feriados y configuración mensual/anual."
     ],
     [
+      "sales",
+      "Reservas de ventas",
+      "Ubicar una instalación, consultar horarios estimativos y reservar a confirmar. Sólo reservas propias."
+    ],
+    [
       "agenda",
       "Agenda del día",
       "Operación diaria y equipos. Las acciones equivalentes comparten permiso con la agenda semanal."
@@ -39,6 +44,11 @@
       "accounts",
       "Abonados y clientes",
       "Fichas, seguimiento CCTV, historial del cliente, importación y abonos."
+    ],
+    [
+      "forms",
+      "Formularios",
+      "Bandeja de altas, respuestas, correcciones y gestiones pendientes en SoftGuard."
     ],
     [
       "map",
@@ -2322,6 +2332,103 @@
       ],
       "any": [],
       "note": "Avisa si falta el correo del cliente o si la invitación requiere revisión. Gestionar el envío requiere un permiso independiente.",
+      "sensitive": false
+    },
+    {
+      "id": "registration.read",
+      "label": "Consultar formularios de alta",
+      "groups": [
+        "accounts",
+        "forms"
+      ],
+      "all": [
+        "records.contact"
+      ],
+      "any": [
+        "weekly.view",
+        "history.view",
+        "accounts.view"
+      ],
+      "note": "Formularios vinculados a instalaciones. Los datos protegidos se consultan con permiso específico y registro de acceso.",
+      "sensitive": false
+    },
+    {
+      "id": "registration.manage",
+      "label": "Generar enlaces y gestionar correcciones de alta",
+      "groups": [
+        "accounts",
+        "forms"
+      ],
+      "all": [
+        "registration.read"
+      ],
+      "any": [],
+      "note": "Formularios vinculados a instalaciones. Los datos protegidos se consultan con permiso específico y registro de acceso.",
+      "sensitive": false
+    },
+    {
+      "id": "registration.sensitive",
+      "label": "Revelar datos bancarios y de monitoreo",
+      "groups": [
+        "accounts",
+        "forms"
+      ],
+      "all": [
+        "registration.read",
+        "records.financial"
+      ],
+      "any": [],
+      "note": "Formularios vinculados a instalaciones. Los datos protegidos se consultan con permiso específico y registro de acceso.",
+      "sensitive": true
+    },
+    {
+      "id": "notifications.registration",
+      "label": "Formularios de alta por cargar en SoftGuard",
+      "groups": [
+        "notifications"
+      ],
+      "all": [
+        "registration.read"
+      ],
+      "any": [],
+      "note": "Formularios vinculados a instalaciones. Los datos protegidos se consultan con permiso específico y registro de acceso.",
+      "sensitive": false
+    },
+    {
+      "id": "sales.view",
+      "label": "Consultar reservas de ventas propias",
+      "groups": [
+        "sales"
+      ],
+      "all": [],
+      "any": [],
+      "note": "No permite consultar la agenda ni los datos de otros clientes.",
+      "sensitive": false
+    },
+    {
+      "id": "sales.reserve",
+      "label": "Crear reservas de instalación a confirmar",
+      "groups": [
+        "sales"
+      ],
+      "all": [
+        "sales.view"
+      ],
+      "any": [],
+      "note": "Genera un enlace único. La confirmación queda a cargo de Coordinación.",
+      "sensitive": false
+    },
+    {
+      "id": "forms.view",
+      "label": "Consultar bandeja de formularios",
+      "groups": [
+        "forms"
+      ],
+      "all": [
+        "registration.read"
+      ],
+      "any": [],
+      "note": "Respeta el alcance de servicios y clientes autorizado. No revela datos protegidos.",
       "sensitive": false
     }
   ]

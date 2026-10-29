@@ -51,7 +51,8 @@ async function notificationsFor(sql, state, user, now = new Date()) {
   const operational = technicalOnly ? [] : selectDashboardNotifications({ ...projected, user, today, now: now.getTime(), passwordResetRequests })
   const tickets = policy.can(user, 'notifications.tickets') && policy.can(user, 'tickets.view')
     ? (await require('./tickets-http.cjs').storeFor(sql, 'sql').query(user, state, { mode: 'notifications' })).notifications : []
-  return [...operational, ...tickets]
+  const registrations=await require('./native-registration.cjs').notices(sql,'sql',state,user)
+  return [...operational.filter(item=>!(item.id.startsWith('reservation:')&&registrations.some(form=>form.target.recordId===item.target?.recordId))), ...tickets, ...registrations]
 }
 function currentUser(state, id) {
   const employee = state.employees?.find(item => String(item.id) === String(id) && item.status === 'Activo')

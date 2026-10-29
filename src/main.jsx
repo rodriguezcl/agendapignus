@@ -1,8 +1,9 @@
 
-import React from 'react'
+import React, { lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
 import './style.css'
-import App from './App.jsx'
+const App = lazy(() => import('./App.jsx'))
+const PublicRegistration = lazy(() => import('./features/registration/PublicRegistration.jsx'))
 import AppErrorBoundary from './components/AppErrorBoundary.jsx'
 import { installPushNavigation } from './infrastructure/browser/push-navigation.mjs'
 import { installRequiredFeedback } from './presentation/components/forms/required-feedback.mjs'
@@ -11,14 +12,16 @@ import './components/ui/modal-chrome.css'
 import './mobile-layout.css'
 import './presentation/components/forms/select-containment.css'
 
-const disposeRequiredFeedback = installRequiredFeedback()
-installPushNavigation()
+const disposeRequiredFeedback = window.location.pathname === '/alta' ? () => {} : installRequiredFeedback()
+if(window.location.pathname !== '/alta')installPushNavigation()
 if (import.meta.hot) import.meta.hot.dispose(disposeRequiredFeedback)
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AppErrorBoundary>
-      <App />
+      <Suspense fallback={<p role="status">Cargando…</p>}>
+        {window.location.pathname === '/alta' ? <PublicRegistration /> : <App />}
+      </Suspense>
     </AppErrorBoundary>
   </React.StrictMode>
 )

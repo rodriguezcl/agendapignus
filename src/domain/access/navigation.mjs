@@ -13,11 +13,13 @@ const sections = {
 export const NAVIGATION_ITEMS = [
   ['dashboard', 'dashboard'],
   ['weekly', 'calendar', 'operation'],
+  ['sales', 'calendar', 'operation'],
   ['agenda', 'calendar', 'operation'],
   ['history', 'history', 'operation'],
   ['tickets', 'check', 'operation'],
   ['myServices', 'tools', 'operation'],
   ['accounts', 'accounts', 'customers'],
+  ['forms', 'audit', 'customers'],
   ['collections', 'wallet', 'customers'],
   ['map', 'map', 'customers'],
   ['employees', 'users', 'resources'],

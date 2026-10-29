@@ -7,6 +7,8 @@ export const canPermission = permissionPolicy.can
 export const MODULE_PERMISSIONS = [
   ['dashboard', 'Resumen general', 'Ver indicadores y resumen operativo'],
   ['weekly', 'Agenda semanal', 'Planificar los servicios de toda la semana'],
+  ['forms', 'Formularios', 'Consultar altas, respuestas y correcciones'],
+  ['sales', 'Reservas de ventas', 'Crear reservas propias a confirmar'],
   ['agenda', 'Agenda del día', 'Crear y editar equipos y servicios'],
   ['collections', 'Cobranzas', 'Consultar pagos pendientes, confirmados y su historial'],
   ['tickets', 'Tickets', 'Reclamos, solicitudes y conversaciones'],

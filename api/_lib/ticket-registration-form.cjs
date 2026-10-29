@@ -12,14 +12,14 @@ function installation(record, state) {
  const values=[record.service,record.serviceType,...(record.serviceTypes||[]).map(x=>x.name),...(state.services||[]).filter(s=>String(s.id)===String(record.serviceId)).map(s=>s.name)]
  return values.some(value=>/instalacion de alarmas?/.test(normalize(value))) && !['Cancelado','Completado','Avance registrado'].includes(record.status)
 }
-function formServicePatch(state, record, email) {
+function formServicePatch(state, record, email, form = 'Completo') {
  const next=structuredClone(state), records=relatedServices(state,record), ids=new Set(records.map(item=>String(item.id)))
- next.history=next.history.map(item=>ids.has(String(item.id))?{...item,form:'Completo',formEmail:email}:item)
+ next.history=next.history.map(item=>ids.has(String(item.id))?{...item,form,formEmail:email}:item)
  for(const before of records) next.agenda=require('./history-record-operation.cjs').synchronizeAgendaHistoryRecord(next.agenda||{},before,next.history.find(item=>String(item.id)===String(before.id)))
  const after=next.history.find(item=>String(item.id)===String(record.id))
  // Sincronizar también los campos comerciales de todas las copias vinculadas.
  const tasks=new Set(records.map(item=>String(item.sourceTaskId||'')).filter(Boolean))
- function sync(value){if(!value||typeof value!=='object')return; if(ids.has(String(value.historyId||''))||tasks.has(String(value.taskId||''))){value.form='Completo';value.formEmail=email} Object.values(value).forEach(sync)}
+ function sync(value){if(!value||typeof value!=='object')return; if(ids.has(String(value.historyId||''))||tasks.has(String(value.taskId||''))){value.form=form;value.formEmail=email} Object.values(value).forEach(sync)}
  sync(next.agenda)
  return {next,after}
 }

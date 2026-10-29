@@ -38,7 +38,7 @@ function message(item, record = item) {
     `Hola, ${item.client}:`,
     'Gracias por completar el formulario de alta. Ya registramos tu cuenta y la vinculamos con el servicio agendado.',
     `Tu número de cuenta es ${item.account}.`,
-    record.status === 'Completado' ? 'La instalación figura completada en nuestra agenda.' : appointment ? `Tu visita está programada para el ${appointment}.` : 'Nos pondremos en contacto para confirmar los detalles de la visita.',
+    record.status === 'Completado' ? 'La instalación figura completada en nuestra agenda.' : record.awaitingConfirmation === true ? 'La visita todavía está pendiente de confirmación. Te avisaremos cuando Coordinación confirme el día y horario.' : appointment ? `Tu visita está programada para el ${appointment}.` : 'Nos pondremos en contacto para confirmar los detalles de la visita.',
     'Si tenés alguna consulta, podés responder a este correo. Gracias por confiar en Pignus.',
     'Equipo Pignus'
   ]

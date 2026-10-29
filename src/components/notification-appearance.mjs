@@ -1,5 +1,6 @@
 // Stable category colors: independent of urgency, wording and destination permissions.
 export const notificationCategories = {
+  registration: { label: 'Formularios de alta', icon: 'audit', light: '#775523', dark: '#eac488' },
   collection: { label: 'Cobranzas', icon: 'wallet', light: '#187047', dark: '#76d6a3' },
   ticket: { label: 'Tickets', icon: 'ticket', light: '#235db5', dark: '#82b6ff' },
   reservation: { label: 'Reservas', icon: 'accounts', light: '#08768b', dark: '#6bd5ed' },
@@ -22,6 +23,7 @@ export function notificationAppearance(notification = {}) {
   const id = String(notification.id || ''), target = notification.target || {}
   const prefix = id.split(':')[0]
   let category = {
+    registration: 'registration',
     collection: 'collection', ticket: 'ticket', reservation: 'reservation', insurance: 'insurance',
     'alarm-zones': 'zones', 'softguard-retirement': 'retirement', 'softguard-verification': 'softguard',
     followup: 'followup', advance: 'advance', password: 'password', 'experience-mail': 'experience',

@@ -52,6 +52,7 @@ function legacySelection(subject) {
   const result = Object.fromEntries(CATALOG.map(item => [item.id, admin]))
   const grant = (keys, enabled) => keys.split(' ').filter(Boolean).forEach(key => { if (BY_ID[key]) result[key] = admin || Boolean(enabled) })
   MODULES.forEach(([id]) => { result[`${id}.view`] = id === 'technical' ? admin || technical : moduleOn(id) })
+  grant('sales.reserve', moduleOn('sales') && !technician && !operator && !supervisor)
   grant('followups.view followups.create', technical)
   grant('tickets.view tickets.create tickets.comment', operator || supervisor || technical || moduleOn('followups'))
   grant('tickets.fromService', technical)
@@ -89,6 +90,7 @@ function legacySelection(subject) {
   grant('service.documents.upload service.documents.deleteOwn', documentsWrite)
   grant('service.documents.deleteAny', !technician && !supervisor && !operator && (plan || moduleOn('history')))
   grant('settings.roles.read', moduleOn('settings'))
+  grant('registration.read registration.manage', !technician && !operator && !supervisor && (plan || accounts || history))
   grant('settings.workday.read', moduleOn('settings') && feature('weeklyHours', 'weekly'))
   // Existing roles inherit notices from their effective reading capabilities,
   // while a saved notification preference must remain explicit.
@@ -188,7 +190,7 @@ const READ_ONLY_IDS = new Set([
   'planning.copy', 'weekly.daily', 'weekly.monthlyTeams.read', 'weekly.monthlyHours.read', 'weekly.monthlyVehicles.read', 'weekly.guards.read',
   'collections.timeline', 'customers.backup', 'subscriptions.read', 'map.customer', 'employees.requests.read', 'vehicles.mileage.read',
   'vehicle.controls.read', 'vehicle.insurance.read', 'vehicle.documents.read', 'technical.history', 'service.documents.read', 'settings.roles.read',
-  'settings.workday.read', 'audit.detail'
+  'settings.workday.read', 'audit.detail', 'registration.read', 'registration.sensitive'
 ])
 function hasAnyWrite(subject) {
   const permissions = resolvePermissions(subject)

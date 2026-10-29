@@ -566,6 +566,6 @@ function createTicketStore({ sql, db }) {
       if(JSON.stringify(item.sla)!==JSON.stringify(before.sla)){item.version++;await save(q,item)}
     })
   }
-  return {ensure,query,run,syncLegacy,syncServices,processSla,attachment,ingestMail,applyDelivery}
+  return {ensure,query,run,syncLegacy,syncServices,processSla,attachment,ingestMail,applyDelivery,transaction}
 }
 module.exports={createTicketStore,SCHEMA}

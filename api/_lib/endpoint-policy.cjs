@@ -8,6 +8,8 @@ function assertEndpointPermission(user, method, route) {
   if (!catalog.isGranular(user)) return
   const require = permission => write.requirePermission(user, permission)
   if (route.startsWith('/auth/') && !route.includes('password-reset-requests')) return
+  if (route === '/sales/bookings') return require(method === 'GET' ? 'sales.view' : 'sales.reserve')
+  if (route === '/registration/forms') return require('registration.read')
   if (route === '/auth/password-reset-requests') return require(method === 'GET' ? 'employees.requests.read' : 'employees.requests.resolve')
   if (['/state', '/state/revision', '/weather', '/holidays'].includes(route) && method === 'GET') return
   if (route === '/state' && ['PATCH', 'PUT'].includes(method)) {

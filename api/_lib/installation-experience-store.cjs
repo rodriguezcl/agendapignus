@@ -19,10 +19,13 @@ function createExperienceStore({sql,db}) {
       const registrations=require('./registration-confirmation.cjs').confirmations(previous,next)
       // Preserve receipts already queued by the previous ticket workflow.
       const tickets=registrations.length ? (await query('SELECT data FROM pignus_tickets WHERE data LIKE ?', ['%"receiptSentAt"%'])).map(row=>JSON.parse(row.data)) : []
-      const items=[...completionInvitations(previous,next),...registrations.filter(item=>!tickets.some(ticket=>ticket.registrationForm?.receiptSentAt && (item.serviceIds.includes(String(ticket.registrationForm.serviceId)) || (ticket.serviceIds||[]).some(id=>item.serviceIds.includes(String(id))))))]
+      const items=[...require('./appointment-confirmation.cjs').confirmations(previous,next),...completionInvitations(previous,next),...registrations.filter(item=>!tickets.some(ticket=>ticket.registrationForm?.receiptSentAt && (item.serviceIds.includes(String(ticket.registrationForm.serviceId)) || (ticket.serviceIds||[]).some(id=>item.serviceIds.includes(String(id))))))]
       if(!items.length)return
       await ensure()
-      for(const item of items) await query(`INSERT INTO ${TABLE} (id,service_id,customer_id,status,payload,created_at,updated_at,next_attempt_at,history) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`,[item.id,item.serviceId,item.customerId,item.recipient?'queued':'needs_email',JSON.stringify(item),now,now,now,JSON.stringify([{at:now,action:'created'}])])
+      for(const item of items) {
+        if(item.kind==='appointment') await query(`UPDATE ${TABLE} SET status='queued',payload=?,updated_at=?,next_attempt_at=?,last_error=NULL WHERE id=? AND status IN ('cancelled','queued','retry','needs_email')`,[JSON.stringify(item),now,now,item.id])
+        await query(`INSERT INTO ${TABLE} (id,service_id,customer_id,status,payload,created_at,updated_at,next_attempt_at,history) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`,[item.id,item.serviceId,item.customerId,item.recipient?'queued':'needs_email',JSON.stringify(item),now,now,now,JSON.stringify([{at:now,action:'created'}])])
+      }
     },
     async list() {return (await query(`SELECT * FROM ${TABLE} ORDER BY created_at DESC`)).map(parse)},
     async get(id) {return parse((await query(`SELECT * FROM ${TABLE} WHERE id=?`,[id]))[0])},
