@@ -6,7 +6,7 @@ import { completionLabel } from "../../../domain/agenda/completion-label.mjs";
 import '../../../components/work-completion.css'
 import { serviceTypesFor, serviceChargePatch, serviceChargesTotal } from "../../../domain/services/multi-service.mjs";
 import { serviceColorClass, normalizeInternalChecklist, createInternalChecklistItem, serviceExtraAvailability, normalizeFormValue, FORM_OPTIONS, PAYMENT_OPTIONS, normalizeCurrencyAmount, formatCurrencyAmount } from "../../services/application/service-fields.mjs";
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useId } from "react";
 import { normalizeSearchText } from "../../../domain/shared/normalization.mjs";
 import { customerKind } from "../../customers/application/customer-model.mjs";
 import RequiredLabel from "../../../presentation/components/forms/RequiredLabel.jsx";
@@ -150,14 +150,23 @@ export function LunchCard({ hours }) {
 }
 
 export function ServiceEstimatedDurationField({ value, onChange, className = '', required = true, disabled = false }) {
+  const fieldId = useId()
   const duration = normalizeServiceEstimatedMinutes(value)
-  const hours = Math.floor(duration / 60)
-  const minutes = duration % 60
-  const update = (nextHours, nextMinutes) => {
-    const total = Number(nextHours) * 60 + Number(nextMinutes)
-    onChange(Math.min(MAX_SERVICE_ESTIMATED_MINUTES, Math.max(15, total)))
+  const options = Array.from({ length: MAX_SERVICE_ESTIMATED_MINUTES / 15 }, (_, index) => (index + 1) * 15)
+  // Preserve saved custom durations without silently rounding existing services.
+  if (!options.includes(duration)) options.push(duration)
+  options.sort((first, second) => first - second)
+  const optionLabel = total => {
+    const hours = Math.floor(total / 60), minutes = total % 60
+    if (!hours) return `${minutes} minutos`
+    return `${hours} ${hours === 1 ? 'hora' : 'horas'}${minutes ? ` ${minutes} min` : ''}`
   }
-  return <div className={`task-duration-field ${className}`.trim()}><span><RequiredLabel required={required}>Tiempo estimado</RequiredLabel></span><div><label><BufferedInput disabled={disabled} aria-label="Horas estimadas del servicio" type="number" inputMode="numeric" min="0" max="12" step="1" value={hours} onCommit={value => update(value, minutes)} /><small>h</small></label><label><select disabled={disabled} aria-label="Minutos estimados del servicio" value={minutes} onChange={event => update(hours, event.target.value)}><option value="0">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option></select><small>min</small></label></div></div>
+  return <div className={`task-duration-field ${className}`.trim()}>
+    <label htmlFor={fieldId}><RequiredLabel required={required}>Tiempo estimado</RequiredLabel></label>
+    <select id={fieldId} disabled={disabled} required={required} value={duration} onChange={event => onChange(Number(event.target.value))}>
+      {options.map(total => <option key={total} value={total}>{optionLabel(total)}</option>)}
+    </select>
+  </div>
 }
 
 export function BufferedTextarea({ value, onCommit, delay = 500, ...textareaProps }) {

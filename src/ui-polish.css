@@ -2519,21 +2519,12 @@ html.modal-open body {
   font-weight: 700;
 }
 
-.task-duration-field > div {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 7px;
-}
-
 .task-duration-field label {
-  display: grid !important;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 5px !important;
+  display: block !important;
+  margin: 0;
 }
 
-.task-duration-field :is(input, select) { min-width: 0; width: 100%; }
-.task-duration-field small { color: #718174; font-weight: 600; }
+.task-duration-field select { min-width: 0; width: 100%; }
 
 .technician-crew-summary {
   display: flex;
