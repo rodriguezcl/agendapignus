@@ -7,4 +7,6 @@
 .sales-booking label{font-weight:600;font-size:14px}.sales-booking label input,.sales-booking label select,.sales-booking label textarea{font-weight:400}
 .sales-booking .sales-reservation{border-color:var(--sales-border)}.sales-booking .sales-feedback{border-color:var(--sales-border);border-left-color:#b48110;margin:16px 0}
 .sales-booking fieldset:disabled .sales-location-map{pointer-events:none;opacity:.65}
+.sales-coordinates summary{cursor:pointer;padding:12px 0;color:var(--sales-muted)}
+.sales-booking .sales-feedback{overflow-wrap:anywhere}
 @media(max-width:600px){.sales-booking input:not([type=checkbox]),.sales-booking select,.sales-booking textarea{font-size:16px}}

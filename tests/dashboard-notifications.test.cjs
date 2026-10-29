@@ -16,7 +16,7 @@ const deepFreeze = value => {
   }
   return value
 }
-const operationalAccess = ['weekly.view', 'history.view', 'records.read']
+const operationalAccess = ['weekly.view', 'history.view', 'records.read', 'planning.reservation.link', 'planning.confirm', 'planning.reschedule', 'planning.edit']
 const notificationFamilies = [
   ['notifications.collections', 'collection:collection'],
   ['notifications.reservations', 'reservation:reservation'],
@@ -33,6 +33,39 @@ const allFamilyPermissions = [
   'vehicles.view', 'vehicle.insurance.read', 'accounts.view',
   'employees.view', 'employees.requests.read', 'records.contact'
 ]
+
+test('operator and read-only agenda roles do not inherit administrative task notices, including saved switches', async () => {
+  const { selectDashboardNotifications, dashboardNotificationAccess } = await load()
+  const policy = require('../api/_lib/permission-catalog.cjs')
+  const legacy = { id: 'operator', roleCode: 'operator', permissions: { weekly: true } }
+  const switches = Object.fromEntries(notificationFamilies.map(([key]) => [key, true]))
+  const readers = [legacy, { ...legacy, permissions: policy.toGranularPermissions(legacy) },
+    granularUser(['weekly.view', 'records.read', 'records.contact', 'records.financial', 'tickets.view', 'tickets.create'], switches)]
+  for (const user of readers) {
+    assert.deepEqual(selectDashboardNotifications({ ...allFamilyState(), user }), [])
+    assert.equal(dashboardNotificationAccess(user)['notifications.tickets'], true)
+    assert.equal(policy.can(user, 'tickets.create'), true)
+  }
+})
+
+test('each administrative notice requires its task permission and responds immediately to revocation', async () => {
+  const { selectDashboardNotifications } = await load()
+  const expected = {
+    'planning.reservation.link': ['reservation:reservation'],
+    'planning.confirm': ['pending:confirmation'],
+    'planning.reschedule': ['pending:overdue', 'pending:rescheduling', 'pending:today'],
+    'planning.edit': ['pending:overdue', 'pending:today'],
+    'history.complete': ['pending:overdue', 'pending:today'],
+    'history.cancel': ['pending:overdue', 'pending:today']
+  }
+  for (const [action, ids] of Object.entries(expected)) {
+    const user = granularUser(['weekly.view', 'history.view', 'records.read', 'records.contact', 'records.financial', action],
+      Object.fromEntries(notificationFamilies.map(([key]) => [key, true])))
+    assert.deepEqual(noticeIds(selectDashboardNotifications({ ...allFamilyState(), user })), ids, action)
+    user.permissions[action] = false
+    assert.deepEqual(selectDashboardNotifications({ ...allFamilyState(), user }), [], action)
+  }
+})
 function allFamilyState() {
   return {
     today: '2026-10-20', now: Date.parse('2026-10-20T12:00:00Z'),

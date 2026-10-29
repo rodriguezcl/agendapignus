@@ -47,6 +47,10 @@ test('PostgreSQL subscriptions: silent enrollment, due dates, ownership, retries
     assert.deepEqual(notices.filter(n=>n.target.type==='collection').map(n=>n.id),['collection:service'])
     const denied={...user,permissions:{__catalogV2:true}}
     assert.deepEqual(await push.notificationsFor(sql,state,denied),[])
+    const reservationState={...state,history:[{id:'reservation',date:'2026-10-24',status:'Pendiente',subscriberReservation:true,form:'Completo',formEmail:'qa@example.test'}]}
+    const operator={id:'operator',roleCode:'operator',permissions:{'notifications.tickets':false}}
+    const reader={id:'reader',roleCode:'custom',permissions:{__catalogV2:true,'weekly.view':true,'records.read':true,'records.financial':true,'records.contact':true,'notifications.reservations':true,'notifications.pendingToday':true}}
+    for(const actor of [operator,reader]) assert.deepEqual(await push.notificationsFor(sql,reservationState,actor,new Date('2026-10-24T12:00:00Z')),[])
     let messages=[],available=[{id:'new',target:{type:'collection'}}]
     const run=(send=async(c,s,p)=>{messages.push(p)})=>push.processPush({sql,readState,select:async()=>available,send})
     const due=()=>pg.exec("update pignus_push_subscriptions set next_attempt_at=now()-interval '1 minute'")

@@ -1876,11 +1876,9 @@
         "records.read"
       ],
       "any": [
-        "weekly.view",
-        "agenda.view",
-        "history.view"
+        "planning.reservation.link"
       ],
-      "note": "Sólo incluye reservas visibles dentro del alcance del rol.",
+      "note": "Requiere permiso para gestionar esta tarea; consultar la agenda no activa este aviso. Respeta el alcance de servicios del rol.",
       "sensitive": false
     },
     {
@@ -1896,11 +1894,12 @@
         "records.read"
       ],
       "any": [
-        "weekly.view",
-        "agenda.view",
-        "history.view"
+        "planning.edit",
+        "planning.reschedule",
+        "history.complete",
+        "history.cancel"
       ],
-      "note": "Sólo cuenta servicios visibles dentro del alcance del rol.",
+      "note": "Requiere permiso para gestionar esta tarea; consultar la agenda no activa este aviso. Respeta el alcance de servicios del rol.",
       "sensitive": false
     },
     {
@@ -1916,11 +1915,9 @@
         "records.read"
       ],
       "any": [
-        "weekly.view",
-        "agenda.view",
-        "history.view"
+        "planning.confirm"
       ],
-      "note": "No habilita la confirmación de servicios.",
+      "note": "Requiere permiso para gestionar esta tarea; consultar la agenda no activa este aviso. Respeta el alcance de servicios del rol.",
       "sensitive": false
     },
     {
@@ -1936,11 +1933,9 @@
         "records.read"
       ],
       "any": [
-        "weekly.view",
-        "agenda.view",
-        "history.view"
+        "planning.reschedule"
       ],
-      "note": "No habilita la reprogramación de servicios.",
+      "note": "Requiere permiso para gestionar esta tarea; consultar la agenda no activa este aviso. Respeta el alcance de servicios del rol.",
       "sensitive": false
     },
     {
@@ -1956,11 +1951,12 @@
         "records.read"
       ],
       "any": [
-        "weekly.view",
-        "agenda.view",
-        "history.view"
+        "planning.edit",
+        "planning.reschedule",
+        "history.complete",
+        "history.cancel"
       ],
-      "note": "Sólo incluye servicios visibles dentro del alcance del rol.",
+      "note": "Requiere permiso para gestionar esta tarea; consultar la agenda no activa este aviso. Respeta el alcance de servicios del rol.",
       "sensitive": false
     },
     {
@@ -2100,6 +2096,20 @@
       ],
       "any": [],
       "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "tickets.customers.all",
+      "label": "Buscar cualquier cuenta al crear tickets",
+      "groups": [
+        "tickets"
+      ],
+      "all": [
+        "tickets.view",
+        "tickets.create"
+      ],
+      "any": [],
+      "note": "Permite seleccionar cuentas y revisar coincidencias al cargar un ticket. No amplía Abonados y clientes, Historial ni el acceso general a tickets ajenos.",
       "sensitive": false
     },
     {

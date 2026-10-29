@@ -37,6 +37,55 @@ async function rejectsStatus(fn, statusCode, pattern) {
 }
 
 for (const engine of ['sqlite', 'postgres']) {
+  test(`Tickets ${engine}: Supervisor busca cuentas fuera de CCTV sólo para cargar y comparar solicitudes`, async () => {
+    const env = await fixture(engine), state = stateFixture()
+    const policy = require('../api/_lib/permission-catalog.cjs')
+    const read = require('../api/_lib/granular-read-policy.cjs')
+    const supervisor = { id: 'supervisor', role: 'Supervisor', roleCode: 'supervisor', permissions: {} }
+    state.customers[0].name = 'MARTIN FRENCH'
+    state.customers[0].cctvService = false
+    state.customers[1].cctvService = true
+    state.customers.push({ customerId: 'inactive', account: 'PIG-9', name: 'FRENCH INACTIVO', softguardPresence: { status: 'inactive' } })
+    state.history = [{ id: 'private-visit', customerId: 'customer-1', status: 'Pendiente' }]
+    try {
+      const operators = [supervisor, { ...supervisor, permissions: policy.toGranularPermissions(supervisor) }]
+      const existing = (await env.store.run(administrator, state, createInput())).ticket
+      const withPrivateNote = (await env.store.run(administrator, state, command('comment', { id: existing.id, version: existing.version, note: 'Nota privada de administración', visibility: 'internal' }))).ticket
+      for (const actor of operators) {
+        const result = await env.store.query(actor, state, { mode: 'customers', search: 'martin french' })
+        assert.deepEqual(result.items.map(c => c.account), ['PIG-1'])
+        assert.deepEqual((await env.store.query(actor, state, { mode: 'customers', search: 'PIG-1' })).items, result.items)
+        assert.equal((await env.store.query(actor, state, { mode: 'customers', search: 'FRENCH' })).items.length, 1)
+        assert.equal(result.items[0].monthlyFee, undefined)
+        assert.equal(read.customerReadable(state.customers[0], actor, state), false)
+        assert.equal(read.customerReadable(state.customers[1], actor, state), true)
+        assert.equal(read.serviceReadable(state.history[0], actor, state), false)
+        assert.throws(() => domain.customerFor({ customerId: 'customer-1' }, actor, state), e => e.statusCode === 403)
+        await rejectsStatus(() => env.store.query(actor, state, { mode: 'detail', id: existing.id }), 404)
+        const review = await env.store.query(actor, state, { mode: 'duplicateDetail', id: existing.id, customerId: 'customer-1' })
+        assert.ok(!JSON.stringify(review).includes('Nota privada'))
+        assert.equal(review.ticket.customerSnapshot, undefined)
+        await rejectsStatus(() => env.store.run(actor, state, createInput()), 409)
+        await rejectsStatus(() => env.store.run(actor, state, createInput({ serviceId: 'private-visit' })), 403)
+      }
+      const found = await env.store.query(supervisor, state, { mode: 'duplicates', customerId: 'customer-1' })
+      assert.deepEqual(found.candidates.map(c => c.id), [withPrivateNote.id])
+      const created = (await env.store.run(supervisor, state, createInput({ allowDuplicate: true, duplicateToken: found.duplicateToken }))).ticket
+      assert.equal(created.customerId, 'customer-1')
+      assert.equal((await env.store.query(supervisor, state, { mode: 'detail', id: created.id })).ticket.id, created.id)
+      assert.equal((await env.store.query(supervisor, state, {})).total, 1)
+      const restricted = { ...supervisor, permissions: { ...policy.toGranularPermissions(supervisor), 'tickets.customers.all': false } }
+      assert.deepEqual((await env.store.query(restricted, state, { mode: 'customers', search: 'french' })).items, [])
+      await rejectsStatus(() => env.store.run(restricted, state, createInput()), 403)
+      await rejectsStatus(() => env.store.query(restricted, state, { mode: 'duplicates', customerId: 'customer-1' }), 403)
+      const noCreate = { ...supervisor, permissions: { ...policy.toGranularPermissions(supervisor), 'tickets.create': false } }
+      assert.equal(policy.can(noCreate, 'tickets.customers.all'), false)
+      await rejectsStatus(() => env.store.query(noCreate, state, { mode: 'customers', search: 'french' }), 403)
+    } finally { await env.close() }
+  })
+}
+
+for (const engine of ['sqlite', 'postgres']) {
   test(`Tickets ${engine}: persistencia, permisos, duplicados y trazabilidad`, async t => {
     const env = await fixture(engine), { store } = env, state = stateFixture()
     try {

@@ -153,10 +153,13 @@ function snapshot(customer, user) {
   if (!user || permissions.can(user, 'records.contact')) { result.address = customer.address || ''; result.phone = customer.phone || '' }
   return result
 }
-function customerFor(input, user, state) {
+function intakeCustomerReadable(customer, user, state) {
+  return Boolean(customer && (read.customerReadable(customer, user, state) || permissions.can(user, 'tickets.customers.all')))
+}
+function customerFor(input, user, state, { intake = false } = {}) {
   if (!input.customerId) return null
   const customer = (state.customers || []).find(item => id(item.customerId || item.id) === id(input.customerId))
-  if (!customer || !read.customerReadable(customer, user, state)) fail('La cuenta no está disponible dentro de tu alcance.', 403)
+  if (!customer || !(intake ? intakeCustomerReadable(customer, user, state) : read.customerReadable(customer, user, state))) fail('La cuenta no está disponible dentro de tu alcance.', 403)
   return customer
 }
 function duplicateCustomer(input, user, state, { allowNoCustomer = false } = {}) {
@@ -166,7 +169,7 @@ function duplicateCustomer(input, user, state, { allowNoCustomer = false } = {})
   if (serviceId && (!can(user, 'fromService') || !service || service.vehicleControl || !read.serviceReadable(service, user, state) || personalScope(user) && !(service.technicianIds || []).some(value => id(value) === id(user.id)))) fail('No tenés acceso a este servicio para revisar coincidencias.', 403)
   if (!can(user, 'create') && !service) fail('Revisá las coincidencias desde un servicio asignado.', 403)
   const serviceCustomerId = id(service && (read.customerForRecord(service, state)?.customerId || service.customerId))
-  const customer = customerFor({ customerId: input.customerId || serviceCustomerId }, user, state)
+  const customer = customerFor({ customerId: input.customerId || serviceCustomerId }, user, state, { intake: !serviceId })
   if (!customer) {
     if (service && allowNoCustomer) return null
     fail('Seleccioná la cuenta para revisar sus casos abiertos.')
@@ -196,7 +199,7 @@ function newTicket(input, user, state, config, number, now) {
   if (service) origin = 'technical'
   const serviceCustomer = service && read.customerForRecord(service, state)
   if (serviceCustomer && input.customerId && id(input.customerId) !== id(serviceCustomer.customerId)) fail('La cuenta no coincide con el servicio.')
-  const customer = customerFor({ customerId: serviceCustomer?.customerId || input.customerId }, user, state)
+  const customer = customerFor({ customerId: serviceCustomer?.customerId || input.customerId }, user, state, { intake: !serviceId })
   const { category, subcategory, effective } = classification(config, input.categoryId, input.subcategoryId)
   if ((effective.customerPolicy === 'required' || input.scope === 'customer' || origin === 'phone') && !customer) fail('Esta categoría requiere seleccionar un abonado o cliente.')
   if (effective.customerPolicy === 'none' && customer) fail('Esta categoría corresponde a solicitudes sin cuenta.')
@@ -250,4 +253,4 @@ function present(ticket, user, entries = [], aliases = [], detailed = false, con
 function duplicatesToken(customerId, tickets) {
   return crypto.createHash('sha256').update(JSON.stringify([customerId, tickets.map(ticket => [ticket.id, ticket.version]).sort((a, b) => a[0].localeCompare(b[0]))])).digest('hex')
 }
-module.exports = { STATUSES, PRIORITIES, OPEN_STATUSES, ORIGINS, ACTION_PERMISSIONS, fail, can, id, normalized, clone, text, email, timestamp, defaultConfig, validateConfig, classification, personalScope, assignedTicketIds, visible, assertVisible, assignees, snapshot, customerFor, duplicateCustomer, assertDuplicate, duplicatePreview, newTicket, entry, present, metadataAttachment, duplicatesToken, subject }
+module.exports = { STATUSES, PRIORITIES, OPEN_STATUSES, ORIGINS, ACTION_PERMISSIONS, fail, can, id, normalized, clone, text, email, timestamp, defaultConfig, validateConfig, classification, personalScope, assignedTicketIds, visible, assertVisible, assignees, snapshot, intakeCustomerReadable, customerFor, duplicateCustomer, assertDuplicate, duplicatePreview, newTicket, entry, present, metadataAttachment, duplicatesToken, subject }

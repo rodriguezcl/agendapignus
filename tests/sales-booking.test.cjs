@@ -65,9 +65,12 @@ test('PostgreSQL: sales creation and form submission queue the confirmation atom
   const holidays = require('../api/_lib/holidays.cjs'), original = holidays.fetchNationalHolidays; holidays.fetchNationalHolidays = async () => []
   try {
     const call = input => sales.handle({ connection, kind: 'sql', user: actor, method: 'POST', input, formState })
-    const draft = inputFor(date), slot = (await call({ ...draft, action: 'slots' })).slots[0]
+    const draft = { ...inputFor(date), locationApproximate: true, locationSource: 'neighborhood', locationLabel: 'Referencia de manzana' }, slot = (await call({ ...draft, action: 'slots' })).slots[0]
     const result = await call({ ...draft, action: 'reserve', teamId: slot.teamId, time: slot.time, requestId: 'postgres-reservation' })
-    const state = await formState.load(); state.history[0].awaitingConfirmation = false; await formState.save(null, null, state)
+    const state = await formState.load()
+    assert.equal(state.history[0].visitLocation.approximate, true)
+    assert.equal(state.history[0].salesBooking.reviewLocation, true)
+    state.history[0].awaitingConfirmation = false; await formState.save(null, null, state)
     const token = result.reservation.link.split('#')[1]
     const publicCall = input => native.handle({ connection, kind: 'sql', publicRequest: true, method: 'POST', input: { ...input, token }, formState })
     const form = await publicCall({ action: 'read' })
@@ -94,12 +97,16 @@ test('reserve transaction creates one pending service and private link, retries 
   holidays.fetchNationalHolidays = async () => []
   try {
     const call = (input, user = actor, method = 'POST') => sales.handle({ connection: db, kind: 'db', user, method, input, formState })
-    const draft = inputFor(date), slot = (await call({ ...draft, action: 'slots' })).slots[0]
+    const draft = { ...inputFor(date), address: '', locationSource: 'manual' }, slot = (await call({ ...draft, action: 'slots' })).slots[0]
     const command = { ...draft, action: 'reserve', teamId: slot.teamId, time: slot.time, requestId: 'test-reservation-one' }
     const [first, retry] = await Promise.all([call(command), call(command)])
     assert.equal(first.reservation.id, retry.reservation.id)
     assert.ok(first.reservation.link.startsWith('/alta#'))
     const state = await formState.load()
+    assert.match(state.history[0].address, /Ubicación indicada en el mapa/)
+    assert.equal(state.history[0].visitLocation.address, state.history[0].address)
+    assert.deepEqual(state.history[0].visitLocation.coordinates, point)
+    assert.equal(state.history[0].salesBooking.reviewLocation, true)
     assert.equal(state.history.length, 1); assert.equal(state.history[0].awaitingConfirmation, true)
     assert.equal(state.agenda.weekly[date].teams[0].tasks.length, 1)
     assert.equal(state.agenda.teams[0].tasks[0].historyId, first.reservation.id)

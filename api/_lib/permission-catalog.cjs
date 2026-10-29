@@ -55,6 +55,7 @@ function legacySelection(subject) {
   grant('sales.reserve', moduleOn('sales') && !technician && !operator && !supervisor)
   grant('followups.view followups.create', technical)
   grant('tickets.view tickets.create tickets.comment', operator || supervisor || technical || moduleOn('followups'))
+  grant('tickets.customers.all', supervisor)
   grant('tickets.fromService', technical)
   grant('tickets.scope.assigned', operator || supervisor || technical || moduleOn('followups'))
   grant('records.read records.contact', operator || supervisor || technical || plan || moduleOn('history') || moduleOn('accounts') || moduleOn('collections'))
@@ -92,7 +93,7 @@ function legacySelection(subject) {
   grant('settings.roles.read', moduleOn('settings'))
   grant('registration.read registration.manage', !technician && !operator && !supervisor && (plan || accounts || history))
   grant('settings.workday.read', moduleOn('settings') && feature('weeklyHours', 'weekly'))
-  // Existing roles inherit notices from their effective reading capabilities,
+  // Existing roles inherit notices from their effective task capabilities,
   // while a saved notification preference must remain explicit.
   if(!hasOwn(source,'notifications.followups'))delete result['notifications.followups']
   NOTIFICATION_IDS.forEach(id => {

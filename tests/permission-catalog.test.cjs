@@ -5,7 +5,7 @@ const custom = permissions => ({ roleCode: 'role-test', role: 'Prueba', permissi
 
 test('catalogue contains unique capabilities with known acyclic prerequisites', () => {
   assert.equal(policy.validateCatalog(), true)
-  assert.equal(policy.CATALOG.length, 162)
+  assert.equal(policy.CATALOG.length, 163)
   assert.equal(policy.MODULES.length, 17)
   assert.equal(policy.PERMISSION_GROUPS.length, 18)
   assert.equal(policy.MODULES.some(([id]) => id === 'notifications'), false)
@@ -118,6 +118,10 @@ test('request snapshots are immutable without caching subsequent revocations', (
 })
 
 const noticePrerequisites = {
+  'planning.reservation.link': true,
+  'planning.confirm': true,
+  'planning.reschedule': true,
+  'planning.edit': true,
   'followups.view': true,
   'weekly.view': true,
   'records.read': true,
@@ -132,7 +136,7 @@ const noticePrerequisites = {
   'employees.requests.read': true
 }
 
-test('existing granular roles inherit only notices supported by their effective reading permissions', () => {
+test('existing granular roles inherit only notices supported by their effective task permissions', () => {
   assert.equal(policy.NOTIFICATION_IDS.length, 12)
   const role = custom(noticePrerequisites)
   for (const id of policy.NOTIFICATION_IDS) assert.equal(policy.can(role, id), true, id)
@@ -146,7 +150,7 @@ test('existing granular roles inherit only notices supported by their effective 
 test('legacy notification defaults follow actual capabilities instead of role names or raw module flags', () => {
   const operator = { name: 'Operador', permissions: { collections: true, vehicles: true, employees: true } }
   assert.equal(policy.can(operator, 'notifications.collections'), false)
-  assert.equal(policy.can(operator, 'notifications.reservations'), true)
+  assert.equal(policy.can(operator, 'notifications.reservations'), false)
   assert.equal(policy.can(operator, 'notifications.insurance'), false)
   assert.equal(policy.can(operator, 'notifications.passwordRequests'), false)
   const coordinator = { code: 'coordinator', permissions: { collections: true, vehicles: true, accounts: true } }
@@ -185,7 +189,7 @@ test('new role defaults and reenabled parents never turn on explicitly disabled 
   assert.match(policy.dependencyReason('notifications.collections', updated.permissions), /Cobranzas/)
 })
 
-test('notification defaults normalize, migrate, snapshot and delegate consistently without write privileges', async () => {
+test('notification defaults normalize, migrate, snapshot and delegate consistently with task permissions', async () => {
   const { canDelegateRole } = await import('../src/domain/access/role-delegation.mjs')
   const { PERMISSION_GROUPS, toGranularPermissions, canPermission } = await import('../src/domain/access/permissions.mjs')
   assert.deepEqual(PERMISSION_GROUPS, policy.PERMISSION_GROUPS)
@@ -195,7 +199,7 @@ test('notification defaults normalize, migrate, snapshot and delegate consistent
   const request = policy.permissionSnapshot(role)
   assert.deepEqual(policy.normalizePermissions(resolved), resolved)
   assert.deepEqual(policy.resolvePermissions(custom(migrated)), resolved)
-  assert.equal(policy.hasAnyWrite(role), false)
+  assert.equal(policy.hasAnyWrite(role), true)
   for (const id of policy.NOTIFICATION_IDS) {
     assert.equal(canPermission(role, id), policy.can(request, id), id)
     assert.equal(migrated[id], true, id)

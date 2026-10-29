@@ -25,16 +25,19 @@ function LocationPicker({ value, onChange }) {
     if (marker.current) { marker.current.remove(); marker.current = null }
     if (value?.every(Number.isFinite) && Math.abs(value[0]) <= 85 && Math.abs(value[1]) <= 180) {
       marker.current = L.circleMarker(value, { radius: 10, color: '#fff', weight: 3, fillColor: '#7842d8', fillOpacity: 1 }).addTo(map.current)
-      map.current.panTo(value)
+      map.current.setView(value, Math.max(map.current.getZoom(), 16))
     }
   }, [value])
-  return <><div ref={root} className="sales-location-map" aria-label="Seleccioná el punto de instalación en el mapa" />{error && <p role="status">{error}</p>}<div className="sales-grid">{['Latitud', 'Longitud'].map((label, index) => <label key={label}>{label}<input inputMode="decimal" type="number" step="any" min={index ? -180 : -85} max={index ? 180 : 85} value={value?.[index] ?? ''} onChange={e => { const next = [...(value || [null, null])]; next[index] = e.target.value === '' ? null : Number(e.target.value); onChange(next) }} /></label>)}</div></>
+  return <><div ref={root} className="sales-location-map" aria-label="Seleccioná el punto de instalación en el mapa" />{error && <p role="status">{error}</p>}<details className="sales-coordinates"><summary>Ingresar coordenadas manualmente</summary><div className="sales-grid">{['Latitud', 'Longitud'].map((label, index) => <label key={label}>{label}<input inputMode="decimal" type="number" step="any" min={index ? -180 : -85} max={index ? 180 : 85} value={value?.[index] ?? ''} onChange={e => { const next = [...(value || [null, null])]; next[index] = e.target.value === '' ? null : Number(e.target.value); onChange(next) }} /></label>)}</div></details></>
 }
 export default function SalesBooking({ onSaved, navigationGuardRef }) {
   const { can } = usePermissions()
   const [draft, setDraft] = useState(initial), [items, setItems] = useState([]), [slots, setSlots] = useState([]), [choice, setChoice] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState(''), [reason, setReason] = useState(''), [saved, setSaved] = useState(null)
   const requestId = useRef(crypto.randomUUID()), sending = useRef(false), version = useRef(0)
   const [leave, setLeave] = useState(null)
+  const [locating, setLocating] = useState(false), [locations, setLocations] = useState([]), [locationMessage, setLocationMessage] = useState('')
+  const lookupVersion = useRef(0), lookupBusy = useRef(false), locatedKey = useRef('')
+  useEffect(() => () => { lookupVersion.current++ }, [])
   const dirty = !saved && Boolean(draft.client || draft.phone || draft.address || draft.coordinates || draft.detail)
   useEffect(() => {
     const guard = action => { if (sending.current) { setNotice('Esperá a que termine la operación.'); return }; if (dirty) setLeave(() => action); else action() }
@@ -47,8 +50,39 @@ export default function SalesBooking({ onSaved, navigationGuardRef }) {
   const load = () => requestJson(endpoint).then(data => setItems(data.items))
   useEffect(() => { let live = true; requestJson(endpoint).then(data => { if (live) setItems(data.items) }).catch(e => { if (live) setError(e.message) }); return () => { live = false } }, [])
   const update = patch => { version.current++; setDraft(old => ({ ...old, ...patch })); setSlots([]); setChoice(''); setReason(''); setError(''); setNotice('') }
+  const cancelLookup = () => { lookupVersion.current++; lookupBusy.current = false; setLocating(false); setLocations([]); locatedKey.current = '' }
+  const updateAddress = patch => {
+    cancelLookup(); setLocationMessage('')
+    update({ ...patch, coordinates: null, locationConfirmed: false, locationApproximate: false, locationSource: '', locationLabel: '' })
+  }
+  const chooseLocation = item => {
+    cancelLookup(); locatedKey.current = `${draft.installationZone}|${draft.address.trim()}`
+    update({ coordinates: item.coordinates, locationConfirmed: true, locationApproximate: item.approximate, locationSource: item.source, locationLabel: item.label })
+    setLocationMessage(`${item.approximate ? 'Ubicación de referencia aproximada' : 'Ubicación encontrada'}: ${item.label}. Podés ajustar el punto en el mapa.`)
+  }
+  const manualLocation = coordinates => {
+    cancelLookup(); locatedKey.current = `${draft.installationZone}|${draft.address.trim()}`
+    const valid = coordinates?.length === 2 && coordinates.every(Number.isFinite) && Math.abs(coordinates[0]) <= 85 && Math.abs(coordinates[1]) <= 180
+    update({ coordinates, locationConfirmed: valid, locationApproximate: false, locationSource: 'manual', locationLabel: '' })
+    setLocationMessage(valid ? 'Ubicación marcada en el mapa.' : 'Completá ambas coordenadas o marcá el punto en el mapa.')
+  }
+  async function locate(force = false) {
+    const address = draft.address.trim(), key = `${draft.installationZone}|${address}`
+    if (!address || sending.current || lookupBusy.current || (!force && locatedKey.current === key)) return
+    const expected = ++lookupVersion.current
+    lookupBusy.current = true; setLocating(true); setLocations([]); setLocationMessage('Buscando la dirección…')
+    try {
+      const data = await post({ action: 'locate', address, installationZone: draft.installationZone })
+      if (expected !== lookupVersion.current) return
+      locatedKey.current = key
+      if (data.items.length === 1) chooseLocation(data.items[0])
+      else { setLocations(data.items); setLocationMessage(data.items.length ? 'Encontramos varias ubicaciones. Elegí la que corresponde.' : data.message) }
+    } catch (e) { if (expected === lookupVersion.current) setLocationMessage(e.message) }
+    finally { if (expected === lookupVersion.current) { lookupBusy.current = false; setLocating(false) } }
+  }
   async function search(event) {
-    event.preventDefault(); if (sending.current) return
+    event.preventDefault(); if (sending.current || lookupBusy.current) return
+    if (!draft.locationConfirmed) { setError('Ingresá una dirección para ubicarla o marcá el lugar en el mapa antes de consultar horarios.'); return }
     sending.current = true; setBusy(true); setError(''); setSlots([]); setChoice(''); const expected = version.current
     try { const data = await post({ ...draft, action: 'slots' }); if (expected === version.current) { setSlots(data.slots); setReason(data.reason) } }
     catch (e) { setError(e.message) } finally { sending.current = false; setBusy(false) }
@@ -75,19 +109,22 @@ export default function SalesBooking({ onSaved, navigationGuardRef }) {
     {leave && <Confirm title="Salir de la reserva" detail="Los datos que completaste todavía no se guardaron. ¿Querés salir y descartarlos?" confirmLabel="Descartar y salir" action={() => { const action = leave; setLeave(null); action() }} close={() => setLeave(null)} />}
     <ModuleIntroduction><p>Reservá una instalación para revisión de Coordinación. La visita queda A confirmar y ocupa el horario propuesto.</p></ModuleIntroduction>
     {notice && <p className="sales-feedback" role="status">{notice}</p>}{error && <p className="field-error" role="alert">{error}</p>}
-    {saved ? <article className="panel sales-panel"><h2>Formulario de {saved.client}</h2><p>Propuesta: {saved.date.split('-').reverse().join('/')} · {saved.time} hs · {saved.team}</p>{linkControls(saved)}<button className="primary" onClick={() => { setSaved(null); setDraft(initial()); requestId.current = crypto.randomUUID(); setNotice('') }}>Crear otra reserva</button></article> : can('sales.reserve') && <form className="panel sales-panel" onSubmit={search}>
+    {saved ? <article className="panel sales-panel"><h2>Formulario de {saved.client}</h2><p>Propuesta: {saved.date.split('-').reverse().join('/')} · {saved.time} hs · {saved.team}</p>{linkControls(saved)}<button className="primary" onClick={() => { cancelLookup(); setLocationMessage(''); setSaved(null); setDraft(initial()); requestId.current = crypto.randomUUID(); setNotice('') }}>Crear otra reserva</button></article> : can('sales.reserve') && <form className="panel sales-panel" onSubmit={search}>
       <fieldset disabled={busy}><legend>1. Datos de la instalación</legend><div className="sales-grid">
         <label>Nombre y apellido<input required maxLength={160} autoComplete="section-sale name" value={draft.client} onChange={e => update({ client: e.target.value })} /></label>
         <label>Teléfono de contacto<input required type="tel" maxLength={60} autoComplete="section-sale tel" value={draft.phone} onChange={e => update({ phone: e.target.value })} /></label>
-        <label>Tipo de formulario<select value={draft.installationZone} onChange={e => update({ installationZone: e.target.value })}><option value="docta">Docta Urbanización</option><option value="nobu-town">Nobu Town</option><option value="residencial">Residencial</option></select></label>
+        <label>Tipo de formulario<select value={draft.installationZone} onChange={e => updateAddress({ installationZone: e.target.value })}><option value="docta">Docta Urbanización</option><option value="nobu-town">Nobu Town</option><option value="residencial">Residencial</option></select></label>
         <label>Duración estimada de instalación<select value={draft.estimatedMinutes} onChange={e => update({ estimatedMinutes: Number(e.target.value) })}>{Array.from({ length: 45 }, (_, i) => 60 + i * 15).map(n => <option key={n} value={n}>{Math.floor(n / 60)} h {n % 60 ? `${n % 60} min` : ''}</option>)}</select></label>
-      </div><label>Dirección completa<input required maxLength={300} autoComplete="section-sale street-address" value={draft.address} onChange={e => update({ address: e.target.value, locationConfirmed: false })} /></label><label>Detalle de la instalación<textarea maxLength={2000} value={draft.detail} onChange={e => update({ detail: e.target.value })} /></label>
-      <h3>2. Ubicación</h3><p>Acercá el mapa y tocá el lugar de la instalación. La dirección escrita no mueve el punto automáticamente.</p><LocationPicker value={draft.coordinates} onChange={coordinates => update({ coordinates, locationConfirmed: false })} />
-      <label className="sales-check"><input type="checkbox" required checked={draft.locationConfirmed} disabled={!draft.coordinates?.every(Number.isFinite)} onChange={e => update({ locationConfirmed: e.target.checked })} />Confirmé que el punto corresponde a esta dirección.</label>
-      <h3>3. Equipo y horario</h3><label>Fecha propuesta<input required type="date" min={initial().date} value={draft.date} onChange={e => update({ date: e.target.value })} /></label><p>Los traslados se estiman por distancia en línea recta con un margen. No contemplan calles ni tránsito. Coordinación revisará la propuesta.</p><button className="secondary" type="submit" disabled={busy}>{busy ? 'Procesando…' : 'Consultar horarios'}</button>
+      </div><label>Dirección completa<input maxLength={300} autoComplete="section-sale street-address" placeholder="Calle, altura y localidad; en Docta, manzana y sector" value={draft.address} onChange={e => updateAddress({ address: e.target.value })} onBlur={() => locate()} /></label><label>Detalle de la instalación<textarea maxLength={2000} value={draft.detail} onChange={e => update({ detail: e.target.value })} /></label>
+      <h3>2. Ubicación</h3><p>Al terminar de escribir la dirección, la ubicamos en el mapa. Si no tenés la dirección o necesitás corregirla, tocá el lugar de la instalación.</p>
+      <button type="button" className="secondary" disabled={locating || !draft.address.trim()} onClick={() => locate(true)}>{locating ? 'Buscando ubicación…' : 'Buscar dirección en el mapa'}</button>
+      {locationMessage && <p className="sales-feedback" role="status">{locationMessage}</p>}
+      {locations.length > 1 && <label>Ubicaciones encontradas<select value="" onChange={e => { if (e.target.value !== '') chooseLocation(locations[Number(e.target.value)]) }}><option value="">Seleccionar ubicación</option>{locations.map((item, index) => <option key={index} value={index}>{item.label}{item.approximate ? ' · Aproximada' : ''}</option>)}</select></label>}
+      <LocationPicker value={draft.coordinates} onChange={manualLocation} />
+      <h3>3. Equipo y horario</h3><label>Fecha propuesta<input required type="date" min={initial().date} value={draft.date} onChange={e => update({ date: e.target.value })} /></label><p>Los traslados se estiman por distancia en línea recta con un margen. No contemplan calles ni tránsito. Coordinación revisará la propuesta.</p><button className="secondary" type="submit" disabled={busy || locating}>{busy ? 'Procesando…' : 'Consultar horarios'}</button>
       {reason && <p role="status">{reason}</p>}{slots.length > 0 && <><label>Horarios compatibles según estimación<select required value={choice} onChange={e => setChoice(e.target.value)}><option value="">Seleccionar equipo y horario</option>{slots.map(slot => <option key={`${slot.teamId}|${slot.time}`} value={`${slot.teamId}|${slot.time}`}>{slot.time}–{slot.end} · {slot.teamLabel} · {slot.members.join(' / ')}{slot.reviewLocation ? ' · Revisar ubicación contigua' : ''}</option>)}</select></label>{selected && <div className="sales-feedback"><p>Traslado anterior: {selected.noPrevious ? 'sin visita previa registrada; revisar punto de salida' : selected.beforeMinutes == null ? 'ubicación pendiente de revisión' : `${selected.beforeMinutes} min estimados`}. Traslado siguiente: {selected.noFollowing ? 'sin visita siguiente registrada' : selected.afterMinutes == null ? 'ubicación pendiente de revisión' : `${selected.afterMinutes} min estimados`}.</p><p>El cliente verá la fecha propuesta como pendiente de confirmación. El correo de confirmación se enviará cuando Coordinación confirme y el formulario esté completo.</p></div>}<button type="button" className="primary" disabled={!selected || busy} onClick={reserve}>Reservar a confirmar y generar enlace</button></>}
       </fieldset>
     </form>}
-    <section className="panel sales-panel"><div className="sales-heading"><h2>Reservas registradas</h2><button className="secondary" disabled={busy} onClick={() => load().catch(e => setError(e.message))}>Actualizar listado</button></div>{!items.length && <p>Todavía no hay reservas para mostrar.</p>}{items.map(item => <article key={item.id} className="sales-reservation"><strong>{item.client}</strong><p>{item.address}</p><p>{item.date.split('-').reverse().join('/')} · {item.time} hs · {item.team}</p><p><strong>{item.status === 'Cancelado' ? 'Cancelado' : item.awaitingConfirmation ? 'A confirmar por Coordinación' : 'Visita confirmada'}</strong> · Formulario: {item.form === 'Completo' ? 'recibido' : 'pendiente'}</p>{item.reviewLocation && item.awaitingConfirmation && <p>Coordinación debe revisar las ubicaciones de las visitas contiguas.</p>}{linkControls(item)}</article>)}</section>
+    <section className="panel sales-panel"><div className="sales-heading"><h2>Reservas registradas</h2><button className="secondary" disabled={busy} onClick={() => load().catch(e => setError(e.message))}>Actualizar listado</button></div>{!items.length && <p>Todavía no hay reservas para mostrar.</p>}{items.map(item => <article key={item.id} className="sales-reservation"><strong>{item.client}</strong><p>{item.address}</p><p>{item.date.split('-').reverse().join('/')} · {item.time} hs · {item.team}</p><p><strong>{item.status === 'Cancelado' ? 'Cancelado' : item.awaitingConfirmation ? 'A confirmar por Coordinación' : 'Visita confirmada'}</strong> · Formulario: {item.form === 'Completo' ? 'recibido' : 'pendiente'}</p>{item.reviewLocation && item.awaitingConfirmation && <p>Coordinación debe revisar la ubicación de la instalación y las visitas contiguas.</p>}{linkControls(item)}</article>)}</section>
   </section>
 }
