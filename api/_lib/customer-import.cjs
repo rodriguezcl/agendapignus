@@ -80,6 +80,11 @@ function restoreCustomerImportBackup(currentCustomers = [], backup) {
     const presenceById = new Map(currentCustomers.map(c=>[String(c.customerId),c.softguardPresence]))
     const next = preserveSoftguardRetirementCustomers(currentCustomers, customers).map(c=>{
       const next={...c};delete next.softguardPresence
+      const prior = previousById.get(String(c.customerId))
+      if (prior) {
+        delete next.softguardAddress
+        if (prior.softguardAddress) next.softguardAddress = prior.softguardAddress
+      }
       if(presenceById.get(String(c.customerId)))next.softguardPresence=presenceById.get(String(c.customerId))
       return next
     })

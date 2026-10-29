@@ -9,6 +9,7 @@ import { pendingSoftguardRetirements } from '../customers/softguard-retirement.m
 import { canReadRecord } from '../access/record-scope.mjs'
 import policy from '../../../api/_lib/permission-catalog.cjs'
 import alarmZones from '../../../api/_lib/alarm-zones.cjs'
+import addressChange from '../../../api/_lib/address-change.cjs'
 
 export const DASHBOARD_PENDING_NOTICES = [
   { key: 'today', title: 'Pendientes de gestión', detail: 'Servicios de hoy que todavía requieren gestión.', tone: 'warning' },
@@ -80,6 +81,18 @@ export function selectDashboardNotifications({ history = [], vehicles = [], cust
   // Old in-memory commercial/contact fields must not outlive their permission.
   if (!can('records.financial') || !can('records.contact')) history = history.map(record => ({ ...record, form: undefined, formEmail: undefined }))
   const visibleCustomers = visibleNotificationCustomers(customers, history, subject)
+  const addressNotices = receives('softguard') && can('history.view') && can('records.contact')
+    ? addressChange.pendingAddressChanges(history, visibleCustomers).map(({ record, verification }) => ({
+      id: `address-change:${record.serviceJourney?.id || record.id}`,
+      soundKeys: [`address-change:${record.serviceJourney?.id || record.id}:${verification.status}`],
+      title: verification.status === 'planned' ? 'Cambio de domicilio: coordinar actualización en SoftGuard'
+        : verification.status === 'unchanged' ? 'Traslado completado: SoftGuard conserva el domicilio anterior'
+          : verification.status === 'different' ? 'Traslado completado: revisar domicilio en SoftGuard'
+            : 'Traslado completado: pendiente de verificar en SoftGuard',
+      tone: ['unchanged', 'different'].includes(verification.status) ? 'danger' : 'warning',
+      detail: `${record.client} · Domicilio actual: ${record.address}. Domicilio nuevo: ${record.newAddress}.${verification.status === 'planned' ? ' Prepará el cambio para cuando se complete el traslado.' : verification.address ? ` Última dirección importada: ${verification.address}. Actualizá SoftGuard y volvé a sincronizar.` : ' La próxima sincronización verificará el domicilio nuevo.'}`,
+      target: { type: 'history', recordId: String(record.id) }
+    })) : []
   const collectionDate = record => collectionService(record, history)?.date
   const notices = receives('collections') ? collectionRecords(history).filter(record => (!collectionConfirmed(record) || collectionNeedsReview(record)) && !collectionVoided(record) && collectionDate(record) && collectionDate(record) <= today).map(record => ({
     id: `collection:${record.id}`, title: collectionNeedsReview(record) ? 'Revisar importe: quedaron trabajos pendientes' : 'Cobranza pendiente de pago', tone: 'warning',
@@ -166,5 +179,5 @@ export function selectDashboardNotifications({ history = [], vehicles = [], cust
     detail: 'Hay cuentas PIG que coinciden con clientes CLI provenientes de una baja de servicio.', tone: 'warning',
     target: { type: 'softguard' }
   })
-  return notices
+  return [...addressNotices, ...notices]
 }

@@ -28,7 +28,7 @@ const taskMatchesRecord = (task, team, teamIndex, record, date) => {
     text(record.time || record.scheduledTime) === text(task.time) &&
     sameReference(task, record, 'serviceId', 'service') &&
     sameReference(task, record, 'customerId', 'client') &&
-    ['address', 'phone', 'detail', 'internalNote', 'paymentMethod', 'amount', 'monthlyFee', 'form', 'formEmail', 'servicePhotoUrl', 'servicePhotoAttachedAt'].every(key => text(task[key]) === text(record[key])) &&
+    ['address', 'newAddress', 'phone', 'detail', 'internalNote', 'paymentMethod', 'amount', 'monthlyFee', 'form', 'formEmail', 'servicePhotoUrl', 'servicePhotoAttachedAt'].every(key => text(task[key]) === text(record[key])) &&
     (task.freezeMonthlyFee ?? null) === (record.freezeMonthlyFee ?? null) && Number(task.frozenMonths || 0) === Number(record.frozenMonths || 0) &&
     Boolean(task.servicePhotoAttached) === Boolean(record.servicePhotoAttached)
 }

@@ -53,6 +53,7 @@ export function serviceCopyRecord(record, can) {
   const next = { ...record }
   if (!can('records.contact')) {
     delete next.address
+    delete next.newAddress
     delete next.phone
   }
   if (!can('records.financial')) {

@@ -1,6 +1,6 @@
 const { isDeepStrictEqual } = require('node:util')
 const { softguardRetirementPending } = require('./softguard-retirement.cjs')
-const protectedKeys = ['convertedFromAccount', 'convertedFromType', 'subscriptionEndedAt', 'softguardRetirementResolution']
+const protectedKeys = ['convertedFromAccount', 'convertedFromType', 'subscriptionEndedAt', 'softguardRetirementResolution', 'softguardAddress']
 const id = value => String(value ?? '')
 const account = value => String(value || '').trim().toUpperCase()
 const fail = message => { throw Object.assign(new Error(message), { statusCode: 403 }) }
@@ -13,7 +13,7 @@ function preserveSoftguardRetirementCustomers(current = [], proposed = [], { rej
     const next = { ...row }
     for (const key of protectedKeys) {
       if (reject && Object.hasOwn(row, key) && row[key] !== undefined && !isDeepStrictEqual(row[key], previous?.[key])) {
-        fail('La procedencia y la gestión de la baja en SoftGuard sólo se modifican desde sus acciones específicas.')
+        fail('La procedencia, la verificación de domicilio y la gestión de la baja en SoftGuard sólo se modifican desde sus acciones específicas.')
       }
       delete next[key]
       if (previous && Object.hasOwn(previous, key)) next[key] = previous[key]

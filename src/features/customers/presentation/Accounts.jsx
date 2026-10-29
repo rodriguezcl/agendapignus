@@ -41,14 +41,16 @@ export function Accounts({ persistSubscriptionCorrection, services, customers, s
     if (!can('customers.backup', isAdministrator)) return
     customerImportRepository.status().then(payload => setCanUndoImport(Boolean(payload?.canUndo))).catch(() => {})
   }, [isAdministrator, can('customers.backup', isAdministrator)])
-  const applyImport = async nextCustomers => {
+  const applyImport = async (nextCustomers, importedAccounts) => {
     if (!canImport) return
-    const payload = await customerImportRepository.apply(stateRevision, nextCustomers)
+    const payload = await customerImportRepository.apply(stateRevision, nextCustomers, importedAccounts)
+    const verifications = new Map((payload.addressVerifications || []).map(item => [String(item.customerId), item.softguardAddress]))
+    const importedCustomers = nextCustomers.map(customer => verifications.has(String(customer.customerId)) ? { ...customer, softguardAddress: verifications.get(String(customer.customerId)) } : customer)
     setCanUndoImport(Boolean(payload.canUndo)); setImportOpen(false)
     const importedPayload = Array.isArray(payload.customers)
       ? payload
       : Number(payload.customerCount) === nextCustomers.length
-        ? { ...payload, customers: nextCustomers }
+        ? { ...payload, customers: importedCustomers }
         : payload
     if (applyCustomerImportState) {
       if (!applyCustomerImportState(importedPayload)) await refreshRemoteState?.()
@@ -137,14 +139,14 @@ export function ImportModal({ customers, close, onImport }) {
     // Matching accounts are updated, while missing report values preserve prior
     // customer data instead of accidentally erasing it.
     const result = mergeImportedCustomers(customers, imported, createCustomerId)
-    setPreview({ ...result, total: imported.length, fileName: file.name })
+    setPreview({ ...result, importedAccounts: imported.map(customer => customer.account), total: imported.length, fileName: file.name })
     setMessage('')
   }
 
   const confirmImport = async () => {
     if (!preview || submitting) return
     setSubmitting(true); setMessage('')
-    try { await onImport(preview.customers) } catch (error) { setMessage(error.message || 'No se pudo completar la importación.'); setSubmitting(false) }
+    try { await onImport(preview.customers, preview.importedAccounts) } catch (error) { setMessage(error.message || 'No se pudo completar la importación.'); setSubmitting(false) }
   }
 
   return <div className="modal-layer"><div className="modal import-confirm-modal" role="dialog" aria-modal="true" aria-label="Importar abonados"><button title="Cerrá esta ventana y volvé a la pantalla anterior." className="close-modal" disabled={submitting} onClick={close}><Icon name="close" /></button><p className="eyebrow">IMPORTACIÓN MASIVA</p><h2>Importar abonados</h2><p>Seleccioná el reporte exportado. El archivo se analiza primero y la base solo cambia después de tu confirmación.</p><label className="file-drop"><Icon name="upload" size={30} /><b>Seleccioná un archivo .xls</b><small>Formato Maestro de Cuentas</small><input type="file" accept=".xls,.html" disabled={submitting} onChange={importFile} /></label>{preview && <div className="import-preview" role="status"><b>Revisá antes de confirmar</b><span>Archivo: {preview.fileName}</span><span>{preview.total} fila(s) válidas: {preview.created} abonado(s) nuevo(s) y {preview.updated} actualización(es).</span><small>Se guardará una copia de la base actual. Administración podrá deshacerla mientras no haya otra importación o modificación de clientes.</small></div>}{message && <p className="import-error">{message}</p>}<div className="modal-actions"><button title="Cancelá esta operación sin aplicar los cambios del formulario." className="secondary" disabled={submitting} onClick={close}><Icon name="close" size={16} />Cancelar</button><button title="Aplicá la importación de abonados después de revisar el archivo seleccionado." className="primary" disabled={!preview || submitting} onClick={confirmImport}>{submitting ? 'Importando…' : 'Confirmar importación'}</button></div></div></div>

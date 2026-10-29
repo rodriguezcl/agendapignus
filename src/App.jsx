@@ -37,6 +37,7 @@ import SoftGuardVerification from "./components/SoftGuardVerification.jsx";
 import SoftGuardRetirementReminder from "./components/SoftGuardRetirementReminder.jsx";
 import { fetchAuthWithRetry, fetchWithTimeout } from "./infrastructure/http/fetch-timeout.mjs";
 import { DEFAULT_2026_GUARD_ROTATION, firstSaturdayOfYear } from "./domain/agenda/annual-guards.mjs";
+import addressChange from '../api/_lib/address-change.cjs'
 import { ensureVehicleControlService } from "./domain/vehicles/vehicle-controls.mjs";
 import { normalizeServiceEstimatedMinutes } from "./domain/agenda/service-scheduling.mjs";
 import { buildCustomerReferenceIndex, reconcileCustomerReference } from "./domain/customers/customer-import.mjs";
@@ -596,7 +597,7 @@ export default function App() {
         members: patch.technicians || team.members,
         tasks: team.tasks.map(task => {
           const sameTask = record.sourceTaskId ? String(task.taskId) === String(record.sourceTaskId) : task.historyId ? String(task.historyId) === String(record.id) : task.client === record.client && task.service === record.service
-          return sameTask ? { ...task, customerId: patch.customerId ?? task.customerId, clientAccount: patch.clientAccount ?? task.clientAccount, clientNameAtService: patch.clientNameAtService ?? task.clientNameAtService, client: patch.client ?? task.client, serviceId: patch.serviceId ?? task.serviceId, service: patch.service ?? task.service, address: patch.address ?? task.address, phone: patch.phone ?? task.phone, detail: patch.detail ?? task.detail, internalNote: patch.internalNote ?? task.internalNote, internalChecklist: patch.internalChecklist ?? task.internalChecklist, ...serviceTrace(patch) } : task
+          return sameTask ? { ...task, customerId: patch.customerId ?? task.customerId, clientAccount: patch.clientAccount ?? task.clientAccount, clientNameAtService: patch.clientNameAtService ?? task.clientNameAtService, client: patch.client ?? task.client, serviceId: patch.serviceId ?? task.serviceId, service: patch.service ?? task.service, address: patch.address ?? task.address, newAddress: patch.newAddress ?? task.newAddress, phone: patch.phone ?? task.phone, detail: patch.detail ?? task.detail, internalNote: patch.internalNote ?? task.internalNote, internalChecklist: patch.internalChecklist ?? task.internalChecklist, ...serviceTrace(patch) } : task
         })
       })
       if (record.date === date) setTeams(updateTeamsForRecord)
@@ -744,6 +745,7 @@ export default function App() {
           clientAccount: draft.clientAccount,
           clientNameAtService: draft.clientNameAtService,
           address: draft.address,
+          newAddress: draft.newAddress || '',
            phone: draft.phone,
            detail: draft.detail,
            internalNote: draft.internalNote || '',
@@ -781,6 +783,7 @@ export default function App() {
           clientAccount: draft.clientAccount || '',
           clientNameAtService: draft.clientNameAtService || String(draft.client || '').replace(/^[^\s]+\s+/, ''),
           address: draft.address || '',
+          newAddress: draft.newAddress || '',
            phone: draft.phone || '',
            detail: draft.detail || '',
            internalNote: draft.internalNote || '',
@@ -886,7 +889,7 @@ export default function App() {
     const loadedRoles = Array.isArray(data.roles) ? data.roles.map(role => { const code = roleCode(role); if (isGranular(role)) return { ...role, code }; const permissions = resolvedRolePermissions({ ...role, code, permissions: { dashboard: true, weekly: role.permissions?.weekly ?? ['administrator', 'user', 'coordinator'].includes(code), ...role.permissions } }); return { ...role, code, permissions } }) : []
 
     const loaded_employees = Array.isArray(data.employees) ? data.employees.map(employee => { const assignedRole = loadedRoles.find(role => String(role.id) === String(employee.roleId)) || loadedRoles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role)); return assignedRole ? { ...employee, roleId: assignedRole.id, role: assignedRole.name } : employee }) : []
-    const loaded_services = ensureVehicleControlService(Array.isArray(data.services) ? data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) })) : [])
+    const loaded_services = addressChange.ensureAddressChangeService(ensureVehicleControlService(Array.isArray(data.services) ? data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) })) : []))
     const loaded_vehicles = Array.isArray(data.vehicles) ? data.vehicles : []
     const loaded_history = Array.isArray(data.history) ? data.history : []
     const loaded_customers = Array.isArray(data.customers) ? data.customers.map(customer => ({ ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer), name: normalizeCustomerName(customer.name) })) : []

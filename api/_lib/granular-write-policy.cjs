@@ -48,7 +48,7 @@ const RECORD_GROUPS = {
   journey: ['serviceJourney'], reservation: ['subscriberReservation'],
   technical: ['workCompletion', 'technicalStatus', 'technicalObservation', 'alarmZones', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'completedAt', 'journeyClosedAt', 'startedAt', 'startedById', 'startedByName', 'advanceRequest', 'originalScheduledTime', 'vehicleMileage', 'vehiclePhotoUrl', 'vehicleControlReportedAt', 'technicianRequest'],
   system: ['id', 'historyId', 'taskId', 'sourceTaskId', 'sourceHistoryId', 'createdBy', 'createdAt', 'updatedAt', 'status', 'collection', 'supervisorVisible', 'sourceTicketId', 'ticketNumber', 'ticketResolution'],
-  general: ['service', 'serviceId', 'services', 'serviceIds', 'serviceTypes', 'estimatedMinutes', 'estimatedMinutesCustomized', 'detail', 'description', 'address', 'phone', 'location', 'category', 'vehicleId', 'vehicleControl', 'guard', 'guardAdvance', 'advancedGuard']
+  general: ['service', 'serviceId', 'services', 'serviceIds', 'serviceTypes', 'estimatedMinutes', 'estimatedMinutesCustomized', 'detail', 'description', 'address', 'newAddress', 'phone', 'location', 'category', 'vehicleId', 'vehicleControl', 'guard', 'guardAdvance', 'advancedGuard']
 }
 const classified = new Set(Object.values(RECORD_GROUPS).flat())
 const nonempty = value => value != null && value !== '' && value !== false && value !== 0 && (!Array.isArray(value) || value.length)

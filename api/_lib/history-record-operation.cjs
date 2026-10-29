@@ -31,6 +31,7 @@ function synchronizeAgendaHistoryRecord(value, previous, next) {
     technicianIds: next.technicianIds ?? value.technicianIds,
     technicians: next.technicians ?? value.technicians,
     address: next.address ?? value.address,
+    newAddress: next.newAddress ?? value.newAddress,
     phone: next.phone ?? value.phone,
     detail: next.detail ?? value.detail,
     internalNote: next.internalNote ?? value.internalNote,

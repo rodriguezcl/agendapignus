@@ -14,10 +14,10 @@ const timedRequest = (url, options, message) => requestJson(
 
 export const customerImportRepository = {
   status: () => requestJson('/api/customers/import', { cache: 'no-store' }, 'No se pudo consultar la última importación.'),
-  apply: (revision, customers) => timedRequest('/api/customers/import', {
+  apply: (revision, customers, importedAccounts) => timedRequest('/api/customers/import', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ revision, customers, responseMode: 'compact-v1' })
+    body: JSON.stringify({ revision, customers, importedAccounts, responseMode: 'compact-v1' })
   }, 'No se pudo importar el archivo.'),
   undo: () => timedRequest('/api/customers/import', { method: 'DELETE' }, 'No se pudo deshacer la importación.')
 }

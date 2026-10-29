@@ -13,7 +13,7 @@ const visibleFields = [
   ['customerId', 'cliente'], ['client', 'cliente'],
   ['serviceId', 'tipo de servicio'], ['service', 'tipo de servicio'],
   ['technicianIds', 'técnicos asignados'], ['teamId', 'equipo'],
-  ['address', 'dirección'], ['phone', 'contacto'],
+  ['address', 'dirección'], ['newAddress', 'domicilio nuevo'], ['phone', 'contacto'],
   ['detail', 'detalle'], ['internalNote', 'nota interna']
 ]
 

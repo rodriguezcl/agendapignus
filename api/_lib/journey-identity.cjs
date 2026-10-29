@@ -22,6 +22,7 @@ function identityPatch(previous, next) {
   const customerChanged = ['customerId', 'clientAccount', 'subscriberReservation'].some(key => changed(previous, next, key))
   const serviceChanged = serviceFields.some(key => changed(previous, next, key))
   const fields = [...(customerChanged ? customerFields : []), ...(serviceChanged ? serviceFields : [])]
+  if (require('./address-change.cjs').isAddressChange(next) && changed(previous, next, 'newAddress')) fields.push('newAddress')
   return Object.fromEntries(fields.map(key => [key, next[key]]))
 }
 

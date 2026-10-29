@@ -164,7 +164,7 @@ test('cobranza fuera del alcance de escritura permite consulta y oculta confirma
 test('menú principal conserva indicadores sin exportar ni abrir datos detallados', () => {
   const html = render('src/features/dashboard/presentation/Dashboard.jsx', 'default', { history: [record], services: [service] }, userWith('dashboard.view'))
   assert.doesNotMatch(html, />Excel<|>PDF<|>Ver<\/button>/)
-  assert.match(html, /Indicadores operativos/)
+  assert.match(html, /Crecimiento estimado al cierre/)
 })
 
 test('roles legados conservan sus controles previos sin provider', () => {

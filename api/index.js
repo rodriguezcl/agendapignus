@@ -1226,7 +1226,7 @@ async function handleCustomerImport(req, res, sql, user) {
         responseMode = String(body.responseMode || '')
         if (!Number.isInteger(Number(body.revision)) || Number(body.revision) !== currentRevision) { const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de importar.'); error.statusCode = 409; throw error }
         if (!Array.isArray(body.customers)) throw new Error('La importación no contiene una lista válida de abonados.')
-        nextCustomers = preserveCustomerTrackingFlags(currentCustomers, normalizeImportedCustomers(body.customers))
+        nextCustomers = require('./_lib/address-change.cjs').captureImportedAddresses(preserveCustomerTrackingFlags(currentCustomers, normalizeImportedCustomers(body.customers)), body.importedAccounts, new Date().toISOString(), currentState.history)
       }
       endpointPolicy.assertImportScope(user, currentState, nextCustomers)
       validateImportedCustomers(nextCustomers)
@@ -1244,7 +1244,7 @@ async function handleCustomerImport(req, res, sql, user) {
       // necesitan descargarla otra vez. Las anteriores siguen recibiéndola para
       // no interpretar una respuesta compacta como una colección vacía.
       const response = responseMode === 'compact-v1' && !undo
-        ? { revision: nextRevision, customerCount: nextCustomers.length, canUndo: true }
+        ? { revision: nextRevision, customerCount: nextCustomers.length, canUndo: true, addressVerifications: nextCustomers.filter(customer => customer.softguardAddress).map(customer => isGranular(user) ? granularRead.sanitizeCustomer(customer, user) : customer).filter(customer => customer.softguardAddress).map(customer => ({ customerId: customer.customerId, softguardAddress: customer.softguardAddress })) }
         : { revision: nextRevision, customers: isGranular(user) ? nextCustomers.filter(customer => granularRead.customerReadable(customer, user, { ...currentState, customers: nextCustomers })).map(customer => granularRead.sanitizeCustomer(customer, user)) : nextCustomers, canUndo: !undo }
       return recovery.complete(transaction, user, body, response)
     })

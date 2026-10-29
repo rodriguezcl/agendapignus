@@ -47,7 +47,9 @@ function editableService(current, incoming) {
 }
 
 function applyServiceCatalogOperation(state = {}, { operation, service, base, serviceId } = {}) {
-  const services = Array.isArray(state.services) ? state.services : []
+  let services = Array.isArray(state.services) ? state.services : []
+  const requestedId = String(serviceId ?? service?.id ?? base?.id ?? '').trim()
+  if (operation !== 'create' && requestedId === 'address-change') services = require('./address-change.cjs').ensureAddressChangeService(services)
   if (operation === 'create') {
     const id = serviceIdentity(service)
     if (!id) throw operationError('El tipo de servicio no tiene un identificador válido.')
@@ -64,7 +66,7 @@ function applyServiceCatalogOperation(state = {}, { operation, service, base, se
   assertUnchanged(current, base)
 
   if (operation === 'delete') {
-    if (serviceIsReferenced(id, state)) {
+    if (id === 'address-change' || serviceIsReferenced(id, state)) {
       const inactive = { ...current, status: 'Inactivo' }
       return { services: services.map((item, itemIndex) => itemIndex === index ? inactive : item), service: inactive, outcome: 'deactivated' }
     }

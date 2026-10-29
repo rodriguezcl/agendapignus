@@ -310,6 +310,7 @@ function customerKind(customer) {
 }
 
 function normalizeStateForSave(state, current, { allowEarlyCompletion = false } = {}) {
+  state = { ...state, services: require('./address-change.cjs').ensureAddressChangeService(state.services) }
   state = persistentStateInput(state)
   require('./multi-service.cjs').validateServiceTypes(state)
   state = require('./service-schedule-sync.cjs').synchronizeServiceSchedules(state, current)
@@ -478,6 +479,7 @@ function secureEmployees(employees, previousEmployees) {
 }
 
 function validateState(state, previousState = null) {
+  for (const record of state?.history || []) require('./address-change.cjs').validateAddressChange(record)
   if(previousState) require('./softguard-presence.cjs').assertPresenceUnchanged(previousState.customers,state?.customers)
   const priorRecords=new Map((previousState?.history||[]).map(r=>[String(r.id),r]))
   for(const record of state?.history||[]) require('./softguard-presence.cjs').assertActiveService(priorRecords.get(String(record.id)),record,previousState?.customers||state.customers)

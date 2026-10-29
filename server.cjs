@@ -972,6 +972,7 @@ function replaceRows(table, records, key, previous = null) {
 
 /** Guarda todas las entidades dentro de una transacción para evitar estados parciales. */
 function validateState(state, previousState = null) {
+  for (const record of state?.history || []) require('./api/_lib/address-change.cjs').validateAddressChange(record)
   if(previousState) require('./api/_lib/softguard-presence.cjs').assertPresenceUnchanged(previousState.customers,state?.customers)
   const priorRecords=new Map((previousState?.history||[]).map(r=>[String(r.id),r]))
   for(const record of state?.history||[]) require('./api/_lib/softguard-presence.cjs').assertActiveService(priorRecords.get(String(record.id)),record,previousState?.customers||state.customers)
@@ -1220,7 +1221,7 @@ async function saveState(state, user) {
   })
   const employeeById = new Map(normalizedEmployees.map(employee => [String(employee.id), employee]))
   const employeeByName = new Map(normalizedEmployees.map(employee => [normalizedCustomerValue(employee.name), employee]))
-  const normalizedServices = ensureVehicleControlService((state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) })))
+  const normalizedServices = ensureVehicleControlService(require('./api/_lib/address-change.cjs').ensureAddressChangeService(state.services || []).map(service => ({ ...service, code: service.code || legacyServiceCode(service), category: service.category || (normalizedServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) })))
   const normalizedVehicles = (state.vehicles || []).map(vehicle => ({ ...vehicle, brand: String(vehicle.brand || '').trim(), model: String(vehicle.model || '').trim(), year: Number(vehicle.year), mileage: vehicle.mileage == null || vehicle.mileage === '' ? null : Number(vehicle.mileage), plate: String(vehicle.plate || '').trim().toLocaleUpperCase('es-AR') }))
   const serviceById = new Map(normalizedServices.map(service => [String(service.id), service]))
   const serviceByName = new Map(normalizedServices.map(service => [normalizedServiceName(service.name), service]))
@@ -1669,7 +1670,7 @@ function handleCustomerImport(req, res, user) {
       } else {
         if (!Number.isInteger(Number(body.revision)) || Number(body.revision) !== currentRevision) { const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de importar.'); error.statusCode = 409; throw error }
         if (!Array.isArray(body.customers)) throw new Error('La importación no contiene una lista válida de abonados.')
-        nextCustomers = preserveCustomerTrackingFlags(currentCustomers, normalizeImportedCustomers(body.customers))
+        nextCustomers = require('./api/_lib/address-change.cjs').captureImportedAddresses(preserveCustomerTrackingFlags(currentCustomers, normalizeImportedCustomers(body.customers)), body.importedAccounts, new Date().toISOString(), readState().history)
       }
       endpointPolicy.assertImportScope(user, isGranular(user) ? readState() : null, nextCustomers)
       validateImportedCustomers(nextCustomers)
@@ -1686,7 +1687,7 @@ function handleCustomerImport(req, res, user) {
       db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
       const responseState = isGranular(user) ? readState() : null
       const response = recovery.completeLocal(db, user, body, body.responseMode === 'compact-v1' && !undo
-        ? { revision, customerCount: nextCustomers.length, canUndo: true }
+        ? { revision, customerCount: nextCustomers.length, canUndo: true, addressVerifications: nextCustomers.filter(customer => customer.softguardAddress).map(customer => isGranular(user) ? granularRead.sanitizeCustomer(customer, user) : customer).filter(customer => customer.softguardAddress).map(customer => ({ customerId: customer.customerId, softguardAddress: customer.softguardAddress })) }
         : { revision, customers: isGranular(user) ? nextCustomers.filter(customer => granularRead.customerReadable(customer, user, responseState)).map(customer => granularRead.sanitizeCustomer(customer, user)) : nextCustomers, canUndo: !undo })
       db.exec('COMMIT')
       return send(res, 200, response)

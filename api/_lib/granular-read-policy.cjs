@@ -3,7 +3,7 @@ const { sanitizeTechnicianFollowup } = require('./technician-followup-access.cjs
 const id = value => String(value ?? '')
 const any = (user, keys) => keys.some(key => permissions.can(user, key))
 const FINANCIAL_FIELDS = new Set(['serviceCharges', 'collectionReview', 'collectionCancellation', 'originalCharges', 'amount', 'paymentMethod', 'monthlyFee', 'monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'collection', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy', 'form', 'formEmail'])
-const CONTACT_FIELDS = new Set(['address', 'phone', 'email', 'contact', 'contactName', 'contactPhone', 'location', 'coordinates', 'latitude', 'longitude', 'lat', 'lng', 'mapsUrl', 'googleMapsUrl', 'formEmail', 'visitLocation'])
+const CONTACT_FIELDS = new Set(['newAddress', 'softguardAddress', 'address', 'phone', 'email', 'contact', 'contactName', 'contactPhone', 'location', 'coordinates', 'latitude', 'longitude', 'lat', 'lng', 'mapsUrl', 'googleMapsUrl', 'formEmail', 'visitLocation'])
 const DOCUMENT_FIELDS = new Set(['technicalObservation', 'alarmZones', 'technicalReport', 'servicePhotoUrl', 'servicePhotoUploadedBy', 'servicePhotoCanDelete', 'attachments', 'documents', 'photos'])
 const omitFields = (value, fields) => Array.isArray(value) ? value.map(item => omitFields(item, fields)) : value && typeof value === 'object'
   ? Object.fromEntries(Object.entries(value).filter(([key]) => !fields.has(key)).map(([key, item]) => [key, omitFields(item, fields)])) : value

@@ -4,6 +4,7 @@ import { serviceCode, isTrainingService } from "../../../domain/services/service
 import { serviceTypesFor, serviceChargesComplete } from "../../../domain/services/multi-service.mjs";
 import { isEquipmentRetirementName } from "../../../domain/services/equipment-retirement.mjs";
 import { normalizeServiceEstimatedMinutes } from "../../../domain/agenda/service-scheduling.mjs";
+import addressChange from '../../../../api/_lib/address-change.cjs'
 
 export const INSTALLATION_ZONES = [
   ['docta', 'Docta Urbanización'],
@@ -36,7 +37,8 @@ export const PAYMENT_SERVICE_NAMES = new Set([
   'service de camara',
   'service de camaras',
   'service de cerco electrico',
-  'otro service'
+  'otro service',
+  'cambio de domicilio'
 ])
 
 export const FORM_OPTIONS = ['Completo', 'Incompleto (Abonado completa a mano)']
@@ -137,6 +139,9 @@ export const weeklyTaskMissingFields = (task, service) => {
   if (task?.paymentMethod && task.paymentMethod !== 'No aplica' && serviceTypesFor(task).length > 1 && !serviceChargesComplete(task)) missing.push('costo de cada trabajo (usá 0 si es sin cargo)')
   if (serviceTypesFor(task).length <= 1 && requiresPaymentAmount(task, service)) missing.push('monto')
   if (invalidFormEmail(task, service)) missing.push('email del formulario válido')
+  if (addressChange.isAddressChange(task)) {
+    try { addressChange.validateAddressChange(task) } catch (error) { missing.push(error.message) }
+  }
   return missing
 }
 

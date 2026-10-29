@@ -1,5 +1,6 @@
 // Stable category colors: independent of urgency, wording and destination permissions.
 export const notificationCategories = {
+  relocation: { label: 'Cambios de domicilio', icon: 'map', light: '#9a4c20', dark: '#ffc297' },
   registration: { label: 'Formularios de alta', icon: 'audit', light: '#775523', dark: '#eac488' },
   collection: { label: 'Cobranzas', icon: 'wallet', light: '#187047', dark: '#76d6a3' },
   ticket: { label: 'Tickets', icon: 'ticket', light: '#235db5', dark: '#82b6ff' },
@@ -23,6 +24,7 @@ export function notificationAppearance(notification = {}) {
   const id = String(notification.id || ''), target = notification.target || {}
   const prefix = id.split(':')[0]
   let category = {
+    'address-change': 'relocation',
     registration: 'registration',
     collection: 'collection', ticket: 'ticket', reservation: 'reservation', insurance: 'insurance',
     'alarm-zones': 'zones', 'softguard-retirement': 'retirement', 'softguard-verification': 'softguard',
