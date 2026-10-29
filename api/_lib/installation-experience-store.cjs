@@ -16,6 +16,8 @@ function createExperienceStore({sql,db}) {
   }
   return {ensure,query,
     async enqueue(previous,next,now=new Date().toISOString()) {
+      // Same transaction as the service save; a rollback also removes its WhatsApp.
+      await require('./appointment-whatsapp.cjs').createStore({sql,db}).enqueue(previous,next,now)
       const registrations=require('./registration-confirmation.cjs').confirmations(previous,next)
       // Preserve receipts already queued by the previous ticket workflow.
       const tickets=registrations.length ? (await query('SELECT data FROM pignus_tickets WHERE data LIKE ?', ['%"receiptSentAt"%'])).map(row=>JSON.parse(row.data)) : []
@@ -23,6 +25,15 @@ function createExperienceStore({sql,db}) {
       if(!items.length)return
       await ensure()
       for(const item of items) {
+        if(item.kind==='appointment') {
+          // Old releases used a journey-only key. Preserve their successful receipts.
+          const legacyId=require('./appointment-notice.cjs').hash(`appointment:${next.history.find(r=>String(r.id)===item.serviceId)?.serviceJourney?.id || item.serviceId}`)
+          const legacy=await this.get(legacyId)
+          if(legacy && legacy.payload.date===item.date && legacy.payload.time===item.time) {
+            if(['sent','verified','sending','uncertain'].includes(legacy.status))continue
+            if(['queued','retry','needs_email'].includes(legacy.status)) await query(`UPDATE ${TABLE} SET status='cancelled',updated_at=? WHERE id=? AND status IN ('queued','retry','needs_email')`,[now,legacyId])
+          }
+        }
         if(item.kind==='appointment') await query(`UPDATE ${TABLE} SET status='queued',payload=?,updated_at=?,next_attempt_at=?,last_error=NULL WHERE id=? AND status IN ('cancelled','queued','retry','needs_email')`,[JSON.stringify(item),now,now,item.id])
         await query(`INSERT INTO ${TABLE} (id,service_id,customer_id,status,payload,created_at,updated_at,next_attempt_at,history) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`,[item.id,item.serviceId,item.customerId,item.recipient?'queued':'needs_email',JSON.stringify(item),now,now,now,JSON.stringify([{at:now,action:'created'}])])
       }

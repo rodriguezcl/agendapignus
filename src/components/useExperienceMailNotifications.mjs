@@ -1,5 +1,6 @@
 import {useEffect,useState} from 'react'
 import {requestJson} from '../infrastructure/http/json-request.mjs'
+const title=item=>item.channel==='whatsapp'?'WhatsApp de confirmación pendiente de revisión':item.kind==='appointment'?'Correo de confirmación de visita pendiente':item.kind==='registration'?(item.status==='needs_email'?'Falta el email para confirmar el alta':'Confirmación de alta pendiente de revisión'):item.status==='needs_email'?'Falta el email para solicitar la experiencia':'Correo de experiencia pendiente de revisión'
 export default function useExperienceMailNotifications({enabled,userKey}) {
   const [snapshot,setSnapshot]=useState({userKey:null,items:[]})
   useEffect(()=>{
@@ -8,7 +9,7 @@ export default function useExperienceMailNotifications({enabled,userKey}) {
     const refresh=async()=>{
       if(disposed||running||document.hidden)return
       running=true
-      try {const data=await requestJson('/api/customers/experience-mail?notices=1');if(!disposed)setSnapshot({userKey,items:data.items.map(item=>({id:`experience-mail:${item.id}`,title:item.kind==='registration'?(item.status==='needs_email'?'Falta el email para confirmar el alta':'Confirmación de alta pendiente de revisión'):item.status==='needs_email'?'Falta el email para solicitar la experiencia':'Correo de experiencia pendiente de revisión',detail:`${item.account} · ${item.client}. ${item.status==='needs_email'?'Registrá el correo del cliente para enviar el correo.':item.error||'Revisá que el correo de soporte esté activo.'}`,tone:'warning',target:{type:'experience-mail',id:item.id}}))})}
+      try {const data=await requestJson('/api/customers/experience-mail?notices=1');if(!disposed)setSnapshot({userKey,items:data.items.map(item=>({id:`experience-mail:${item.id}`,title:title(item),detail:`${item.account} · ${item.client}. ${item.status==='needs_phone'?'Corregí el teléfono de contacto del servicio.':item.status==='needs_email'?'Registrá el correo del cliente para enviar el correo.':item.error||(item.channel==='whatsapp'?'Revisá el canal de WhatsApp.':'Revisá que el correo de soporte esté activo.')}`,tone:'warning',target:{type:'experience-mail',id:item.id}}))})}
       catch(error){if(!disposed&&[401,403].includes(error.status))setSnapshot({userKey:null,items:[]})}
       finally{running=false}
     }

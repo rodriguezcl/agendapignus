@@ -19,6 +19,15 @@ async function experienceRequest({connection,kind,state,user,method,input={},que
   try {const runtime=await channel.runtime();active=runtime.enabled===true&&runtime.mode==='live'}catch{/* Report the paused channel without exposing credential errors. */}
   if(method==='POST') {
     if(!can(user,'customers.experience.manage'))fail('No tenés permiso para gestionar estos correos.')
+    if(String(input.id||'').startsWith('whatsapp:')) {
+      const whatsapp=require('./appointment-whatsapp.cjs'), whatsappStore=whatsapp.createStore({[kind]:connection})
+      await whatsappStore.ensure()
+      const row=(await whatsappStore.list()).find(item=>`whatsapp:${item.id}`===input.id)
+      if(!row || !visible(row,state,user))fail('No se encontró el aviso autorizado.',404)
+      if(input.action!=='review-whatsapp' || input.verified!==true)fail('Comprobá que el flujo terminó en GoHighLevel antes de finalizar la revisión.',409)
+      await whatsappStore.review(row.id,input.updatedAt,user,new Date().toISOString())
+      return {ok:true}
+    }
     const row=await store.get(String(input.id||''))
     if(!row || !visible(row,state,user))fail('No se encontró el envío autorizado.',404)
     if(input.updatedAt!==row.updated_at)fail('El envío cambió. Actualizá la ficha.',409)
@@ -32,13 +41,16 @@ async function experienceRequest({connection,kind,state,user,method,input={},que
     return {item:present(await store.recipient(row,email,user)),active}
   }
   if(method!=='GET')fail('Método no permitido.',405)
-  let rows=(await store.list()).filter(row=>visible(row,state,user))
+  const whatsapp=require('./appointment-whatsapp.cjs')
+  const whatsappStore=whatsapp.createStore({[kind]:connection});await whatsappStore.ensure()
+  const whatsappActive=whatsapp.configuration().enabled
+  let rows=[...(await store.list()).map(row=>({...row,channel:'email'})),...(await whatsappStore.list()).map(row=>({...row,id:`whatsapp:${row.id}`,channel:'whatsapp'}))].filter(row=>visible(row,state,user))
   if(query.customerId)rows=rows.filter(row=>String(access.customerForRecord(state.history.find(record=>String(record.id)===row.service_id),state)?.customerId)===String(query.customerId))
   if(query.id)rows=rows.filter(row=>row.id===query.id)
   if(query.notices==='1') {
     if(!can(user,'notifications.experience'))return {items:[],active}
-    rows=rows.filter(row=>['needs_email','failed','uncertain'].includes(row.status) || !active && ['queued','retry'].includes(row.status))
+    rows=rows.filter(row=>['needs_email','needs_phone','failed','uncertain','draft'].includes(row.status) || !(row.channel==='whatsapp'?whatsappActive:active) && ['queued','retry'].includes(row.status))
   }
-  return {items:rows.map(present),active}
+  return {items:rows.map(row=>row.channel==='whatsapp'?whatsapp.present({...row,id:row.id.slice('whatsapp:'.length)}):present(row)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)),active,whatsappActive}
 }
 module.exports={visible,present,experienceRequest}

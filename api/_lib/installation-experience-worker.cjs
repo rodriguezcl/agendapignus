@@ -16,7 +16,7 @@ async function processExperienceMail({store,config,readState,smtpFactory=require
         const state=await readState()
         const record=state.history.find(item=>String(item.id)===row.service_id)
         const registration=row.payload.kind==='registration',appointment=row.payload.kind==='appointment'
-        if(appointment ? !require('./appointment-confirmation.cjs').eligible(record,row.payload) : registration ? !require('./registration-confirmation.cjs').eligible(record,row.payload,state) : !completed(record) || !installation(record)) {
+        if(appointment ? !require('./appointment-confirmation.cjs').eligible(record,row.payload,state,now()) : registration ? !require('./registration-confirmation.cjs').eligible(record,row.payload,state) : !completed(record) || !installation(record)) {
           await store.finish(row,'cancelled',null,new Date(now()).toISOString());counts.cancelled++;continue
         }
         if(!emailAddress(row.payload.recipient) || emailAddress(row.payload.recipient)===emailAddress(config.address)) throw Object.assign(new Error('Destinatario inválido.'),{code:'EENVELOPE'})

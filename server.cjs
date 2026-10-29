@@ -1702,6 +1702,11 @@ function handleCustomerImport(req, res, user) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${host}:${port}`)
+  if (url.pathname === '/api/appointments/whatsapp/receipt') {
+    if (req.method !== 'POST') return send(res, 405, { error: 'Método no permitido.' })
+    const whatsapp = require('./api/_lib/appointment-whatsapp.cjs')
+    return readJson(req, 50_000).then(input => whatsapp.receiveReceipt({ store: whatsapp.createStore({ db }), input })).then(result => send(res, 200, result)).catch(error => send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo registrar la confirmación.' }))
+  }
   if (url.pathname === '/api/tickets/mail/process') {
     const { createMailService, workerAuthorized } = require('./api/_lib/ticket-mail-service.cjs')
     if (!workerAuthorized(req)) return send(res, 401, { error: 'Acceso no autorizado al proceso de correo.' })

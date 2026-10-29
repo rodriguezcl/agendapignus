@@ -1277,6 +1277,12 @@ module.exports = async function handler(req, res) {
     if (process.env.VERCEL && !productionSecretsAreValid()) return send(res, 500, { error: 'La API no tiene configurados secretos de seguridad válidos.' })
     const sql = database()
     const route = routePath(req)
+    if (route === '/appointments/whatsapp/receipt') {
+      if (req.method !== 'POST') return send(res, 405, { error: 'Método no permitido.' })
+      const whatsapp = require('./_lib/appointment-whatsapp.cjs')
+      try { return send(res, 200, await whatsapp.receiveReceipt({ store: whatsapp.createStore({ sql }), input: requestBody(req) })) }
+      catch (error) { return send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo registrar la confirmación.' }) }
+    }
     if(route === '/registration/public')return handleNativeRegistration(req,res,sql)
     if (route === '/push/process') {
       const push = require('./_lib/web-push.cjs')
