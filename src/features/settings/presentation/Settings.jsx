@@ -129,13 +129,13 @@ export default function Settings({ roles, employees = [], setRoles, setNotice, a
             <label>Nombre del rol<input required maxLength={80} value={displayed.name || ''} disabled={saving || !canChangeIdentity} onChange={event => edit({ name: event.target.value })} /></label>
             <label>Descripción<input maxLength={500} value={displayed.description || ''} disabled={saving || !canChangeIdentity} onChange={event => edit({ description: event.target.value })} /></label>
           </div>
-          {protectedRole && <p className="role-permission-hint">Administrador conserva acceso completo para garantizar la administración del sistema.</p>}
+          {protectedRole && <p className="role-permission-hint">Administrador del sistema conserva acceso completo y administra usuarios y permisos. La gestión de cobranzas corresponde al rol Administrativo contable.</p>}
           <div className="role-preview-launch"><button type="button" className="secondary" disabled={saving} onClick={openPreview} title="Explorá los accesos de este rol con los cambios actuales, sin guardarlos."><Icon name="eye" />Vista previa del rol</button></div>
           <details className="role-scopes"><summary>Alcance de consultas y acciones</summary><div className="role-fields">
             {scopeFields.map(([prefix, label, options]) => <label key={prefix}>{label}<select aria-label={label} value={scope(prefix)} disabled={saving || !canChangePermissions} onChange={event => changeScope(prefix, event.target.value)}>{scope(prefix) === 'none' && <option value="none">{scopeLabels.none}</option>}{options.map(value => <option key={value} value={value} disabled={actorScope(prefix) !== 'all' && actorScope(prefix) !== value}>{scopeLabels[value]}</option>)}</select></label>)}
           </div><p className="role-permission-hint">Las acciones sólo alcanzan registros que también se pueden consultar. Los servicios técnicos siguen requiriendo asignación y habilitación del colaborador.</p></details>
           <label className="role-module-picker">Módulo<select value={module} onChange={event => setModule(event.target.value)}>{PERMISSION_GROUPS.map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></label>
-          {module === 'notifications' && <p className="role-permission-hint">Elegí qué avisos recibe este rol en la campana. Cada categoría requiere acceso a sus datos; recibir un aviso no habilita acciones adicionales. Administrador conserva todos los avisos, incluidas las solicitudes de adelanto.</p>}
+          {module === 'notifications' && <p className="role-permission-hint">Elegí qué avisos recibe este rol en la campana. Cada categoría requiere acceso a sus datos; recibir un aviso no habilita acciones adicionales. Administrador del sistema conserva todos los avisos, incluidas las solicitudes de adelanto.</p>}
           <p className="role-permission-hint">{items.filter(item => permissions[item.id]).length} de {items.length} permisos habilitados</p>
           <div className="role-capabilities">{items.map(item => {
             const reason = dependencyReason(item.id, permissions)

@@ -32,7 +32,7 @@ function roleCode(subject) {
   const name = normalized(subject?.role || subject?.name)
   const explicit = subject?.roleCode || subject?.code
   if (!isGranular(subject) && ['operador', 'supervisor'].includes(name)) return name === 'operador' ? 'operator' : 'supervisor'
-  return explicit || ({ administrador: 'administrator', tecnico: 'technician', coordinador: 'coordinator', usuario: 'user', supervisor: 'supervisor', operador: 'operator' }[name]) || `role-${subject?.roleId || subject?.id || 'unknown'}`
+  return explicit || ({ administrador: 'administrator', 'administrador del sistema': 'administrator', tecnico: 'technician', coordinador: 'coordinator', usuario: 'user', supervisor: 'supervisor', operador: 'operator' }[name]) || `role-${subject?.roleId || subject?.id || 'unknown'}`
 }
 function legacySelection(subject) {
   const source = rawPermissions(subject), code = roleCode(subject)

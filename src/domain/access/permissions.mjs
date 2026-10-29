@@ -43,6 +43,7 @@ export const normalizeRoleName = normalizeServiceName
 
 export const roleCode = role => isGranular(role) ? permissionPolicy.roleCode(role) : normalizeRoleName(role?.name) === 'operador' ? 'operator' : normalizeRoleName(role?.name) === 'supervisor' ? 'supervisor' : role?.code || ({
   administrador: 'administrator',
+  'administrador del sistema': 'administrator',
   tecnico: 'technician',
   coordinador: 'coordinator',
   usuario: 'user',

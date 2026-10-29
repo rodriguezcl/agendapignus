@@ -38,7 +38,7 @@ test('role preview applies dependency revocations and keeps notification prefere
   assert.equal(notification(preview, 'collections').enabled, false)
   assert.match(notification(preview, 'collections').reason, /Requiere/)
   assert.equal(notification(preview, 'reservations').enabled, false)
-  assert.equal(notification(preview, 'pendingToday').enabled, true)
+  assert.equal(notification(preview, 'pendingToday').enabled, false)
   assert.ok(preview.modules.every(module => module.capabilities.every(item => !item.id.startsWith('notifications.'))))
   for (const id of policy.NOTIFICATION_IDS) assert.equal(preview.notifications.find(item => item.id === id).enabled, policy.can(role, id), id)
   role.permissions['records.financial'] = true
@@ -129,7 +129,7 @@ test('legacy preview migration preserves role identity, technical scopes and not
   assert.equal(operator.roleCode, 'operator')
   assert.deepEqual(operator.visibleModules.map(module => module.id), ['weekly', 'tickets'])
   assert.equal(notification(operator, 'collections').enabled, false)
-  assert.equal(notification(operator, 'pendingToday').enabled, true)
+  assert.equal(notification(operator, 'pendingToday').enabled, false)
   const technician = buildRolePreview({ id: 4, code: 'technician', name: 'Técnico', permissions: {} })
   assert.equal(technician.technical.visible, true)
   assert.equal(technician.portalOnly, true)

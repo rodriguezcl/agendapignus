@@ -96,7 +96,9 @@ for (const granular of [false, true]) for (const method of ['PATCH', 'PUT']) tes
       assert.equal(employee.role, 'Agente')
     }
     const byId = (left, right) => String(left.id).localeCompare(String(right.id))
-    const comparable = state => ({ ...state, roles: state.roles.toSorted(byId), employees: state.employees.toSorted(byId) })
+    // Catalog rows have no semantic ordering; the two storage readers may
+    // return built-in services in a different order after normalization.
+    const comparable = state => ({ ...state, roles: state.roles.toSorted(byId), employees: state.employees.toSorted(byId), services: state.services.toSorted(byId) })
     assert.deepEqual(comparable(normalized), comparable(saved))
     assert.equal(saved.revision, 3)
     assert.deepEqual(saved.history, beforeRename.history)

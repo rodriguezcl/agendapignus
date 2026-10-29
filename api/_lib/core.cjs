@@ -18,7 +18,7 @@ const normalizedServiceName = normalizedText
 
 function legacyRoleCode(role = {}) {
   const name = normalizedRoleName(role.name)
-  if (name === 'administrador') return 'administrator'
+  if (['administrador', 'administrador del sistema'].includes(name)) return 'administrator'
   if (name === 'tecnico') return 'technician'
   if (name === 'coordinador') return 'coordinator'
   if (name === 'usuario') return 'user'
