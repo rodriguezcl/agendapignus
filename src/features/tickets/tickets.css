@@ -131,3 +131,21 @@
 .registration-service-option { display:flex; flex-direction:column; align-items:flex-start; gap:4px; width:100%; min-height:44px; text-align:left; white-space:normal; overflow-wrap:anywhere; }
 .registration-service-option[aria-pressed="true"] { border-color:var(--ap-primary,#956600); box-shadow:inset 3px 0 var(--ap-primary,#956600); }
 .registration-form-link .tickets-feedback p { margin-block:6px; }
+
+.tickets-create-form { --ticket-error: #b42318; }
+body.dark .tickets-create-form, [data-theme="dark"] .tickets-create-form { --ticket-error: #ff9b94; }
+.tickets-create-form [aria-invalid="true"],
+:is(body, .app-shell[data-theme], .technician-page[data-theme]) .modal .tickets-create-form :is(input, select, textarea):not([type='checkbox']):not([type='radio']):not([type='hidden']):not([type='file'])[aria-invalid="true"] {
+  border: 2px solid var(--ticket-error);
+  border-color: var(--ticket-error) !important;
+  box-shadow: 0 0 0 1px var(--ticket-error) !important;
+}
+.tickets-create-form .field-error { color: var(--ticket-error) !important; font-size:13px; }
+.tickets-validation-box { border:2px solid var(--ticket-error); border-radius:8px; padding:12px; }
+.tickets-validation-box ul { margin:8px 0 0; padding-left:20px; }
+.tickets-create-form .tickets-validation-link {
+  background:transparent; border:0; color:var(--ticket-error); box-shadow:none;
+  text-align:left; text-decoration:underline; white-space:normal; padding:6px 0;
+  min-height:32px; font:inherit;
+}
+.tickets-validation-link:focus-visible { outline:2px solid var(--ticket-error); outline-offset:2px; }
