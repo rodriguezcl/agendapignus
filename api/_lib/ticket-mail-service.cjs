@@ -54,7 +54,7 @@ function createMailService({ sql, db, ticketStore, env = process.env, runMail, t
       const sla = await ticketStore.processSla?.()
       if (manual) {
         const manualConfig = await channel.runtime()
-        if ((manualConfig.enabled && manualConfig.mode === 'live' || require('./appointment-whatsapp.cjs').configuration(env).enabled) && !confirmSend) fail('Confirmá el envío de los avisos pendientes antes de sincronizar.', 409)
+        if ((manualConfig.enabled && manualConfig.mode === 'live' || require('./appointment-whatsapp.cjs').anyEnabled(env)) && !confirmSend) fail('Confirmá el envío de los avisos pendientes antes de sincronizar.', 409)
       }
       // WhatsApp runs independently of SMTP credentials or its enabled state.
       const started = Date.now()

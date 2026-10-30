@@ -1,16 +1,22 @@
 const notice = require('./appointment-notice.cjs')
+const experience = require('./experience-whatsapp.cjs')
 const { createHmac, timingSafeEqual } = require('node:crypto')
 const { sqlParameters } = require('./ticket-mail-store.cjs')
 const TABLE = 'pignus_appointment_whatsapp'
 
-function configuration(env = process.env) {
+function configuration(env = process.env, kind = 'appointment') {
+  const postSale = kind === 'experience'
   let url = ''
   try {
-    const parsed = new URL(env.PIGNUS_GHL_WEBHOOK_URL || '')
+    const parsed = new URL((postSale ? env.PIGNUS_GHL_EXPERIENCE_WEBHOOK_URL : env.PIGNUS_GHL_WEBHOOK_URL) || '')
     if (parsed.protocol === 'https:' && parsed.hostname === 'services.leadconnectorhq.com' && !parsed.port && !parsed.username && !parsed.password && !parsed.search && !parsed.hash && /^\/hooks\/[A-Za-z0-9]+\/webhook-trigger\/[a-f0-9-]+$/.test(parsed.pathname)) url = parsed.href
   } catch { /* A malformed endpoint never reaches fetch or logs. */ }
-  return { enabled: env.PIGNUS_GHL_ENABLED === 'true' && Boolean(url) && String(env.PIGNUS_SESSION_SECRET || '').length >= 32, url }
+  // A post-sale event must never run the appointment-confirmation workflow.
+  if (postSale && url === env.PIGNUS_GHL_WEBHOOK_URL) url = ''
+  return { enabled: (postSale ? env.PIGNUS_GHL_EXPERIENCE_ENABLED : env.PIGNUS_GHL_ENABLED) === 'true' && Boolean(url) && String(env.PIGNUS_SESSION_SECRET || '').length >= 32, url }
 }
+const anyEnabled = env => configuration(env).enabled || configuration(env, 'experience').enabled
+const envelopeFor = (record, state, item) => item.kind === 'experience' ? experience.envelope(record, state) : notice.envelope(record, state)
 
 function receiptToken(eventId, env = process.env) {
   if (!/^whatsapp-[a-f0-9]{64}$/.test(eventId) || String(env.PIGNUS_SESSION_SECRET || '').length < 32) return ''
@@ -18,7 +24,7 @@ function receiptToken(eventId, env = process.env) {
 }
 
 function signedPayload(item, env = process.env, isTest = false) {
-  const payload = notice.webhookPayload(item, isTest)
+  const payload = (item.kind === 'experience' ? experience : notice).webhookPayload(item, isTest)
   return { ...payload, receiptToken: receiptToken(payload.eventId, env) }
 }
 
@@ -46,8 +52,10 @@ function createStore({ sql, db, env = process.env }) {
   }
   return { ensure, query,
     async enqueue(previous, next, at = new Date().toISOString()) {
-      if (!configuration(env).enabled) return
-      const items = notice.changes(previous, next, 'whatsapp').filter(item => item.date >= notice.today(at))
+      const items = [
+        ...(configuration(env).enabled ? notice.changes(previous, next, 'whatsapp').filter(item => item.date >= notice.today(at)) : []),
+        ...(configuration(env, 'experience').enabled ? experience.changes(previous, next) : [])
+      ]
       if (!items.length) return
       await ensure()
       for (const item of items) {
@@ -61,19 +69,27 @@ function createStore({ sql, db, env = process.env }) {
       for (const row of await this.list()) {
         if (!['queued', 'retry', 'needs_phone'].includes(row.status)) continue
         const record = state.history.find(item => String(item.id) === row.service_id)
+        const current = row.payload.kind === 'experience' && experience.ready(record, state) ? experience.envelope(record, state) : null
+        if (current && current.customerId === row.customer_id && current.id === row.id) {
+          const status = current.phone ? row.status === 'needs_phone' ? 'queued' : row.status : 'needs_phone'
+          await query(`UPDATE ${TABLE} SET payload=?,status=?,updated_at=? WHERE id=? AND status IN ('queued','retry','needs_phone')`, [JSON.stringify(current), status, at, row.id])
+          continue
+        }
         if (!eligible(record, row.payload, state, at)) {
           await query(`UPDATE ${TABLE} SET status='cancelled',updated_at=?,last_error=NULL WHERE id=? AND status IN ('queued','retry','needs_phone')`, [at, row.id])
         } else {
-          await query(`UPDATE ${TABLE} SET payload=? WHERE id=? AND status IN ('queued','retry','needs_phone')`, [JSON.stringify(notice.envelope(record, state)), row.id])
+          await query(`UPDATE ${TABLE} SET payload=? WHERE id=? AND status IN ('queued','retry','needs_phone')`, [JSON.stringify(envelopeFor(record, state, row.payload)), row.id])
         }
       }
     },
-    async claim(at) {
+    async claim(at, kinds = ['appointment', 'experience']) {
       // Called inside the shared mailbox lease. Keep the contact's mutable GHL
       // fields reserved until its previous workflow reaches the receipt action.
       const field = (alias, name) => sql ? `(${alias}.payload::jsonb->>'${name}')` : `json_extract(${alias}.payload,'$.${name}')`
       const phone = alias => field(alias, 'phone'), email = alias => field(alias, 'recipient')
-      return parse((await query(`UPDATE ${TABLE} SET status='sending',attempts=attempts+1,started_at=?,updated_at=? WHERE id=(SELECT candidate.id FROM ${TABLE} candidate WHERE candidate.status IN ('queued','retry') AND candidate.next_attempt_at<=? AND NOT EXISTS (SELECT 1 FROM ${TABLE} active WHERE active.id<>candidate.id AND active.status IN ('sending','accepted','uncertain') AND (${phone('active')}=${phone('candidate')} OR (${email('candidate')}<>'' AND LOWER(${email('active')})=LOWER(${email('candidate')})))) ORDER BY candidate.created_at,candidate.id LIMIT 1) AND status IN ('queued','retry') RETURNING *`, [at, at, at]))[0])
+      if (!kinds.length) return null
+      const kindFilter = ` AND COALESCE(${field('candidate', 'kind')},'appointment') IN (${kinds.map(() => '?').join(',')})`
+      return parse((await query(`UPDATE ${TABLE} SET status='sending',attempts=attempts+1,started_at=?,updated_at=? WHERE id=(SELECT candidate.id FROM ${TABLE} candidate WHERE candidate.status IN ('queued','retry') AND candidate.next_attempt_at<=?${kindFilter} AND NOT EXISTS (SELECT 1 FROM ${TABLE} active WHERE active.id<>candidate.id AND active.status IN ('sending','accepted','uncertain') AND (${phone('active')}=${phone('candidate')} OR (${email('candidate')}<>'' AND LOWER(${email('active')})=LOWER(${email('candidate')})))) ORDER BY candidate.created_at,candidate.id LIMIT 1) AND status IN ('queued','retry') RETURNING *`, [at, at, at, ...kinds]))[0])
     },
     async acknowledge(id, at) {
       const row = parse((await query(`SELECT * FROM ${TABLE} WHERE id=?`, [id]))[0])
@@ -99,6 +115,11 @@ function createStore({ sql, db, env = process.env }) {
 }
 
 function eligible(record, item, state, now) {
+  if (item.kind === 'experience') {
+    if (!experience.ready(record, state)) return false
+    const current = experience.envelope(record, state)
+    return current.id === item.id && current.phone === item.phone && current.recipient === item.recipient && current.customerId === item.customerId
+  }
   if (!notice.ready(record, state) || record.date < notice.today(now)) return false
   const current = notice.envelope(record, state)
   return current.scheduleKey === item.scheduleKey && current.phone === item.phone && current.recipient === item.recipient && current.customerId === item.customerId
@@ -134,8 +155,8 @@ async function deliver(payload, config, { fetchImpl = fetch, timeoutMs = 5000 } 
 }
 
 async function processWhatsApp({ store, readState, env = process.env, now = Date.now, fetchImpl = fetch, maxRunMs = 7000 }) {
-  const config = configuration(env), counts = { accepted: 0, failed: 0, uncertain: 0, retry: 0, cancelled: 0, draft: 0 }
-  if (!config.enabled) return { ...counts, paused: true }
+  const kinds = ['appointment', 'experience'].filter(kind => configuration(env, kind).enabled), counts = { accepted: 0, failed: 0, uncertain: 0, retry: 0, cancelled: 0, draft: 0 }
+  if (!kinds.length) return { ...counts, paused: true }
   await store.ensure()
   await store.recover(new Date(now()).toISOString())
   const pending = new Set((await store.list()).filter(row => row.status !== 'cancelled').map(row => row.id))
@@ -143,13 +164,13 @@ async function processWhatsApp({ store, readState, env = process.env, now = Date
   counts.cancelled = (await store.list()).filter(row => row.status === 'cancelled' && pending.has(row.id)).length
   const deadline = now() + maxRunMs
   for (let i = 0; i < 5 && now() < deadline; i++) {
-    const row = await store.claim(new Date(now()).toISOString())
+    const row = await store.claim(new Date(now()).toISOString(), kinds)
     if (!row) break
     // If a read fails, the row remains sending and is recovered as uncertain.
     const state = await readState(), record = state.history.find(item => String(item.id) === row.service_id)
     let result
     if (!eligible(record, row.payload, state, now())) result = { status: 'cancelled', error: null }
-    else result = await deliver(signedPayload(notice.envelope(record, state), env), config, { fetchImpl, timeoutMs: Math.max(1, Math.min(5000, deadline - now())) })
+    else result = await deliver(signedPayload(envelopeFor(record, state, row.payload), env), configuration(env, row.payload.kind), { fetchImpl, timeoutMs: Math.max(1, Math.min(5000, deadline - now())) })
     if (result.status === 'retry' && row.attempts >= 5) result = { status: 'failed', error: 'GoHighLevel sigue limitando las solicitudes después de cinco intentos. Revisá el canal.' }
     await store.finish(row, result.status, result.error, new Date(now()).toISOString())
     counts[result.status]++
@@ -158,10 +179,10 @@ async function processWhatsApp({ store, readState, env = process.env, now = Date
 }
 
 function present(row) {
-  return { id: `whatsapp:${row.id}`, kind: 'appointment', channel: 'whatsapp', recordId: row.service_id, customerId: row.customer_id,
+  return { id: `whatsapp:${row.id}`, kind: row.payload.kind || 'appointment', channel: 'whatsapp', recordId: row.service_id, customerId: row.customer_id,
     status: row.status, createdAt: row.created_at, updatedAt: row.updated_at, sentAt: row.sent_at, sender: 'GoHighLevel',
     attempts: row.attempts, error: row.last_error || '', client: row.payload.client, account: row.payload.account,
     recipient: row.payload.phone, technicians: row.payload.technicians, history: row.history }
 }
 
-module.exports = { TABLE, configuration, receiptToken, signedPayload, receiveReceipt, createStore, eligible, deliver, processWhatsApp, present }
+module.exports = { TABLE, configuration, anyEnabled, receiptToken, signedPayload, receiveReceipt, createStore, eligible, deliver, processWhatsApp, present }

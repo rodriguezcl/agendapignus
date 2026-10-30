@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react'
 import {requestJson} from '../infrastructure/http/json-request.mjs'
-const title=item=>item.channel==='whatsapp'?'WhatsApp de confirmación pendiente de revisión':item.kind==='appointment'?'Correo de confirmación de visita pendiente':item.kind==='registration'?(item.status==='needs_email'?'Falta el email para confirmar el alta':'Confirmación de alta pendiente de revisión'):item.status==='needs_email'?'Falta el email para solicitar la experiencia':'Correo de experiencia pendiente de revisión'
+const title=item=>item.channel==='whatsapp'?(item.kind==='experience'?'WhatsApp de postventa pendiente de revisión':'WhatsApp de confirmación pendiente de revisión'):item.kind==='appointment'?'Correo de confirmación de visita pendiente':item.kind==='registration'?(item.status==='needs_email'?'Falta el email para confirmar el alta':'Confirmación de alta pendiente de revisión'):item.status==='needs_email'?'Falta el email para solicitar la experiencia':'Correo de experiencia pendiente de revisión'
 export default function useExperienceMailNotifications({enabled,userKey}) {
   const [snapshot,setSnapshot]=useState({userKey:null,items:[]})
   useEffect(()=>{
