@@ -82,7 +82,10 @@ test('PostgreSQL: sales creation and form submission queue the confirmation atom
     const store = createExperienceStore({ sql: connection })
     const { processExperienceMail } = require('../api/_lib/installation-experience-worker.cjs')
     const sent = []
-    const worker = () => processExperienceMail({ store, readState: formState.load, config: { enabled: true, mode: 'live', address: 'pignus@example.com' }, smtpFactory: () => ({ send: async item => { sent.push(item); return { accepted: ['cliente@example.com'] } } }) })
+    let workerTime = Date.now()
+    const worker = () => processExperienceMail({ store, now: () => workerTime, readState: formState.load, config: { enabled: true, mode: 'live', address: 'pignus@example.com' }, smtpFactory: () => ({ send: async item => { sent.push(item); return { accepted: ['cliente@example.com'] } } }) })
+    await worker(); assert.equal(sent.length, 0)
+    workerTime = Date.parse(rows[0].next_attempt_at)
     await worker(); await worker(); assert.equal(sent.length, 1); assert.ok(sent[0].payload.subject.includes('visita técnica'))
   } finally { holidays.fetchNationalHolidays = original; await pg.close() }
 })

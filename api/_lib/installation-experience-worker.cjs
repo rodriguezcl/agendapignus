@@ -5,6 +5,7 @@ const { ready: experienceReady } = require('./experience-whatsapp.cjs')
 async function processExperienceMail({store,config,readState,smtpFactory=require('./ticket-mail-worker.cjs').createSmtpAdapter,now=Date.now,maxRunMs=10000}) {
   await store.ensure()
   await store.recover(new Date(now()).toISOString())
+  await store.reconcile(await readState(),new Date(now()).toISOString())
   const counts={sent:0,failed:0,uncertain:0,retried:0,cancelled:0}
   if(!config.enabled || config.mode!=='live')return {...counts,paused:true}
   const deadline=now()+maxRunMs

@@ -9,7 +9,7 @@ const postSale = require('../api/_lib/experience-whatsapp.cjs')
 const communications = require('../api/_lib/installation-communications.cjs')
 const { createExperienceStore } = require('../api/_lib/installation-experience-store.cjs')
 const { processExperienceMail } = require('../api/_lib/installation-experience-worker.cjs')
-const at = '2026-11-02T12:00:00.000Z', now = () => Date.parse(at)
+const at = '2026-11-01T12:00:00.000Z', now = () => Date.parse(at)
 const url = digit => `https://services.leadconnectorhq.com/hooks/TEST/webhook-trigger/${digit.repeat(8)}-0000-0000-0000-000000000000`
 const env = { PIGNUS_SESSION_SECRET: 'test-secret-'.repeat(8), PIGNUS_GHL_ENABLED: 'true', PIGNUS_GHL_WEBHOOK_URL: url('0'), PIGNUS_GHL_EXPERIENCE_ENABLED: 'true', PIGNUS_GHL_EXPERIENCE_WEBHOOK_URL: url('1'), PIGNUS_GHL_CAMERAS_ENABLED: 'true', PIGNUS_GHL_CAMERAS_WEBHOOK_URL: url('2'), PIGNUS_GHL_CAMERAS_EXPERIENCE_ENABLED: 'true', PIGNUS_GHL_CAMERAS_EXPERIENCE_WEBHOOK_URL: url('3') }
 const record = { id: 'camera-visit', customerId: 'customer', client: 'Ana Prueba', service: 'Instalación de cámaras', status: 'Pendiente', date: '2026-11-02', time: '09:00', address: 'Calle de prueba 123', phone: '+5493510000000', formEmail: 'ana@example.com', technicians: ['Técnico Uno', 'Técnico Dos'], awaitingConfirmation: false }
@@ -99,7 +99,7 @@ for (const engine of ['sqlite', 'postgres']) test(`${engine}: camera queues are 
     await store.enqueue(state(), state(record), at); await store.enqueue(state(), state(record), at)
     assert.equal((await store.list()).length, 1)
     const alarm = { ...record, id: 'alarm', service: 'Instalación de alarma', phone: '+5493511111111', formEmail: 'otro@example.com' }
-    await store.enqueue(state(), state(alarm), at)
+    await store.enqueue(state(record), state(record, alarm), at)
     let current = state(record, alarm), calls = []
     const run = runtime => whatsapp.processWhatsApp({ store, env: runtime, now, readState: async () => current, fetchImpl: async (endpoint, init) => { calls.push({ endpoint, payload: JSON.parse(init.body) }); return new Response('{}', { status: 200 }) } })
     const paused = { ...env, PIGNUS_GHL_CAMERAS_ENABLED: 'false', PIGNUS_GHL_CAMERAS_EXPERIENCE_ENABLED: 'false' }

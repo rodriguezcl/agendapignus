@@ -1,5 +1,6 @@
 const { sqlParameters } = require('./ticket-mail-store.cjs')
 const { completionInvitations } = require('./installation-experience.cjs')
+const delivery = require('./appointment-delivery.cjs')
 const TABLE = 'pignus_installation_experience_mail'
 const SCHEMA = `CREATE TABLE IF NOT EXISTS ${TABLE} (id TEXT PRIMARY KEY, service_id TEXT NOT NULL, customer_id TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, next_attempt_at TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, started_at TEXT, sent_at TEXT, sender TEXT, last_error TEXT, history TEXT NOT NULL)`
 function createExperienceStore({sql,db}) {
@@ -21,11 +22,13 @@ function createExperienceStore({sql,db}) {
       const registrations=require('./registration-confirmation.cjs').confirmations(previous,next)
       // Preserve receipts already queued by the previous ticket workflow.
       const tickets=registrations.length ? (await query('SELECT data FROM pignus_tickets WHERE data LIKE ?', ['%"receiptSentAt"%'])).map(row=>JSON.parse(row.data)) : []
-      const items=[...require('./appointment-confirmation.cjs').confirmations(previous,next),...completionInvitations(previous,next),...registrations.filter(item=>!tickets.some(ticket=>ticket.registrationForm?.receiptSentAt && (item.serviceIds.includes(String(ticket.registrationForm.serviceId)) || (ticket.serviceIds||[]).some(id=>item.serviceIds.includes(String(id))))))]
-      if(!items.length)return
       await ensure()
-      for(const item of items) {
-        if(item.kind==='appointment') {
+      const existing=await this.list()
+      const cancelled=delivery.cancellations(previous,next,existing,now,'email')
+      const items=[...require('./appointment-confirmation.cjs').confirmations(previous,next),...completionInvitations(previous,next),...registrations.filter(item=>!tickets.some(ticket=>ticket.registrationForm?.receiptSentAt && (item.serviceIds.includes(String(ticket.registrationForm.serviceId)) || (ticket.serviceIds||[]).some(id=>item.serviceIds.includes(String(id)))))),...cancelled.map(item=>item.payload)]
+      for(const original of items) {
+        const item=delivery.revision(original,existing,now)
+        if(item.kind==='appointment' && !item.cancelledNotice) {
           // Old releases used a journey-only key. Preserve their successful receipts.
           const legacyId=require('./appointment-notice.cjs').hash(`appointment:${next.history.find(r=>String(r.id)===item.serviceId)?.serviceJourney?.id || item.serviceId}`)
           const legacy=await this.get(legacyId)
@@ -34,9 +37,16 @@ function createExperienceStore({sql,db}) {
             if(['queued','retry','needs_email'].includes(legacy.status)) await query(`UPDATE ${TABLE} SET status='cancelled',updated_at=? WHERE id=? AND status IN ('queued','retry','needs_email')`,[now,legacyId])
           }
         }
-        if(item.kind==='appointment') await query(`UPDATE ${TABLE} SET status='queued',payload=?,updated_at=?,next_attempt_at=?,last_error=NULL WHERE id=? AND status IN ('cancelled','queued','retry','needs_email')`,[JSON.stringify(item),now,now,item.id])
-        await query(`INSERT INTO ${TABLE} (id,service_id,customer_id,status,payload,created_at,updated_at,next_attempt_at,history) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`,[item.id,item.serviceId,item.customerId,item.recipient?'queued':'needs_email',JSON.stringify(item),now,now,now,JSON.stringify([{at:now,action:'created'}])])
+        const planned=item.kind==='appointment' ? cancelled.find(row=>row.payload.id===item.id) || delivery.plan(item,existing,now,'email') : {payload:item,status:item.recipient?'queued':'needs_email',nextAt:now}
+        if(item.kind==='appointment') await query(`UPDATE ${TABLE} SET service_id=?,customer_id=?,status=?,payload=?,updated_at=?,next_attempt_at=?,last_error=NULL WHERE id=? AND status IN ('cancelled','queued','needs_email','skipped') AND attempts=0`,[item.serviceId,item.customerId,planned.status,JSON.stringify(planned.payload),now,planned.nextAt,item.id])
+        await query(`INSERT INTO ${TABLE} (id,service_id,customer_id,status,payload,created_at,updated_at,next_attempt_at,history) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`,[item.id,item.serviceId,item.customerId,planned.status,JSON.stringify(planned.payload),now,now,planned.nextAt,JSON.stringify([{at:now,action:planned.status==='skipped'?'skipped':'created'}])])
       }
+      await this.reconcile(next,now)
+    },
+    async reconcile(state,at) {
+      await delivery.reconcile({rows:await this.list(),state,at,channel:'email',save:async(row,planned)=>{
+        await query(`UPDATE ${TABLE} SET status=?,payload=?,updated_at=?,next_attempt_at=?,last_error=NULL WHERE id=? AND status IN ('queued','retry','needs_email','skipped','needs_action')`,[planned.status,JSON.stringify(planned.payload),at,planned.nextAt,row.id])
+      }})
     },
     async list() {return (await query(`SELECT * FROM ${TABLE} ORDER BY created_at DESC`)).map(parse)},
     async get(id) {return parse((await query(`SELECT * FROM ${TABLE} WHERE id=?`,[id]))[0])},
@@ -52,9 +62,17 @@ function createExperienceStore({sql,db}) {
       }
     },
     async recipient(row,email,user,now=new Date().toISOString()) {
+      if(row.payload.kind==='appointment'&&!row.payload.cancelledNotice)throw Object.assign(new Error('Corregí el correo desde el servicio para respetar su programación y evitar avisos desactualizados.'),{statusCode:409})
       const payload={...row.payload,recipient:email}
       const changed=await query(`UPDATE ${TABLE} SET status='queued',payload=?,updated_at=?,next_attempt_at=?,attempts=0,last_error=NULL,history=? WHERE id=? AND status IN ('needs_email','failed') AND updated_at=? RETURNING id`,[JSON.stringify(payload),now,now,JSON.stringify([...row.history,{at:now,action:'recipient',byId:user.id,byName:user.name||user.email,previous:row.payload.recipient,recipient:email}]),row.id,row.updated_at])
       if(!changed.length)throw Object.assign(new Error('El envío cambió. Actualizá la ficha antes de continuar.'),{statusCode:409})
+      return this.get(row.id)
+    },
+    async confirmContact(row,user,contactChannel,now=new Date().toISOString()) {
+      if(!row.payload.manualContact || !['phone','whatsapp'].includes(contactChannel))throw Object.assign(new Error('Indicá si contactaste al cliente por teléfono o WhatsApp.'),{statusCode:400})
+      const history=[...row.history,{at:now,action:'customer_contacted',contactChannel,byId:user.id,byName:user.name||user.email}]
+      const changed=await query(`UPDATE ${TABLE} SET status='reviewed',updated_at=?,history=? WHERE id=? AND status='needs_action' AND updated_at=? RETURNING id`,[now,JSON.stringify(history),row.id,row.updated_at])
+      if(!changed.length)throw Object.assign(new Error('La gestión cambió. Actualizá la ficha.'),{statusCode:409})
       return this.get(row.id)
     },
     async confirmSent(row,user,now=new Date().toISOString()) {

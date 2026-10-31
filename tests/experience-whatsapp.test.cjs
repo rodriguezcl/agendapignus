@@ -6,6 +6,7 @@ const whatsapp = require('../api/_lib/appointment-whatsapp.cjs')
 const { REVIEW_URL } = require('../api/_lib/installation-experience.cjs')
 const env = { PIGNUS_SESSION_SECRET: 'test-secret-'.repeat(8), PIGNUS_GHL_ENABLED: 'true', PIGNUS_GHL_WEBHOOK_URL: 'https://services.leadconnectorhq.com/hooks/TEST/webhook-trigger/00000000-0000-0000-0000-000000000000', PIGNUS_GHL_EXPERIENCE_ENABLED: 'true', PIGNUS_GHL_EXPERIENCE_WEBHOOK_URL: 'https://services.leadconnectorhq.com/hooks/TEST/webhook-trigger/11111111-1111-1111-1111-111111111111' }
 const at = '2026-11-02T16:00:00.000Z', instant = Date.parse(at)
+const confirmationAt = '2026-11-01T12:00:00.000Z'
 const record = { id: 'visit', customerId: 'customer', client: 'Ana Prueba', clientAccount: 'PIG-1', service: 'Instalación de alarma', status: 'Pendiente', date: '2026-11-02', time: '09:00', address: 'Calle de prueba 123', phone: '+5493510000000', technicians: ['Técnico Uno', 'Técnico Dos'], awaitingConfirmation: false }
 const state = r => ({ history: r ? [r] : [], customers: [{ customerId: 'customer', account: 'PIG-1', name: 'Ana Prueba' }] })
 const before = state(record), after = state({ ...record, status: 'Completado' })
@@ -80,9 +81,9 @@ test('cancelled, reopened, reclassified or reassigned installations discard queu
 test('disabling post-sale prevents enqueue and dispatch without blocking confirmation messages', async () => {
   const {db,store,options}=await fixture(),paused={...env,PIGNUS_GHL_EXPERIENCE_ENABLED:'false'}
   try {
-    await whatsapp.createStore({db,env:paused}).enqueue(before,state({...after.history[0],id:'old-completed'}),at)
+    await whatsapp.createStore({db,env:paused}).enqueue(before,{...after,history:[...after.history,{...after.history[0],id:'old-completed'}]},at)
     assert.equal((await store.list()).length,1)
-    await store.enqueue(state(null),state({...record,id:'other',phone:'+5493511111111'}),at)
+    await store.enqueue(after,{...after,history:[...after.history,{...record,id:'other',date:'2026-11-03',time:'13:00',phone:'+5493511111111'}]},at)
     assert.equal((await store.claim(at,['appointment'])).service_id,'other')
     assert.equal(await store.claim(at,['appointment']),null)
     assert.equal((await store.list()).find(r=>r.service_id==='visit').status,'queued')
@@ -91,10 +92,11 @@ test('disabling post-sale prevents enqueue and dispatch without blocking confirm
 })
 
 test('confirmation and post-sale share the contact lock until the prior workflow callback', async () => {
-  const {db,store}=await fixture()
+  const db=new DatabaseSync(':memory:'),store=whatsapp.createStore({db,env})
   try {
-    await store.enqueue(state(null),before,at)
-    const confirmation=await store.claim(at,['appointment']);await store.finish(confirmation,'accepted',null,at)
+    await store.enqueue(state(null),before,confirmationAt)
+    const confirmation=await store.claim(confirmationAt,['appointment']);await store.finish(confirmation,'accepted',null,confirmationAt)
+    await store.enqueue(before,after,at)
     assert.equal(await store.claim(at,['experience']),null)
     await whatsapp.receiveReceipt({store,env,input:whatsapp.signedPayload(confirmation.payload,env),at})
     assert.equal((await store.claim(at,['experience'])).payload.kind,'experience')
@@ -106,8 +108,9 @@ test('PostgreSQL supports kind filtering, rollback and shared contact serializat
   const store=whatsapp.createStore({sql,env})
   try {
     await store.ensure();await pg.exec('BEGIN');await store.enqueue(before,after,at);await pg.exec('ROLLBACK');assert.equal((await store.list()).length,0)
-    await store.enqueue(before,after,at);await store.enqueue(state(null),before,at)
-    const appointment=await store.claim(at,['appointment']);assert.equal(appointment.payload.kind,'appointment')
+    await store.enqueue(state(null),before,confirmationAt)
+    const appointment=await store.claim(confirmationAt,['appointment']);assert.equal(appointment.payload.kind,'appointment')
+    await store.enqueue(before,after,at)
     assert.equal(await store.claim(at,['experience']),null)
     await store.acknowledge(appointment.id,at)
     const postSale=await store.claim(at,['experience']);assert.equal(postSale.payload.kind,'experience')

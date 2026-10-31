@@ -46,7 +46,7 @@ function envelope(record, state = {}) {
   const scheduleKey = `${record.serviceJourney?.id || record.id}:${record.date}:${record.time}`
   return { id: hash(`appointment:${scheduleKey}`), kind: 'appointment', serviceId: String(record.id), customerId: String(record.customerId || customer?.customerId || ''),
     client, account: customer?.account || record.clientAccount || '', recipient, phone, technicians, date: record.date, time: record.time,
-    address: clean(record.address), dateText, scheduleKey, ...describe(installationType(record)) }
+    address: clean(record.address), dateText, scheduleKey, appointmentKey: String(record.serviceJourney?.id || record.id), ...describe(installationType(record)) }
 }
 
 function changes(previous, next, channel = 'email') {
@@ -70,4 +70,4 @@ function webhookPayload(item, isTest = false) {
     serviceType: describe(item.installationType).serviceType, installationDescription: describe(item.installationType).installationDescription }
 }
 
-module.exports = { clean, hash, today, phoneNumber, ready, envelope, changes, webhookPayload }
+module.exports = { clean, hash, today, phoneNumber, ready, envelope, changes, webhookPayload, installation }

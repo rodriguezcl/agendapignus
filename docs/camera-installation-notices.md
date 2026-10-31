@@ -1,6 +1,12 @@
 # Avisos de instalaciones de cámaras
 
-La confirmación se genera al guardar una visita confirmada de instalación de cámaras (no mientras esté A confirmar). La postventa se genera cuando una instalación existente pasa a Completado. Los servicios de reparación y retiro no disparan estos avisos.
+La confirmación por correo y WhatsApp se programa para 24 horas antes de la visita, en hora de Argentina. Si la visita se confirma con menos de 24 horas de anticipación, se omite este aviso y se registra el motivo. Mientras esté A confirmar no se programa ningún envío. El trabajador automático procesa los avisos vencidos en su siguiente ciclo (actualmente cada dos minutos).
+
+Esta regla se aplica a alarmas, cámaras e instalaciones mixtas. Al reprogramar una visita pendiente de comunicar, se descarta el aviso anterior y se calcula la nueva fecha de envío. Si ya se comunicó la visita, el cambio de fecha u hora se comunica inmediatamente para corregir la información recibida por el cliente. Al cancelarla, se descarta cualquier confirmación pendiente. Si Administración cancela o elimina una visita futura ya comunicada, se genera un correo de cancelación y un aviso para gestionar WhatsApp manualmente, porque las plantillas actuales no comunican cancelaciones.
+
+Si el técnico informa Cancelado en una instalación, se genera inmediatamente un correo indicando que no fue posible realizar esa visita e invitando al cliente a contactar a Pignus si quiere coordinar una nueva fecha. No requiere confirmación previa y también se envía después del horario previsto. No incluye las observaciones internas ni atribuye la causa al cliente. Cada informe genera un único aviso. Si falta el correo, Administración recibe una notificación para contactar al cliente por teléfono o WhatsApp, sin exigir cargar un email. La gestión se confirma manualmente y registra responsable, fecha y canal; al gestionarla desaparece de pendientes. No se generan correos retroactivos para cancelaciones antiguas. Una solicitud de reprogramación no dispara este correo. Si se reprograma antes del envío, el aviso de cancelación pendiente se descarta.
+
+La postventa sigue generándose cuando una instalación existente pasa a Completado. Los servicios de reparación y retiro no disparan estos avisos.
 
 Los correos utilizan el canal SMTP existente. Incluyen los técnicos asignados; la postventa incluye un enlace clicable a la reseña. Una visita con instalación de alarma y cámaras genera un solo aviso por etapa y canal, con texto que menciona ambas instalaciones. En varias jornadas se confirma la primera visita y se invita a dejar una reseña al completar la última; un cierre parcial considera únicamente los trabajos completados.
 
@@ -90,4 +96,4 @@ node --env-file=.env.local scripts/test-appointment-whatsapp.cjs --cameras --exp
 
 Las muestras no llevan teléfono. Mantener los flujos en borrador durante el mapeo. Tras aprobar las plantillas, desplegar el código, publicar los flujos y realizar una prueba expresamente autorizada a un número interno antes de activar los flags de producción. No activar un flujo de cámaras con una plantilla exclusiva de alarmas.
 
-La activación no envía postventa retroactiva a instalaciones ya completadas. Los avisos previamente encolados conservan su estado; los envíos de resultado incierto requieren revisión, para evitar duplicarlos.
+La activación no envía postventa retroactiva a instalaciones ya completadas. Las confirmaciones pendientes anteriores a este ajuste se revisan usando su fecha original de generación: se programan a las 24 horas o se omiten por anticipación insuficiente. Los avisos enviados conservan su constancia y no se repiten; los envíos de resultado incierto requieren revisión, para evitar duplicarlos. No se envían confirmaciones después del inicio de la visita.

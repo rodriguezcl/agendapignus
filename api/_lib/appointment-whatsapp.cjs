@@ -1,5 +1,6 @@
 const notice = require('./appointment-notice.cjs')
 const experience = require('./experience-whatsapp.cjs')
+const delivery = require('./appointment-delivery.cjs')
 const { channelFor } = require('./installation-communications.cjs')
 const { createHmac, timingSafeEqual } = require('node:crypto')
 const { sqlParameters } = require('./ticket-mail-store.cjs')
@@ -22,7 +23,7 @@ function configuration(env = process.env, kind = 'appointment', installationType
 }
 const enabledRoutes = env => ['appointment', 'experience'].flatMap(kind => ['alarm', 'cameras'].filter(type => configuration(env, kind, type).enabled).map(type => ({ kind, type })))
 const anyEnabled = env => enabledRoutes(env).length > 0
-const envelopeFor = (record, state, item) => item.kind === 'experience' ? experience.envelope(record, state) : notice.envelope(record, state)
+const envelopeFor = (record, state, item) => item.kind === 'experience' ? experience.envelope(record, state) : { ...notice.envelope(record, state), id: item.id }
 
 function receiptToken(eventId, env = process.env) {
   if (!/^whatsapp-[a-f0-9]{64}$/.test(eventId) || String(env.PIGNUS_SESSION_SECRET || '').length < 32) return ''
@@ -62,17 +63,26 @@ function createStore({ sql, db, env = process.env }) {
         ...notice.changes(previous, next, 'whatsapp').filter(item => item.date >= notice.today(at)),
         ...experience.changes(previous, next)
       ].filter(item => configuration(env, item.kind, item.installationType).enabled)
-      if (!items.length) return
       await ensure()
-      for (const item of items) {
-        const status = item.phone ? 'queued' : 'needs_phone'
-        await query(`UPDATE ${TABLE} SET service_id=?,customer_id=?,status=?,payload=?,updated_at=?,next_attempt_at=?,last_error=NULL WHERE id=? AND status IN ('queued','retry','needs_phone','cancelled')`, [item.serviceId, item.customerId, status, JSON.stringify(item), at, at, item.id])
-        await query(`INSERT INTO ${TABLE} (id,service_id,customer_id,status,payload,created_at,updated_at,next_attempt_at,history) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, [item.id, item.serviceId, item.customerId, status, JSON.stringify(item), at, at, at, JSON.stringify([{ at, action: 'created' }])])
+      const existing = await this.list()
+      const cancellations = delivery.cancellations(previous, next, existing, at, 'whatsapp')
+      items.push(...cancellations.map(row => row.payload))
+      for (const original of items) {
+        const item = delivery.revision(original, existing, at)
+        const planned = item.kind === 'appointment' ? cancellations.find(row => row.payload.id === item.id) || delivery.plan(item, existing, at, 'whatsapp') : { payload: item, status: item.phone ? 'queued' : 'needs_phone', nextAt: at }
+        const updateGuard = item.kind === 'appointment' ? "status IN ('queued','needs_phone','cancelled','skipped') AND attempts=0" : "status IN ('queued','retry','needs_phone','cancelled')"
+        await query(`UPDATE ${TABLE} SET service_id=?,customer_id=?,status=?,payload=?,updated_at=?,next_attempt_at=?,last_error=NULL WHERE id=? AND ${updateGuard}`, [item.serviceId, item.customerId, planned.status, JSON.stringify(planned.payload), at, planned.nextAt, item.id])
+        await query(`INSERT INTO ${TABLE} (id,service_id,customer_id,status,payload,created_at,updated_at,next_attempt_at,history) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, [item.id, item.serviceId, item.customerId, planned.status, JSON.stringify(planned.payload), at, at, planned.nextAt, JSON.stringify([{ at, action: planned.status === 'skipped' ? 'skipped' : 'created' }])])
       }
+      await this.reconcile(next, at)
     },
     async list() { return (await query(`SELECT * FROM ${TABLE} ORDER BY created_at DESC`)).map(parse) },
     async reconcile(state, at) {
+      await delivery.reconcile({ rows: await this.list(), state, at, channel: 'whatsapp', save: async (row, planned) => {
+        await query(`UPDATE ${TABLE} SET status=?,payload=?,updated_at=?,next_attempt_at=?,last_error=NULL WHERE id=? AND status IN ('queued','retry','needs_phone','skipped','needs_action')`, [planned.status, JSON.stringify(planned.payload), at, planned.nextAt, row.id])
+      } })
       for (const row of await this.list()) {
+        if (row.payload.kind === 'appointment') continue
         if (!['queued', 'retry', 'needs_phone'].includes(row.status)) continue
         const record = state.history.find(item => String(item.id) === row.service_id)
         const current = row.payload.kind === 'experience' && experience.ready(record, state) ? experience.envelope(record, state) : null
@@ -106,8 +116,8 @@ function createStore({ sql, db, env = process.env }) {
     },
     async review(id, updatedAt, user, at) {
       const row = parse((await query(`SELECT * FROM ${TABLE} WHERE id=?`, [id]))[0])
-      if (!row || row.status !== 'uncertain' || row.updated_at !== updatedAt) throw Object.assign(new Error('El aviso cambió. Actualizá la ficha.'), { statusCode: 409 })
-      const changed = await query(`UPDATE ${TABLE} SET status='reviewed',updated_at=?,last_error=NULL,history=? WHERE id=? AND status='uncertain' AND updated_at=? RETURNING id`, [at, JSON.stringify([...row.history, { at, action: 'reviewed_without_resend', byId: user.id, byName: user.name || user.email }]), id, updatedAt])
+      if (!row || !['uncertain', 'needs_action'].includes(row.status) || row.updated_at !== updatedAt) throw Object.assign(new Error('El aviso cambió. Actualizá la ficha.'), { statusCode: 409 })
+      const changed = await query(`UPDATE ${TABLE} SET status='reviewed',updated_at=?,last_error=NULL,history=? WHERE id=? AND status=? AND updated_at=? RETURNING id`, [at, JSON.stringify([...row.history, { at, action: row.status === 'needs_action' ? 'cancellation_contacted_manually' : 'reviewed_without_resend', byId: user.id, byName: user.name || user.email }]), id, row.status, updatedAt])
       if (!changed.length) throw Object.assign(new Error('El aviso cambió. Actualizá la ficha.'), { statusCode: 409 })
     },
     async finish(row, status, error, at) {
@@ -128,9 +138,7 @@ function eligible(record, item, state, now) {
     const current = experience.envelope(record, state)
     return current.id === item.id && current.phone === item.phone && current.recipient === item.recipient && current.customerId === item.customerId
   }
-  if (!notice.ready(record, state) || record.date < notice.today(now)) return false
-  const current = notice.envelope(record, state)
-  return current.scheduleKey === item.scheduleKey && current.phone === item.phone && current.recipient === item.recipient && current.customerId === item.customerId
+  return !item.cancelledNotice && delivery.current(record, item, state, 'whatsapp', now)
 }
 
 // An HTTP acceptance is NOT evidence of a delivered WhatsApp. Ambiguous requests
@@ -195,6 +203,7 @@ async function processWhatsApp({ store, readState, env = process.env, now = Date
 function present(row) {
   return { id: `whatsapp:${row.id}`, kind: row.payload.kind || 'appointment', channel: 'whatsapp', recordId: row.service_id, customerId: row.customer_id,
     status: row.status, createdAt: row.created_at, updatedAt: row.updated_at, sentAt: row.sent_at, sender: 'GoHighLevel',
+    scheduledAt: row.payload.scheduledAt, omissionReason: row.payload.omissionReason, cancelledNotice: row.payload.cancelledNotice,
     attempts: row.attempts, error: row.last_error || '', client: row.payload.client, account: row.payload.account,
     recipient: row.payload.phone, technicians: row.payload.technicians, serviceType: row.payload.serviceType || 'Instalación de alarma', history: row.history }
 }

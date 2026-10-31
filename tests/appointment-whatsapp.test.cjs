@@ -4,7 +4,7 @@ const { DatabaseSync } = require('node:sqlite')
 const notice = require('../api/_lib/appointment-notice.cjs')
 const whatsapp = require('../api/_lib/appointment-whatsapp.cjs')
 const mail = require('../api/_lib/appointment-confirmation.cjs')
-const instant = Date.parse('2026-10-29T15:00:00Z')
+const instant = Date.parse('2026-11-01T12:00:00Z')
 const env = { PIGNUS_SESSION_SECRET: 'test-secret-'.repeat(8), PIGNUS_GHL_ENABLED: 'true', PIGNUS_GHL_WEBHOOK_URL: 'https://services.leadconnectorhq.com/hooks/TEST/webhook-trigger/00000000-0000-0000-0000-000000000000' }
 const record = { id: 'visit', customerId: 'customer', client: 'Ana Prueba', clientAccount: 'CLI-1', service: 'Instalación de alarma', status: 'Pendiente', date: '2026-11-02', time: '09:00', address: 'Calle de prueba 123', phone: '+5493510000000', formEmail: 'ana@example.com', technicians: ['Técnico Uno', 'Técnico Dos'], awaitingConfirmation: false }
 const state = r => ({ history: r ? [r] : [], customers: [{ customerId: 'customer', account: 'CLI-1', name: 'Ana Prueba' }] })
@@ -78,7 +78,7 @@ test('queue is atomic and idempotent, no retrospective notices or repeat after a
   try {
     await store.enqueue(before, after, at()); assert.equal((await store.list()).length, 1)
     db.exec('BEGIN'); await store.enqueue(before, state({ ...record, id: 'rollback' }), at()); db.exec('ROLLBACK')
-    await store.enqueue(state(null), state({ ...record, id: 'past', date: '2026-10-28' }), at()); assert.equal((await store.list()).length, 1)
+    await store.enqueue(state(null), { ...after, history: [record, { ...record, id: 'past', date: '2026-10-28' }] }, at()); assert.equal((await store.list()).length, 1)
     const fetchImpl = async (url, init) => { calls++; assert.equal(url, env.PIGNUS_GHL_WEBHOOK_URL); assert.equal(init.redirect, 'error'); assert.equal(JSON.parse(init.body).phone, record.phone); return response() }
     assert.equal((await whatsapp.processWhatsApp({ ...options, fetchImpl })).accepted, 1)
     await store.enqueue(before, after, at()); await whatsapp.processWhatsApp({ ...options, fetchImpl }); assert.equal(calls, 1)
@@ -172,10 +172,10 @@ test('same phone or email waits for previous GHL workflow; other contacts procee
   const { db, store } = await fixture()
   try {
     const first = await store.claim(at()); await store.finish(first, 'accepted', null, at())
-    const second = { ...record, id: 'second', date: '2026-11-03' }
+    const second = { ...record, id: 'second' }
     const third = { ...record, id: 'third', phone: '+5493511111111', formEmail: 'other@example.com' }
     await store.enqueue(state(null), state(second), at())
-    await store.enqueue(state(null), state(third), at())
+    await store.enqueue(state(null), { ...after, history: [record, second, third] }, at())
     const independent = await store.claim(at()); assert.equal(independent.service_id, 'third')
     assert.equal(await store.claim(at()), null)
     await store.recover(new Date(instant + 31 * 60000).toISOString())
