@@ -13,6 +13,7 @@ import TicketSlaSummary, { TicketServiceSchedule } from './TicketSlaSummary.jsx'
 import { TICKET_STATES, TICKET_PRIORITIES, TICKET_ORIGINS, TICKET_RESOLUTION_METHODS, ticketNumber, ticketDate, ticketCustomer, ticketAccount, ticketRule, newCommandId, validateTicketFiles, encodeTicketFiles } from './ticket-ui.mjs'
 import { prepareTicketCommand } from './ticket-command-retry.mjs'
 import { ticketCreateErrors } from './ticket-create-validation.mjs'
+import useTicketList from './useTicketList.mjs'
 import './tickets.css'
 
 const get = params => requestJson(`/api/tickets?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null))}`)
@@ -289,27 +290,43 @@ function TicketDetail({ id, metadata, onClose, onChanged, onCoordinateService })
 }
 
 export default function Tickets({ openRequest, onChanged, onCoordinateService }) {
-  const { can } = usePermissions()
-  const [metadata, setMetadata] = useState(null), [data, setData] = useState({ items: [], total: 0, counts: {} }), [loading, setLoading] = useState(true), [error, setError] = useState(''), [notice, setNotice] = useState('')
-  const [status, setStatus] = useState('Nuevo'), [search, setSearch] = useState(''), [priority, setPriority] = useState(''), [origin, setOrigin] = useState(''), [assignee, setAssignee] = useState(''), [page, setPage] = useState(1)
-  const [creating, setCreating] = useState(false), [initial, setInitial] = useState(null), [selected, setSelected] = useState(null), [revision, setRevision] = useState(0)
+  const { can, user, permissions } = usePermissions()
+  const enabled = can('tickets.view')
+  // State synchronization can recreate the context without changing access.
+  const accessKey = JSON.stringify([user?.id, user?.roleCode, Object.entries(permissions || {}).sort(([a], [b]) => a.localeCompare(b))])
+  const [metadata, setMetadata] = useState(null), [metadataError, setMetadataError] = useState(''), [notice, setNotice] = useState('')
+  const [metadataRevision, setMetadataRevision] = useState(0)
+  const [status, setStatus] = useState('Nuevo'), [search, setSearch] = useState(''), [priority, setPriority] = useState(''), [origin, setOrigin] = useState(''), [assignee, setAssignee] = useState('')
+  const [creating, setCreating] = useState(false), [initial, setInitial] = useState(null), [selected, setSelected] = useState(null)
   const query = useDebounced(search), lastRequest = useRef(null)
-  useEffect(() => { if (!can('tickets.view')) return; let cancelled = false; get({ view: 'metadata' }).then(result => { if (!cancelled) setMetadata(result) }).catch(failure => { if (!cancelled) setError(failure.message) }); return () => { cancelled = true } }, [can])
+  const filterKey = JSON.stringify([status, query, priority, origin, assignee])
+  const [pagination, setPagination] = useState({ key: filterKey, page: 1 })
+  const page = pagination.key === filterKey ? pagination.page : 1
+  const setPage = update => setPagination({ key: filterKey, page: typeof update === 'function' ? update(page) : update })
+  const { data, loading, refreshing, pending, error: listError, refresh, apply } = useTicketList({
+    accessKey, enabled, paused: creating || Boolean(selected),
+    params: { status, search: query, priority, origin, assigneeId: assignee, page, pageSize: 20 }
+  })
+  const error = metadataError || (data.items.length ? '' : listError)
   useEffect(() => {
-    if (!can('tickets.view')) return
-    let cancelled = false; setLoading(true)
-    get({ view: 'list', status, search: query, priority, origin, assigneeId: assignee, page, pageSize: 20 }).then(result => { if (!cancelled) { setData({ ...result, items: result.items || result.tickets || [] }); setError('') } }).catch(failure => { if (!cancelled) { if ([401, 403].includes(failure.status)) setData({ items: [], total: 0, counts: {} }); setError(failure.message) } }).finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [status, query, priority, origin, assignee, page, revision, can])
-  useEffect(() => { setPage(1) }, [status, query, priority, origin, assignee])
+    setMetadata(null)
+    setMetadataError('')
+    if (!enabled) return
+    let cancelled = false
+    const controller = new AbortController()
+    requestJson('/api/tickets?view=metadata&includeMailStatus=false', { signal: controller.signal })
+      .then(result => { if (!cancelled) setMetadata(result) })
+      .catch(failure => { if (!cancelled) setMetadataError(failure.message) })
+    return () => { cancelled = true; controller.abort() }
+  }, [accessKey, enabled, metadataRevision])
   useEffect(() => { if (!openRequest || lastRequest.current === openRequest) return; lastRequest.current = openRequest; if (openRequest.id || openRequest.ticketId) setSelected(String(openRequest.id || openRequest.ticketId)); else if (openRequest.create || openRequest.serviceId) { setInitial(openRequest); setCreating(true) } }, [openRequest])
-  useEffect(() => { const refresh = () => { if (!document.hidden && !creating && !selected) setRevision(value => value + 1) }; const timer = setInterval(refresh, 60000); window.addEventListener('focus', refresh); return () => { clearInterval(timer); window.removeEventListener('focus', refresh) } }, [creating, selected])
-  const changed = message => { if (message) setNotice(message); window.dispatchEvent(new Event('tickets-changed')); setRevision(value => value + 1); onChanged?.() }
+  const changed = message => { if (message) setNotice(message); window.dispatchEvent(new Event('tickets-changed')); refresh(); onChanged?.() }
   if (!can('tickets.view')) return <p className="empty-state">No tenés permiso para consultar tickets.</p>
   return <div className="tickets-page"><ModuleIntroduction><p className="eyebrow">OPERACIÓN</p><h1>Tickets</h1><p>Reclamos, solicitudes y gestiones en un mismo lugar.</p></ModuleIntroduction>
     <div className="tickets-topbar"><div className="tickets-tabs" role="group" aria-label="Estado de los tickets">{TICKET_STATES.map(value => <button title="Filtrá la bandeja para consultar los tickets del estado seleccionado." type="button" key={value} className={status === value ? 'primary' : 'secondary'} aria-pressed={status === value} onClick={() => setStatus(value)}>{value === 'Nuevo' ? 'Nuevos' : value === 'Resuelto' ? 'Resueltos' : value}{data.counts?.[value] !== undefined && ` (${data.counts[value]})`}</button>)}</div>{can('tickets.create') && <button title="Abrí el formulario para registrar un reclamo o una solicitud interna." type="button" className="primary" disabled={!metadata} onClick={() => { setInitial(null); setCreating(true); setNotice('') }}><Icon name="plus" size={17} />Nuevo ticket</button>}</div>
     <div className="tickets-filters"><label>Buscar<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Número de ticket, cliente o asunto" /></label><label>Prioridad<select value={priority} onChange={event => setPriority(event.target.value)}><option value="">Todas</option>{sortOptionsAlphabetically(TICKET_PRIORITIES).map(item => <option key={item}>{item}</option>)}</select></label><label>Origen<select value={origin} onChange={event => setOrigin(event.target.value)}><option value="">Todos</option><option value="email">Correo</option><option value="phone">Llamadas</option><option value="technical">Solicitudes de técnicos</option><option value="internal">Solicitudes internas</option></select></label><label>Responsable<select value={assignee} onChange={event => setAssignee(event.target.value)}><option value="">Todos los autorizados</option><option value="me">Asignados a mí</option><option value="unassigned">Sin asignar</option>{sortOptionsAlphabetically(metadata?.assignees).map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label></div>
-    {error && <p role="alert" className="field-error">{error} <button title="Volvé a consultar los tickets y la configuración necesarios para esta pantalla." className="secondary" type="button" onClick={() => { if (!metadata) get({ view: 'metadata' }).then(setMetadata).catch(failure => setError(failure.message)); setRevision(value => value + 1) }}>Reintentar</button></p>}{notice && <p role="status" className="tickets-feedback">{notice}</p>}
+    {error && <p role="alert" className="field-error">{error} <button title="Volvé a consultar los tickets y la configuración necesarios para esta pantalla." className="secondary" type="button" onClick={() => { if (!metadata) setMetadataRevision(value => value + 1); refresh() }}>Reintentar</button></p>}{notice && <p role="status" className="tickets-feedback">{notice}</p>}
+    <div className="tickets-update-bar"><span role="status">{pending ? 'Hay novedades en los tickets.' : refreshing ? 'Buscando novedades…' : listError && data.items.length ? 'No se pudo actualizar. Se conserva el listado.' : 'El listado se mantiene estable mientras leés.'}</span><button type="button" className={pending ? 'primary' : 'secondary'} disabled={loading || refreshing} onClick={() => pending ? apply() : refresh()}>{pending ? 'Actualizar listado' : 'Actualizar'}</button></div>
     <section className="data-card tickets-results" aria-label="Listado de tickets" aria-busy={loading}>{loading ? <p className="empty-state" role="status">Cargando tickets…</p> : !data.items.length ? <p className="empty-state">No hay tickets para estos filtros.</p> : <><div className="tickets-table-wrapper"><table><thead><tr><th>Ticket y solicitud</th><th>Prioridad</th><th>Estado</th><th>Responsable</th><th>Última actividad</th><th><span className="tickets-sr-only">Acciones</span></th></tr></thead><tbody>{data.items.map(ticket => <tr key={ticket.id}><td><button title="Abrí el ticket para consultar su conversación, adjuntos y gestiones." className="tickets-ticket-link" type="button" onClick={() => setSelected(String(ticket.id))}>{ticketNumber(ticket)} · {ticket.title}</button>{ticket.origin === 'technical' ? <><small className="tickets-observation-preview">{ticket.description || 'Sin observación registrada'}</small><small>{['Informe técnico', ticket.createdByName || ticket.requesterName].filter(Boolean).join(' · ')}</small></> : <><small>{ticketCustomer(ticket)}</small><small>{TICKET_ORIGINS[ticket.origin] || ticket.origin}</small></>}</td><td><span className={`tickets-priority tickets-priority--${ticket.priority?.toLowerCase()}`}>{ticket.priority}</span><TicketSlaSummary summary={ticket.slaSummary} compact /></td><td>{ticket.status}<TicketServiceSchedule ticket={ticket} compact /></td><td>{ticket.assigneeName || metadata?.assignees?.find(item => String(item.id) === String(ticket.assigneeId))?.name || 'Sin asignar'}</td><td>{ticketDate(ticket.updatedAt || ticket.createdAt)}</td><td><button title="Consultá el detalle del ticket y las acciones habilitadas para tu rol." type="button" className="secondary" onClick={() => setSelected(String(ticket.id))} aria-label={`Ver ${ticketNumber(ticket)}`}>Ver</button></td></tr>)}</tbody></table></div><footer className="tickets-pagination"><span>{data.total} ticket{data.total === 1 ? '' : 's'} · página {page} de {Math.max(1, Math.ceil(data.total / (data.pageSize || 20)))}</span><div className="tickets-actions"><button title="Mostrá la página anterior conservando los filtros de la bandeja." type="button" className="secondary" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Anterior</button><button title="Mostrá la página siguiente conservando los filtros de la bandeja." type="button" className="secondary" disabled={page * (data.pageSize || 20) >= data.total} onClick={() => setPage(value => value + 1)}>Siguiente</button></div></footer></>}
     </section>
     {creating && metadata && <NewTicket metadata={metadata} initial={initial} onClose={() => setCreating(false)} onSaved={(ticket, message) => { setCreating(false); setNotice(message); if (ticket?.id) setSelected(String(ticket.id)); changed() }} />}

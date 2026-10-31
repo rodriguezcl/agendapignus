@@ -37,6 +37,23 @@ async function rejectsStatus(fn, statusCode, pattern) {
 }
 
 for (const engine of ['sqlite', 'postgres']) {
+  test(`Tickets ${engine}: totales por estado y filtros coinciden con la bandeja`, async () => {
+    const env = await fixture(engine), state = stateFixture()
+    try {
+      await env.store.run(administrator, state, createInput({ title: 'Sensor entrada', customerId: 'customer-1' }))
+      const item = (await env.store.run(administrator, state, createInput({ title: 'Sensor patio', customerId: 'customer-2' }))).ticket
+      await env.store.run(administrator, state, command('resolve', { id: item.id, version: item.version, note: 'Sensor reparado' }))
+      for (const [params, total] of [[{}, 2], [{ status: 'open' }, 1], [{ status: 'Resuelto' }, 1], [{ status: 'Nuevo', search: 'patio' }, 0], [{ search: 'sensor' }, 2], [{ search: 'patio' }, 1]]) {
+        const result = await env.store.query(administrator, state, params)
+        assert.equal(result.total, total)
+        assert.equal(result.items.length, total)
+      }
+      const lean = await env.store.query(administrator, state, { mode: 'metadata', includeMailStatus: 'false' })
+      assert.ok(lean.config.categories.length)
+      assert.ok(lean.assignees.length)
+      assert.equal(lean.config.mail.error, undefined)
+    } finally { await env.close() }
+  })
   test(`Tickets ${engine}: Supervisor busca cuentas fuera de CCTV sólo para cargar y comparar solicitudes`, async () => {
     const env = await fixture(engine), state = stateFixture()
     const policy = require('../api/_lib/permission-catalog.cjs')

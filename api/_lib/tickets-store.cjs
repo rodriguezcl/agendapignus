@@ -229,7 +229,7 @@ function createTicketStore({ sql, db }) {
       if (mode==='metadata') {
         if (!d.can(user,'view')&&!d.can(user,'configure')) d.fail('No tenés acceso a Tickets.',403)
         let mail={enabled:false,outboundEnabled:false,signatureEnabled:false,mode:'test'}
-        try { const m=await require('./ticket-mail-channel.cjs').createMailChannelStore({sql,db}).runtime(); mail={enabled:m.enabled,outboundEnabled:m.enabled&&m.mode==='live',signatureEnabled:m.signature?.enabled===true,mode:m.mode}; if(d.can(user,'configure')) mail={...mail,...await (pg?require('./ticket-mail-store.cjs').postgresTicketMailStore(sql):require('./ticket-mail-store.cjs').sqliteTicketMailStore(db)).status(m.mailboxKey)} } catch { mail.error='Falta completar la configuración del correo.' }
+        if (params.includeMailStatus !== 'false') try { const m=await require('./ticket-mail-channel.cjs').createMailChannelStore({sql,db}).runtime(); mail={enabled:m.enabled,outboundEnabled:m.enabled&&m.mode==='live',signatureEnabled:m.signature?.enabled===true,mode:m.mode}; if(d.can(user,'configure')) mail={...mail,...await (pg?require('./ticket-mail-store.cjs').postgresTicketMailStore(sql):require('./ticket-mail-store.cjs').sqliteTicketMailStore(db)).status(m.mailboxKey)} } catch { mail.error='Falta completar la configuración del correo.' }
         return { config:{...config,mail},configVersion:configuration.version,numberingLocked:(await execute('SELECT id FROM pignus_tickets LIMIT 1')).length>0,assignees:d.assignees(state,null,config),services:serviceSuggestions.serviceOptions(state),employees:d.can(user,'configure')?(state.employees||[]).map(e=>({id:String(e.id),name:e.name||`${e.firstName||''} ${e.lastName||''}`})):[],permissions:policy.resolvePermissions(user) }
       }
       if(!d.can(user,'view')) d.fail('No tenés permiso para consultar tickets.',403)
@@ -292,7 +292,7 @@ function createTicketStore({ sql, db }) {
       if(needle){where.push(pg?'strpos(search_text,?)>0':'instr(search_text,?)>0');args.push(needle)}
       const clause=()=>where.length?' WHERE '+where.join(' AND '):''
       const counts=Object.fromEntries(d.STATUSES.map(status=>[status,0]))
-      for(const row of await execute('SELECT status,COUNT(*) AS count FROM pignus_tickets'+clause()+' GROUP BY status',args))counts[row.status]=Number(row.count)
+      if (mode !== 'notifications') for(const row of await execute('SELECT status,COUNT(*) AS count FROM pignus_tickets'+clause()+' GROUP BY status',args))counts[row.status]=Number(row.count)
       if(mode==='notifications'){
         if(!policy.can(user,'notifications.tickets'))return {notifications:[]}
         const notices=[]
@@ -303,7 +303,7 @@ function createTicketStore({ sql, db }) {
         return {notifications:[...notices,...items.filter(t=>!noticed.has(t.id)).map(t=>({id:'ticket:'+t.id,title:communications.notificationTitle(t,(t.priority==='Crítica'?'Crítico · ':'')+t.status,state,policy.can(user,'records.contact')),detail:registration.registrationFormTitle(t,policy.can(user,'records.contact'))+' · '+(t.assigneeName||'Sin asignar'),tone:t.priority==='Crítica'?'danger':'warning',target:{type:'ticket',ticketId:t.id}}))]}
       }
       if(params.status){if(params.status==='open')where.push("status IN ('Nuevo','En gestión','En espera')");else{where.push('status=?');args.push(params.status)}}
-      const total=Number((await execute('SELECT COUNT(*) AS count FROM pignus_tickets'+clause(),args))[0].count)
+      const total = params.status === 'open' ? ['Nuevo','En gestión','En espera'].reduce((sum, status) => sum + (counts[status] || 0), 0) : params.status ? (counts[params.status] || 0) : Object.values(counts).reduce((sum, count) => sum + count, 0)
       const page=Math.max(1,Math.floor(Number(params.page)||1)),pageSize=Math.min(50,safeNum(params.pageSize||20))
       const items=(await execute('SELECT data FROM pignus_tickets'+clause()+' ORDER BY CASE '+field('priority')+" WHEN 'Crítica' THEN 0 WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END,updated_at DESC,id LIMIT ? OFFSET ?",[...args,pageSize,(page-1)*pageSize])).map(parse)
       return {items:items.map(t=>d.present(t,user,[],[],false,config)),total,page,pageSize,counts}
