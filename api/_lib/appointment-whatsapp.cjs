@@ -1,21 +1,27 @@
 const notice = require('./appointment-notice.cjs')
 const experience = require('./experience-whatsapp.cjs')
+const { channelFor } = require('./installation-communications.cjs')
 const { createHmac, timingSafeEqual } = require('node:crypto')
 const { sqlParameters } = require('./ticket-mail-store.cjs')
 const TABLE = 'pignus_appointment_whatsapp'
 
-function configuration(env = process.env, kind = 'appointment') {
+function configuration(env = process.env, kind = 'appointment', installationType = 'alarm') {
   const postSale = kind === 'experience'
+  const cameras = channelFor(installationType) === 'cameras'
+  const prefix = cameras ? `PIGNUS_GHL_CAMERAS${postSale ? '_EXPERIENCE' : ''}` : `PIGNUS_GHL${postSale ? '_EXPERIENCE' : ''}`
   let url = ''
   try {
-    const parsed = new URL((postSale ? env.PIGNUS_GHL_EXPERIENCE_WEBHOOK_URL : env.PIGNUS_GHL_WEBHOOK_URL) || '')
-    if (parsed.protocol === 'https:' && parsed.hostname === 'services.leadconnectorhq.com' && !parsed.port && !parsed.username && !parsed.password && !parsed.search && !parsed.hash && /^\/hooks\/[A-Za-z0-9]+\/webhook-trigger\/[a-f0-9-]+$/.test(parsed.pathname)) url = parsed.href
+    const parsed = new URL(env[`${prefix}_WEBHOOK_URL`] || '')
+    if (parsed.protocol === 'https:' && parsed.hostname === 'services.leadconnectorhq.com' && !parsed.port && !parsed.username && !parsed.password && !parsed.search && !parsed.hash && /^\/hooks\/[A-Za-z0-9]+\/webhook-trigger\/[A-Za-z0-9-]+$/.test(parsed.pathname)) url = parsed.href
   } catch { /* A malformed endpoint never reaches fetch or logs. */ }
   // A post-sale event must never run the appointment-confirmation workflow.
-  if (postSale && url === env.PIGNUS_GHL_WEBHOOK_URL) url = ''
-  return { enabled: (postSale ? env.PIGNUS_GHL_EXPERIENCE_ENABLED : env.PIGNUS_GHL_ENABLED) === 'true' && Boolean(url) && String(env.PIGNUS_SESSION_SECRET || '').length >= 32, url }
+  if (postSale && url === env[cameras ? 'PIGNUS_GHL_CAMERAS_WEBHOOK_URL' : 'PIGNUS_GHL_WEBHOOK_URL']) url = ''
+  if (cameras && [env.PIGNUS_GHL_WEBHOOK_URL, env.PIGNUS_GHL_EXPERIENCE_WEBHOOK_URL,
+    env[postSale ? 'PIGNUS_GHL_CAMERAS_WEBHOOK_URL' : 'PIGNUS_GHL_CAMERAS_EXPERIENCE_WEBHOOK_URL']].includes(url)) url = ''
+  return { enabled: env[`${prefix}_ENABLED`] === 'true' && Boolean(url) && String(env.PIGNUS_SESSION_SECRET || '').length >= 32, url }
 }
-const anyEnabled = env => configuration(env).enabled || configuration(env, 'experience').enabled
+const enabledRoutes = env => ['appointment', 'experience'].flatMap(kind => ['alarm', 'cameras'].filter(type => configuration(env, kind, type).enabled).map(type => ({ kind, type })))
+const anyEnabled = env => enabledRoutes(env).length > 0
 const envelopeFor = (record, state, item) => item.kind === 'experience' ? experience.envelope(record, state) : notice.envelope(record, state)
 
 function receiptToken(eventId, env = process.env) {
@@ -53,9 +59,9 @@ function createStore({ sql, db, env = process.env }) {
   return { ensure, query,
     async enqueue(previous, next, at = new Date().toISOString()) {
       const items = [
-        ...(configuration(env).enabled ? notice.changes(previous, next, 'whatsapp').filter(item => item.date >= notice.today(at)) : []),
-        ...(configuration(env, 'experience').enabled ? experience.changes(previous, next) : [])
-      ]
+        ...notice.changes(previous, next, 'whatsapp').filter(item => item.date >= notice.today(at)),
+        ...experience.changes(previous, next)
+      ].filter(item => configuration(env, item.kind, item.installationType).enabled)
       if (!items.length) return
       await ensure()
       for (const item of items) {
@@ -82,14 +88,16 @@ function createStore({ sql, db, env = process.env }) {
         }
       }
     },
-    async claim(at, kinds = ['appointment', 'experience']) {
+    async claim(at, kinds = ['appointment', 'experience'], routes = null) {
       // Called inside the shared mailbox lease. Keep the contact's mutable GHL
       // fields reserved until its previous workflow reaches the receipt action.
       const field = (alias, name) => sql ? `(${alias}.payload::jsonb->>'${name}')` : `json_extract(${alias}.payload,'$.${name}')`
       const phone = alias => field(alias, 'phone'), email = alias => field(alias, 'recipient')
       if (!kinds.length) return null
       const kindFilter = ` AND COALESCE(${field('candidate', 'kind')},'appointment') IN (${kinds.map(() => '?').join(',')})`
-      return parse((await query(`UPDATE ${TABLE} SET status='sending',attempts=attempts+1,started_at=?,updated_at=? WHERE id=(SELECT candidate.id FROM ${TABLE} candidate WHERE candidate.status IN ('queued','retry') AND candidate.next_attempt_at<=?${kindFilter} AND NOT EXISTS (SELECT 1 FROM ${TABLE} active WHERE active.id<>candidate.id AND active.status IN ('sending','accepted','uncertain') AND (${phone('active')}=${phone('candidate')} OR (${email('candidate')}<>'' AND LOWER(${email('active')})=LOWER(${email('candidate')})))) ORDER BY candidate.created_at,candidate.id LIMIT 1) AND status IN ('queued','retry') RETURNING *`, [at, at, at, ...kinds]))[0])
+      if (routes && !routes.length) return null
+      const routeFilter = routes ? ` AND (${routes.map(() => `(COALESCE(${field('candidate', 'kind')},'appointment')=? AND CASE WHEN ${field('candidate', 'installationType')} IN ('cameras','combined') THEN 'cameras' ELSE 'alarm' END=?)`).join(' OR ')})` : ''
+      return parse((await query(`UPDATE ${TABLE} SET status='sending',attempts=attempts+1,started_at=?,updated_at=? WHERE id=(SELECT candidate.id FROM ${TABLE} candidate WHERE candidate.status IN ('queued','retry') AND candidate.next_attempt_at<=?${kindFilter}${routeFilter} AND NOT EXISTS (SELECT 1 FROM ${TABLE} active WHERE active.id<>candidate.id AND active.status IN ('sending','accepted','uncertain') AND (${phone('active')}=${phone('candidate')} OR (${email('candidate')}<>'' AND LOWER(${email('active')})=LOWER(${email('candidate')})))) ORDER BY candidate.created_at,candidate.id LIMIT 1) AND status IN ('queued','retry') RETURNING *`, [at, at, at, ...kinds, ...(routes || []).flatMap(route => [route.kind, route.type])]))[0])
     },
     async acknowledge(id, at) {
       const row = parse((await query(`SELECT * FROM ${TABLE} WHERE id=?`, [id]))[0])
@@ -155,7 +163,7 @@ async function deliver(payload, config, { fetchImpl = fetch, timeoutMs = 5000 } 
 }
 
 async function processWhatsApp({ store, readState, env = process.env, now = Date.now, fetchImpl = fetch, maxRunMs = 7000 }) {
-  const kinds = ['appointment', 'experience'].filter(kind => configuration(env, kind).enabled), counts = { accepted: 0, failed: 0, uncertain: 0, retry: 0, cancelled: 0, draft: 0 }
+  const routes = enabledRoutes(env), kinds = [...new Set(routes.map(route => route.kind))], counts = { accepted: 0, failed: 0, uncertain: 0, retry: 0, cancelled: 0, draft: 0 }
   if (!kinds.length) return { ...counts, paused: true }
   await store.ensure()
   await store.recover(new Date(now()).toISOString())
@@ -164,13 +172,19 @@ async function processWhatsApp({ store, readState, env = process.env, now = Date
   counts.cancelled = (await store.list()).filter(row => row.status === 'cancelled' && pending.has(row.id)).length
   const deadline = now() + maxRunMs
   for (let i = 0; i < 5 && now() < deadline; i++) {
-    const row = await store.claim(new Date(now()).toISOString(), kinds)
+    const row = await store.claim(new Date(now()).toISOString(), kinds, routes)
     if (!row) break
     // If a read fails, the row remains sending and is recovered as uncertain.
     const state = await readState(), record = state.history.find(item => String(item.id) === row.service_id)
     let result
     if (!eligible(record, row.payload, state, now())) result = { status: 'cancelled', error: null }
-    else result = await deliver(signedPayload(envelopeFor(record, state, row.payload), env), configuration(env, row.payload.kind), { fetchImpl, timeoutMs: Math.max(1, Math.min(5000, deadline - now())) })
+    else {
+      const current = envelopeFor(record, state, row.payload)
+      const config = configuration(env, current.kind, current.installationType)
+      // A category edit after claiming must not use a stale or disabled workflow.
+      if (!config.enabled || current.installationType !== (row.payload.installationType || 'alarm')) result = { status: 'cancelled', error: null }
+      else result = await deliver(signedPayload(current, env), config, { fetchImpl, timeoutMs: Math.max(1, Math.min(5000, deadline - now())) })
+    }
     if (result.status === 'retry' && row.attempts >= 5) result = { status: 'failed', error: 'GoHighLevel sigue limitando las solicitudes después de cinco intentos. Revisá el canal.' }
     await store.finish(row, result.status, result.error, new Date(now()).toISOString())
     counts[result.status]++
@@ -182,7 +196,7 @@ function present(row) {
   return { id: `whatsapp:${row.id}`, kind: row.payload.kind || 'appointment', channel: 'whatsapp', recordId: row.service_id, customerId: row.customer_id,
     status: row.status, createdAt: row.created_at, updatedAt: row.updated_at, sentAt: row.sent_at, sender: 'GoHighLevel',
     attempts: row.attempts, error: row.last_error || '', client: row.payload.client, account: row.payload.account,
-    recipient: row.payload.phone, technicians: row.payload.technicians, history: row.history }
+    recipient: row.payload.phone, technicians: row.payload.technicians, serviceType: row.payload.serviceType || 'Instalación de alarma', history: row.history }
 }
 
 module.exports = { TABLE, configuration, anyEnabled, receiptToken, signedPayload, receiveReceipt, createStore, eligible, deliver, processWhatsApp, present }

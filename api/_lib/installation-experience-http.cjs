@@ -8,7 +8,7 @@ function visible(row,state,user) {
   const customer=record && access.customerForRecord(record,state)
   return Boolean(record && customer && access.customerReadable(customer,user,state) && access.serviceInReadScope(record,user,state))
 }
-const present=row=>({kind:row.payload.kind||'experience',id:row.id,recordId:row.service_id,customerId:row.customer_id,status:row.status,createdAt:row.created_at,updatedAt:row.updated_at,sentAt:row.sent_at,sender:row.sender,attempts:row.attempts,error:row.last_error?.message||'',client:row.payload.client,account:row.payload.account,recipient:row.payload.recipient,technicians:row.payload.technicians,history:row.history})
+const present=row=>({kind:row.payload.kind||'experience',id:row.id,recordId:row.service_id,customerId:row.customer_id,status:row.status,createdAt:row.created_at,updatedAt:row.updated_at,sentAt:row.sent_at,sender:row.sender,attempts:row.attempts,error:row.last_error?.message||'',client:row.payload.client,account:row.payload.account,recipient:row.payload.recipient,technicians:row.payload.technicians,serviceType:row.payload.serviceType || (row.payload.kind==='registration'?'':'Instalación de alarma'),history:row.history})
 async function experienceRequest({connection,kind,state,user,method,input={},query={}}) {
   if(!can(user,'accounts.view') || !can(user,'records.contact'))fail('No tenés acceso a los correos de esta cuenta.')
   await require('./tickets-http.cjs').storeFor(connection,kind).ensure()
@@ -45,13 +45,14 @@ async function experienceRequest({connection,kind,state,user,method,input={},que
   const whatsappStore=whatsapp.createStore({[kind]:connection});await whatsappStore.ensure()
   const whatsappActive=whatsapp.configuration().enabled
   const whatsappExperienceActive=whatsapp.configuration(process.env,'experience').enabled
+  const rowActive=row=>row.channel==='whatsapp'?whatsapp.configuration(process.env,row.payload.kind,row.payload.installationType).enabled:active
   let rows=[...(await store.list()).map(row=>({...row,channel:'email'})),...(await whatsappStore.list()).map(row=>({...row,id:`whatsapp:${row.id}`,channel:'whatsapp'}))].filter(row=>visible(row,state,user))
   if(query.customerId)rows=rows.filter(row=>String(access.customerForRecord(state.history.find(record=>String(record.id)===row.service_id),state)?.customerId)===String(query.customerId))
   if(query.id)rows=rows.filter(row=>row.id===query.id)
   if(query.notices==='1') {
     if(!can(user,'notifications.experience'))return {items:[],active}
-    rows=rows.filter(row=>['needs_email','needs_phone','failed','uncertain','draft'].includes(row.status) || !(row.channel==='whatsapp'?(row.payload.kind==='experience'?whatsappExperienceActive:whatsappActive):active) && ['queued','retry'].includes(row.status))
+    rows=rows.filter(row=>['needs_email','needs_phone','failed','uncertain','draft'].includes(row.status) || !rowActive(row) && ['queued','retry'].includes(row.status))
   }
-  return {items:rows.map(row=>row.channel==='whatsapp'?whatsapp.present({...row,id:row.id.slice('whatsapp:'.length)}):present(row)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)),active,whatsappActive,whatsappExperienceActive}
+  return {items:rows.map(row=>({...(row.channel==='whatsapp'?whatsapp.present({...row,id:row.id.slice('whatsapp:'.length)}):present(row)),active:rowActive(row)})).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)),active,whatsappActive,whatsappExperienceActive}
 }
 module.exports={visible,present,experienceRequest}

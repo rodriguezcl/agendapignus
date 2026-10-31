@@ -10,7 +10,8 @@ function eligible(record, payload, state, now = Date.now()) {
     record.date === payload.date && record.time === payload.time && record.date >= notice.today(now)
 }
 function message(item, record) {
-  const paragraphs = [`Hola, ${item.client}:`, 'Te confirmamos la visita técnica para instalar tu alarma.', `Nuestro equipo te visitará el ${scheduledDate({ service: record })}.`, `Dirección de instalación: ${record.address}.`, `Técnicos asignados: ${(record.technicians || []).join(' / ') || 'Equipo técnico Pignus'}.`, 'Si necesitás modificar la visita o consultar algún detalle, podés responder a este correo.', 'Gracias por confiar en Pignus.', 'Equipo Pignus']
+  const { installationType, describe } = require('./installation-communications.cjs')
+  const paragraphs = [`Hola, ${item.client}:`, `Te confirmamos la visita técnica para instalar ${describe(installationType(record)).installationDescription}.`, `Nuestro equipo te visitará el ${scheduledDate({ service: record })}.`, `Dirección de instalación: ${record.address}.`, `Técnicos asignados: ${(record.technicians || []).join(' / ') || 'Equipo técnico Pignus'}.`, 'Si necesitás modificar la visita o consultar algún detalle, podés responder a este correo.', 'Gracias por confiar en Pignus.', 'Equipo Pignus']
   const escape = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
   return { to: item.recipient, subject: 'Tu visita técnica está confirmada · Pignus', automatic: true, text: paragraphs.join('\n\n'), html: `<div style="font-family:Arial,sans-serif">${paragraphs.map(p => `<p>${escape(p)}</p>`).join('')}</div>` }
 }

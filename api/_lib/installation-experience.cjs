@@ -1,5 +1,5 @@
 const { createHash } = require('node:crypto')
-const { installation } = require('./alarm-zones.cjs')
+const { installation, installationType, describe } = require('./installation-communications.cjs')
 const { emailAddress } = require('./ticket-mail.cjs')
 const { customerForRecord } = require('./granular-read-policy.cjs')
 const { isIntermediate } = require('./service-journeys.cjs')
@@ -24,18 +24,19 @@ function envelope(record, state) {
   const fields = Object.entries(customer?.fields || {}).filter(([key]) => /^(email|e-mail|correo|correo electronico)$/.test(key.normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase())).map(([,value])=>value)
   const recipient = [record.formEmail, ...visits.map(item=>item.formEmail), customer?.email, ...fields].map(emailAddress).find(Boolean) || ''
   const key = `installation:${record.serviceJourney?.id || record.id}`
-  return { id: createHash('sha256').update(key).digest('hex'), serviceId: String(record.id), customerId: String(customer?.customerId || record.customerId || ''), account: customer?.account || record.clientAccount || '', client: clean(customer?.name || record.clientNameAtService || record.client || 'cliente'), technicians, recipient, date: record.date }
+  return { id: createHash('sha256').update(key).digest('hex'), serviceId: String(record.id), customerId: String(customer?.customerId || record.customerId || ''), account: customer?.account || record.clientAccount || '', client: clean(customer?.name || record.clientNameAtService || record.client || 'cliente'), technicians, recipient, date: record.date, ...describe(installationType(record)) }
 }
 function completionInvitations(previous, next) {
   const old = new Map((previous.history || []).map(record=>[String(record.id),record]))
   return (next.history || []).filter(record => old.has(String(record.id)) && !completed(old.get(String(record.id))) && completed(record) && installation(record) && !isIntermediate(record,next.history)).map(record=>envelope(record,next))
 }
 function message(item) {
+  const description = describe(item.installationType)
   const paragraphs = [
     `Hola, ${item.client}:`,
-    'Finalizamos la instalación de tu alarma y queremos agradecerte por confiar en Pignus para cuidar lo que más te importa.',
+    `Finalizamos la instalación de ${description.installationDescription} y queremos agradecerte por confiar en Pignus para cuidar lo que más te importa.`,
     `La instalación estuvo a cargo de ${joinNames(item.technicians)}.`,
-    'Nos gustaría saber cómo fue tu experiencia: ¿cómo te resultó la atención del equipo técnico? ¿Quedó clara la explicación sobre el uso de la alarma?',
+    `Nos gustaría saber cómo fue tu experiencia: ¿cómo te resultó la atención del equipo técnico? ¿Quedó clara la explicación sobre el uso de ${description.usageDescription}?`,
     'Podés responder a este correo para contarnos tu opinión, compartir una sugerencia o hacernos llegar cualquier inquietud. Queremos escucharte y seguir mejorando.',
     'También te invitamos a compartir tu experiencia en Google. Tu reseña ayuda a otras personas a conocernos.'
   ]

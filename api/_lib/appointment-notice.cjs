@@ -1,5 +1,5 @@
 const { createHash } = require('node:crypto')
-const { installation } = require('./alarm-zones.cjs')
+const { installation, installationType, describe } = require('./installation-communications.cjs')
 const { emailAddress } = require('./ticket-mail.cjs')
 const { customerForRecord } = require('./granular-read-policy.cjs')
 const clean = value => String(value || '').replace(/[\r\n\x00-\x1f]/g, ' ').trim()
@@ -46,7 +46,7 @@ function envelope(record, state = {}) {
   const scheduleKey = `${record.serviceJourney?.id || record.id}:${record.date}:${record.time}`
   return { id: hash(`appointment:${scheduleKey}`), kind: 'appointment', serviceId: String(record.id), customerId: String(record.customerId || customer?.customerId || ''),
     client, account: customer?.account || record.clientAccount || '', recipient, phone, technicians, date: record.date, time: record.time,
-    address: clean(record.address), dateText, scheduleKey }
+    address: clean(record.address), dateText, scheduleKey, ...describe(installationType(record)) }
 }
 
 function changes(previous, next, channel = 'email') {
@@ -57,7 +57,7 @@ function changes(previous, next, channel = 'email') {
     if (!ready(before, previous)) return true
     const current = envelope(record, next), prior = envelope(before, previous)
     const recipientKey = channel === 'whatsapp' ? 'phone' : 'recipient'
-    return current.scheduleKey !== prior.scheduleKey || current[recipientKey] !== prior[recipientKey] || (channel === 'whatsapp' && current.recipient !== prior.recipient)
+    return current.scheduleKey !== prior.scheduleKey || current.installationType !== prior.installationType || current[recipientKey] !== prior[recipientKey] || (channel === 'whatsapp' && current.recipient !== prior.recipient)
   }).map(record => envelope(record, next))
 }
 
@@ -66,7 +66,8 @@ function webhookPayload(item, isTest = false) {
   return { event: 'installation.confirmed', eventId: `whatsapp-${item.id}`, isTest, serviceId: item.serviceId,
     firstName: words[0], lastName: words.slice(1).join(' '), customerName: item.client,
     email: item.recipient, phone: item.phone, appointmentDate: item.date, appointmentTime: item.time,
-    appointmentDateText: item.dateText, address: item.address, technicians: item.technicians.join(' / ') || 'Equipo técnico Pignus', serviceType: 'Instalación de alarma' }
+    appointmentDateText: item.dateText, address: item.address, technicians: item.technicians.join(' / ') || 'Equipo técnico Pignus',
+    serviceType: describe(item.installationType).serviceType, installationDescription: describe(item.installationType).installationDescription }
 }
 
 module.exports = { clean, hash, today, phoneNumber, ready, envelope, changes, webhookPayload }

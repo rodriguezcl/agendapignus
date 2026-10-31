@@ -32,7 +32,7 @@ test('only a new installation completion qualifies, even without email; no backf
   assert.equal(payload.reviewUrl, REVIEW_URL)
   assert.equal(payload.technicians, 'Técnico Uno / Técnico Dos')
   assert.equal(payload.email, '')
-  assert.deepEqual(Object.keys(payload).sort(), ['event','eventId','isTest','serviceId','firstName','lastName','customerName','email','phone','technicians','reviewUrl','serviceType','receiptToken'].sort())
+  assert.deepEqual(Object.keys(payload).sort(), ['event','eventId','isTest','serviceId','firstName','lastName','customerName','email','phone','technicians','reviewUrl','serviceType','installationDescription','receiptToken'].sort())
 })
 
 test('multi-day completion uses one identity and includes all participating technicians', () => {

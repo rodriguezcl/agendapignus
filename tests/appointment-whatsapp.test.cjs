@@ -47,7 +47,7 @@ test('only the first journey visit is notified; a rescheduled date gets a new ev
 
 test('payload is restricted to appointment data, no observations or financial/internal fields', () => {
   const payload = notice.webhookPayload(notice.envelope({ ...record, internalNote: 'secret', amount: 99 }, after))
-  assert.deepEqual(Object.keys(payload).sort(), ['event','eventId','isTest','serviceId','firstName','lastName','customerName','email','phone','appointmentDate','appointmentTime','appointmentDateText','address','technicians','serviceType'].sort())
+  assert.deepEqual(Object.keys(payload).sort(), ['event','eventId','isTest','serviceId','firstName','lastName','customerName','email','phone','appointmentDate','appointmentTime','appointmentDateText','address','technicians','serviceType','installationDescription'].sort())
   assert.equal(payload.appointmentTime, '09:00')
   assert.match(payload.appointmentDateText, /lunes.*2.*noviembre.*2026/)
   assert.equal(payload.isTest, false)

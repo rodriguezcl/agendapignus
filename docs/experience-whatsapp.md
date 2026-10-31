@@ -79,6 +79,8 @@ Una respuesta 429 permite reintentos limitados. Errores ambiguos, interrupciones
 
 ## Validación
 
+Para instalaciones de cámaras y visitas mixtas, consultar [avisos de cámaras](camera-installation-notices.md). Utilizan plantillas y webhooks separados de los de alarmas.
+
 `tests/experience-whatsapp.test.cjs`, junto con `tests/appointment-whatsapp.test.cjs` y `tests/installation-experience.test.cjs`: transiciones de estado, jornadas, deduplicación, contactos, firma, serialización entre flujos, pausas independientes y SQLite/PostgreSQL.
 
 Referencias oficiales: [categorías de plantillas](https://help.gohighlevel.com/support/solutions/articles/155000001058-template-categorisation-guidelines), [solicitudes de reseñas por WhatsApp](https://help.gohighlevel.com/support/solutions/articles/155000004326-how-to-send-review-request-via-whatsapp).

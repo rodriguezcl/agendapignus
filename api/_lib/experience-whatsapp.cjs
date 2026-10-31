@@ -1,6 +1,6 @@
 const experience = require('./installation-experience.cjs')
 const notice = require('./appointment-notice.cjs')
-const { installation } = require('./alarm-zones.cjs')
+const { installation, describe } = require('./installation-communications.cjs')
 const { isIntermediate } = require('./service-journeys.cjs')
 const { customerForRecord } = require('./granular-read-policy.cjs')
 
@@ -23,7 +23,8 @@ function webhookPayload(item, isTest = false) {
   return { event: 'installation.completed.experience', eventId: `whatsapp-${item.id}`, isTest, serviceId: item.serviceId,
     firstName: words[0], lastName: words.slice(1).join(' '), customerName: item.client,
     email: item.recipient, phone: item.phone, technicians: item.technicians.join(' / ') || 'Equipo técnico Pignus',
-    reviewUrl: experience.REVIEW_URL, serviceType: 'Instalación de alarma' }
+    reviewUrl: experience.REVIEW_URL, serviceType: describe(item.installationType).serviceType,
+    installationDescription: describe(item.installationType).installationDescription }
 }
 
 module.exports = { ready, envelope, changes, webhookPayload }
