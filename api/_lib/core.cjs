@@ -182,7 +182,7 @@ function projectStateForUser(state, user, ticketUser = user) {
     })
     return {
       revision: state.revision,
-      roles: [], employees: [], services: [], vehicles: (state.vehicles || []).map(technicianVehicle), customers: [], agenda: null, preferences: {},
+      roles: [], employees: [], services: [], vehicles: (state.vehicles || []).map(vehicle => ({ ...technicianVehicle(vehicle), ...(assignedHistory.some(record => record.vehicleControl && String(record.vehicleId) === String(vehicle.id)) ? { mileage: vehicle.mileage == null ? null : Number(vehicle.mileage) } : {}) })), customers: [], agenda: null, preferences: {},
       history: visibleHistory.map(record => technicianSafeRecord(record.serviceJourney ? { ...record, journeyActiveIndexes: require('./service-journeys.cjs').activeJourneyIndexes(record, journeyHistory) } : record, ticketUser))
     }
   }

@@ -24,6 +24,8 @@ export async function submitTechnicianStatus({ recordId, type, observation, vehi
 
       const error = new Error(data.error || 'No se pudo informar el estado del servicio.')
       error.status = response.status
+      error.code = data.code
+      if (data.code === 'VEHICLE_MILEAGE_CONFLICT' && Number.isFinite(data.currentMileage)) error.currentMileage = data.currentMileage
       throw error
     } catch (error) {
       const timedOut = error?.name === 'AbortError'

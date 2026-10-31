@@ -784,7 +784,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
         if (vehicleIndex < 0) { const error = new Error('El vehículo asignado ya no existe.'); error.statusCode = 409; throw error }
         const previousVehicle = vehicles[vehicleIndex]
         const currentMileage = Number(previousVehicle.mileage || 0)
-        if (mileage <= currentMileage) { const error = new Error(`El kilometraje debe ser superior a ${currentMileage.toLocaleString('es-AR')} km.`); error.statusCode = 409; throw error }
+        if (mileage <= currentMileage) { const error = new Error(`El kilometraje debe ser superior a ${currentMileage.toLocaleString('es-AR')} km.`); error.statusCode = 409; error.code = 'VEHICLE_MILEAGE_CONFLICT'; error.currentMileage = currentMileage; throw error }
         const nextVehicle = { ...previousVehicle, mileage, mileageUpdatedAt: new Date().toISOString(), mileageUpdatedById: user.id, mileageUpdatedByName: user.name || user.email || 'Técnico' }
         vehicles[vehicleIndex] = nextVehicle
         await transaction`create table if not exists pignus_vehicle_control_photos (record_id text primary key, vehicle_id text not null, mime_type text not null, photo_data bytea not null, created_at timestamptz not null default now())`
@@ -825,7 +825,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
     return send(res, 200, { record: isGranular(user) ? granularRead.sanitizeService(updated, user) : technicianSafeRecord(updated, user) })
   } catch (error) {
     const databaseBusy = error.code === '55P03' || error.code === '57014'
-    return send(res, databaseBusy ? 503 : (error.statusCode || 400), { error: databaseBusy ? 'La base de datos está ocupada. El sistema volverá a intentarlo automáticamente.' : (error.message || 'No se pudo informar el estado.') })
+    return send(res, databaseBusy ? 503 : (error.statusCode || 400), { error: databaseBusy ? 'La base de datos está ocupada. El sistema volverá a intentarlo automáticamente.' : (error.message || 'No se pudo informar el estado.'), ...(error.code === 'VEHICLE_MILEAGE_CONFLICT' ? { code: error.code, currentMileage: error.currentMileage } : {}) })
   }
 }
 

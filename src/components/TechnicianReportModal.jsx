@@ -8,6 +8,7 @@ import { compactVehiclePhoto } from '../infrastructure/media/image-upload.mjs'
 import { requestJson } from '../infrastructure/http/json-request.mjs'
 import { ticketDate, ticketNumber } from '../features/tickets/ticket-ui.mjs'
 import './technician-report.css'
+import { controlMileage } from '../domain/vehicles/control-mileage.mjs'
 import workModel from '../../api/_lib/work-completion.cjs'
 import './work-completion.css'
 import alarmZoneModel from '../../api/_lib/alarm-zones.cjs'
@@ -23,7 +24,7 @@ export function TechnicalDuplicatePreview({ ticket }) {
   </section>
 }
 
-export default function TechnicianReportModal({ record, type, serviceLabel, initialAlarmZones, pendingAttachments = [], onPendingAttachmentsChange, attachmentsPreparing = false, onPreparingChange, onClose, onSubmit }) {
+export default function TechnicianReportModal({ record, currentVehicle, type, serviceLabel, initialAlarmZones, pendingAttachments = [], onPendingAttachmentsChange, attachmentsPreparing = false, onPreparingChange, onClose, onSubmit }) {
   const { can } = useActionPermissions()
   const workTypes = workModel.typesFor(record)
   const perWork = type === 'Completado' && !record.vehicleControl && workTypes.length > 1
@@ -90,6 +91,7 @@ export default function TechnicianReportModal({ record, type, serviceLabel, init
   if (needsZones) { try { alarmZoneModel.validateZones(alarmZones, type === 'Completado') } catch { zonesValid = false } }
   const [observation, setObservation] = useState('')
   const [mileage, setMileage] = useState('')
+  const mileageState = controlMileage(currentVehicle, mileage)
   const [photo, setPhoto] = useState('')
   const [photoSource, setPhotoSource] = useState('')
   const [choosingPhoto, setChoosingPhoto] = useState(true)
@@ -110,7 +112,7 @@ export default function TechnicianReportModal({ record, type, serviceLabel, init
   const dirty = Boolean(workResults.some(r => r.status) || zonesDirty || needsFollowup || complaintResolved || observation.trim() || mileage || photo || pendingAttachments.length)
   const busy = saving || photoBusy || attachmentsPreparing
   const valid = vehicleControl
-    ? Boolean(photo) && /^\d+$/.test(mileage) && Number(mileage) > Number(record.vehicleMileageAtScheduling || 0)
+    ? Boolean(photo) && mileageState.valid
     : workValid && zonesValid && Boolean(observation.trim()) && !linkedTicketsLoading && (!needsFollowup || Boolean(followupDescription.trim()) && !ticketChecking && !ticketContextPending && !ticketError && (!(followupCandidates.length || hasLinkedComplaint) || Boolean(ticketChoice)) && (!ticketChoice || ticketChoice === 'different' || Boolean(ticketPreview) && !previewLoading && !previewError && previewContext === selectedTicketContext))
   const requestClose = () => { if (!busy) dirty ? setDiscarding(true) : onClose() }
 
@@ -178,6 +180,7 @@ export default function TechnicianReportModal({ record, type, serviceLabel, init
         ...(type === 'Completado' && hasLinkedComplaint ? { ticketResolution: { resolved: !hasPendingWork && complaintResolved && (!needsFollowup || ticketChoice === 'different') && !linkedTicketsError, ticketIds: linkedTickets.length ? linkedTickets.map(ticket => String(ticket.id)) : [String(record.sourceTicketId)].filter(Boolean) } } : {}),
         ...(needsFollowup ? { followup: { type: followupType, description: followupDescription, duplicateToken, relatedTicketId: ticketChoice === 'different' ? '' : ticketChoice, ...(ticketChoice && ticketChoice !== 'different' ? { relatedTicketVersion: ticketPreview.version } : {}), ...(ticketChoice === 'different' ? { relation: 'different' } : {}) } } : {}) })
     } catch (failure) {
+      if (alive.current && failure.code === 'VEHICLE_MILEAGE_CONFLICT') setConfirming(false)
       if (alive.current && failure.status === 409 && needsFollowup) { setTicketRetry(value => value + 1); setConfirming(false); setTicketChoice('') }
       if (alive.current) setError(failure.message || 'No se pudo guardar el informe. Los datos siguen disponibles para reintentar.')
     } finally {
@@ -196,7 +199,8 @@ export default function TechnicianReportModal({ record, type, serviceLabel, init
         {vehicleControl ? <>
           <p className="vehicle-control-report-help">Informá el kilometraje y elegí una foto del interior. Podés usar una foto de este control o tomar una nueva.</p>
           <div className="vehicle-control-report-fields">
-            <label><RequiredLabel>Kilometraje actualizado</RequiredLabel><input type="number" required inputMode="numeric" min={Number(record.vehicleMileageAtScheduling || 0) + 1} step="1" value={mileage} disabled={saving} onChange={event => setMileage(event.target.value)} placeholder={`Mayor a ${Number(record.vehicleMileageAtScheduling || 0).toLocaleString('es-AR')} km`} /></label>
+            <label><RequiredLabel>Kilometraje actualizado</RequiredLabel><input type="number" required inputMode="numeric" min={mileageState.ready ? mileageState.current + 1 : 1} max="99999999" aria-invalid={Boolean(mileageState.error)} aria-describedby="vehicle-mileage-feedback" step="1" value={mileage} disabled={saving} onChange={event => setMileage(event.target.value)} placeholder={mileageState.ready ? `Mayor a ${mileageState.current.toLocaleString('es-AR')} km` : 'Kilometraje'} /></label>
+            <div id="vehicle-mileage-feedback" aria-live="polite">{mileageState.ready && <p>Último kilometraje registrado: <strong>{mileageState.current.toLocaleString('es-AR')} km</strong>.</p>}{mileageState.error && <p className="field-error" role="alert">{mileageState.error}</p>}</div>
             <fieldset className="vehicle-report-photo"><legend><RequiredLabel>Foto del interior</RequiredLabel></legend>
               {photo && <div className="vehicle-report-selected"><img className="vehicle-control-photo-preview" src={photo} alt="Foto del interior elegida para el control" /><small>Foto elegida: {photoSource}</small></div>}
               {photo && !choosingPhoto && (pendingPhotos.length > 0 || savedPhotos.length > 0) && <button type="button" title="Revisá las capturas de este control y elegí otra foto para el informe." className="secondary vehicle-report-change-photo" disabled={busy} onClick={() => setChoosingPhoto(true)}>Elegir otra foto del control</button>}
@@ -235,7 +239,7 @@ export default function TechnicianReportModal({ record, type, serviceLabel, init
         <div className="modal-actions"><button type="button" title="Cerrá el informe; si hay cambios pendientes, podrás conservarlos o descartarlos." className="secondary" disabled={busy} onClick={requestClose}>Cancelar</button><button type="button" title="Revisá la confirmación antes de guardar el informe y actualizar el estado del servicio." className="primary" disabled={!valid || busy} onClick={() => { setError(''); setConfirming(true) }}>Continuar</button></div>
       </section>
     </div>
-    {confirming && <div className="modal-layer technician-report-confirmation"><section className="modal confirm-modal" role="dialog" aria-modal="true" aria-label="Confirmar estado"><h2>Confirmar estado</h2><p>{hasPendingWork ? `Se registrarán ${completedTypes.length} trabajo(s) realizado(s) y ${workResults.filter(r => r.status === 'pending').length} pendiente(s). Los pendientes requerirán coordinación; la cobranza se ajustará o quedará en revisión.` : `¿Confirmás que querés informar “${type}”? Luego quedará registrado y cualquier cambio deberá ser revisado por Administración.`}</p>{error && <p className="field-error" role="alert">{error}</p>}<div className="confirm-actions"><button type="button" title="Volvé a revisar o corregir los datos sin perder el informe que estás preparando." className="secondary" disabled={saving} onClick={() => setConfirming(false)}>Volver al informe</button><button type="button" title="Guardá los adjuntos pendientes y luego registrá el informe y el estado del servicio." className="primary" disabled={saving} onClick={save}>{saving ? 'Guardando…' : 'Sí, confirmar estado'}</button></div></section></div>}
+    {confirming && <div className="modal-layer technician-report-confirmation"><section className="modal confirm-modal" role="dialog" aria-modal="true" aria-label="Confirmar estado"><h2>Confirmar estado</h2>{vehicleControl && <p>Vas a registrar <strong>{Number(mileage).toLocaleString('es-AR')} km</strong>{mileageState.ready && ` (${(Number(mileage) - mileageState.current).toLocaleString('es-AR')} km más que el último registro)`}. Revisá que coincida con el odómetro del vehículo.</p>}<p>{hasPendingWork ? `Se registrarán ${completedTypes.length} trabajo(s) realizado(s) y ${workResults.filter(r => r.status === 'pending').length} pendiente(s). Los pendientes requerirán coordinación; la cobranza se ajustará o quedará en revisión.` : `¿Confirmás que querés informar “${type}”? Luego quedará registrado y cualquier cambio deberá ser revisado por Administración.`}</p>{error && <p className="field-error" role="alert">{error}</p>}<div className="confirm-actions"><button type="button" title="Volvé a revisar o corregir los datos sin perder el informe que estás preparando." className="secondary" disabled={saving} onClick={() => setConfirming(false)}>Volver al informe</button><button type="button" title="Guardá los adjuntos pendientes y luego registrá el informe y el estado del servicio." className="primary" disabled={saving || !valid} onClick={save}>{saving ? 'Guardando…' : 'Sí, confirmar estado'}</button></div></section></div>}
     {discarding && <div className="modal-layer technician-report-discard"><section className="modal confirm-modal" role="alertdialog" aria-modal="true" aria-label="Informe sin guardar"><h2>Informe sin guardar</h2><p>El informe y los adjuntos pendientes todavía no se guardaron. ¿Querés seguir editando o descartarlos? Las fotos ya guardadas se conservan.</p><div className="confirm-actions"><button type="button" title="Conservá todos los datos y adjuntos pendientes para continuar preparando el informe." className="secondary" onClick={() => setDiscarding(false)}>Seguir editando</button><button type="button" title="Descartá este borrador y los adjuntos pendientes; las fotos ya guardadas se conservan." className="danger-button" onClick={() => { onPendingAttachmentsChange([]); onClose() }}>Descartar informe</button></div></section></div>}
   </>
 }

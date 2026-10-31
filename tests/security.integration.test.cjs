@@ -967,6 +967,47 @@ test('completar un control vehicular almacena la foto y permite volver a consult
   verificationDb.close()
 })
 
+test('corregir kilometraje en Flota actualiza la referencia técnica y permite completar un control anterior', async () => {
+  const admin = await login('qa-admin@pignus.test'), tech = await login('qa-tech@pignus.test')
+  const original = (await state(admin)).vehicles.find(vehicle => vehicle.id === 'qa-vehicle')
+  const databasePath = path.join(temporaryDirectory, 'agenda-tecnica.db')
+  const record = { id: 'qa-mileage-correction', date: '2020-01-03', time: '00:00', client: 'Ford Ka', service: 'Control semanal de vehículo', status: 'Pendiente', technicianIds: ['qa-tech'], vehicleControl: true, vehicleId: original.id, vehicleMileageAtScheduling: 800000 }
+  const db = new DatabaseSync(databasePath)
+  upsertJson(db, 'work_history', 'id', record)
+  db.close()
+  const changeMileage = async (base, mileage) => {
+    const response = await api(`/api/vehicles/${base.id}`, admin, { method: 'PUT', body: JSON.stringify({ base, vehicle: { ...base, mileage } }) })
+    assert.equal(response.status, 200, await response.clone().text())
+    return (await response.json()).vehicle
+  }
+  const report = mileage => api('/api/technician/status', tech, { method: 'POST', body: JSON.stringify({ recordId: record.id, type: 'Completado', vehicleMileage: mileage, vehiclePhoto: 'data:image/jpeg;base64,YQ==' }) })
+  try {
+    const mistaken = await changeMileage(original, 800000)
+    const rejected = await report(80100)
+    assert.equal(rejected.status, 409)
+    const failure = await rejected.json()
+    assert.equal(failure.code, 'VEHICLE_MILEAGE_CONFLICT')
+    assert.equal(failure.currentMileage, 800000)
+    assert.equal((await state(admin)).history.find(item => item.id === record.id).status, 'Pendiente')
+    await changeMileage(mistaken, 80000)
+    const visible = await (await api('/api/technician/state', tech)).json()
+    assert.equal(visible.vehicles.find(vehicle => vehicle.id === original.id).mileage, 80000)
+    assert.equal(visible.history.find(item => item.id === record.id).vehicleMileageAtScheduling, 800000)
+    const saved = await report(80100)
+    assert.equal(saved.status, 200, await saved.clone().text())
+    assert.equal((await saved.json()).record.vehicleMileage, 80100)
+    const after = await (await api('/api/technician/state', tech)).json()
+    assert.equal(after.vehicles.find(vehicle => vehicle.id === original.id).mileage, 80100)
+  } finally {
+    const current = (await state(admin)).vehicles.find(vehicle => vehicle.id === original.id)
+    await changeMileage(current, original.mileage)
+    const cleanup = new DatabaseSync(databasePath)
+    cleanup.prepare('DELETE FROM vehicle_control_photos WHERE record_id = ?').run(record.id)
+    cleanup.prepare('DELETE FROM work_history WHERE id = ?').run(record.id)
+    cleanup.close()
+  }
+})
+
 test('la foto de referencia del servicio sólo puede modificarla gestión y verla el técnico asignado', async () => {
   const administratorCookie = await login('qa-admin@pignus.test')
   const technicianCookie = await login('qa-tech@pignus.test')

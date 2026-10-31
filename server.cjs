@@ -2460,7 +2460,7 @@ const server = http.createServer((req, res) => {
         if (vehicleIndex < 0) return send(res, 409, { error: 'El vehículo asignado ya no existe.' })
         const previousVehicle = vehicles[vehicleIndex]
         const currentMileage = Number(previousVehicle.mileage || 0)
-        if (mileage <= currentMileage) return send(res, 409, { error: `El kilometraje debe ser superior a ${currentMileage.toLocaleString('es-AR')} km.` })
+        if (mileage <= currentMileage) return send(res, 409, { error: `El kilometraje debe ser superior a ${currentMileage.toLocaleString('es-AR')} km.`, code: 'VEHICLE_MILEAGE_CONFLICT', currentMileage })
         const nextVehicle = { ...previousVehicle, mileage, mileageUpdatedAt: new Date().toISOString(), mileageUpdatedById: user.id, mileageUpdatedByName: user.name || user.email || 'Técnico' }
         vehicles[vehicleIndex] = nextVehicle
         vehicleChange = { vehicles, before: previousVehicle, after: nextVehicle, mileage, mimeType: photoMatch[1].toLowerCase(), photoBuffer }
