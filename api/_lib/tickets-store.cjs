@@ -356,7 +356,7 @@ function createTicketStore({ sql, db }) {
         if(item.status==='Fusionado')d.fail('Este ticket fue fusionado. Abrí el ticket principal.',409)
         if(item.status==='Resuelto'&&!['reopen','merge'].includes(action))d.fail('Reabrí el ticket antes de modificarlo.',409)
         if(action==='resume'&&item.status!=='En espera')d.fail('El ticket no está en espera.',409)
-        const note=d.text(input.note??input.body,10000,'Observación',!['assign','resume','linkService','formReceipt'].includes(action))
+        const note=action==='spam'?'':d.text(input.note??input.body,10000,'Observación',!['assign','resume','linkService','formReceipt'].includes(action))
         let eventLabel='',visibility='public',attachments=[]
         if(action==='comment'||action==='reply'||action==='contribute') {
           if(action==='contribute'&&input.visibility==='internal')d.fail('El aporte a un caso existente debe ser público.',403)
@@ -405,7 +405,14 @@ function createTicketStore({ sql, db }) {
           }
           item.status='Resuelto';item.resolvedAt=now;item.resolvedById=actorId;item.resolvedByName=actorName;item.resolution=note;item.resolutionMethod=method;item.nextReviewAt='';eventLabel='Resolvió el ticket'
         }
-        else if(action==='reopen') {if(item.status!=='Resuelto')d.fail('El ticket ya está abierto.',409);item.status='En gestión';item.resolvedAt='';delete item.resolvedByServiceId;delete item.resolvedById;delete item.resolvedByName;delete item.resolutionMethod;eventLabel='Reabrió el ticket'}
+        else if(action==='spam') {
+          item.status='Resuelto';item.closureReason='spam';item.resolvedAt=now
+          item.resolvedById=String(user.id);item.resolvedByName=user.name||[user.firstName,user.lastName].filter(Boolean).join(' ')||'Usuario'
+          item.resolution='Cerrado como spam';item.nextReviewAt=''
+          delete item.resolutionMethod;delete item.resolvedByServiceId
+          eventLabel='Cerró el ticket como spam'
+        }
+        else if(action==='reopen') {if(item.status!=='Resuelto')d.fail('El ticket ya está abierto.',409);item.status='En gestión';item.resolvedAt='';delete item.closureReason;delete item.resolvedByServiceId;delete item.resolvedById;delete item.resolvedByName;delete item.resolutionMethod;eventLabel='Reabrió el ticket'}
         else if(action==='linkCustomer') {const customer=d.customerFor(input,user,state);if(!customer)d.fail('Seleccioná una cuenta.');if(item.customerId&&item.customerId!==String(customer.customerId||customer.id))d.fail('El ticket ya tiene una cuenta vinculada.');const rule=d.classification(config,item.categoryId,item.subcategoryId);if(rule.effective.customerPolicy==='none')d.fail('Reclasificá el ticket para permitir una cuenta.');item.customerId=String(customer.customerId||customer.id);item.customerSnapshot=d.snapshot(customer);item.scope='customer';eventLabel='Vinculó un abonado o cliente'}
         else if(action==='formReceipt') {
           if(!policy.can(user,'planning.commercial')||!policy.can(user,'records.contact')) d.fail('No tenés permiso para gestionar formularios y datos de contacto.',403)
@@ -536,7 +543,7 @@ function createTicketStore({ sql, db }) {
       if(!item&&!mailCategory)d.fail('Configurá una categoría activa sin cuenta obligatoria para recibir correos.',409)
       const mailRule=mailCategory&&d.classification(configuration.config,mailCategory.id,mailCategory.subcategories.find(c=>c.id==='review'&&c.active)?.id||'')
       if(!item)item={id:crypto.randomUUID(),number:await nextNumber(q,configuration),version:1,title:mail.subject.slice(0,160),description:mail.text.slice(0,10000),scope:'unlinked',mailReviewRequired:identifierCollision||mail.mailReviewRequired||false,mailMode:mode,mailboxKey:namespace,customerId:'',customerSnapshot:null,origin:'email',categoryId:mailRule.category.id,subcategoryId:mailRule.subcategory?.id||'',eventType:'',zone:'',createdAt:now,updatedAt:now,requesterId:'',requesterName:mail.sender.name||mail.sender.email,requesterEmail:mail.sender.email,createdById:'email',createdByName:mail.sender.name||mail.sender.email,externalParticipants:[mail.sender.email],participantIds:[],areaId:configuration.config.areas.find(area=>area.active!==false&&area.id===mail.areaId)?.id||mailRule.effective.areaId||'',assigneeId:'',assigneeName:'',status:'Nuevo',priority:mailRule.effective.priority,ruleVersion:configuration.version,serviceIds:[]}
-      else {item.mailboxKey=namespace;item.mailMode=mode;item.version++;item.updatedAt=now;if(item.status==='Resuelto'||item.status==='En espera'){item.status='En gestión';item.resolvedAt='';delete item.resolvedByServiceId;delete item.resolvedById;delete item.resolvedByName;delete item.resolutionMethod;item.nextReviewAt='';await addEntry(q,{...d.entry(item,{id:'email',name:'Correo'},'El cliente agregó información y el caso vuelve a gestión.',now,{kind:'event',action:'reopen'}),ticketId:item.id})}}
+      else {item.mailboxKey=namespace;item.mailMode=mode;item.version++;item.updatedAt=now;if(item.status==='Resuelto'||item.status==='En espera'){item.status='En gestión';item.resolvedAt='';delete item.closureReason;delete item.resolvedByServiceId;delete item.resolvedById;delete item.resolvedByName;delete item.resolutionMethod;item.nextReviewAt='';await addEntry(q,{...d.entry(item,{id:'email',name:'Correo'},'El cliente agregó información y el caso vuelve a gestión.',now,{kind:'event',action:'reopen'}),ticketId:item.id})}}
       if(isNew && registration.detectRegistrationForm(mail.subject,mail.text)){item.registrationForm=registration.detectRegistrationForm(mail.subject,mail.text);item.autoReplySuppressed=true}
       sla.transitionSla(item,previousTicket,'inbound',configuration.config,now)
       const attachments=validateAttachments((mail.attachments||[]).map(f=>({fileName:f.fileName||f.name,mimeType:f.mimeType||f.mime,data:Buffer.isBuffer(f.data)?f.data.toString('base64'):f.data})))

@@ -37,6 +37,39 @@ async function rejectsStatus(fn, statusCode, pattern) {
 }
 
 for (const engine of ['sqlite', 'postgres']) {
+  test(`Tickets ${engine}: spam cierra sin observación, medio ni aviso al cliente y conserva permisos`, async () => {
+    const env = await fixture(engine), state = stateFixture()
+    const resolver = user('spam-closer', ['tickets.resolve'])
+    try {
+      const item = (await env.store.run(resolver, state, createInput())).ticket
+      const initialOutbox = await env.query('SELECT id FROM pignus_ticket_mail_outbox ORDER BY id')
+      await rejectsStatus(() => env.store.run(user('spam-closer'), state, command('spam', { id: item.id, version: item.version })), 403)
+      await rejectsStatus(() => env.store.run(user('other', ['tickets.resolve']), state, command('spam', { id: item.id, version: item.version })), 404)
+      await rejectsStatus(() => env.store.run(resolver, state, command('spam', { id: item.id, version: item.version + 1 })), 409)
+      const input = command('spam', { id: item.id, version: item.version, resolvedById: 'fake' })
+      const closed = (await env.store.run(resolver, state, input)).ticket
+      assert.equal(closed.status, 'Resuelto')
+      assert.equal(closed.closureReason, 'spam')
+      assert.equal(closed.resolvedById, resolver.id)
+      assert.ok(closed.resolvedAt)
+      assert.equal(closed.resolutionMethod, undefined)
+      assert.equal(closed.assigneeId, item.assigneeId)
+      assert.equal(closed.slaSummary.status, 'closed')
+      assert.equal(closed.messages.length, item.messages.length)
+      assert.ok(closed.events.some(event => event.action === 'Cerró el ticket como spam' && event.byId === resolver.id))
+      assert.ok(!closed.events.some(event => event.action === 'automatic-resolved'))
+      assert.deepEqual(await env.query('SELECT id FROM pignus_ticket_mail_outbox ORDER BY id'), initialOutbox)
+      const retry = (await env.store.run(resolver, state, input)).ticket
+      assert.equal(retry.version, closed.version)
+      assert.equal(retry.events.length, closed.events.length)
+      assert.equal((await env.store.query(resolver, state, { status: 'open' })).total, 0)
+      assert.equal((await env.store.query(resolver, state, { status: 'Resuelto' })).items[0].closureReason, 'spam')
+      const reopened = (await env.store.run(administrator, state, command('reopen', { id: closed.id, version: closed.version, note: 'Clasificación errónea' }))).ticket
+      assert.equal(reopened.closureReason, undefined)
+      assert.equal(reopened.status, 'En gestión')
+      await rejectsStatus(() => env.store.run(administrator, state, command('resolve', { id: reopened.id, version: reopened.version })), 400)
+    } finally { await env.close() }
+  })
   test(`Tickets ${engine}: totales por estado y filtros coinciden con la bandeja`, async () => {
     const env = await fixture(engine), state = stateFixture()
     try {

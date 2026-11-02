@@ -11,6 +11,7 @@ export const TICKET_RESOLUTION_METHODS = resolution.RESOLUTION_METHODS
 export const TICKET_STATES = ['Nuevo', 'En gestión', 'En espera', 'Resuelto', 'Fusionado']
 export const TICKET_PRIORITIES = ['Crítica', 'Alta', 'Media', 'Baja']
 export const TICKET_ORIGINS = { phone: 'Llamada', internal: 'Solicitud interna', technical: 'Informe técnico', technician: 'Informe técnico', email: 'Correo', followup: 'Seguimiento técnico' }
+export const ticketStatusLabel = ticket => ticket?.status === 'Resuelto' && ticket?.closureReason === 'spam' ? 'Cerrado · Spam' : ticket?.status
 export const ticketNumber = ticket => ticket?.displayNumber || `Ticket#${ticket?.number || ''}`
 export const ticketDate = value => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '—'
 export const ticketCustomer = ticket => ticket?.customerName || ticket?.customerSnapshot?.name || ticket?.customer?.name || ticket?.requesterName || 'Solicitud interna'
