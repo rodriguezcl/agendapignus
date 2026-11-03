@@ -4,6 +4,9 @@ La versión web conserva React/Vite y reemplaza la persistencia de producción p
 
 ## Arquitectura
 
+Validación de la migración (03/11/2026): sobre una copia aislada de producción, Node 24.22.2 completó `npm ci --engine-strict` y la compilación. La suite ejecutó 1.682 pruebas: 1.650 aprobadas y 32 fallidas. Los mismos 32 casos fallaron también con Node 22.17.0; la suite mantiene esos fallos previos y no se detectaron fallos adicionales por el cambio de runtime. Esta validación no implica que el cambio esté desplegado.
+
+- El proyecto requiere Node.js 24.x, definido en `package.json` y `.nvmrc`. En Vercel, configurar también **Settings > Build and Deployment > Node.js Version > 24.x** para mantener el panel y el repositorio alineados. El valor de `engines.node` prevalece y se aplica en el siguiente despliegue. Usar Node 24 también para desarrollo, compilación y pruebas locales.
 - Vercel publica `dist/` y ejecuta `api/index.js` como función Node.js.
 - Supabase almacena roles, empleados, clientes, servicios, historial, agenda, preferencias y auditoría.
 - Las sesiones y los intentos fallidos de acceso también se guardan en PostgreSQL; no dependen de la memoria de una función.
@@ -49,7 +52,7 @@ npm run check:supabase
 
 Detener la aplicación local para que SQLite complete sus escrituras. Conservar una copia de `data/agenda-tecnica.db` antes de comenzar.
 
-El script `migrate:supabase` carga `.env.local` mediante el soporte nativo de Node 22. Primero validar únicamente el origen:
+El script `migrate:supabase` carga `.env.local` mediante el soporte nativo de Node 24. Primero validar únicamente el origen:
 
 ```powershell
 npm run migrate:supabase -- --dry-run

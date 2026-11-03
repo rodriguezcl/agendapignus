@@ -2,7 +2,7 @@
   "name": "agenda-tecnica",
   "version": "1.0.0",
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
