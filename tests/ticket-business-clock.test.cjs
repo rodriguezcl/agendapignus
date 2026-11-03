@@ -2,6 +2,20 @@ const test=require('node:test'),assert=require('node:assert/strict')
 const clock=require('../api/_lib/ticket-business-clock.cjs')
 const sla=require('../api/_lib/ticket-sla.cjs')
 const iso=value=>new Date(value).toISOString()
+test('SLA: conversiones reutilizadas respetan cambios de jornada y cierres inmediatamente',()=>{
+ const date='2026-11-03',start=`${date}T08:00:00-03:00`,end=`${date}T17:00:00-03:00`
+ const original=clock.calendarForWeekly()
+ assert.equal(clock.businessMinutesBetween(start,end,original),540)
+ const changed=clock.calendarForWeekly({_workday:{exceptions:{[date]:{start:'10:00',end:'14:00'}}}})
+ assert.equal(clock.businessMinutesBetween(start,end,changed),240)
+ changed.closedDates.push(date)
+ assert.equal(clock.businessMinutesBetween(start,end,changed),0)
+ assert.equal(clock.businessMinutesBetween(start,end,original),540)
+ // More unique boundaries than the bounded timezone cache can retain.
+ const window=clock.windowForDate(date,original)
+ for(let i=0;i<900;i++)clock.windowForDate(new Date(Date.UTC(2027,0,1+i)).toISOString().slice(0,10),original)
+ assert.deepEqual(clock.windowForDate(date,original),window)
+})
 test('SLA laboral: ingreso, almuerzo, noche, sábado, domingo y feriado',()=>{
  const add=(start,n,end)=>assert.equal(clock.addBusinessMinutes(start,n),iso(end))
  add('2026-10-26T07:00:00-03:00',60,'2026-10-26T09:00:00-03:00')

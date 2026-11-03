@@ -5,10 +5,19 @@ const MINUTE = 60000, DAY = 86400000
 const parts = new Intl.DateTimeFormat('en-CA', { timeZone: ZONE, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hourCycle:'h23' })
 function localParts(at) { return Object.fromEntries(parts.formatToParts(new Date(at)).filter(p=>p.type!=='literal').map(p=>[p.type,p.value])) }
 function localDate(at) { const p=localParts(at);return `${p.year}-${p.month}-${p.day}` }
+// Only cache timezone conversion, never the working calendar or its exceptions.
+const instants = new Map()
+const INSTANT_CACHE_LIMIT = 1024
 function instant(date, time) {
+  const key=`${date}T${time}`
+  if(instants.has(key))return instants.get(key)
   const wall=Date.parse(`${date}T${time}:00Z`)
   let value=wall
   for(let i=0;i<3;i++) { const p=localParts(value); const represented=Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}Z`); value+=wall-represented }
+  if(Number.isFinite(value)) {
+    if(instants.size>=INSTANT_CACHE_LIMIT)instants.delete(instants.keys().next().value)
+    instants.set(key,value)
+  }
   return value
 }
 const nextDate = date => new Date(Date.parse(`${date}T12:00:00Z`)+DAY).toISOString().slice(0,10)

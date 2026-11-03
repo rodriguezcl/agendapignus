@@ -152,7 +152,7 @@ function createTicketStore({ sql, db }) {
       const person=d.subject(employee,state)
       return d.can(person,'view')&&d.can(person,'scope.all')&&policy.can(person,'notifications.tickets')&&(d.can(person,'configure')||d.can(person,'assign'))
     }).map(employee=>String(employee.id)).sort()
-    await q('INSERT INTO pignus_ticket_settings (id,data) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data',['escalation-recipients',JSON.stringify({recipientIds})])
+    await q('INSERT INTO pignus_ticket_settings (id,data) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data WHERE pignus_ticket_settings.data <> excluded.data',['escalation-recipients',JSON.stringify({recipientIds})])
   }
   async function communicate(q, item, type, eventKey, now, context = {}, actor, inbound) {
     if(!item.registrationForm) item.registrationForm=registration.detectRegistrationForm(item.title,item.description)
@@ -296,7 +296,9 @@ function createTicketStore({ sql, db }) {
       if(mode==='notifications'){
         if(!policy.can(user,'notifications.tickets'))return {notifications:[]}
         const notices=[]
-        for(const notice of await communications.readNotifications(execute,user.id)) { const item=await principal(execute,await ticket(execute,notice.target.ticketId)); if(item&&!registration.applied(item)&&d.visible(item,user,state,config))notices.push({...notice,title:communications.notificationTitle(item,notice.eventLabel||notice.title.replace(/^Ticket#\d+\s*·\s*/,''),state,policy.can(user,'records.contact')),target:{...notice.target,ticketId:item.id}}) }
+        const unread=await communications.readNotifications(execute,user.id)
+        const principals=await require('./ticket-notification-principals.cjs').loadNotificationPrincipals(execute,unread.map(notice=>notice.target.ticketId))
+        for(const notice of unread) { const item=principals.get(String(notice.target.ticketId)); if(item&&!registration.applied(item)&&d.visible(item,user,state,config))notices.push({...notice,title:communications.notificationTitle(item,notice.eventLabel||notice.title.replace(/^Ticket#\d+\s*·\s*/,''),state,policy.can(user,'records.contact')),target:{...notice.target,ticketId:item.id}}) }
         where.push("status IN ('Nuevo','En gestión','En espera')")
         const items=(await execute('SELECT data FROM pignus_tickets'+clause()+' ORDER BY CASE '+field('priority')+" WHEN 'Crítica' THEN 0 WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END,updated_at DESC LIMIT 50",args)).map(parse)
         const noticed=new Set(notices.map(n=>n.target.ticketId))
@@ -486,11 +488,12 @@ function createTicketStore({ sql, db }) {
     if(!records.length)return
     if (!connection) await ensure()
     const reader = connection ? executor(connection) : execute
-    const migrated=new Set([...(await reader('SELECT legacy_id FROM pignus_tickets WHERE legacy_id IS NOT NULL')),...(await reader('SELECT legacy_id FROM pignus_ticket_service_requests'))].map(row=>row.legacy_id))
-    if(records.every(r=>migrated.has(String(r.followup.id||`followup:${r.id}`))))return
+    const migrated=new Set((await reader('SELECT legacy_id FROM pignus_tickets WHERE legacy_id IS NOT NULL UNION ALL SELECT legacy_id FROM pignus_ticket_service_requests')).map(row=>row.legacy_id))
+    const pending=records.filter(r=>!migrated.has(String(r.followup.id||`followup:${r.id}`)))
+    if(!pending.length)return
     const synchronize = async q=>{
       const configuration=await settings(q,true)
-      for(const record of records){const old=record.followup,legacyId=String(old.id||`followup:${record.id}`);if((await q('SELECT id FROM pignus_tickets WHERE legacy_id=?',[legacyId])).length||(await q('SELECT legacy_id FROM pignus_ticket_service_requests WHERE legacy_id=?',[legacyId])).length)continue
+      for(const record of pending){const old=record.followup,legacyId=String(old.id||`followup:${record.id}`);if((await q('SELECT id FROM pignus_tickets WHERE legacy_id=?',[legacyId])).length||(await q('SELECT legacy_id FROM pignus_ticket_service_requests WHERE legacy_id=?',[legacyId])).length)continue
         const customer=read.customerForRecord(record,state),customerId=String(customer?.customerId||record.customerId||'')
         const employee=(state.employees||[]).find(e=>String(e.id)===String(old.createdById)),author=employee&&d.subject(employee,state)
         // El informe puede estar completado: su permiso de escritura y autor
