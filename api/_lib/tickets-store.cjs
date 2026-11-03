@@ -302,8 +302,10 @@ function createTicketStore({ sql, db }) {
         const noticed=new Set(notices.map(n=>n.target.ticketId))
         return {notifications:[...notices,...items.filter(t=>!noticed.has(t.id)).map(t=>({id:'ticket:'+t.id,title:communications.notificationTitle(t,(t.priority==='Crítica'?'Crítico · ':'')+t.status,state,policy.can(user,'records.contact')),detail:registration.registrationFormTitle(t,policy.can(user,'records.contact'))+' · '+(t.assigneeName||'Sin asignar'),tone:t.priority==='Crítica'?'danger':'warning',target:{type:'ticket',ticketId:t.id}}))]}
       }
-      if(params.status){if(params.status==='open')where.push("status IN ('Nuevo','En gestión','En espera')");else{where.push('status=?');args.push(params.status)}}
-      const total = params.status === 'open' ? ['Nuevo','En gestión','En espera'].reduce((sum, status) => sum + (counts[status] || 0), 0) : params.status ? (counts[params.status] || 0) : Object.values(counts).reduce((sum, count) => sum + count, 0)
+      const groupedStatuses = params.status === 'pending' ? ['Nuevo', 'En gestión'] : params.status === 'open' ? ['Nuevo', 'En gestión', 'En espera'] : null
+      if (groupedStatuses) { where.push(`status IN (${groupedStatuses.map(() => '?').join(',')})`); args.push(...groupedStatuses) }
+      else if (params.status) { where.push('status=?'); args.push(params.status) }
+      const total = groupedStatuses ? groupedStatuses.reduce((sum, status) => sum + (counts[status] || 0), 0) : params.status ? (counts[params.status] || 0) : Object.values(counts).reduce((sum, count) => sum + count, 0)
       const page=Math.max(1,Math.floor(Number(params.page)||1)),pageSize=Math.min(50,safeNum(params.pageSize||20))
       const items=(await execute('SELECT data FROM pignus_tickets'+clause()+' ORDER BY CASE '+field('priority')+" WHEN 'Crítica' THEN 0 WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END,updated_at DESC,id LIMIT ? OFFSET ?",[...args,pageSize,(page-1)*pageSize])).map(parse)
       return {items:items.map(t=>d.present(t,user,[],[],false,config)),total,page,pageSize,counts}

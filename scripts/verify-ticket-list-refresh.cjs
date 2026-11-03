@@ -15,7 +15,7 @@ const bundle = buildSync({
 })
 const js = bundle.outputFiles.find(f => f.path.endsWith('.js')).text, css = bundle.outputFiles.find(f => f.path.endsWith('.css')).text
 const html = '<!doctype html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/fixture.css"></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>'
-const baseItems = Array.from({ length: 20 }, (_, n) => ({ id: String(n), number: 100000 + n, title: `Revisión de alarma · Cliente de prueba ${n + 1}`, status: 'Nuevo', priority: 'Media', origin: 'internal', customerName: `Cliente ${n + 1}`, updatedAt: '2026-10-30T14:00:00Z' }))
+const baseItems = Array.from({ length: 20 }, (_, n) => ({ id: String(n), number: 100000 + n, title: `Revisión de alarma · Cliente de prueba ${n + 1}`, status: n % 2 ? 'En gestión' : 'Nuevo', priority: 'Media', origin: 'internal', customerName: `Cliente ${n + 1}`, updatedAt: '2026-10-30T14:00:00Z' }))
 async function run() {
   const browser = await chromium.launch({ headless: true, channel: 'msedge' })
   try {
@@ -37,7 +37,7 @@ async function run() {
         requests.push(Object.fromEntries(url.searchParams))
         if (url.searchParams.get('view') === 'metadata') return route.fulfill({ json: { assignees: [], config: { categories: [], areas: [] } } })
         if (hold) { held = true; await hold }
-        return route.fulfill(fail ? { status: 503, json: { error: 'Sin conexión de prueba' } } : { json: { items, total: 45, counts: { Nuevo: 45, 'En gestión': 0 }, page: Number(url.searchParams.get('page')), pageSize: 20 } })
+        return route.fulfill(fail ? { status: 503, json: { error: 'Sin conexión de prueba' } } : { json: { items, total: 45, counts: { Nuevo: 25, 'En gestión': 20 }, page: Number(url.searchParams.get('page')), pageSize: 20 } })
       }
       if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html })
       return route.fulfill({ status: 404, body: '' })
@@ -45,6 +45,12 @@ async function run() {
     await page.goto('http://tickets.test/')
     await page.locator('tbody tr').last().waitFor()
     assert.equal(requests.filter(r => r.view === 'list').length, 1)
+    assert.equal(requests.find(r => r.view === 'list').status, 'pending')
+    assert.equal(await page.getByRole('button', { name: 'Pendientes (45)', exact: true }).getAttribute('aria-pressed'), 'true')
+    assert.equal(await page.getByRole('button', { name: /^(Nuevos|En gestión)/ }).count(), 0)
+    assert.ok((await page.locator('tbody').textContent()).includes('Nuevo'))
+    assert.ok((await page.locator('tbody').textContent()).includes('En gestión'))
+    await page.screenshot({ path: path.join(output, 'pending-desktop.png') })
     assert.equal(requests.find(r => r.view === 'metadata').includeMailStatus, 'false')
     await page.evaluate(() => { window.recreatePermissions(); for (let i = 0; i < 5; i++) window.dispatchEvent(new Event('focus')) })
     await page.waitForTimeout(200)
@@ -72,7 +78,7 @@ async function run() {
     await page.getByRole('button', { name: 'Siguiente', exact: true }).click()
     await page.getByText('45 tickets · página 2 de 3', { exact: true }).waitFor()
     const before = requests.length
-    await page.getByRole('button', { name: /^En gestión/ }).click()
+    await page.getByRole('button', { name: /^En espera/ }).click()
     await page.getByText('45 tickets · página 1 de 3', { exact: true }).waitFor()
     assert.equal(requests.length, before + 1, 'filter resets page in a single request')
     assert.equal(requests.at(-1).page, '1')

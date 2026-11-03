@@ -8,7 +8,12 @@ export function ticketLocalDateTime(now = new Date()) {
 }
 
 export const TICKET_RESOLUTION_METHODS = resolution.RESOLUTION_METHODS
-export const TICKET_STATES = ['Nuevo', 'En gestión', 'En espera', 'Resuelto', 'Fusionado']
+export const TICKET_VIEWS = [
+  { value: 'pending', label: 'Pendientes', states: ['Nuevo', 'En gestión'] },
+  { value: 'En espera', label: 'En espera', states: ['En espera'] },
+  { value: 'Resuelto', label: 'Resueltos', states: ['Resuelto'] },
+  { value: 'Fusionado', label: 'Fusionado', states: ['Fusionado'] },
+]
 export const TICKET_PRIORITIES = ['Crítica', 'Alta', 'Media', 'Baja']
 export const TICKET_ORIGINS = { phone: 'Llamada', internal: 'Solicitud interna', technical: 'Informe técnico', technician: 'Informe técnico', email: 'Correo', followup: 'Seguimiento técnico' }
 export const ticketStatusLabel = ticket => ticket?.status === 'Resuelto' && ticket?.closureReason === 'spam' ? 'Cerrado · Spam' : ticket?.status

@@ -81,6 +81,23 @@ for (const engine of ['sqlite', 'postgres']) {
         assert.equal(result.total, total)
         assert.equal(result.items.length, total)
       }
+      const newTicket = (await env.store.query(administrator, state, { status: 'Nuevo' })).items[0]
+      const assigned = (await env.store.run(administrator, state, command('assign', { id: newTicket.id, version: newTicket.version, assigneeId: administrator.id }))).ticket
+      const fresh = (await env.store.run(administrator, state, createInput({ title: 'Sensor nuevo', customerId: 'customer-2' }))).ticket
+      const pending = await env.store.query(administrator, state, { status: 'pending' })
+      assert.equal(pending.total, 2)
+      assert.deepEqual(new Set(pending.items.map(ticket => ticket.status)), new Set(['Nuevo', 'En gestión']))
+      assert.equal(pending.counts.Nuevo + pending.counts['En gestión'], pending.total)
+      const pages = await Promise.all([1, 2].map(page => env.store.query(administrator, state, { status: 'pending', page, pageSize: 1 })))
+      assert.ok(pages.every(result => result.total === 2 && result.items.length === 1))
+      assert.deepEqual(new Set(pages.flatMap(result => result.items.map(ticket => ticket.id))), new Set([assigned.id, fresh.id]))
+      const filtered = await env.store.query(administrator, state, { status: 'pending', search: 'entrada', assigneeId: administrator.id })
+      assert.equal(filtered.total, 1)
+      assert.equal(filtered.items[0].id, assigned.id)
+      assert.equal((await env.store.query(user('unrelated'), state, { status: 'pending' })).total, 0)
+      await env.store.run(administrator, state, command('wait', { id: assigned.id, version: assigned.version, note: 'Esperando al cliente' }))
+      assert.equal((await env.store.query(administrator, state, { status: 'pending' })).total, 1)
+      assert.equal((await env.store.query(administrator, state, { status: 'open' })).total, 2)
       const lean = await env.store.query(administrator, state, { mode: 'metadata', includeMailStatus: 'false' })
       assert.ok(lean.config.categories.length)
       assert.ok(lean.assignees.length)
