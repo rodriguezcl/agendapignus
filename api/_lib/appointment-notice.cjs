@@ -26,6 +26,13 @@ function phoneNumber(value) {
   return /^[1-9]\d{7,14}$/.test(digits) ? `+${digits}` : ''
 }
 
+// Account contact details are authoritative, including an explicitly cleared
+// phone. Service snapshots remain a fallback for reservations/legacy records.
+function contactPhone(record, state) {
+  const customer = customerForRecord(record, state)
+  return phoneNumber(customer && Object.hasOwn(customer, 'phone') ? customer.phone : record.phone)
+}
+
 function ready(record, state = { history: [] }) {
   if (!record || !installation(record) || record.awaitingConfirmation === true || record.startedAt || record.completedAt ||
     !['Pendiente', undefined, ''].includes(record.status) || record.technicalStatus || record.technicianRequest ||
@@ -40,7 +47,7 @@ function envelope(record, state = {}) {
   const customer = customerForRecord(record, state)
   const client = clean(customer?.name || record.clientNameAtService || record.client || 'cliente')
   const recipient = emailAddress(record.formEmail) || emailAddress(customer?.email) || ''
-  const phone = phoneNumber(record.phone || customer?.phone)
+  const phone = contactPhone(record, state)
   const technicians = [...new Set((record.technicians || []).map(clean).filter(Boolean))]
   const dateText = new Date(`${record.date}T12:00:00-03:00`).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   const scheduleKey = `${record.serviceJourney?.id || record.id}:${record.date}:${record.time}`
@@ -70,4 +77,4 @@ function webhookPayload(item, isTest = false) {
     serviceType: describe(item.installationType).serviceType, installationDescription: describe(item.installationType).installationDescription }
 }
 
-module.exports = { clean, hash, today, phoneNumber, ready, envelope, changes, webhookPayload, installation }
+module.exports = { clean, hash, today, phoneNumber, contactPhone, ready, envelope, changes, webhookPayload, installation }

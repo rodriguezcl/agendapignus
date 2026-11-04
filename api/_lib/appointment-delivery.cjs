@@ -51,7 +51,13 @@ async function reconcile({ rows, state, at, channel, save }) {
   for (const row of rows) {
     if (row.payload.kind !== 'appointment' || !pending.includes(row.status)) continue
     const record = state.history.find(item => String(item.id) === row.service_id)
-    if (!current(record, row.payload, state, channel, at)) {
+    // A missing-phone alert has never been delivered. Rehydrate it from the
+    // account before checking the destination, but only for the same visit.
+    const refreshed = channel === 'whatsapp' && row.status === 'needs_phone' && row.attempts === 0 &&
+      !row.payload.cancelledNotice && record ? notice.envelope(record, state, channel) : null
+    const recovered = refreshed && refreshed.scheduleKey === row.payload.scheduleKey && refreshed.customerId === row.payload.customerId &&
+      current(record, refreshed, state, channel, at)
+    if (!recovered && !current(record, row.payload, state, channel, at)) {
       await save(row, { status: 'cancelled', payload: row.payload, nextAt: row.next_attempt_at })
       continue
     }

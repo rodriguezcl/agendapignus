@@ -25,7 +25,7 @@ function WhatsAppItem({item,active,canManage,onSaved,onBusyChange}) {
     {item.status==='skipped'&&<p>{item.omissionReason}</p>}
     {item.error&&<p role="status">{item.error}</p>}
     {['accepted','processed'].includes(item.status)&&<p>Consultá la conversación en GoHighLevel para comprobar si WhatsApp entregó el mensaje.</p>}
-    {item.status==='needs_phone'&&<p>Corregí el contacto del servicio con un número válido y código de área. Se programará el aviso al guardar.</p>}
+    {item.status==='needs_phone'&&<p>Corregí el teléfono en Abonados y clientes, incluyendo el código de área. Al guardar se revisará automáticamente el aviso según la fecha de la visita.</p>}
     {!active&&['queued','retry'].includes(item.status)&&<p>El canal de WhatsApp está pausado.</p>}
     {['uncertain','failed','draft'].includes(item.status)&&<p>Revisá el historial del flujo en GoHighLevel antes de contactar al cliente nuevamente.</p>}
     {['uncertain','needs_action'].includes(item.status)&&canManage&&<form onSubmit={review}>

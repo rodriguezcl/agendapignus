@@ -1374,7 +1374,7 @@ export default function App() {
     return () => { window.clearTimeout(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh) }
   }, [authUser?.id, databaseReady, notificationsEnabled])
   const registrationNotificationState = useRegistrationNotifications({enabled:Boolean(authUser && databaseReady && allowed('notifications.registration')),userKey:JSON.stringify([authUser?.id,permissionUser?.permissions,permissionUser?.roleCode])})
-  const experienceNotificationState = useExperienceMailNotifications({enabled:Boolean(authUser && databaseReady && allowed('notifications.experience')),userKey:JSON.stringify([authUser?.id || authUser?.email,permissionUser?.permissions,permissionUser?.roleCode])})
+  const experienceNotificationState = useExperienceMailNotifications({enabled:Boolean(authUser && databaseReady && allowed('notifications.experience')),userKey:JSON.stringify([authUser?.id || authUser?.email,permissionUser?.permissions,permissionUser?.roleCode]),revision:stateRevision})
   const ticketNotificationState = useTicketNotifications({ enabled: Boolean(authUser && databaseReady && allowed('notifications.tickets')), userKey: authUser?.id || authUser?.email })
   useEffect(() => {
     const open = event => { if (allowed('tickets.view')) requestNavigation(() => { setTicketOpenRequest(event.detail); setModule('tickets') }) }
