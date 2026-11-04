@@ -20,8 +20,8 @@ function preserveCustomerTrackingFlags(currentCustomers = [], importedCustomers 
   return preserveSoftguardRetirementCustomers(currentCustomers, importedCustomers).map(customer => {
     const current = byId.get(String(customer?.customerId || '')) || byAccount.get(String(customer?.account || '').trim().toUpperCase())
     // Coordinates belong to the local record, never to the imported spreadsheet.
-    const { locationOverride, excludeFromSubscriberCount, softguardPresence, ...imported } = customer
-    return { ...imported, ...(current?.softguardPresence ? { softguardPresence: current.softguardPresence } : {}), ...(typeof current?.excludeFromSubscriberCount === 'boolean' ? { excludeFromSubscriberCount: current.excludeFromSubscriberCount } : {}), ...(current && Object.hasOwn(current, 'locationOverride') ? { locationOverride: current.locationOverride } : {}), cctvService: Boolean(current?.cctvService) }
+    const { locationOverride, excludeFromSubscriberCount, softguardPresence, cctvRequirement, ...imported } = customer
+    return { ...imported, ...(current?.softguardPresence ? { softguardPresence: current.softguardPresence } : {}), ...(typeof current?.excludeFromSubscriberCount === 'boolean' ? { excludeFromSubscriberCount: current.excludeFromSubscriberCount } : {}), ...(current && Object.hasOwn(current, 'locationOverride') ? { locationOverride: current.locationOverride } : {}), ...(current && Object.hasOwn(current, 'cctvRequirement') ? { cctvRequirement: current.cctvRequirement } : {}), cctvService: Boolean(current?.cctvService) }
   })
 }
 

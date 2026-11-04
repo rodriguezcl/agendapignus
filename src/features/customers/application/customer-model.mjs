@@ -2,7 +2,7 @@ import { excludedFromSubscriberCount } from '../../../domain/customers/subscribe
 import { normalizeCustomerName } from "../../../domain/shared/normalization.mjs";
 import { createCustomerId } from "../../../infrastructure/browser/identity.mjs";
 
-export const blankCustomer = { customerId: '', kind: 'client', account: '', name: '', type: '', street: '', locality: '', province: '', phone: '', address: '', cctvService: false, fields: {} }
+export const blankCustomer = { customerId: '', kind: 'client', account: '', name: '', type: '', street: '', locality: '', province: '', phone: '', address: '', cctvService: false, cctvRequirement: '', fields: {} }
 
 export const normalizeAccountKey = value => String(value || '').trim().toUpperCase().replace(/\s+/g, '')
 

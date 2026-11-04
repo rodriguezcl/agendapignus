@@ -22,8 +22,11 @@ test('supervisor abre detalle con mapa sin perder lectura restringida; admite cl
   compiled._compile(bundle.outputFiles[0].text, compiled.filename || path.join(root, 'test-supervisor-render.cjs'))
   const record = { id: 'test', customerId: 'customer', clientAccount: 'PIG-0100', client: 'PIG-0100 CCTV', date: '2026-10-07', time: '09:00', service: 'Service de cámaras', status: 'Completado', technicians: ['Técnico'], internalNote: 'NOTA PRIVADA DE PRUEBA' }
   const props = { history: [record], authUser: { roleCode: 'supervisor' }, canManage: false }
-  const html = renderToStaticMarkup(React.createElement(compiled.exports.History, { ...props, customers: [{ customerId: 'customer', account: 'PIG-0100', address: 'San Martín 100, Córdoba' }] }))
-  assert.match(html, /Seguimiento de CCTV/)
+  const html = renderToStaticMarkup(React.createElement(compiled.exports.History, { ...props, customers: [{ customerId: 'customer', account: 'PIG-0100', address: 'San Martín 100, Córdoba', cctvRequirement: 'Requiere llave de ingreso' }] }))
+  assert.match(html, /history-supervisor/)
+  assert.match(html, /Contactado OK/)
+  assert.match(html, /type="checkbox"/)
+  assert.match(html, /Requerimiento: Requiere llave de ingreso/)
   assert.match(html, /<iframe/)
   assert.doesNotMatch(html, /NOTA PRIVADA DE PRUEBA/)
   assert.doesNotMatch(html, /Guardar cambios|Eliminar servicio/)

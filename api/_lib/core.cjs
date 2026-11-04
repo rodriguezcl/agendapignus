@@ -354,6 +354,7 @@ function normalizeStateForSave(state, current, { allowEarlyCompletion = false } 
   // Legacy accounts without a CCTV flag already mean "not tracked". Adding
   // false here migrates the whole customer catalog during an unrelated service
   // save and generates thousands of audit writes inside the same transaction.
+  for (const customer of state.customers || []) { if (customer.cctvRequirement != null && !['', 'Requiere llave de ingreso', 'Otro'].includes(customer.cctvRequirement)) throw new Error('Requerimiento de CCTV inválido.') }
   const customers = (state.customers || []).map(customer => ({ ...customer, kind: customerKind(customer), ...(Object.hasOwn(customer, 'cctvService') ? { cctvService: Boolean(customer.cctvService) } : {}), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }))
   const history = normalizeHistoryCompletionTimes(
     (state.history || []).map(record => ({ ...normalizeScheduledService(record), status: record.status || 'Pendiente' })),

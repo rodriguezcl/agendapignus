@@ -893,6 +893,27 @@ async function handleCategoryCorrection(req, res, sql, user, completing = false)
   }
 }
 
+async function handleSupervisorContact(req, res, sql, user) {
+  try {
+    const result = await sql.begin(async transaction => {
+      await transaction`set local lock_timeout = '5s'`
+      await transaction`set local statement_timeout = '30s'`
+      await transaction`insert into pignus_preferences (key, value) values ('state_revision', '0') on conflict (key) do nothing`
+      const locked = await transaction`select value from pignus_preferences where key = 'state_revision' for update`
+      const currentState = await readState(transaction)
+      const change = require('./_lib/supervisor-contact.cjs').setSupervisorContact(currentState, user, requestBody(req))
+      const revision = Number(locked[0]?.value || 0) + 1
+      await persistStateCollections(transaction, currentState, change.state, revision)
+      await appendAudit(transaction, [auditEntry(user, 'Actualizó Contactado OK', 'Servicio / historial', String(change.next.id), change.current, change.next)])
+      return { state: change.state, revision }
+    })
+    return send(res, 200, { ok: true, revision: result.revision, state: visibleStateForUser({ ...result.state, revision: result.revision }, user) })
+  } catch (error) {
+    const busy = error.code === '55P03' || error.code === '57014'
+    return send(res, busy ? 503 : (error.statusCode || 400), { error: busy ? 'La base de datos está ocupada. Intentá nuevamente.' : error.message })
+  }
+}
+
 async function handleHistoryRecordUpdate(req, res, sql, user, recordId) {
   if (!isGranular(user) && !userCan(user, 'historyManage')) return send(res, 403, { error: 'No tenés permiso para gestionar el historial.' })
   const { base, record: proposed } = requestBody(req)
@@ -1430,6 +1451,7 @@ module.exports = async function handler(req, res) {
       if (!isGranular(session.user) && (session.user.roleCode === 'supervisor' || (session.user.roleCode !== 'technician' && !userCan(session.user, 'history')))) return send(res, 403, { error: 'No tenés permiso para exportar el historial.' })
       return await handleExport(req, res, sql, session.user)
     }
+    if (req.method === 'POST' && route === '/history/contacted') return await handleSupervisorContact(req, res, sql, session.user)
     if (req.method === 'PATCH' && route === '/history/bulk') return await handleHistoryRecordsBulkUpdate(req, res, sql, session.user)
     if (req.method === 'PATCH' && route.startsWith('/history/')) return await handleHistoryRecordUpdate(req, res, sql, session.user, decodeURIComponent(route.slice('/history/'.length)))
     if (req.method === 'DELETE' && route.startsWith('/history/')) return await handleHistoryRecordRemoval(req, res, sql, session.user, decodeURIComponent(route.slice('/history/'.length)))

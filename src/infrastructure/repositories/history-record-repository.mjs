@@ -22,6 +22,10 @@ export async function writeHistoryRequest(url, options, fallbackMessage, { fetch
 }
 
 export const historyRecordRepository = {
+  setContacted: (record, contactedOk) => writeHistoryRequest('/api/history/contacted', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recordId: record.id, contactedOk })
+  }, 'No se pudo guardar Contactado OK.'),
   correctCompletion: (base, correction) => writeHistoryRequest('/api/history/completion-correction', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ recordId: base.id, base, ...correction })

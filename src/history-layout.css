@@ -46,3 +46,18 @@
     justify-content: center;
   }
 }
+
+@media (min-width: 641px) {
+  .history-table.history-supervisor .table-head,
+  .history-table.history-supervisor .history-row {
+    grid-template-columns: 100px minmax(190px, 1.5fr) minmax(140px, 1fr) 130px 110px 130px !important;
+    min-width: 900px;
+  }
+  .history-table.history-supervisor { overflow-x: auto !important; }
+  .history-table.history-supervisor .table-head > span:nth-child(4),
+  .history-table.history-supervisor .history-row > div:nth-child(4) { display: block; }
+}
+.history-contact-cell input { width: 20px; height: 20px; accent-color: #28704c; cursor: pointer; }
+@media (max-width: 640px) {
+  .history-contact-cell::before { content: 'Contactado OK'; margin-right: 12px; }
+}

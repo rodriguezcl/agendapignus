@@ -280,8 +280,8 @@ function assertCustomerChange(before, after, user, state) {
   if (!after) return requirePermission(user, 'customers.delete')
   if (!before) return requirePermission(user, 'customers.create')
   if (changed(before, after, ['coordinates', 'latitude', 'longitude', 'lat', 'lng', 'locationOverride', 'locationSource', 'geocodedAt'])) requirePermission(user, 'customers.coordinates')
-  if (changed(before, after, ['cctvService'])) requirePermission(user, 'customers.cctv')
-  const ordinary = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(key => !['customerId', 'coordinates', 'latitude', 'longitude', 'lat', 'lng', 'locationOverride', 'locationSource', 'geocodedAt', 'cctvService'].includes(key))
+  if (changed(before, after, ['cctvService', 'cctvRequirement'])) requirePermission(user, 'customers.cctv')
+  const ordinary = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(key => !['customerId', 'coordinates', 'latitude', 'longitude', 'lat', 'lng', 'locationOverride', 'locationSource', 'geocodedAt', 'cctvService', 'cctvRequirement'].includes(key))
   if (changed(before, after, ordinary)) requirePermission(user, 'customers.edit')
 }
 
