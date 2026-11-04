@@ -1,0 +1,14 @@
+.cctv-requirement {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 2px solid #a66b00;
+  border-radius: 10px;
+  background: #fff4d6;
+  color: #563800;
+  overflow-wrap: anywhere;
+}
+.cctv-requirement span { font-size: 1.05rem; font-weight: 700; }
+.app-shell[data-theme='dark'] .cctv-requirement,
+body.dark .cctv-requirement { background: #342b16; color: #ffe2a1; border-color: #c99535; }

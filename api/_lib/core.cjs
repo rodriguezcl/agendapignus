@@ -155,7 +155,13 @@ function visibleStateForUser(state, user) {
 function visibleTechnicianStateForUser(state, user) {
   const sessionUser = stateSessionUser(state, user)
   const projectionUser = require('./permission-catalog.cjs').isGranular(sessionUser) ? sessionUser : { ...sessionUser, roleCode: 'technician' }
-  return { ...projectStateForUser(state, projectionUser, sessionUser), sessionUser }
+  const visible = projectStateForUser(state, projectionUser, sessionUser)
+  return { ...visible, history: visible.history.map(record => ({
+    ...record,
+    customerCctvRequirement: require('./granular-read-policy.cjs').customerForRecord(record, state)?.cctvService === true
+      ? require('./granular-read-policy.cjs').customerForRecord(record, state).cctvRequirement || ''
+      : ''
+  })), sessionUser }
 }
 
 function projectStateForUser(state, user, ticketUser = user) {
