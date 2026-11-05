@@ -66,6 +66,7 @@ import { alignOperationBaselines } from "./features/state/application/operation-
 import { employeeOperations } from "./features/state/application/employee-operations.mjs";
 import RefreshButton from "./components/ui/RefreshButton.jsx";
 import { requestManualRefresh } from "./features/state/application/manual-refresh.mjs";
+import { weeklyServiceCreationOperations } from './features/state/application/weekly-service-create.mjs'
 import { dailyServiceOperations } from "./features/state/application/daily-service-save.mjs";
 import { migrateLegacyEstimatedMinutes } from "./domain/state/legacy-estimated-minutes.mjs";
 // These legacy sheets also style daily/history fields, dashboard charts and the
@@ -1030,7 +1031,9 @@ export default function App() {
           ? weeklyTaskRemovalOperations(snapshot, command)
       : command.dailyDraft
         ? dailyServiceOperations(lastServerSnapshotRef.current, stateRevisionRef.current, command)
-        : weeklyServiceOperations(snapshot, command)
+        : !command.baseRecord && !command.baseTask && !command.sourceDay
+          ? weeklyServiceCreationOperations(lastServerSnapshotRef.current, stateRevisionRef.current, command)
+          : weeklyServiceOperations(snapshot, command)
   ), { combinePendingState: true, alignDisplayBaselines: true, independentService: !command.sourceDay && (!command.operation || ['service-preparation', 'team-members'].includes(command.operation)), quickAction: ['service-preparation', 'team-members'].includes(command.operation), isolatedMove: Boolean(command.sourceDay && (command.task?.vehicleControl || command.advanceToFriday)) })
   const persistWeeklyConfiguration = buildNext => persistStateCommand(snapshot => stateOperations(snapshot, buildNext(snapshot)), { combinePendingState: true, rebaseOnRecordConflict: true })
   const roleBaseline = id => structuredClone(lastServerSnapshotRef.current?.roles?.find(role => String(role.id) === String(id)))
@@ -1263,10 +1266,12 @@ export default function App() {
           }
           throw error
         }
+        // A request can finish after our own save started or was acknowledged.
+        if (stopped || loggingOutRef.current || confirmedSaveRef.current || pendingStateSaves.current > 0) return
         const remoteRevision = Number(data.revision)
-        if (!stopped && remoteRevision !== Number(stateRevisionRef.current)) {
+        if (remoteRevision > Number(stateRevisionRef.current)) {
           const remoteState = await pendingRemoteSnapshot(remoteRevision, () => stateRepository.load())
-          if (stopped || loggingOutRef.current) return
+          if (stopped || loggingOutRef.current || confirmedSaveRef.current || pendingStateSaves.current > 0 || Number(remoteState.revision) <= Number(stateRevisionRef.current)) return
           if (remoteState.sessionUser) setAuthUser(current => current === authUser ? reconcileSessionUser(current, remoteState.sessionUser) : current)
           const hasLocalChanges = !canRefresh(remoteState)
           if (hasLocalChanges) {

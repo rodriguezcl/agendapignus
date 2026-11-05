@@ -408,14 +408,16 @@ export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, o
     const savedTask = { ...tracedDraft, ...photoPatch, historyId: record.id, status: record.status }
     let serviceSaved = false
     try {
-      await persistWeeklyService({ day, team: savedTeam, task: savedTask, record, baseRecord: previousRecord, baseTask: taskEditor.baseTask, customer: newCustomer })
+      const payload = await persistWeeklyService({ day, team: savedTeam, task: savedTask, record, baseRecord: previousRecord, baseTask: taskEditor.baseTask, customer: newCustomer })
       serviceSaved = true
-      setTaskEditor(previous => previous ? { ...previous, baseRecord: record, baseTask: savedTask, persistedTeam: true } : previous)
+      const confirmedRecord = payload?.state?.history?.find(item => String(item.id) === String(record.id)) || record
+      const confirmedTask = payload?.state?.agenda?.weekly?.[day]?.teams?.flatMap(team => team.tasks || []).find(item => String(item.taskId) === String(savedTask.taskId)) || savedTask
+      setTaskEditor(previous => previous ? { ...previous, baseRecord: confirmedRecord, baseTask: confirmedTask, persistedTeam: true } : previous)
       if (Array.isArray(taskEditor.photoData)) await uploadAttachmentBatch('service', record.id, taskEditor.photoData)
       else if (taskEditor.photoData) await servicePhotoRepository.upload(record.id, taskEditor.photoData)
       else if (taskEditor.photoRemoved) await servicePhotoRepository.remove(record.id)
       if (!previousRecord && serviceCode(serviceForWeeklyTask(savedTask)) === 'alarm-installation' && can('registration.read')) {
-        setTaskEditor(previous => previous ? {...previous, draft:savedTask, baseRecord:record, baseTask:savedTask, photoData:null, photoRemoved:false} : previous)
+        setTaskEditor(previous => previous ? {...previous, draft:confirmedTask, baseRecord:confirmedRecord, baseTask:confirmedTask, photoData:null, photoRemoved:false} : previous)
         setNotice('Instalación guardada. Ya podés copiar el enlace del formulario en este servicio.')
       } else setTaskEditor(null)
       if (record.sourceTicketId) {
