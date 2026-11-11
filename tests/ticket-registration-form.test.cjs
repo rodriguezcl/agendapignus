@@ -29,7 +29,7 @@ test('títulos identifican el formulario y al respondente, incluidos avisos anti
  assert.equal(forms.registrationFormTitle({title:'Otro caso',description:body}),'Otro caso')
  assert.equal(forms.registrationFormTitle({title,registrationForm:{kind:'docta',multiple:true,candidates:['a@example.com','b@example.com'],confirmedAt:'2026-10-23',email:'b@example.com'}}),'Formulario Docta Urbanización completo: b@example.com')
 })
-for(const engine of ['sqlite','postgres'])test(engine+': procesar el formulario y coordinar no envía correo antes de vincular el PIG',async()=>{
+for(const serviceName of ['Instalación de alarma','Cambio de titularidad'])for(const engine of ['sqlite','postgres'])test(serviceName+' '+engine+': procesar el formulario y coordinar no envía correo antes de vincular el PIG',async()=>{
  const values={TICKETS_MAIL_ENABLED:'true',TICKETS_MAIL_MODE:'live',TICKETS_MAIL_ADDRESS:'support@example.com',TICKETS_MAIL_USER:'support@example.com',TICKETS_MAIL_PASSWORD:'fixture-only'},prior={}
  for(const [key,value] of Object.entries(values)){prior[key]=process.env[key];process.env[key]=value}
  let db,pg,store,q
@@ -37,7 +37,7 @@ for(const engine of ['sqlite','postgres'])test(engine+': procesar el formulario 
  if(engine==='sqlite'){db=new DatabaseSync(':memory:');store=createTicketStore({db});q=async(sql,args=[])=>/SELECT|RETURNING/.test(sql)?db.prepare(sql).all(...args):(db.prepare(sql).run(...args),[])}
  else{const {PGlite}=await import('@electric-sql/pglite');pg=await PGlite.create();store=createTicketStore({sql:pgliteAdapter(pg)});q=async(sql,args=[])=>{let n=0;return(await pg.query(sql.replace(/\?/g,()=>'$'+(++n)),args)).rows}}
  await store.ensure();await q('CREATE TABLE form_test_state (id TEXT PRIMARY KEY,data TEXT NOT NULL)')
- const record={id:'s1',customerId:'c1',date:'2026-10-27',time:'10:30',status:'Pendiente',service:'Instalación de alarma',form:'',formEmail:'',sourceTaskId:'task1'}
+ const record={id:'s1',customerId:'c1',date:'2026-10-27',time:'10:30',status:'Pendiente',service:serviceName,form:'',formEmail:'',sourceTaskId:'task1'}
  const state={employees:[],customers:[{customerId:'c1',account:'PIG-1',name:'Cliente'}],history:[record],agenda:{weekly:{'2026-10-27':{teams:[{tasks:[{taskId:'task1',historyId:'s1',form:''}]}]}}}}
  await q('INSERT INTO form_test_state(id,data) VALUES (?,?)',['current',JSON.stringify(state)])
  const runtime=ticketMailConfig(process.env)
@@ -76,4 +76,12 @@ for(const engine of ['sqlite','postgres'])test(engine+': procesar el formulario 
  pending=(await store.run(user,state,{action:'formReceipt',commandId:crypto.randomUUID(),id:pending.id,version:pending.version,customerId:'c1',formEmail:'cliente@example.com'},adapter)).ticket
  assert.equal(pending.status,'En espera');assert.equal((await q('SELECT payload FROM pignus_ticket_mail_outbox')).length,0)
  }finally{if(db)db.close();if(pg)await pg.close();for(const key of Object.keys(values)){if(prior[key]===undefined)delete process.env[key];else process.env[key]=prior[key]}}
+})
+
+test('formularios Google admiten cambios de titularidad sin habilitar otros servicios',()=>{
+ for(const name of ['Cambio de titularidad','CAMBIO DE TITULARIDAD','Instalación de alarma']) assert.equal(forms.installation({service:name,status:'Pendiente'},{services:[]}),true)
+ assert.equal(forms.installation({serviceTypes:[{name:'Cambio de titularidad'}],status:'Pendiente'},{services:[]}),true)
+ assert.equal(forms.installation({serviceId:'titular',status:'Pendiente'},{services:[{id:'titular',name:'Cambio de titularidad'}]}),true)
+ for(const status of ['Cancelado','Completado','Avance registrado']) assert.equal(forms.installation({service:'Cambio de titularidad',status},{services:[]}),false)
+ assert.equal(forms.installation({service:'Service de alarma',status:'Pendiente'},{services:[]}),false)
 })

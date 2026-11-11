@@ -298,7 +298,8 @@ function createTicketStore({ sql, db }) {
         const notices=[]
         const unread=await communications.readNotifications(execute,user.id)
         const principals=await require('./ticket-notification-principals.cjs').loadNotificationPrincipals(execute,unread.map(notice=>notice.target.ticketId))
-        for(const notice of unread) { const item=principals.get(String(notice.target.ticketId)); if(item&&!registration.applied(item)&&d.visible(item,user,state,config))notices.push({...notice,title:communications.notificationTitle(item,notice.eventLabel||notice.title.replace(/^Ticket#\d+\s*·\s*/,''),state,policy.can(user,'records.contact')),target:{...notice.target,ticketId:item.id}}) }
+        for(const notice of unread) { const item=principals.get(String(notice.target.ticketId)); if(item&&['Nuevo','En gestión','En espera'].includes(item.status)&&(!item.assigneeId||String(item.assigneeId)===String(user.id))&&!registration.applied(item)&&d.visible(item,user,state,config))notices.push({...notice,title:communications.notificationTitle(item,notice.eventLabel||notice.title.replace(/^Ticket#\d+\s*·\s*/,''),state,policy.can(user,'records.contact')),target:{...notice.target,ticketId:item.id}}) }
+        where.push("(assignee_id='' OR assignee_id=?)"); args.push(String(user.id))
         where.push("status IN ('Nuevo','En gestión','En espera')")
         const items=(await execute('SELECT data FROM pignus_tickets'+clause()+' ORDER BY CASE '+field('priority')+" WHEN 'Crítica' THEN 0 WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END,updated_at DESC LIMIT 50",args)).map(parse)
         const noticed=new Set(notices.map(n=>n.target.ticketId))
@@ -426,10 +427,10 @@ function createTicketStore({ sql, db }) {
           const address=require('./ticket-mail.cjs').emailAddress(input.formEmail)
           if(!address || detected.candidates.length && !detected.candidates.includes(address)) d.fail('Seleccioná el correo de Ver respuesta del aviso.')
           const record=input.serviceId?(state.history||[]).find(r=>String(r.id)===String(input.serviceId)):null
-          if(input.serviceId && (!record || !registration.installation(record,state) || !registration.relatedServices(state,record).every(visit=>read.serviceWritable(visit,user,state)))) d.fail('No tenés acceso comercial a una instalación pendiente.',403)
+          if(input.serviceId && (!record || !registration.installation(record,state) || !registration.relatedServices(state,record).every(visit=>read.serviceWritable(visit,user,state)))) d.fail('No tenés acceso comercial a una instalación o cambio de titularidad pendiente.',403)
           const serviceCustomer=record&&read.customerForRecord(record,state)
           const customer=d.customerFor({customerId:record?(serviceCustomer?.customerId||record.customerId||''):(input.customerId||item.customerId)},user,state)
-          if(!customer && !record?.subscriberReservation) d.fail('Seleccioná una instalación o reserva de la agenda.')
+          if(!customer && !record?.subscriberReservation) d.fail('Seleccioná una instalación, un cambio de titularidad o una reserva de la agenda.')
           const customerId=String(customer?.customerId||customer?.id||'')
           if(input.customerId && String(input.customerId)!==customerId || item.customerId && item.customerId!==customerId)d.fail('La cuenta del formulario no coincide con la del servicio.',409)
           if(!item.customerId&&customer&&!d.can(user,'classify'))d.fail('No tenés permiso para vincular la cuenta.',403)

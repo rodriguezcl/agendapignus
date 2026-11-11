@@ -27,8 +27,8 @@ export default function RegistrationFormPanel({ ticket, can, onSaved, onBusyChan
     return () => { active = false; clearTimeout(timer) }
   }, [search, ticket.customerId, ticket.version, preferredServiceId, info.multiple, ticket.status, allowed, retry])
   if (!allowed) return null
-  if (info.multiple) return <section className="tickets-feedback"><h3>Formulario de alta recibido</h3><p>El aviso contiene varias respuestas. Revisá cada respuesta por separado antes de asociarla a una instalación.</p></section>
-  if (ticket.status === 'Resuelto') return info.serviceId ? <section className="tickets-feedback"><h3>Formulario vinculado</h3><p>El correo {info.email} quedó guardado en la instalación. Este aviso ya fue resuelto.</p>{info.confirmedByName && <small>Vinculado por {info.confirmedByName}.</small>}</section> : null
+  if (info.multiple) return <section className="tickets-feedback"><h3>Formulario de alta recibido</h3><p>El aviso contiene varias respuestas. Revisá cada respuesta por separado antes de asociarla a un servicio.</p></section>
+  if (ticket.status === 'Resuelto') return info.serviceId ? <section className="tickets-feedback"><h3>Formulario vinculado</h3><p>El correo {info.email} quedó guardado en el servicio. Este aviso ya fue resuelto.</p>{info.confirmedByName && <small>Vinculado por {info.confirmedByName}.</small>}</section> : null
   const conflictingEmails = (selected?.existingFormEmails || [selected?.formEmail]).filter(value => value && value.trim().toLowerCase() !== email.trim().toLowerCase())
   const conflict = conflictingEmails.length > 0
   async function submit(event) {
@@ -50,18 +50,18 @@ export default function RegistrationFormPanel({ ticket, can, onSaved, onBusyChan
   }
   return <section className="tickets-management registration-form-link">
     <h3>Vincular formulario con la agenda</h3>
-    <p>Buscá la instalación por el nombre del cliente. También podés elegir una reserva que todavía no tiene PIG.</p>
+    <p>Buscá el servicio de alarma o el cambio de titularidad por el nombre del cliente. También podés elegir una reserva que todavía no tiene PIG.</p>
     <form className="tickets-form" onSubmit={submit}>
       <label>Correo del formulario<input type="email" required readOnly={Boolean(info.email) || info.candidates?.length === 1} disabled={busy} value={email} onChange={event => { setEmail(event.target.value); setReplace(false) }} /></label>
       <label>Buscar servicio o reserva<input type="search" value={search} disabled={busy} placeholder="Nombre del cliente, PIG o CLI" onChange={event => { setSearch(event.target.value); setError('') }} /></label>
-      {loading && <p role="status">Buscando instalaciones…</p>}
-      {!loading && search.trim().length >= 2 && !items.length && <p role="status">No se encontraron instalaciones pendientes. Probá con otro nombre. Si todavía no está agendada, creá primero la reserva en Agenda semanal; este aviso seguirá pendiente.</p>}
-      {!loading && items.length > 0 && <div className="registration-service-options" role="group" aria-label="Instalaciones encontradas">{items.map(item => <button type="button" key={item.id} className="secondary registration-service-option" aria-pressed={selected?.id === item.id} disabled={busy} onClick={() => { setSelected(item); setReplace(false); setError('') }}><span>{item.label}</span>{item.reservation && <small>Reserva · PIG pendiente</small>}</button>)}</div>}
+      {loading && <p role="status">Buscando servicios…</p>}
+      {!loading && search.trim().length >= 2 && !items.length && <p role="status">No se encontraron instalaciones o cambios de titularidad pendientes. Probá con otro nombre. Si todavía no está agendada, creá primero la reserva en Agenda semanal; este aviso seguirá pendiente.</p>}
+      {!loading && items.length > 0 && <div className="registration-service-options" role="group" aria-label="Servicios encontrados">{items.map(item => <button type="button" key={item.id} className="secondary registration-service-option" aria-pressed={selected?.id === item.id} disabled={busy} onClick={() => { setSelected(item); setReplace(false); setError('') }}><span>{item.label}</span>{item.reservation && <small>Reserva · PIG pendiente</small>}</button>)}</div>}
       {!loading && total > items.length && <small>Se muestran {items.length} de {total} resultados. Completá el nombre para acotar la búsqueda.</small>}
-      {selected && <div className="tickets-feedback"><b>Instalación elegida</b><p>{selected.label}</p><small>Se copiará el correo, se marcará el formulario completo y se resolverá este ticket.{selected.reservation ? ' Quedará sólo el aviso para vincular el PIG.' : ''} Esta acción no envía un correo al cliente.</small></div>}
+      {selected && <div className="tickets-feedback"><b>Servicio elegido</b><p>{selected.label}</p><small>Se copiará el correo, se marcará el formulario completo y se resolverá este ticket.{selected.reservation ? ' Quedará sólo el aviso para vincular el PIG.' : ''} Esta acción no envía un correo al cliente.</small></div>}
       {conflict && <label className="tickets-checkbox"><input type="checkbox" checked={replace} disabled={busy} onChange={event => setReplace(event.target.checked)} />Confirmo reemplazar el correo existente: {conflictingEmails.join(', ')}.</label>}
       {error && <p role="alert" className="field-error">{error}</p>}
-      <div className="tickets-form-footer"><button type="submit" className="primary" disabled={busy || !selected || !email.trim() || Boolean(conflict && !replace)} title="Copiá el correo a la instalación y resolvé el aviso del formulario en un solo paso.">{busy ? 'Vinculando…' : 'Vincular formulario'}</button></div>
+      <div className="tickets-form-footer"><button type="submit" className="primary" disabled={busy || !selected || !email.trim() || Boolean(conflict && !replace)} title="Copiá el correo al servicio y resolvé el aviso del formulario en un solo paso.">{busy ? 'Vinculando…' : 'Vincular formulario'}</button></div>
     </form>
   </section>
 }

@@ -160,7 +160,7 @@ async function synchronizeTicketServices({ q, pg, previous, next, user, now, rep
       if (type) {
         if (isNewLink && item.registrationForm?.confirmedAt) {
           if(record.form!=='Completo'||record.formEmail!==item.registrationForm.email) d.fail('La instalación debe conservar el formulario y correo confirmados.',409)
-          if(!require('./ticket-registration-form.cjs').installation(record,next)) d.fail('El formulario de alta requiere una instalación de alarma pendiente.',409)
+          if(!require('./ticket-registration-form.cjs').installation(record,next)) d.fail('El formulario requiere una instalación de alarma o un cambio de titularidad pendiente.',409)
           if(!require('./permission-catalog.cjs').can(user,'planning.commercial')) d.fail('No tenés permiso para aplicar el formulario.',403)
           item.registrationForm.serviceId=key;item.registrationForm.pendingCoordination=false
           item.status='En gestión';item.nextReviewAt='';item.waitReason=''

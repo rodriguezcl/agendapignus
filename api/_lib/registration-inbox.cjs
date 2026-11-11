@@ -3,7 +3,7 @@ const policy = require('./permission-catalog.cjs')
 const access = require('./granular-read-policy.cjs')
 const email = value => String(value || '').trim().toLowerCase()
 const groupKey = record => record.serviceJourney?.id ? `journey:${record.serviceJourney.id}` : `service:${record.id}`
-const installation = record => [record.service, record.serviceType, ...(record.serviceTypes || []).map(s => s.name)].some(value => /instalacion de alarmas?/.test(String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()))
+const installation = record => [record.service, record.serviceType, ...(record.serviceTypes || []).map(s => s.name)].some(value => /(?:instalacion de alarmas?|cambio de titularidad)/.test(String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()))
 function legacyItems(state, user, tickets, nativeRows = []) {
   if (!policy.can(user, 'forms.view') || !policy.can(user, 'registration.read') || !policy.can(user, 'records.contact')) return []
   const groups = new Map()
@@ -54,6 +54,6 @@ function legacyItems(state, user, tickets, nativeRows = []) {
   return [...rows.values()]
 }
 function legacyNotices(items) {
-  return items.filter(item => item.status === 'submitted').map(item => ({id:`registration:${item.id}`, source:'registration', title:item.match === 'unlinked' ? 'Formulario de Google recibido · vincular instalación' : 'Formulario de Google · gestión pendiente', detail:`${item.client}${item.email && item.email !== item.client ? ' · '+item.email : ''} · ${item.serviceId ? 'Revisá la vinculación del formulario y del PIG.' : 'Identificá la instalación correspondiente.'}`, tone:'info', target:{type:'registration', id:item.id, recordId:item.serviceId}, recordIds:item.recordIds, ticketIds:item.tickets.map(t => t.id)}))
+  return items.filter(item => item.status === 'submitted').map(item => ({id:`registration:${item.id}`, source:'registration', title:item.match === 'unlinked' ? 'Formulario de Google recibido · vincular servicio' : 'Formulario de Google · gestión pendiente', detail:`${item.client}${item.email && item.email !== item.client ? ' · '+item.email : ''} · ${item.serviceId ? 'Revisá la vinculación del formulario y del PIG.' : 'Identificá la instalación o el cambio de titularidad correspondiente.'}`, tone:'info', target:{type:'registration', id:item.id, recordId:item.serviceId}, recordIds:item.recordIds, ticketIds:item.tickets.map(t => t.id)}))
 }
 module.exports = {legacyItems, legacyNotices}

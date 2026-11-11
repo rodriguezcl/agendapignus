@@ -51,6 +51,31 @@ for (const engine of ['sqlite', 'postgres']) test(`Identidad de avisos ${engine}
     const saved = (await q('SELECT read_at,data FROM pignus_ticket_notifications WHERE id=?', [old.id]))[0]
     assert.equal(saved.read_at, null)
     assert.equal(JSON.parse(saved.data).title, old.title)
+    // Both pending tickets and durable unread events follow the current assignee.
+    const stored = JSON.parse((await q('SELECT data FROM pignus_tickets WHERE id=?', [ticket.id]))[0].data)
+    for (const assigneeId of ['another-user', admin.id, '']) {
+      stored.assigneeId = assigneeId
+      await q('UPDATE pignus_tickets SET assignee_id=?,data=? WHERE id=? RETURNING id', [assigneeId, JSON.stringify(stored), ticket.id])
+      const current = (await store.query(admin, state, { mode: 'notifications' })).notifications
+      assert.equal(current.some(n => n.target.ticketId === ticket.id), assigneeId !== 'another-user')
+      assert.equal(current.some(n => n.id === old.id), assigneeId !== 'another-user')
+      assert.ok((await store.query(admin, state, { mode: 'list' })).items.some(t => t.id === ticket.id))
+    }
+    for (const status of ['Resuelto', 'En gestión', 'En espera', 'Nuevo']) {
+      stored.status = status
+      await q('UPDATE pignus_tickets SET status=?,data=? WHERE id=? RETURNING id', [status, JSON.stringify(stored), ticket.id])
+      const current = (await store.query(admin, state, { mode: 'notifications' })).notifications
+      assert.equal(current.some(n => n.target.ticketId === ticket.id), status !== 'Resuelto')
+      assert.equal(current.some(n => n.id === old.id), status !== 'Resuelto')
+    }
+    assert.equal((await q('SELECT read_at FROM pignus_ticket_notifications WHERE id=?', [old.id]))[0].read_at, null)
+    await q('UPDATE pignus_ticket_notifications SET read_at=? WHERE ticket_id=? RETURNING id', [new Date().toISOString(), ticket.id])
+    for (const assigneeId of ['another-user', admin.id, '']) {
+      stored.assigneeId = assigneeId
+      await q('UPDATE pignus_tickets SET assignee_id=?,data=? WHERE id=? RETURNING id', [assigneeId, JSON.stringify(stored), ticket.id])
+      const current = (await store.query(admin, state, { mode: 'notifications' })).notifications
+      assert.equal(current.some(n => n.id === 'ticket:' + ticket.id), assigneeId !== 'another-user')
+    }
     const denied = { id: 'other', roleCode: 'custom', permissions: { __catalogV2: true, 'tickets.view': true, 'notifications.tickets': true } }
     assert.equal((await store.query(denied, state, { mode: 'notifications' })).notifications.length, 0)
   } finally { if (pg) await pg.close(); else db.close() }

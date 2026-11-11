@@ -10,7 +10,7 @@ function detectRegistrationForm(subject, body) {
 }
 function installation(record, state) {
  const values=[record.service,record.serviceType,...(record.serviceTypes||[]).map(x=>x.name),...(state.services||[]).filter(s=>String(s.id)===String(record.serviceId)).map(s=>s.name)]
- return values.some(value=>/instalacion de alarmas?/.test(normalize(value))) && !['Cancelado','Completado','Avance registrado'].includes(record.status)
+ return values.some(value=>/(?:instalacion de alarmas?|cambio de titularidad)/.test(normalize(value))) && !['Cancelado','Completado','Avance registrado'].includes(record.status)
 }
 function formServicePatch(state, record, email, form = 'Completo') {
  const next=structuredClone(state), records=relatedServices(state,record), ids=new Set(records.map(item=>String(item.id)))
