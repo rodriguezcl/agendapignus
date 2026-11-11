@@ -290,7 +290,7 @@ function TicketDetail({ id, metadata, onClose, onChanged, onCoordinateService })
   </div>}</TicketDialog>{guard.discardDialog}</>
 }
 
-export default function Tickets({ openRequest, onChanged, onCoordinateService }) {
+export default function Tickets({ openRequest, onOpenRequestHandled, onChanged, onCoordinateService }) {
   const { can, user, permissions } = usePermissions()
   const enabled = can('tickets.view')
   // State synchronization can recreate the context without changing access.
@@ -320,7 +320,7 @@ export default function Tickets({ openRequest, onChanged, onCoordinateService })
       .catch(failure => { if (!cancelled) setMetadataError(failure.message) })
     return () => { cancelled = true; controller.abort() }
   }, [accessKey, enabled, metadataRevision])
-  useEffect(() => { if (!openRequest || lastRequest.current === openRequest) return; lastRequest.current = openRequest; if (openRequest.id || openRequest.ticketId) setSelected(String(openRequest.id || openRequest.ticketId)); else if (openRequest.create || openRequest.serviceId) { setInitial(openRequest); setCreating(true) } }, [openRequest])
+  useEffect(() => { if (!openRequest || lastRequest.current === openRequest) return; lastRequest.current = openRequest; if (openRequest.id || openRequest.ticketId) setSelected(String(openRequest.id || openRequest.ticketId)); else if (openRequest.create || openRequest.serviceId) { setInitial(openRequest); setCreating(true) } onOpenRequestHandled?.() }, [openRequest, onOpenRequestHandled])
   const changed = message => { if (message) setNotice(message); window.dispatchEvent(new Event('tickets-changed')); refresh(); onChanged?.() }
   if (!can('tickets.view')) return <p className="empty-state">No tenés permiso para consultar tickets.</p>
   return <div className="tickets-page"><ModuleIntroduction><p className="eyebrow">OPERACIÓN</p><h1>Tickets</h1><p>Reclamos, solicitudes y gestiones en un mismo lugar.</p></ModuleIntroduction>
