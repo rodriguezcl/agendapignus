@@ -102,7 +102,7 @@ async function availability(state, input, { now = new Date(), holidays, env = pr
   return { slots: slots.sort((a, b) => a.time.localeCompare(b.time) || a.teamLabel.localeCompare(b.teamLabel)), reason: slots.length ? '' : 'No hay horarios compatibles. Probá otra fecha o consultá con Coordinación.' }
 }
 async function handle({ connection, kind, user, method, input = {}, formState }) {
-  if (!policy.can(user, 'sales.view') || method === 'POST' && !policy.can(user, 'sales.reserve')) fail('No tenés permiso para gestionar reservas de ventas.', 403)
+  if (!policy.can(user, 'sales.view') || method === 'POST' && !policy.can(user, 'sales.reserve')) fail('No tenés permiso para gestionar reservas de instalación.', 403)
   if (!['GET', 'POST'].includes(method)) fail('Método no permitido.', 405)
   if (method === 'POST' && input.action === 'locate') return require('./sales-geocoding.cjs').locateSalesAddress(input)
   const base = native.createStore({ [kind]: connection }); await base.ensure()

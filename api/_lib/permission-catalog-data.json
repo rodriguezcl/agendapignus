@@ -12,7 +12,7 @@
     ],
     [
       "sales",
-      "Reservas de ventas",
+      "Reservas de instalación",
       "Ubicar una instalación, consultar horarios estimativos y reservar a confirmar. Sólo reservas propias."
     ],
     [
@@ -2406,7 +2406,7 @@
     },
     {
       "id": "sales.view",
-      "label": "Consultar reservas de ventas propias",
+      "label": "Consultar reservas de instalación propias",
       "groups": [
         "sales"
       ],

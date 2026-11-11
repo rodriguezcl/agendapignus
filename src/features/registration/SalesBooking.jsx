@@ -107,7 +107,7 @@ export default function SalesBooking({ onSaved, navigationGuardRef }) {
   const selected = slots.find(slot => `${slot.teamId}|${slot.time}` === choice)
   return <section className="sales-booking">
     {leave && <Confirm title="Salir de la reserva" detail="Los datos que completaste todavía no se guardaron. ¿Querés salir y descartarlos?" confirmLabel="Descartar y salir" action={() => { const action = leave; setLeave(null); action() }} close={() => setLeave(null)} />}
-    <ModuleIntroduction><p>Reservá una instalación para revisión de Coordinación. La visita queda A confirmar y ocupa el horario propuesto.</p></ModuleIntroduction>
+    <ModuleIntroduction><p>Instalaciones de alarma pendientes para nuevos abonados. Reservá un horario para revisión de Coordinación. La visita queda A confirmar y ocupa el horario propuesto.</p></ModuleIntroduction>
     {notice && <p className="sales-feedback" role="status">{notice}</p>}{error && <p className="field-error" role="alert">{error}</p>}
     {saved ? <article className="panel sales-panel"><h2>Formulario de {saved.client}</h2><p>Propuesta: {saved.date.split('-').reverse().join('/')} · {saved.time} hs · {saved.team}</p>{linkControls(saved)}<button className="primary" onClick={() => { cancelLookup(); setLocationMessage(''); setSaved(null); setDraft(initial()); requestId.current = crypto.randomUUID(); setNotice('') }}>Crear otra reserva</button></article> : can('sales.reserve') && <form className="panel sales-panel" onSubmit={search}>
       <fieldset disabled={busy}><legend>1. Datos de la instalación</legend><div className="sales-grid">
