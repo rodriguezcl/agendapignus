@@ -459,7 +459,7 @@ export function TechnicianPortal({ user, history, setHistory, vehicles = [], set
     if (record.vehicleControl && !vehicleControlIsOpen(current, clock)) throw new Error('El control todavía no está habilitado.')
     let updated
     try {
-      updated = await submitTechnicianStatus({ recordId: record.id, type, ...payload, vehicleControl: Boolean(record.vehicleControl && type === 'Completado') })
+      updated = await submitTechnicianStatus({ recordId: record.id, type, ...payload, visit: { date: record.date, time: record.time || record.scheduledTime || '', reprogrammedAt: record.reprogrammedAt || '' }, vehicleControl: Boolean(record.vehicleControl && type === 'Completado') })
     } catch (error) {
       if (error.code === 'VEHICLE_MILEAGE_CONFLICT' && Number.isFinite(error.currentMileage)) setVehicles?.(previous => previous.map(vehicle => String(vehicle.id) === String(record.vehicleId) ? { ...vehicle, mileage: error.currentMileage } : vehicle))
       throw error

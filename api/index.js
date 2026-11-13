@@ -737,7 +737,7 @@ async function handleTechnicianStart(req, res, sql, user) {
 
 async function handleTechnicianStatus(req, res, sql, user) {
   if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
-  const { recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution, alarmZones, workResults } = requestBody(req)
+  const { recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution, alarmZones, workResults, visit } = requestBody(req)
   const allowed = ['Completado', 'Avance registrado', 'Cancelado', 'Reprogramación solicitada']
   if (!allowed.includes(type)) return send(res, 400, { error: 'No se puede actualizar este servicio.' })
   try {
@@ -758,6 +758,7 @@ async function handleTechnicianStatus(req, res, sql, user) {
         ? (await transaction`select data from pignus_work_history where work_date = ${String(record.date || '')}`).map(row => row.data).filter(item => item?.technicianIds?.some(id => String(id) === String(user.id)))
         : []
       if (record.vehicleControl && !vehicleControlIsOpen(record, Date.now(), technicianDayRecords)) { const error = new Error(`El control vehicular se habilita el ${vehicleControlWindowLabel(record)}.`); error.statusCode = 409; throw error }
+      require('./_lib/technician-report-visit.cjs').assertReportVisit(record, visit)
       // Si el primer envío se guardó pero el teléfono perdió la respuesta, el
       // reintento devuelve el mismo resultado sin duplicar auditoría ni cambios.
       if (record.technicalStatus) {

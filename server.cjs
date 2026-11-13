@@ -2422,7 +2422,7 @@ const server = http.createServer((req, res) => {
     const user = requireSession(req, res)
     if (!user) return
     if (!canPerformTechnicalServices(user)) return send(res, 403, { error: 'La cuenta no está habilitada para realizar servicios técnicos.' })
-    return readJson(req, 1_600_000).then(async ({ recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution, alarmZones, workResults }) => {
+    return readJson(req, 1_600_000).then(async ({ recordId, type, observation, vehicleMileage, vehiclePhoto, followup, ticketResolution, alarmZones, workResults, visit }) => {
       const ticketStore = require('./api/_lib/tickets-http.cjs').storeFor(db, 'db')
       await ticketStore.ensure()
       const priorState = readState()
@@ -2439,6 +2439,7 @@ const server = http.createServer((req, res) => {
           ? rows('work_history').filter(item => String(item.date || '') === String(record.date || '') && item.technicianIds?.some(id => String(id) === String(user.id)))
           : []
         if (record.vehicleControl && !vehicleControlIsOpen(record, Date.now(), technicianDayRecords)) return send(res, 409, { error: `El control vehicular se habilita el ${vehicleControlWindowLabel(record)}.` })
+        require('./api/_lib/technician-report-visit.cjs').assertReportVisit(record, visit)
         if (record.technicalStatus) {
           if ((record.technicalStatus === type || type === 'Completado' && record.workCompletion) && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record: technicianSafeRecord(record, user) })
           return send(res, 409, { error: 'Este servicio ya fue informado desde otra sesión.' })
