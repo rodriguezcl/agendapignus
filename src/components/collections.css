@@ -27,11 +27,12 @@
 .collections-filters input, .collections-filters select, .collections-editor input, .collections-editor select, .collections-editor textarea { width: 100%; min-width: 0; box-sizing: border-box; color: var(--ap-text); background: var(--ap-input); border: 1px solid var(--ap-border); }
 .collections-table-wrap { border: 1px solid var(--ap-border); border-radius: 8px; overflow: auto; background: var(--ap-surface); }
 .collections-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
-.collection-column-date { width: 11%; }
-.collection-column-owner { width: 15%; }
-.collection-column-amount { width: 12%; }
-.collection-column-method { width: 11%; }
-.collection-column-status { width: 14%; }
+.collection-column-date { width: 9%; }
+.collection-column-owner { width: 12%; }
+.collection-column-recipient { width: 12%; }
+.collection-column-amount { width: 10%; }
+.collection-column-method { width: 10%; }
+.collection-column-status { width: 12%; }
 .collection-column-actions { width: 154px; }
 .collections-table th { text-align: left; background: var(--ap-surface-alt); color: var(--ap-muted); font-size: 12px; }
 .collections-table :is(th, td) { padding: 14px 16px; border-bottom: 1px solid var(--ap-border); vertical-align: middle; overflow-wrap: anywhere; }
@@ -55,6 +56,9 @@
 .collection-trace li { padding: 12px 0; border-bottom: 1px solid var(--ap-border); }
 .collection-trace small { display: block; margin-top: 6px; }
 .collection-trace p { margin: 8px 0; }
+@media (min-width: 851px) {
+  .collections-table { min-width: 1200px; }
+}
 @media (max-width: 850px) {
   .collections-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .collections-table thead, .collections-table colgroup { display: none; }
