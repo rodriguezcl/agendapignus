@@ -30,6 +30,7 @@ export function recordHolidayDecision(setWeekly, setNotice, date, holiday, statu
     _holidayOverrides: {
       ...(weekly?._holidayOverrides || {}),
       [date]: {
+        ...(weekly?._holidayOverrides?.[date] || {}),
         status,
         holidayName: holiday?.name || 'Feriado nacional',
         decidedAt: new Date().toISOString(),

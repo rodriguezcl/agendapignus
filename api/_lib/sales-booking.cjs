@@ -60,7 +60,7 @@ async function availability(state, input, { now = new Date(), holidays, env = pr
   const friday = new Date(`${day}T12:00:00Z`); friday.setUTCDate(friday.getUTCDate() - 1)
   if (!weekday || weekday === 6 && findAdvancedSaturdayGuard({ fridayPlan: weekly[friday.toISOString().slice(0,10)], saturdayPlan: weekly[day] })) return { slots: [], reason: 'La jornada no está disponible para nuevas reservas.' }
   const calendar = holidays ?? await require('./holidays.cjs').fetchNationalHolidays(Number(day.slice(0, 4)))
-  if (calendar.some(h => h.date === day) && weekly._holidayOverrides?.[day]?.status !== 'working') return { slots: [], reason: 'Coordinación debe habilitar la jornada del feriado.' }
+  if (weekly._holidayOverrides?.[day]?.status === 'closed' || calendar.some(h => h.date === day) && weekly._holidayOverrides?.[day]?.status !== 'working') return { slots: [], reason: 'Coordinación debe habilitar la jornada del feriado.' }
   const { taskOccupiedInterval } = await import('../../src/domain/agenda/service-scheduling.mjs')
   const teams = await teamsFor(state, day), slots = []
   const currentTime = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now)

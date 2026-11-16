@@ -147,6 +147,16 @@ const agendaTaskWasAlreadyScheduled = (task, date, previousPlan, previousHistory
 }
 
 function validateChangedAgendaSchedules(state, previousState = null) {
+  if (previousState) {
+    const oldRecords = new Map((previousState.history || []).map(r => [String(r.id), r]))
+    for (const record of state.history || []) {
+      const old = oldRecords.get(String(record.id))
+      if (state.agenda?.weekly?._holidayOverrides?.[record.date]?.status === 'closed' &&
+          (!old || old.date !== record.date || (old.time || old.scheduledTime) !== (record.time || record.scheduledTime))) {
+        throw new Error('La fecha fue definida como día no operativo. Habilitala antes de agendar servicios.')
+      }
+    }
+  }
   const serviceMap = serviceMapFor(state?.services)
   const nextPlans = agendaPlans(state?.agenda)
   const previousPlans = agendaPlans(previousState?.agenda)

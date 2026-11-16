@@ -195,7 +195,7 @@ export function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, 
   }, [gapTaskFocus, teams])
   const taskMoveSavingRef = useRef(false)
   const holidayCalendar = useNationalHolidays([authUser ? String(date || '').slice(0, 4) : '', taskMove?.destinationDay?.slice(0, 4) || ''])
-  const holiday = holidayForDate(holidayCalendar.records, date)
+  const holiday = holidayForDate(holidayCalendar.records, date, weekly)
   const holidayDecision = holidayDecisionForDate(weekly, date)
   const sundayBlocked = isSunday(date)
   const holidayBlocked = holidayIsBlocked(holiday, holidayDecision)
@@ -764,7 +764,7 @@ export function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, 
     if (day < currentLocalDate() || isSunday(day)) { setNotice('Elegí hoy o una fecha futura habilitada, excepto domingo.'); return }
     if (day === date && destinationTeam.teamId === sourceTeam.teamId) { setNotice('Elegí otro equipo o una fecha diferente.'); return }
     if (holidayCalendar.loading || holidayCalendar.error) { setNotice('Esperá a que se verifique el calendario de feriados antes de reasignar.'); return }
-    if (holidayIsBlocked(holidayForDate(holidayCalendar.records, day), holidayDecisionForDate(weekly, day))) { setNotice('La fecha de destino no está habilitada. Revisá la configuración del feriado.'); return }
+    if (holidayIsBlocked(holidayForDate(holidayCalendar.records, day, weekly), holidayDecisionForDate(weekly, day))) { setNotice('La fecha de destino no está habilitada. Revisá la configuración del feriado.'); return }
     if (advancedGuardForSaturdayDate(day, weekly, moveDayPlan(day).teams)) { setNotice('La guardia de ese sábado fue adelantada. Elegí la fecha de la guardia.'); return }
     if (!destinationTeam.members?.length) { setNotice('El equipo de destino no tiene técnicos asignados.'); return }
     const durationCustomized = task.estimatedMinutesCustomized === true || Number(taskMove.estimatedMinutes) !== Number(serviceEstimateForTask(task, serviceForTask(task)))
