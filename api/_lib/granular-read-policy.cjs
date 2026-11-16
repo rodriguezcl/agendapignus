@@ -166,7 +166,7 @@ function granularVisibleState(state, user) {
   else customers = []
   const employeeLookup = any(user, ['planning.technicians', 'planning.create', 'planning.reschedule', 'weekly.monthlyTeams.read', 'weekly.monthlyVehicles.read', 'weekly.guards.read'])
   const employees = can('employees.view') ? (state.employees || []).map(require('./employee-credentials.cjs').publicEmployee)
-    : employeeLookup ? (state.employees || []).map(({ id, firstName, lastName, name, roleId, role, status, technicalEnabled }) => ({ id, firstName, lastName, name, roleId, role, status, technicalEnabled })) : []
+    : employeeLookup ? (state.employees || []).map(({ id, firstName, lastName, name, roleId, role, status, technicalEnabled, canReceiveCash }) => ({ id, firstName, lastName, name, roleId, role, status, technicalEnabled, canReceiveCash })) : can('collections.view') && can('records.financial') ? (state.employees || []).map(({ id, name, status, canReceiveCash }) => ({ id, name, status, canReceiveCash })) : []
   const roleLookup = employeeLookup || can('employees.view')
   const assignable = role => {
     try { require('./granular-write-policy.cjs').assertDelegable(user, role, state.roles); return true } catch { return false }

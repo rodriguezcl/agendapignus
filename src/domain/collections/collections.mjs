@@ -3,6 +3,7 @@ import { serviceRecordFingerprint } from '../history/service-concurrency.mjs'
 // Fixed rollout date agreed with administration. Never use a moving "today"
 // cutoff: an unpaid service must remain visible on subsequent days.
 export const COLLECTIONS_START_DATE = '2026-10-14'
+export const cashRecipients = employees => [...new Set((employees || []).filter(employee => employee.canReceiveCash === true && employee.status === 'Activo').map(employee => employee.name || `${employee.firstName || ''} ${employee.lastName || ''}`.trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'es'))
 export const COLLECTION_PAYMENT_METHODS = ['Efectivo', 'Transferencia', 'Débito', 'Crédito']
 export const collectionMoney = value => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(value) || 0)
 export const collectionConfirmed = record => record?.collection?.status === 'confirmed'
@@ -91,25 +92,28 @@ export function manageCollection(state, input, user, now = new Date().toISOStrin
   const raw = String(input.amount ?? '').trim().replace(',', '.')
   if (!/^\d+(\.\d{1,2})?$/.test(raw) || Number(raw) <= 0 || Number(raw) > 999999999.99) fail('Ingresá un monto mayor a cero, sin separadores de miles y con hasta dos decimales.')
   if (!COLLECTION_PAYMENT_METHODS.includes(input.paymentMethod)) fail('Seleccioná la forma de pago efectiva.')
+  const cashRecipient = input.paymentMethod === 'Efectivo' ? String(input.cashRecipient ?? before.collection?.cashRecipient ?? '') : ''
+  if (cashRecipient && cashRecipient !== before.collection?.cashRecipient && !cashRecipients(state.employees).includes(cashRecipient)) fail('Seleccioná una persona autorizada para recibir efectivo.')
   const note = String(input.note || '').trim()
   if (note.length > 1000) fail('La observación no puede superar los 1000 caracteres.')
   const amount = String(Number(raw))
-  const previous = { amount: String(before.amount), paymentMethod: before.paymentMethod, status: collectionConfirmed(before) ? 'confirmed' : 'pending' }
-  const next = { amount, paymentMethod: input.paymentMethod, status: input.action === 'confirm' ? 'confirmed' : previous.status }
+  const previous = { ...(before.collection?.cashRecipient ? { cashRecipient: before.collection.cashRecipient } : {}), amount: String(before.amount), paymentMethod: before.paymentMethod, status: collectionConfirmed(before) ? 'confirmed' : 'pending' }
+  const next = { ...(cashRecipient ? { cashRecipient } : {}), amount, paymentMethod: input.paymentMethod, status: input.action === 'confirm' ? 'confirmed' : previous.status }
   if (input.action === 'confirm' && next.paymentMethod !== 'Efectivo' && !receipt) fail('Adjuntá el comprobante del pago para confirmar esta cobranza.')
   if (input.action === 'correct' && collectionConfirmed(before) && next.paymentMethod !== previous.paymentMethod && next.paymentMethod !== 'Efectivo' && !receiptUploaded) fail('Adjuntá un nuevo comprobante que respalde el cambio de medio de pago.')
   if (input.action === 'receipt') {
     if (!receiptUploaded || !receipt) fail('Seleccioná el comprobante que querés adjuntar.')
-    if (Number(previous.amount) !== Number(amount) || previous.paymentMethod !== next.paymentMethod) fail('Para cambiar el importe o el medio de pago, usá la rectificación de cobranza.')
+    if (Number(previous.amount) !== Number(amount) || previous.paymentMethod !== next.paymentMethod || (previous.cashRecipient || '') !== cashRecipient) fail('Para cambiar el importe o el medio de pago, usá la rectificación de cobranza.')
   }
   if (receiptUploaded && !receipt) fail('El comprobante no pudo verificarse.')
-  if (input.action === 'correct' && !collectionNeedsReview(before) && Number(previous.amount) === Number(amount) && previous.paymentMethod === next.paymentMethod) fail('No hay cambios en el monto ni en la forma de pago.')
+  if (input.action === 'correct' && !collectionNeedsReview(before) && Number(previous.amount) === Number(amount) && previous.paymentMethod === next.paymentMethod && (previous.cashRecipient || '') === cashRecipient) fail('No hay cambios en el monto ni en la forma de pago.')
   const actor = { id: String(user.id), name: user.name }
   const receiptChange = receiptUploaded ? { receiptBefore: before.collection?.receipt?.id || null, receiptAfter: receipt.id } : {}
   const receipts = receiptUploaded ? [...new Map([...(before.collection?.receipts || []), before.collection?.receipt, receipt].filter(Boolean).map(file => [file.id, file])).values()] : undefined
   const collection = {
     ...before.collection,
     status: next.status,
+    cashRecipient,
     original: before.collection?.original || { ...previous, date: before.date, client: before.client },
     events: [...(before.collection?.events || []), { action: input.action, at: now, actor, before: previous, after: next, note, ...receiptChange }],
     ...(receiptUploaded ? { receipt, receipts } : {}),

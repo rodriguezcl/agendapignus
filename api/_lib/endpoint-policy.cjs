@@ -98,7 +98,7 @@ function assertCollectionAction(user, state, input) {
   if (input.action === 'void') { write.requirePermission(user, 'collections.amount'); write.requirePermission(user, 'collections.method') }
   if (input.action === 'confirm' || input.action === 'receipt' || input.receipt != null) write.requirePermission(user, 'collections.confirm')
   if (Number(input.amount) !== Number(record?.amount)) write.requirePermission(user, 'collections.amount')
-  if (input.paymentMethod !== record?.paymentMethod) write.requirePermission(user, 'collections.method')
+  if (input.paymentMethod !== record?.paymentMethod || input.cashRecipient !== undefined && String(input.cashRecipient) !== String(record?.collection?.cashRecipient || '')) write.requirePermission(user, 'collections.method')
 }
 function collectionInput(state, input, user, baseFor) {
   if (!catalog.isGranular(user)) return input

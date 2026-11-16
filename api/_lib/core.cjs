@@ -211,7 +211,7 @@ function projectStateForUser(state, user, ticketUser = user) {
   return {
     revision: state.revision,
     roles: state.roles,
-    employees: userCan(user, 'employees') ? state.employees.map(publicEmployee) : state.employees.map(({ id, firstName, lastName, name, roleId, role, status, technicalEnabled }) => ({ id, firstName, lastName, name, roleId, role, status, technicalEnabled: technicalEnabled === true })),
+    employees: userCan(user, 'employees') ? state.employees.map(publicEmployee) : state.employees.map(({ id, firstName, lastName, name, roleId, role, status, technicalEnabled, canReceiveCash }) => ({ id, firstName, lastName, name, roleId, role, status, technicalEnabled: technicalEnabled === true, canReceiveCash: canReceiveCash === true })),
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? ensureVehicleControlService(state.services) : [],
     vehicles: userCan(user, 'vehicles') || userCan(user, 'weeklyVehicles') ? state.vehicles || [] : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : userCan(user, 'map') ? (state.customers || []).map(require('./subscriber-map-access.cjs').mapCustomer) : [],

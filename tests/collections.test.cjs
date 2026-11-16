@@ -199,3 +199,39 @@ test('la base normalizada conserva el historial de pagos al guardar y volver a l
     assert.doesNotThrow(() => assertCompletedServices(result.state, read))
   } finally { await pg.close() }
 })
+
+test('cash recipient can be selected and corrected with an audit trail', async () => {
+ const { manageCollection, collectionBase } = await domain
+ let state=fixture()
+ state.employees=['Martin French','Benjamin French','Sofia Damonte'].map((name,id)=>({id,name,status:'Activo',canReceiveCash:true}))
+ const save=(action,values={})=>manageCollection(state,{recordId:'payment',base:collectionBase(state.history[0]),amount:'10000',paymentMethod:'Efectivo',action,...values},actor)
+ for(const name of ['Martin French','Benjamin French','Sofia Damonte']) {
+  const result=save('correct',{cashRecipient:name})
+  assert.equal(result.after.collection.cashRecipient,name)
+  assert.equal(result.after.collection.events.at(-1).after.cashRecipient,name)
+  state=result.state
+ }
+ assert.throws(()=>save('correct',{cashRecipient:'No autorizado'}),/autorizada/)
+ const confirmed=save('confirm',{cashRecipient:'Sofia Damonte'});state=confirmed.state
+ const corrected=save('correct',{cashRecipient:'Martin French'})
+ assert.equal(corrected.after.collection.status,'confirmed')
+ assert.equal(corrected.after.collection.confirmedAt,confirmed.after.collection.confirmedAt)
+ assert.equal(corrected.after.collection.events.at(-1).before.cashRecipient,'Sofia Damonte')
+ assert.equal(corrected.after.collection.events.at(-1).after.cashRecipient,'Martin French')
+ const transfer=manageCollection(fixture(),{recordId:'payment',base:collectionBase(fixture().history[0]),action:'correct',amount:'10000',paymentMethod:'Transferencia',cashRecipient:'Martin French'},actor)
+ assert.equal(transfer.after.collection.cashRecipient,'')
+})
+
+test('cash recipient choices follow active employee flags and retain prior receipts',async()=>{
+ const {cashRecipients,manageCollection,collectionBase}=await domain
+ const state=fixture();state.employees=[{id:'1',name:'Habilitado',status:'Activo',canReceiveCash:true},{id:'2',name:'Desmarcado',status:'Activo',canReceiveCash:false},{id:'3',name:'Inactivo',status:'Inactivo',canReceiveCash:true}]
+ assert.deepEqual(cashRecipients(state.employees),['Habilitado'])
+ const input={recordId:'payment',base:collectionBase(state.history[0]),action:'confirm',amount:'10000',paymentMethod:'Efectivo',cashRecipient:'Habilitado'}
+ for(const name of ['Desmarcado','Inactivo'])assert.throws(()=>manageCollection(state,{...input,cashRecipient:name},actor),/autorizada/)
+ const saved=manageCollection(state,input,actor).state
+ saved.employees[0].canReceiveCash=false
+ assert.deepEqual(cashRecipients(saved.employees),[])
+ const corrected=manageCollection(saved,{...input,action:'correct',amount:'11000',base:collectionBase(saved.history[0])},actor)
+ assert.equal(corrected.after.collection.cashRecipient,'Habilitado')
+ assert.equal(corrected.after.collection.events[0].after.cashRecipient,'Habilitado')
+})

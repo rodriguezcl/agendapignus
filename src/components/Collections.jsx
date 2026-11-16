@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import ModuleIntroduction from './ModuleIntroduction.jsx'
 import EditorModal from './ui/EditorModal.jsx'
 import Icon from './ui/Icon.jsx'
-import { COLLECTION_PAYMENT_METHODS, collectionBase, collectionConfirmed, collectionVoided, collectionNeedsReview, collectionPending, collectionMoney, collectionRecords, collectionServiceResolver } from '../domain/collections/collections.mjs'
+import { cashRecipients, COLLECTION_PAYMENT_METHODS, collectionBase, collectionConfirmed, collectionVoided, collectionNeedsReview, collectionPending, collectionMoney, collectionRecords, collectionServiceResolver } from '../domain/collections/collections.mjs'
 import './collections.css'
 import { parseCollectionAmount, displayCollectionAmount } from '../domain/collections/collection-amount.mjs'
 import CollectionReceiptField from './CollectionReceiptField.jsx'
@@ -14,10 +14,10 @@ import { currentLocalDate } from '../presentation/formatting.mjs'
 
 const dateLabel = value => value?.split('-').reverse().join('/') || 'Sin fecha'
 const timestamp = value => new Date(value).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })
-const terms = value => `${collectionMoney(value.amount)} · ${value.paymentMethod}`
+const terms = value => `${collectionMoney(value.amount)} · ${value.paymentMethod}${value.cashRecipient || value.collection?.cashRecipient ? ` · Recibe: ${value.cashRecipient || value.collection.cashRecipient}` : ''}`
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 
-export default function Collections({ history, customers = [], canManage, onSave, openRequest, onOpenRequestHandled, setNotice }) {
+export default function Collections({ history, employees = [], customers = [], canManage, onSave, openRequest, onOpenRequestHandled, setNotice }) {
   const { can, granular, user } = useActionPermissions()
   const { can: hasPermission } = usePermissions()
   canManage = granular ? ['collections.confirm', 'collections.amount', 'collections.method'].some(key => can(key)) : canManage
@@ -74,7 +74,7 @@ export default function Collections({ history, customers = [], canManage, onSave
       <p className="collections-filter-summary" role="status"><b>{filtered.length}</b> cobranza(s) · ambos segmentos</p>
     </div>
     <div className="collections-segments">{segments.map(segment => <CollectionSegment key={`${segment.id}:${filterKey}`} segment={segment} today={today} schedule={schedule} mayManage={mayManage} onSelect={setSelection} focusRecordId={selection?.id} />)}</div>
-    {selectedVisibleRecord && <CollectionEditor key={selection.id} record={selection} currentRecord={selectedVisibleRecord} effectiveRecord={schedule(selectedVisibleRecord)} customers={customers} serviceDate={schedule(selection).date} canManage={mayManage(selectedVisibleRecord)} onSave={onSave} close={() => setSelection(null)} onSaved={message => { setSelection(null); setNotice(message) }} />}
+    {selectedVisibleRecord && <CollectionEditor employees={employees} key={selection.id} record={selection} currentRecord={selectedVisibleRecord} effectiveRecord={schedule(selectedVisibleRecord)} customers={customers} serviceDate={schedule(selection).date} canManage={mayManage(selectedVisibleRecord)} onSave={onSave} close={() => setSelection(null)} onSaved={message => { setSelection(null); setNotice(message) }} />}
   </div>
 }
 
@@ -114,7 +114,7 @@ function CollectionSegment({ segment, today, schedule, mayManage, onSelect, focu
   </section>
 }
 
-function CollectionEditor({ record, currentRecord, effectiveRecord, customers, serviceDate, canManage, onSave, close, onSaved }) {
+function CollectionEditor({ employees, record, currentRecord, effectiveRecord, customers, serviceDate, canManage, onSave, close, onSaved }) {
   const { can, user } = useActionPermissions()
   const { can: hasPermission } = usePermissions()
   const canView = hasPermission('collections.view') && hasPermission('records.financial')
@@ -128,6 +128,8 @@ function CollectionEditor({ record, currentRecord, effectiveRecord, customers, s
   const [amount, setAmount] = useState(String(record.amount))
   const [amountFocused, setAmountFocused] = useState(false)
   const [method, setMethod] = useState(record.paymentMethod)
+  const recipients = cashRecipients(employees)
+  const [cashRecipient, setCashRecipient] = useState(record.collection?.cashRecipient || '')
   const [voiding, setVoiding] = useState(false)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -136,7 +138,7 @@ function CollectionEditor({ record, currentRecord, effectiveRecord, customers, s
   const [preparingReceipt, setPreparingReceipt] = useState(false)
   const saving = useRef(false), preparing = useRef(false)
   const normalizedAmount = parseCollectionAmount(amount)
-  const changed = needsReview || normalizedAmount === null || Number(normalizedAmount) !== Number(record.amount) || method !== record.paymentMethod
+  const changed = needsReview || normalizedAmount === null || Number(normalizedAmount) !== Number(record.amount) || method !== record.paymentMethod || (method === 'Efectivo' ? cashRecipient : '') !== (record.collection?.cashRecipient || '')
   const confirmed = collectionConfirmed(record)
   const currentReceipt = record.collection?.receipt
   const receiptRequired = ['Transferencia', 'Débito', 'Crédito'].includes(method)
@@ -169,7 +171,7 @@ function CollectionEditor({ record, currentRecord, effectiveRecord, customers, s
     saving.current = true; setBusy(true); setError('')
     try {
       await onSave({
-        recordId: record.id, base: collectionBase(record), action, amount: normalizedAmount, paymentMethod: method, note,
+        recordId: record.id, base: collectionBase(record), action, amount: normalizedAmount, paymentMethod: method, cashRecipient: method === 'Efectivo' ? cashRecipient : '', note,
         ...(receipt ? { receipt: { id: receipt.id, name: receipt.name, data: receipt.data } } : {})
       })
       onSaved(action === 'confirm' ? 'Pago confirmado. La notificación de cobranza fue resuelta.' : action === 'receipt' ? 'Comprobante guardado. El pago conserva su confirmación.' : 'Corrección guardada en el historial de la cobranza.')
@@ -193,6 +195,7 @@ function CollectionEditor({ record, currentRecord, effectiveRecord, customers, s
       <div className="collection-fields">
         <label>Monto {collectionConfirmed(record) ? 'cobrado' : 'a cobrar'} ($)<input disabled={!canAmount} required type="text" inputMode="decimal" value={amountFocused ? amount : displayCollectionAmount(amount)} onFocus={() => { setAmountFocused(true); if (normalizedAmount !== null) setAmount(normalizedAmount.replace('.', ',')) }} onChange={event => setAmount(event.target.value)} onBlur={() => setAmountFocused(false)} /></label>
         <label>Forma de pago<select disabled={!canMethod} required value={method} onChange={event => setMethod(event.target.value)}>{!COLLECTION_PAYMENT_METHODS.includes(method) && <option value={method} disabled>{method || 'Seleccionar'}</option>}{COLLECTION_PAYMENT_METHODS.map(value => <option key={value}>{value}</option>)}</select></label>
+        {method === 'Efectivo' && <label>Recibe el efectivo<select disabled={!canMethod} value={cashRecipient} onChange={event => setCashRecipient(event.target.value)}><option value="">Seleccionar persona</option>{cashRecipient && !recipients.includes(cashRecipient) && <option value={cashRecipient} disabled>{cashRecipient} (registro anterior)</option>}{recipients.map(name => <option key={name} value={name}>{name}</option>)}</select></label>}
       </div>
       {receiptField}
       {missingCorrectionReceipt && !canConfirm && <p className="collections-help" role="status">El cambio de forma de pago requiere un comprobante nuevo. Tu rol no permite adjuntarlo.</p>}

@@ -29,7 +29,7 @@ export default function Employees({ employees, setEmployees, roles, setNotice, a
     const record = { ...form, firstName: form.firstName.trim(), lastName: form.lastName.trim(), name: `${form.firstName.trim()} ${form.lastName.trim()}`, roleId: assignedRole.id, role: assignedRole.name, id: editing || crypto.randomUUID(), technicalEnabled: !granular && ['operator', 'supervisor'].includes(roleCode(assignedRole)) ? false : form.technicalEnabled === true }
     if (granular && editing && baseline) {
       for (const [permission, fields] of [
-        ['employees.edit', ['firstName', 'lastName', 'name', 'phone', 'email']],
+        ['employees.edit', ['firstName', 'lastName', 'name', 'phone', 'email', 'canReceiveCash']],
         ['employees.role', ['roleId', 'role']],
         ['employees.technical', ['technicalEnabled']]
       ]) if (!can(permission)) for (const key of fields) {
@@ -82,6 +82,7 @@ function EmployeeForm({ form, setForm, roles, save, cancel, editing, canEnableTe
         </label>
         <p id="employee-technical-help">{restrictedRole ? 'Este rol es de solo lectura y no admite servicios técnicos.' : granular ? 'Su rol también debe permitir realizar servicios técnicos.' : 'Conserva su rol y agrega el acceso a Mis servicios. Solo Administración puede cambiar esta habilitación.'}</p>
       </div>
+      <div className="employee-technical-capability"><label><input type="checkbox" checked={form.canReceiveCash === true} disabled={saving || !can('employees.edit')} onChange={event => setForm({ ...form, canReceiveCash: event.target.checked })} /><span>Puede recibir pagos en efectivo</span></label><p>Si está activo y habilitado, aparecerá en el desplegable de Cobranzas.</p></div>
       <div className="employee-form-actions">
         <button title="Guardá los datos y la configuración del colaborador." className="primary" disabled={saving}><Icon name="check" />{saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Guardar colaborador'}</button>
         <button title="Cancelá esta operación sin aplicar los cambios del formulario." type="button" className="secondary" disabled={saving} onClick={requestClose}><Icon name="close" size={16} />Cancelar</button>
