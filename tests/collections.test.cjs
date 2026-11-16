@@ -12,7 +12,7 @@ const domain = import('../src/domain/collections/collections.mjs').then(module =
 }))
 const actor = { id: 'admin', name: 'Administración' }
 function fixture() {
-  const record = { id: 'payment', sourceTaskId: 't', teamId: 'team', estimatedMinutes: 60, date: '2026-10-14', time: '09:00', client: 'CLI-1 Cliente', customerId: 'c', serviceId: 's', service: 'Service técnico', status: 'Completado', amount: '10000', paymentMethod: 'Efectivo', technicianIds: ['tech'], technicians: ['Técnico'], detail: 'Trabajo realizado' }
+  const record = { id: 'payment', createdBy: actor, sourceTaskId: 't', teamId: 'team', estimatedMinutes: 60, date: '2026-10-14', time: '09:00', client: 'CLI-1 Cliente', customerId: 'c', serviceId: 's', service: 'Service técnico', status: 'Completado', amount: '10000', paymentMethod: 'Efectivo', technicianIds: ['tech'], technicians: ['Técnico'], detail: 'Trabajo realizado' }
   return { revision: 1, roles: [], employees: [], services: [{ id: 's', code: 'service', name: 'Service técnico', estimatedMinutes: 60 }], customers: [{ customerId: 'c', account: 'CLI-1', name: 'Cliente' }], vehicles: [], preferences: {}, history: [record], agenda: { date: record.date, teams: [{ teamId: 'team', tasks: [{ ...record, taskId: 't', historyId: record.id }] }], weekly: {} } }
 }
 async function command(state, action = 'confirm', values = {}) {
@@ -79,12 +79,12 @@ test('el guardado común no puede falsificar, borrar ni cambiar una cobranza ges
 test('notificación por servicio, visible sin dashboard, persiste al consultar y desaparece al confirmar', async () => {
   const { selectDashboardNotifications } = await import('../src/domain/dashboard/dashboard-notifications.mjs')
   const { manageCollection } = await domain
-  const state = fixture(), args = { history: state.history, today: '2026-10-15', permissions: { collections: true } }
+  const state = fixture(), args = { history: state.history, today: '2026-10-15', user: { id: actor.id, permissions: { collections: true } } }
   const notices = selectDashboardNotifications(args)
   assert.equal(notices.length, 1)
   assert.deepEqual(notices[0].target, { type: 'collection', recordId: 'payment' })
   assert.deepEqual(selectDashboardNotifications(args), notices)
-  assert.equal(selectDashboardNotifications({ ...args, permissions: {} }).length, 0)
+  assert.equal(selectDashboardNotifications({ ...args, user: { id: actor.id, permissions: {} } }).length, 0)
   const corrected = manageCollection(state, await command(state, 'correct'), actor)
   assert.equal(selectDashboardNotifications({ ...args, history: corrected.state.history }).length, 1)
   const confirmed = manageCollection(corrected.state, await command(corrected.state), actor)
@@ -136,7 +136,7 @@ test('cancelar retira cobranzas pendientes, incluidas las rectificadas, y bloque
       Object.assign(state.history[0], cancellation)
       const snapshot = structuredClone(state)
       assert.deepEqual(collectionRecords(state.history), [])
-      assert.deepEqual(selectDashboardNotifications({ history: state.history, today: '2026-10-16', permissions: { collections: true } }), [])
+      assert.deepEqual(selectDashboardNotifications({ history: state.history, today: '2026-10-16', user: { id: actor.id, permissions: { collections: true } } }), [])
       assert.throws(() => manageCollection(state, input, actor), { statusCode: 404 })
       assert.deepEqual(state, snapshot)
     }
@@ -144,7 +144,7 @@ test('cancelar retira cobranzas pendientes, incluidas las rectificadas, y bloque
   const paid = manageCollection(initial, await command(initial), actor).state
   paid.history[0].status = 'Cancelado'
   assert.equal(collectionRecords(paid.history).length, 1, 'Un pago recibido conserva su historial')
-  assert.deepEqual(selectDashboardNotifications({ history: paid.history, today: '2026-10-16', permissions: { collections: true } }), [])
+  assert.deepEqual(selectDashboardNotifications({ history: paid.history, today: '2026-10-16', user: { id: actor.id, permissions: { collections: true } } }), [])
 })
 
 test('una cobranza desde la primera jornada vigente, aunque termine antes y se cancele la sobrante', async () => {
@@ -152,7 +152,7 @@ test('una cobranza desde la primera jornada vigente, aunque termine antes y se c
   const { selectDashboardNotifications } = await import('../src/domain/dashboard/dashboard-notifications.mjs')
   const state = fixture(), base = { ...state.history[0], status: 'Pendiente' }
   state.history = [1, 2, 3].map(index => ({ ...base, id: index === 1 ? 'payment' : `visit-${index}`, sourceTaskId: `t${index}`, date: `2026-10-${13 + index}`, serviceJourney: { id: 'payment', index, total: 3 } }))
-  const notices = today => selectDashboardNotifications({ history: state.history, today, permissions: { collections: true } })
+  const notices = today => selectDashboardNotifications({ history: state.history, today, user: { id: actor.id, permissions: { collections: true } } })
   assert.equal(notices('2026-10-13').length, 0)
   assert.equal(notices('2026-10-14').length, 1)
   assert.equal(collectionRecords(state.history).length, 1)

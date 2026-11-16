@@ -70,7 +70,7 @@ function allFamilyState() {
   return {
     today: '2026-10-20', now: Date.parse('2026-10-20T12:00:00Z'),
     history: [
-      { id: 'collection', date: '2026-10-19', status: 'Completado', client: 'Cliente cobrado', amount: '1000', paymentMethod: 'Efectivo' },
+      { id: 'collection', createdBy: { id: 'reader' }, date: '2026-10-19', status: 'Completado', client: 'Cliente cobrado', amount: '1000', paymentMethod: 'Efectivo' },
       { id: 'reservation', date: '2026-11-01', time: '08:30', client: 'Reserva visible', subscriberReservation: true, status: 'Pendiente', form: 'Completo', formEmail: 'reserva@example.test' },
       { id: 'today', date: '2026-10-20', status: 'Pendiente' },
       { id: 'confirmation', date: '2026-10-21', status: 'Pendiente', awaitingConfirmation: true },
@@ -85,7 +85,7 @@ function allFamilyState() {
 
 test('collection notices include today and earlier dates, become due across month/year boundaries and follow rescheduling', async () => {
   const { selectDashboardNotifications } = await load()
-  const base = { amount: '10000', paymentMethod: 'Efectivo', status: 'Pendiente' }
+  const base = { createdBy: { id: 'reader' }, amount: '10000', paymentMethod: 'Efectivo', status: 'Pendiente' }
   const history = [
     { ...base, id: 'past', date: '2026-12-30' },
     { ...base, id: 'today', date: '2026-12-31', time: '23:59' },
@@ -95,7 +95,7 @@ test('collection notices include today and earlier dates, become due across mont
     { ...base, id: 'before-rollout', date: '2026-10-13' }
   ]
   const snapshot = structuredClone(history)
-  const ids = (date, records = history, access = { permissions: { collections: true } }) => selectDashboardNotifications({ history: records, today: date, ...access }).filter(item => item.target.type === 'collection').map(item => item.id).sort()
+  const ids = (date, records = history, access = { permissions: { collections: true } }) => selectDashboardNotifications({ history: records, today: date, ...access, user: { id: 'reader', permissions: access.permissions } }).filter(item => item.target.type === 'collection').map(item => item.id).sort()
   assert.deepEqual(ids('2026-12-31'), ['collection:past', 'collection:today'])
   assert.deepEqual(ids('2026-12-31', history, { isAdministrator: true }), ['collection:past', 'collection:today'])
   assert.deepEqual(ids('2027-01-01'), ['collection:corrected-future', 'collection:future', 'collection:past', 'collection:today'])
@@ -375,4 +375,30 @@ test('contradictory account text cannot override a valid customer identity when 
   const notices = selectDashboardNotifications({ today, customers, history: [missingIdentity], user: cctvUser })
   assert.deepEqual(noticeIds(notices), ['pending:today', 'reservation:fallback'])
   assert.deepEqual(visibleNotificationCustomers(customers, [missingIdentity], relatedUser).map(customer => customer.customerId), ['allowed'])
+})
+
+
+test('collection notices belong only to the original creator, including administrators and multi-day services', async () => {
+  const { selectDashboardNotifications } = await load()
+  const base = allFamilyState().history[0]
+  const history = [
+    base,
+    { ...base, id: 'another', createdBy: { id: 'other', name: 'Same name' } },
+    { ...base, id: 'legacy', createdBy: { name: 'Same name' } },
+    { ...base, id: 'no-author', createdBy: undefined },
+    { ...base, id: 'journey', status: 'Cancelado', serviceJourney: { id: 'journey', index: 1 } },
+    { ...base, id: 'visit', createdBy: { id: 'other' }, serviceJourney: { id: 'journey', index: 2 } }
+  ]
+  const ids = user => selectDashboardNotifications({ history, today: '2026-10-20', user }).filter(n => n.target.type === 'collection').map(n => n.id).sort()
+  for (const roleCode of ['custom', 'administrator']) {
+    const user = { id: 'reader', name: 'Same name', roleCode, permissions: { collections: true } }
+    assert.deepEqual(ids(user), ['collection:collection', 'collection:journey'])
+    assert.deepEqual(ids({ ...user, id: 'other' }), ['collection:another'])
+    assert.deepEqual(ids({ ...user, id: undefined }), [])
+    assert.deepEqual(ids({ ...user, id: '' }), [])
+  }
+  assert.deepEqual(ids({ id: 'reader', permissions: {} }), [])
+  assert.deepEqual(ids({ id: 42, permissions: { collections: true } }), [])
+  history[0] = { ...base, createdBy: { id: '42' } }
+  assert.deepEqual(ids({ id: 42, permissions: { collections: true } }), ['collection:collection'])
 })

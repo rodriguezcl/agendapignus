@@ -41,8 +41,8 @@ test('PostgreSQL subscriptions: silent enrollment, due dates, ownership, retries
     await call('DELETE',{endpoint:input.endpoint},{id:'other'})
     assert.equal((await call('POST',{action:'status',endpoint:input.endpoint})).enabled,true)
     assert.equal((await call('POST',{action:'status',endpoint:input.endpoint},{id:'other'})).enabled,false)
-    const record={id:'service',date:'2026-10-15',status:'Pendiente',client:'QA',amount:'100',paymentMethod:'Efectivo'}
-    state.history=[record,{...record,id:'future',date:'2099-01-01'},{...record,id:'canceled',status:'Cancelado'}]
+    const record={id:'service',createdBy:{id:'u'},date:'2026-10-15',status:'Pendiente',client:'QA',amount:'100',paymentMethod:'Efectivo'}
+    state.history=[record,{...record,id:'other-owner',createdBy:{id:'other'}},{...record,id:'unknown-owner',createdBy:null},{...record,id:'future',date:'2099-01-01'},{...record,id:'canceled',status:'Cancelado'}]
     const notices=await push.notificationsFor(sql,state,user,new Date('2026-10-24T12:00:00Z'))
     assert.deepEqual(notices.filter(n=>n.target.type==='collection').map(n=>n.id),['collection:service'])
     const denied={...user,permissions:{__catalogV2:true}}

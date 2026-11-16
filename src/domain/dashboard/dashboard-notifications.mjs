@@ -94,7 +94,11 @@ export function selectDashboardNotifications({ history = [], vehicles = [], cust
       target: { type: 'history', recordId: String(record.id) }
     })) : []
   const collectionDate = record => collectionService(record, history)?.date
-  const notices = receives('collections') ? collectionRecords(history).filter(record => (!collectionConfirmed(record) || collectionNeedsReview(record)) && !collectionVoided(record) && collectionDate(record) && collectionDate(record) <= today).map(record => ({
+  // The service creator owns collection follow-up, including for administrators.
+  // Missing authors must not turn legacy records into broadcast notifications.
+  const ownsCollection = record => subject?.id != null && String(subject.id) !== ''
+    && record.createdBy?.id != null && String(record.createdBy.id) === String(subject.id)
+  const notices = receives('collections') ? collectionRecords(history).filter(ownsCollection).filter(record => (!collectionConfirmed(record) || collectionNeedsReview(record)) && !collectionVoided(record) && collectionDate(record) && collectionDate(record) <= today).map(record => ({
     id: `collection:${record.id}`, title: collectionNeedsReview(record) ? 'Revisar importe: quedaron trabajos pendientes' : 'Cobranza pendiente de pago', tone: 'warning',
     detail: `${record.client || 'Servicio'} · ${dateLabel(collectionDate(record))} · ${collectionMoney(record.amount)} · ${record.paymentMethod}.`,
     target: { type: 'collection', recordId: String(record.id) }

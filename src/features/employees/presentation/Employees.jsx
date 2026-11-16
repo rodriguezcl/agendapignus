@@ -82,7 +82,7 @@ function EmployeeForm({ form, setForm, roles, save, cancel, editing, canEnableTe
         </label>
         <p id="employee-technical-help">{restrictedRole ? 'Este rol es de solo lectura y no admite servicios técnicos.' : granular ? 'Su rol también debe permitir realizar servicios técnicos.' : 'Conserva su rol y agrega el acceso a Mis servicios. Solo Administración puede cambiar esta habilitación.'}</p>
       </div>
-      <div className="employee-technical-capability"><label><input type="checkbox" checked={form.canReceiveCash === true} disabled={saving || !can('employees.edit')} onChange={event => setForm({ ...form, canReceiveCash: event.target.checked })} /><span>Puede recibir pagos en efectivo</span></label><p>Si está activo y habilitado, aparecerá en el desplegable de Cobranzas.</p></div>
+      <div className="employee-technical-option"><label className="employee-technical-toggle"><input aria-describedby="employee-cash-help" type="checkbox" checked={form.canReceiveCash === true} disabled={saving || !can('employees.edit')} onChange={event => setForm({ ...form, canReceiveCash: event.target.checked })} /><span>Puede recibir pagos en efectivo</span></label><p id="employee-cash-help">Si está activo y habilitado, aparecerá en el desplegable de Cobranzas.</p></div>
       <div className="employee-form-actions">
         <button title="Guardá los datos y la configuración del colaborador." className="primary" disabled={saving}><Icon name="check" />{saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Guardar colaborador'}</button>
         <button title="Cancelá esta operación sin aplicar los cambios del formulario." type="button" className="secondary" disabled={saving} onClick={requestClose}><Icon name="close" size={16} />Cancelar</button>
