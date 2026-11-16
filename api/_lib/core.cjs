@@ -321,6 +321,7 @@ function normalizeStateForSave(state, current, { allowEarlyCompletion = false } 
   require('./multi-service.cjs').validateServiceTypes(state)
   state = require('./service-schedule-sync.cjs').synchronizeServiceSchedules(state, current)
   state = require('./team-service-assignments.cjs').synchronizeTeamServiceAssignments(state, current)
+  state = require('./friday-solo-teams.cjs').unifyFridaySoloTeams(state, current)
   current ||= { roles: [], employees: [], services: [], vehicles: [], customers: [], history: [], reviews: [], agenda: {} }
   state = migrateLegacyEstimatedMinutes(state).state
   const roles = (state.roles || []).map(role => ({ ...role, code: role.code || legacyRoleCode(role) }))
