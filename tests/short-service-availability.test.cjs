@@ -15,16 +15,13 @@ test('viernes: servicio de 15 minutos deja disponibilidad antes del control vehi
   }), [{ beforeIndex: 4, start: '14:15', end: '15:45' }])
 })
 
-test('ofrece huecos de 15 minutos, descarta los de 14 y respeta ocupaciones de técnicos compartidos', async () => {
+test('oculta huecos menores a 45 minutos y respeta ocupaciones de técnicos compartidos', async () => {
   const { teamServiceGaps } = await import('../src/domain/agenda/service-gaps.mjs')
   const teams = [
     { memberIds: ['tech'], tasks: [service('09:00', 15), service('09:30', 15), service('09:59', 15)] },
     { memberIds: ['tech'], tasks: [service('08:30', 15)] }
   ]
-  assert.deepEqual(teamServiceGaps(teams, 0, { min: '08:30', max: '10:14', fullAvailability: true }), [
-    { beforeIndex: 0, start: '08:45', end: '09:00' },
-    { beforeIndex: 1, start: '09:15', end: '09:30' }
-  ])
+  assert.deepEqual(teamServiceGaps(teams, 0, { min: '08:30', max: '10:14', fullAvailability: true }), [])
 })
 
 for (const acrossTeams of [false, true]) test(`servidor respeta 15 minutos y rechaza solapamientos reales: ${acrossTeams ? 'técnico compartido' : 'mismo equipo'}`, () => {
@@ -39,4 +36,26 @@ for (const acrossTeams of [false, true]) test(`servidor respeta 15 minutos y rec
     if (time === '09:15') assert.doesNotThrow(() => validateChangedAgendaSchedules(next, previous))
     else assert.throws(() => validateChangedAgendaSchedules(next, previous), /conflicto de horarios|servicios incompatibles/)
   }
+})
+
+for (const duration of [15, 30, 44, 45, 60]) test(`disponibilidad continua de ${duration} minutos al inicio, entre servicios y al cierre`, async () => {
+  const { serviceGaps } = await import('../src/domain/agenda/service-gaps.mjs')
+  const time = minutes => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+  for (const position of ['inicio', 'entre', 'cierre']) {
+    const start = 9 * 60
+    const tasks = [
+      ...(position !== 'inicio' ? [service('08:30', 30)] : []),
+      ...(position !== 'cierre' ? [service(time(start + duration), 15)] : [])
+    ]
+    const gaps = serviceGaps(tasks, { min: position === 'inicio' ? '09:00' : '08:30', max: time(start + duration + (position === 'cierre' ? 0 : 15)), fullAvailability: true })
+    assert.deepEqual(gaps.map(({ start, end }) => [start, end]), duration >= 45 ? [['09:00', time(start + duration)]] : [], position)
+  }
+})
+
+test('no suma huecos separados por el almuerzo y recalcula el mínimo con la hora actual', async () => {
+  const { serviceGaps } = await import('../src/domain/agenda/service-gaps.mjs')
+  assert.deepEqual(serviceGaps([], { min: '12:30', max: '14:30', fullAvailability: true }), [])
+  const options = { min: '08:30', max: '17:00', fullAvailability: true, day: '2026-11-17' }
+  assert.deepEqual(serviceGaps([], { ...options, now: '2026-11-17T19:15:00Z' }).map(({ start, end }) => [start, end]), [['16:15', '17:00']])
+  assert.deepEqual(serviceGaps([], { ...options, now: '2026-11-17T19:15:01Z' }), [])
 })
