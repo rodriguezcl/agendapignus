@@ -1929,3 +1929,6 @@ body.dark .week-task-summary.available-slot:focus-visible {
   overflow-wrap: anywhere;
 }
 body.dark .week-task-summary > .week-task-locality { color: #b8ccbf; }
+
+.holiday-decision-actions > .holiday-transfer { grid-column: 1 / -1; width: 100%; min-width: 0; }
+.holiday-transfer input[type="date"] { width: 100%; min-width: 0; }
