@@ -27,10 +27,11 @@
 .collections-filters input, .collections-filters select, .collections-editor input, .collections-editor select, .collections-editor textarea { width: 100%; min-width: 0; box-sizing: border-box; color: var(--ap-text); background: var(--ap-input); border: 1px solid var(--ap-border); }
 .collections-table-wrap { border: 1px solid var(--ap-border); border-radius: 8px; overflow: auto; background: var(--ap-surface); }
 .collections-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
-.collection-column-date { width: 13%; }
-.collection-column-amount { width: 14%; }
-.collection-column-method { width: 13%; }
-.collection-column-status { width: 17%; }
+.collection-column-date { width: 11%; }
+.collection-column-owner { width: 15%; }
+.collection-column-amount { width: 12%; }
+.collection-column-method { width: 11%; }
+.collection-column-status { width: 14%; }
 .collection-column-actions { width: 154px; }
 .collections-table th { text-align: left; background: var(--ap-surface-alt); color: var(--ap-muted); font-size: 12px; }
 .collections-table :is(th, td) { padding: 14px 16px; border-bottom: 1px solid var(--ap-border); vertical-align: middle; overflow-wrap: anywhere; }

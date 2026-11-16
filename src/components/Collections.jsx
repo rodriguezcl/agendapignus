@@ -99,11 +99,12 @@ function CollectionSegment({ segment, today, schedule, mayManage, onSelect, focu
       <div data-status="confirmed"><dt>{future ? 'Pagos anticipados confirmados' : 'Pagos confirmados'}</dt><dd><strong>{collectionMoney(segment.confirmed.total)}</strong><small>{segment.confirmed.count} servicio(s)</small></dd></div>
     </dl>
     <div className="collections-table-wrap"><table className="collections-table" aria-label={`Cobranzas ${title.toLowerCase()}`}>
-      <colgroup><col className="collection-column-date" /><col /><col className="collection-column-amount" /><col className="collection-column-method" /><col className="collection-column-status" /><col className="collection-column-actions" /></colgroup>
-      <thead><tr>{['Fecha del servicio', 'Cliente y servicio', 'Monto', 'Forma de pago', 'Estado del pago', 'Acciones'].map(label => <th key={label}>{label}</th>)}</tr></thead>
+      <colgroup><col className="collection-column-date" /><col /><col className="collection-column-owner" /><col className="collection-column-amount" /><col className="collection-column-method" /><col className="collection-column-status" /><col className="collection-column-actions" /></colgroup>
+      <thead><tr>{['Fecha del servicio', 'Cliente y servicio', 'Responsable de cobranza', 'Monto', 'Forma de pago', 'Estado del pago', 'Acciones'].map(label => <th key={label}>{label}</th>)}</tr></thead>
       <tbody>{segment.records.slice((currentPage - 1) * 25, currentPage * 25).map(record => <tr key={record.id}>
         <td data-label="Fecha del servicio">{dateLabel(schedule(record).date)}<small>{schedule(record).time || 'Sin horario'}</small></td>
         <td data-label="Cliente y servicio"><strong>{record.client}</strong><small>{record.service}</small><small>{schedule(record).status} · {(schedule(record).technicians || []).join(' / ') || 'Sin técnicos asignados'}</small></td>
+        <td data-label="Responsable de cobranza">{record.createdBy?.name || 'Autor original no disponible'}</td>
         <td data-label="Monto"><strong>{collectionMoney(record.amount)}</strong></td>
         <td data-label="Forma de pago">{record.paymentMethod}</td>
         <td data-label="Estado del pago"><span className={`collection-status ${collectionConfirmed(record) ? 'confirmed' : future ? 'future' : ''}`}>{collectionVoided(record) ? 'Anulada · sin deuda' : collectionNeedsReview(record) ? 'En revisión' : collectionConfirmed(record) ? future ? 'Confirmado · anticipado' : 'Confirmado' : 'Pendiente de pago'}</span>{record.collection?.confirmedAt && <small>{timestamp(record.collection.confirmedAt)}</small>}</td>
