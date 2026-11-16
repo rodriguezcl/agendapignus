@@ -164,26 +164,38 @@ for (const engine of ['sqlite', 'postgres']) test(`Tickets y Agenda ${engine}: v
       assert.equal(item.sla.completedAt, '')
     })
 
-    await t.test('completar sin confirmación explícita no cierra; confirmarla cierra y deja aviso persistente', async () => {
+    await t.test('completar sin casilla cierra automáticamente y deja aviso persistente', async () => {
       const c = await createCase(f, 'resolution'), planned = { ...c.state, history: [c.record] }
       await f.store.syncServices(c.state, planned, { user: support, now: at })
       const reported = { ...planned, history: [{ ...c.record, status: 'Completado', technicalStatus: 'Completado', technicalObservation: 'Trabajo finalizado.' }] }
       await f.store.syncServices(planned, reported, { user: technician, reportRecordId: c.record.id, now: at })
-      assert.equal((await c.detail()).status, 'En gestión')
-      const finished = { ...reported, history: [completed(reported.history[0])] }
-      await f.store.syncServices(reported, finished, { user: technician, reportRecordId: c.record.id, now: at })
+      const finished = reported
       const saved = await c.detail()
       assert.equal(saved.status, 'Resuelto')
       assert.equal(saved.resolvedByServiceId, c.record.id)
       assert.equal(saved.resolutionMethod, 'onsite')
-      assert.match(saved.resolution, /verificó la imagen/)
+      assert.equal(saved.resolution, 'Trabajo finalizado.')
       assert.ok(saved.events.some(entry => entry.action === 'automatic-resolved' && entry.body.includes('El equipo técnico confirmó')))
       assert.equal(saved.sla.completedAt, at)
       const notices = await c.notices()
-      assert.ok(notices.some(item => item.title.includes('Caso resuelto')))
+      assert.deepEqual(notices, [], 'Los tickets resueltos desaparecen de la campana')
+      const persisted = await f.query('SELECT data FROM pignus_ticket_notifications WHERE ticket_id=?', [c.ticket.id])
+      assert.ok(persisted.some(row => JSON.parse(row.data).eventLabel === 'Caso resuelto'))
       await f.store.syncServices(finished, clone(finished), { user: technician, reportRecordId: c.record.id, now: at })
       assert.equal((await c.detail()).version, saved.version)
       assert.equal((await c.notices()).length, notices.length)
+    })
+
+    await t.test('trabajos pendientes bloquean el cierre sin casilla; un informe completo posterior lo permite', async () => {
+      const c = await createCase(f, 'pending-work-auto'), planned = { ...c.state, history: [c.record] }
+      await f.store.syncServices(c.state, planned, { user: support, now: at })
+      const report = { ...c.record, status: 'Completado', technicalStatus: 'Completado', technicalObservation: 'Queda cableado.', workCompletion: { items: [{ id: 'cable', status: 'pending' }] } }
+      const pending = { ...planned, history: [report] }
+      await f.store.syncServices(planned, pending, { user: technician, reportRecordId: report.id, now: at })
+      assert.equal((await c.detail()).status, 'En gestión')
+      const done = { ...pending, history: [{ ...report, technicalObservation: 'Cableado finalizado.', workCompletion: { items: [{ id: 'cable', status: 'completed' }] } }] }
+      await f.store.syncServices(pending, done, { user: technician, reportRecordId: report.id, now: '2026-10-24T15:00:00.000Z' })
+      assert.equal((await c.detail()).status, 'Resuelto')
     })
 
     await t.test('seguimiento del mismo reclamo lo mantiene abierto; una solicitud adicional independiente permite cerrar', async () => {
@@ -221,7 +233,7 @@ for (const engine of ['sqlite', 'postgres']) test(`Tickets y Agenda ${engine}: v
       assert.equal((await multiple.detail()).status, 'En gestión')
     })
 
-    await t.test('una segunda visita resuelve el seguimiento del mismo caso sin reescribir el informe anterior', async () => {
+    await t.test('una segunda visita no cierra mientras persiste un seguimiento pendiente anterior', async () => {
       const c = await createCase(f, 'return-visit'), planned = { ...c.state, history: [c.record] }
       await f.store.syncServices(c.state, planned, { user: support, now: at })
       const firstReport = completed(c.record, { resolved: false, followup: { id: 'followup-return', relatedTicketId: c.ticket.id, status: 'Pendiente', relation: 'same', description: 'Reemplazar cable en próxima visita.', createdAt: at } })
@@ -233,7 +245,7 @@ for (const engine of ['sqlite', 'postgres']) test(`Tickets y Agenda ${engine}: v
       assert.equal((await c.detail()).status, 'En gestión')
       const finished = { ...returnScheduled, history: [firstReport, completed(second, { at: '2026-10-26T13:00:00.000Z' })] }
       await f.store.syncServices(returnScheduled, finished, { user: technician, reportRecordId: second.id, now: '2026-10-26T13:00:00.000Z' })
-      assert.equal((await c.detail()).status, 'Resuelto')
+      assert.equal((await c.detail()).status, 'En gestión')
       assert.equal(firstReport.ticketResolution.resolved, false)
       assert.equal(firstReport.followup.status, 'Pendiente')
       assert.equal(firstReport.followup.description, 'Reemplazar cable en próxima visita.')
@@ -252,7 +264,7 @@ for (const engine of ['sqlite', 'postgres']) test(`Tickets y Agenda ${engine}: v
       assert.deepEqual(followupTicket.resolutionServiceIds || [], [])
     })
 
-    await t.test('un informe sólo resuelve los tickets que el técnico confirmó explícitamente', async () => {
+    await t.test('un informe resuelve todos los tickets vinculados aunque el cliente omita alguno', async () => {
       const c = await createCase(f, 'selected'), state = { ...c.state, history: [c.record] }
       await f.store.syncServices(c.state, state, { user: support, now: at })
       const duplicates = await f.store.query(operator, state, { mode: 'duplicates', customerId: 'selected' })
@@ -261,7 +273,7 @@ for (const engine of ['sqlite', 'postgres']) test(`Tickets y Agenda ${engine}: v
       const finished = { ...state, history: [completed(c.record, { ticketIds: [c.ticket.id] })] }
       await f.store.syncServices(state, finished, { user: technician, reportRecordId: c.record.id, now: at })
       assert.equal((await c.detail()).status, 'Resuelto')
-      assert.equal((await f.store.query(support, state, { mode: 'detail', id: second.id })).ticket.status, 'En gestión')
+      assert.equal((await f.store.query(support, state, { mode: 'detail', id: second.id })).ticket.status, 'Resuelto')
     })
 
     await t.test('los enlaces manuales anteriores se adoptan sin convertir un origen técnico en visita obligatoria', async () => {

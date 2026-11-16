@@ -40,7 +40,8 @@ function readyToResolve(item, history, acceptedTicketIds = [item.id]) {
   for (const record of active) {
     const key = record.serviceJourney?.id || id(record.id)
     const group = groups.get(key) || []; group.push(record); groups.set(key, group)
-    if (record.followup && record.followup.status !== 'Resuelto' && record.followup.relation !== 'different' && (!record.followup.createdAt || record.followup.createdAt >= evidence.ticketResolution.at)) return false
+    if (record.workCompletion?.items?.some(item => item.status === 'pending')) return false
+    if (record.followup && record.followup.status !== 'Resuelto' && record.followup.relation !== 'different') return false
     if (record.technicalReportedAt && record.technicalReportedAt > evidence.ticketResolution.at) return false
   }
   for (const group of groups.values()) {
@@ -176,17 +177,24 @@ async function synchronizeTicketServices({ q, pg, previous, next, user, now, rep
     item.resolutionServiceIds = [...new Set([...(item.resolutionServiceIds || []), ...(next.history || []).filter(record => journeys.has(record.serviceJourney?.id)).map(record => id(record.id))])]
     item.serviceIds = [...new Set([...(item.serviceIds || []), ...item.resolutionServiceIds])]
     item.serviceSchedule = item.serviceIds.map(key => schedule(current.get(key))).filter(Boolean)
+    // Resolve from the authenticated report and persisted links, never from a UI checkbox.
     const reported = current.get(id(reportRecordId))
-    const hasNewEvidence = reported && relevant.includes(id(reportRecordId)) && reported.ticketResolution?.resolved === true && reported.ticketResolution.ticketIds?.some(value => acceptedIds.has(id(value))) && !isDeepStrictEqual(old.get(id(reportRecordId))?.ticketResolution, reported.ticketResolution)
-    if (hasNewEvidence && d.OPEN_STATUSES.includes(item.status) && readyToResolve(item, next.history || [], [...acceptedIds])) {
+    const completedReport = reported && user?.id && relevant.includes(id(reportRecordId))
+      && item.resolutionServiceIds.includes(id(reportRecordId))
+      && reported.status === 'Completado' && reported.technicalStatus === 'Completado'
+      && reported.technicalObservation?.trim()
+    const evidence = completedReport ? { resolved: true, ticketIds: [...acceptedIds], at: now,
+      byId: id(user?.id), byName: user?.name || 'Técnico', report: reported.technicalObservation } : null
+    const resolutionHistory = evidence ? (next.history || []).map(record => record === reported ? { ...record, ticketResolution: evidence } : record) : []
+    if (completedReport && d.OPEN_STATUSES.includes(item.status) && readyToResolve(item, resolutionHistory, [...acceptedIds])) {
       item.status = 'Resuelto'; item.resolvedAt = now; item.nextReviewAt = ''
       item.resolution = reported.technicalObservation
       item.resolutionMethod = 'onsite'
       item.resolvedByServiceId = id(reported.id)
-      item.resolvedById = id(reported.ticketResolution.byId)
-      item.resolvedByName = reported.ticketResolution.byName || 'Técnico'
+      item.resolvedById = id(evidence.byId)
+      item.resolvedByName = evidence.byName
       item.fulfilledFollowups = (next.history || []).filter(record => item.serviceIds.includes(id(record.id)) && record.followup && record.followup.relation !== 'different' && record.followup.createdAt < now).map(record => ({ id:record.followup.id, serviceId:id(record.id), resolvedByServiceId:id(reported.id), at:now }))
-      await store.communicate(q, item, 'resolved', `service-resolution:${reported.id}:${reported.ticketResolution.at}`, now, { service: schedule(reported), sourceTechnical: true }, user)
+      await store.communicate(q, item, 'resolved', `service-resolution:${reported.id}:${evidence.at}`, now, { service: schedule(reported), sourceTechnical: true }, user)
     }
     if (!isDeepStrictEqual(item, beforeTicket)) {
       sla.transitionSla(item, beforeTicket, item.status === 'Resuelto' ? 'resolve' : 'scheduleService', config, now, { humanUpdate: item.origin !== 'email' && (newLinks.length > 0 || Boolean(reportRecordId && (item.resolutionServiceIds || []).includes(id(reportRecordId)))), actorId: user?.id })

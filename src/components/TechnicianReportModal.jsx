@@ -39,14 +39,12 @@ export default function TechnicianReportModal({ record, currentVehicle, type, se
   const automaticFollowup = useRef(false)
   useEffect(() => {
     if (!hasPendingWork) { if (automaticFollowup.current) { setNeedsFollowup(false); setFollowupDescription(''); automaticFollowup.current = false } return }
-    setComplaintResolved(false)
     if (can('tickets.fromService') && !record.followup && !record.hasFollowup && !needsFollowup) { automaticFollowup.current = true; setNeedsFollowup(true); setFollowupType('Coordinar visita'); setFollowupDescription(previous => previous || 'Quedaron pendientes: ' + workTypes.filter(t => workResults.some(r => String(r.id) === String(t.id) && r.status === 'pending')).map(t => t.name).join(', ')) }
   }, [hasPendingWork])
   const [linkedTickets, setLinkedTickets] = useState([])
   const [linkedTicketsLoading, setLinkedTicketsLoading] = useState(false)
   const [linkedTicketsError, setLinkedTicketsError] = useState('')
   const [linkedTicketsRetry, setLinkedTicketsRetry] = useState(0)
-  const [complaintResolved, setComplaintResolved] = useState(false)
   const checkLinkedTickets = type === 'Completado' && !record.vehicleControl && can('tickets.view')
   useEffect(() => {
     if (!checkLinkedTickets) return
@@ -72,7 +70,6 @@ export default function TechnicianReportModal({ record, currentVehicle, type, se
     return () => { active = false }
   }, [needsFollowup, record.customerId, record.id, ticketContext, ticketRetry])
   const followupCandidates = [...new Map([...ticketCandidates, ...linkedTickets].map(ticket => [String(ticket.id), ticket])).values()]
-  useEffect(() => { if (needsFollowup && ticketChoice !== 'different') setComplaintResolved(false) }, [needsFollowup, ticketChoice])
   const [ticketPreview,setTicketPreview]=useState(null), [previewLoading,setPreviewLoading]=useState(false), [previewError,setPreviewError]=useState(''), [previewRetry,setPreviewRetry]=useState(0), [previewContext,setPreviewContext]=useState('')
   const selectedTicketContext = JSON.stringify([ticketChoice, ticketContext])
   useEffect(() => {
@@ -109,7 +106,7 @@ export default function TechnicianReportModal({ record, currentVehicle, type, se
   const photoRequestRef = useRef(null)
   const pendingRef = useRef(pendingAttachments)
   pendingRef.current = pendingAttachments
-  const dirty = Boolean(workResults.some(r => r.status) || zonesDirty || needsFollowup || complaintResolved || observation.trim() || mileage || photo || pendingAttachments.length)
+  const dirty = Boolean(workResults.some(r => r.status) || zonesDirty || needsFollowup || observation.trim() || mileage || photo || pendingAttachments.length)
   const busy = saving || photoBusy || attachmentsPreparing
   const valid = vehicleControl
     ? Boolean(photo) && mileageState.valid
@@ -177,7 +174,6 @@ export default function TechnicianReportModal({ record, currentVehicle, type, se
       })
       await onSubmit({ observation, ...(perWork ? { workResults } : {}), vehicleMileage: mileage, vehiclePhoto: photo,
         ...(needsZones ? { alarmZones } : {}),
-        ...(type === 'Completado' && hasLinkedComplaint ? { ticketResolution: { resolved: !hasPendingWork && complaintResolved && (!needsFollowup || ticketChoice === 'different') && !linkedTicketsError, ticketIds: linkedTickets.length ? linkedTickets.map(ticket => String(ticket.id)) : [String(record.sourceTicketId)].filter(Boolean) } } : {}),
         ...(needsFollowup ? { followup: { type: followupType, description: followupDescription, duplicateToken, relatedTicketId: ticketChoice === 'different' ? '' : ticketChoice, ...(ticketChoice && ticketChoice !== 'different' ? { relatedTicketVersion: ticketPreview.version } : {}), ...(ticketChoice === 'different' ? { relation: 'different' } : {}) } } : {}) })
     } catch (failure) {
       if (alive.current && failure.code === 'VEHICLE_MILEAGE_CONFLICT') setConfirming(false)
@@ -219,11 +215,10 @@ export default function TechnicianReportModal({ record, currentVehicle, type, se
           {needsZones && <AlarmZonesEditor value={alarmZones} onChange={value => { setAlarmZones(value); setZonesDirty(true) }} disabled={saving} complete={type === 'Completado'} />}
           <label><RequiredLabel>Observación</RequiredLabel><textarea required value={observation} disabled={saving} onChange={event => setObservation(event.target.value)} placeholder="Detallá el trabajo realizado, el resultado y cualquier recomendación para futuras visitas." /></label>
           {linkedTicketsLoading && <p role="status">Consultando el reclamo asociado…</p>}
-          {linkedTicketsError && <p className="field-error" role="alert">{linkedTicketsError} El informe se puede guardar; el ticket quedará pendiente de revisión. <button type="button" className="secondary" title="Volvé a consultar los tickets asociados a este servicio." disabled={busy} onClick={() => setLinkedTicketsRetry(value => value + 1)}>Reintentar</button></p>}
+          {linkedTicketsError && <p className="field-error" role="alert">{linkedTicketsError} El informe se puede guardar; el servidor verificará los tickets asociados al procesarlo. <button type="button" className="secondary" title="Volvé a consultar los tickets asociados a este servicio." disabled={busy} onClick={() => setLinkedTicketsRetry(value => value + 1)}>Reintentar</button></p>}
           {type === 'Completado' && hasLinkedComplaint && <fieldset className="followup-request"><legend>Resultado del reclamo</legend>
             <p>{linkedTickets.length ? linkedTickets.map(ticket => ticket.displayNumber || `Ticket#${ticket.number}`).join(' · ') : `Ticket#${record.ticketNumber || 'asociado'}`}</p>
-            <label><input type="checkbox" checked={complaintResolved} disabled={hasPendingWork || busy || linkedTicketsLoading || Boolean(linkedTicketsError) || (needsFollowup && ticketChoice !== 'different')} onChange={event => setComplaintResolved(event.target.checked)} />El reclamo asociado quedó resuelto</label>
-            <small>Confirmalo únicamente si se resolvió el inconveniente. El ticket se cerrará cuando no queden visitas ni acciones pendientes del mismo caso.</small>
+            <small>Al completar el servicio, el ticket se cerrará automáticamente si no quedan trabajos, visitas ni seguimientos pendientes del mismo caso.</small>
             {needsFollowup && ticketChoice !== 'different' && <p>El seguimiento pendiente mantiene abierto el reclamo. Si es otro pedido, identificá que se trata de un caso diferente.</p>}
           </fieldset>}
           {can('tickets.fromService') && !record.followup && !record.hasFollowup && <fieldset className="followup-request"><legend>Acciones posteriores</legend><label><input type="checkbox" checked={needsFollowup} disabled={saving || hasPendingWork} onChange={event => setNeedsFollowup(event.target.checked)} />Solicitar acción / seguimiento</label><small>Agrega información a un caso abierto o crea un ticket vinculado a este servicio.</small>{needsFollowup && <>
