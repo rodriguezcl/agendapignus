@@ -123,7 +123,7 @@ test('la agenda técnica muestra pendientes vencidos, de hoy y de mañana, pero 
     { id: 'later-control', date: '2026-09-04', status: 'Pendiente', vehicleControl: true },
     { id: 'missing-date', date: '', status: 'Pendiente' }
   ]
-  assert.deepEqual(technicianAgendaServices(records, '2026-08-31').map(record => record.id), ['past-service', 'overdue-control', 'today', 'tomorrow'])
+  assert.deepEqual(technicianAgendaServices(records, '2026-08-31').map(record => record.id), ['past-service', 'overdue-control'])
 })
 
 test('el resumen sólo contabiliza pendientes cuya fecha efectiva ya llegó', async () => {

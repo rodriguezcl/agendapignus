@@ -169,7 +169,9 @@ function projectStateForUser(state, user, ticketUser = user) {
   if (isOperator(user)) return projectLegacyCollectionReceipts(operatorState(state), user)
   if (user.roleCode === 'technician') {
     const journeyHistory = state.history
-    state = { ...state, history: state.history.filter(record => record.awaitingConfirmation !== true) }
+    const gate = require('./technician-agenda-gate.cjs')
+    const cutoff = gate.cutoff(state.history, user)
+    state = { ...state, history: state.history.filter(record => record.awaitingConfirmation !== true && gate.visible(record, cutoff)) }
     const technicianId = String(user.id)
     const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
     const assignedHistory = state.history.filter(record => record.technicianIds?.some(id => String(id) === technicianId))

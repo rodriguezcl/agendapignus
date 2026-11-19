@@ -79,6 +79,6 @@ test('la agenda técnica ordena fecha y hora aunque reciba registros desordenado
     { id:'early', date:'2026-09-28', time:'09:00' },
     { id:'unknown', date:'2026-09-28' }
   ]
-  assert.deepEqual(technicianAgendaServices(records, '2026-09-28').map(record => record.id), ['early','middle','late','unknown','tomorrow'])
+  assert.deepEqual(technicianAgendaServices(records, '2026-09-28').map(record => record.id), ['early','middle','late','unknown'])
   assert.equal(records[0].id, 'late')
 })

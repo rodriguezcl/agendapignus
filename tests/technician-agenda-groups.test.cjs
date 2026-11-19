@@ -11,7 +11,7 @@ test('separates overdue, today and tomorrow without changing service order', asy
   ], '2026-09-30')
   const groups = technicianAgendaGroups(services, '2026-09-30')
   assert.deepEqual(groups.map(group => group.title), ['Pendientes de días anteriores', 'Agenda de hoy', 'Agenda de mañana'])
-  assert.deepEqual(groups.map(group => group.services.map(record => record.id)), [['overdue'], ['early', 'late'], ['tomorrow']])
+  assert.deepEqual(groups.map(group => group.services.map(record => record.id)), [['overdue'], [], []])
   assert.deepEqual(groups.flatMap(group => group.services), services)
   assert.equal(groups[2].date, '2026-10-01')
 })

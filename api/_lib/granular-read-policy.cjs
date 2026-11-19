@@ -43,6 +43,10 @@ function serviceInReadScope(record, user, state) {
 }
 
 function serviceReadable(record, user, state) {
+  if (permissions.roleCode(user) === 'technician') {
+    const gate = require('./technician-agenda-gate.cjs')
+    if (!gate.visible(record, gate.cutoff(state?.history, user))) return false
+  }
   if (!serviceInReadScope(record, user, state)) return false
   if (record.vehicleControl && permissions.can(user, 'vehicle.controls.read')) return true
   if (permissions.can(user, 'collections.view') && permissions.can(user, 'records.financial')) return true

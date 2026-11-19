@@ -1,3 +1,5 @@
+import agendaGate from '../../../api/_lib/technician-agenda-gate.cjs'
+export const technicianAgendaCutoff = agendaGate.cutoff
 const normalize = value => String(value || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -72,13 +74,14 @@ export function technicianAgendaGroups(services, today) {
 
 export function technicianAgendaServices(records, today) {
   const tomorrow = nextCalendarDate(today)
+  const cutoff = agendaGate.cutoff(records, null, today)
   return (records || []).filter(record => {
     if (record.awaitingConfirmation === true || technicianRecordResolved(record)) return false
     const date = String(record?.date || '')
     // La agenda operativa incluye cualquier pendiente vencido y limita el
     // futuro al día siguiente. La misma regla se aplica a controles vehiculares
     // y servicios comunes para que ninguna tarea posterior quede anticipada.
-    return /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= tomorrow
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= tomorrow && agendaGate.visible(record, cutoff)
   }).sort((left, right) => String(left.date).localeCompare(String(right.date)) ||
     String(left.time || left.scheduledTime || '99:99').localeCompare(String(right.time || right.scheduledTime || '99:99')))
 }
