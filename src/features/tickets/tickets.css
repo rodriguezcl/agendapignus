@@ -15,7 +15,8 @@
 .tickets-results th { background:var(--ap-surface-alt,#f7f8fa); text-align:left; font-size:12px; color:var(--ap-muted,#63758a); white-space:nowrap; }
 .tickets-results th,.tickets-results td { padding:16px; border-bottom:1px solid var(--ap-border,#d8dfe9); }
 .tickets-results td { font-size:13px; vertical-align:middle; }
-.tickets-results td:first-child { min-width:220px; width:40%; }
+.tickets-results td:first-child { min-width:135px; }
+.tickets-results td:nth-child(2) { min-width:220px; width:40%; }
 .tickets-results td small { display:block; color:var(--ap-muted,#63758a); margin-top:5px; }
 .tickets-results tr:last-child td { border-bottom:0; }
 .tickets-ticket-link { background:none; border:0; box-shadow:none; padding:0; color:var(--ap-text,#25374b); text-align:left; font:inherit; font-weight:650; cursor:pointer; line-height:1.5; }

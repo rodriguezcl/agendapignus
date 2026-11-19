@@ -313,7 +313,7 @@ function createTicketStore({ sql, db }) {
       else if (params.status) { where.push('status=?'); args.push(params.status) }
       const total = groupedStatuses ? groupedStatuses.reduce((sum, status) => sum + (counts[status] || 0), 0) : params.status ? (counts[params.status] || 0) : Object.values(counts).reduce((sum, count) => sum + count, 0)
       const page=Math.max(1,Math.floor(Number(params.page)||1)),pageSize=Math.min(50,safeNum(params.pageSize||20))
-      const items=(await execute('SELECT data FROM pignus_tickets'+clause()+' ORDER BY CASE '+field('priority')+" WHEN 'Crítica' THEN 0 WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END,updated_at DESC,id LIMIT ? OFFSET ?",[...args,pageSize,(page-1)*pageSize])).map(parse)
+      const items=(await execute('SELECT data FROM pignus_tickets'+clause()+' ORDER BY '+field('createdAt')+' DESC,number DESC,id LIMIT ? OFFSET ?',[...args,pageSize,(page-1)*pageSize])).map(parse)
       return {items:items.map(t=>d.present(t,user,[],[],false,config)),total,page,pageSize,counts}
     })
   }
