@@ -100,6 +100,16 @@ for (const engine of ['sqlite', 'postgres']) test(`Tickets y Agenda ${engine}: v
   t.mock.timers.enable({ apis: ['Date'], now: new Date(at).getTime() - 60000 })
   const f = await fixture(engine)
   try {
+    await t.test('el detalle recupera ambas observaciones de una corrección histórica', async () => {
+      const c = await createCase(f, 'correction-history'), planned = { ...c.state, history: [c.record] }
+      await f.store.syncServices(c.state, planned, { user: support, now: at })
+      const previous = { technicalObservation: 'Falta conectividad del cliente.', technicalReportedById: technician.id, technicalReportedByName: technician.name, technicalStatus: 'Reprogramación solicitada', technicalReportedAt: at }
+      c.state.history = [{ ...c.record, technicalObservation: 'Corrección administrativa: esperar aviso del cliente.', technicalReportedAt: '2026-10-24T15:00:00Z', technicalReportedById: support.id, technicalReportedByName: support.name, technicalStatus: 'Completado', workCompletion: { corrections: [{ at: '2026-10-24T15:00:00Z', actor: support, previous }] } }]
+      const detail = await c.detail()
+      assert.ok(detail.events.some(e => e.body.includes(previous.technicalObservation) && e.byId === technician.id))
+      assert.ok(detail.events.some(e => e.body.includes('esperar aviso del cliente') && e.byId === support.id))
+    })
+
     await t.test('agendar crea vínculo duradero y aviso; repetir la misma escritura no duplica ni altera plazos', async () => {
       const c = await createCase(f, 'scheduled'), next = { ...c.state, history: [c.record] }
       await f.store.syncServices(c.state, next, { user: support, now: at })

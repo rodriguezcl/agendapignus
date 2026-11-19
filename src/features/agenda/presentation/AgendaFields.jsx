@@ -1,3 +1,4 @@
+import ServiceObservationHistory from '../../../components/ServiceObservationHistory.jsx'
 import { canWriteRecord } from '../../../domain/access/record-scope.mjs'
 import { usePermissions } from '../../../presentation/contexts/permissions-context.jsx'
 import ReschedulingHistory from "../../../components/ReschedulingHistory.jsx";
@@ -33,7 +34,7 @@ export function AgendaTechnicalNote({ record }) {
   const { can } = usePermissions()
   if (!can('service.documents.read')) return <ReschedulingHistory record={record} />
   if (!record?.technicalObservation && !record?.technicalReportedAt) return <ReschedulingHistory record={record} />
-  return <><ReschedulingHistory record={record} /><div className="technician-report-detail agenda-technical-note"><b>{technicalReporter(record)} indicó · {record.technicalStatus || 'Estado informado'}</b><p>{record.technicalObservation || 'Servicio informado sin observaciones adicionales.'}</p>{record.technicalReportedAt && <small>Informado el {prettyReportDateTime(record.technicalReportedAt)}</small>}</div></>
+  return <><ReschedulingHistory record={record} /><ServiceObservationHistory record={record} /></>
 }
 
 export function TaskStatusBadge({ task, date, history, weekly = false, statusOnly = false }) {

@@ -212,7 +212,10 @@ function createTicketStore({ sql, db }) {
   }
   async function detailed(q, item, user, state = {}, config) {
     const aliases = (await q('SELECT number FROM pignus_ticket_aliases WHERE ticket_id=? ORDER BY number',[item.id])).map(row=>row.number)
-    return { ...d.present(item,user,await entries(q,item.id),aliases,true,config || (await settings(q)).config), registrationForm: policy.can(user,'planning.commercial') && policy.can(user,'records.contact') ? item.registrationForm || registration.detectRegistrationForm(item.title,item.description) : undefined, suggestedServiceId: registration.detectRegistrationForm(item.title,item.description) ? registration.installationSuggestion(state) : serviceSuggestions.suggestedServiceId(item, config || (await settings(q)).config, state) }
+    const conversation = await entries(q,item.id)
+    if (policy.can(user, 'service.documents.read')) conversation.push(...require('./service-observation-history.cjs').ticketServiceObservations(item, state.history, record => read.serviceReadable(record, user, state)))
+    conversation.sort((a,b) => String(a.at).localeCompare(String(b.at)) || String(a.id).localeCompare(String(b.id)))
+    return { ...d.present(item,user,conversation,aliases,true,config || (await settings(q)).config), registrationForm: policy.can(user,'planning.commercial') && policy.can(user,'records.contact') ? item.registrationForm || registration.detectRegistrationForm(item.title,item.description) : undefined, suggestedServiceId: registration.detectRegistrationForm(item.title,item.description) ? registration.installationSuggestion(state) : serviceSuggestions.suggestedServiceId(item, config || (await settings(q)).config, state) }
   }
   async function customerLock(q, customerId) { if (pg && customerId) await q('SELECT pg_advisory_xact_lock(hashtext(?))',[`ticket-customer:${customerId}`]) }
   async function duplicates(q, customerId, user, state, config, locked=false) {
