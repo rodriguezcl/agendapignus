@@ -124,6 +124,11 @@ function assignedTicketIds(user, state) {
   if (!can(user, 'fromService')) return []
   return [...new Set((state.history || []).filter(record => record.sourceTicketId && (record.technicianIds || []).some(technicianId => id(technicianId) === id(user.id)) && read.serviceReadable(record, user, state)).map(record => id(record.sourceTicketId)))]
 }
+function cctvTicketCustomerIds(user, state) {
+  if (permissions.roleCode(user) !== 'supervisor' || !can(user, 'view')) return []
+  return [...new Set((state.customers || []).filter(customer => customer.cctvService === true && customer.customerId != null)
+    .map(customer => id(customer.customerId)).filter(Boolean))]
+}
 function visible(ticket, user, state, config) {
   if (!can(user, 'view')) return false
   // Compartir un servicio no hace propia la solicitud de otro integrante.
@@ -131,6 +136,7 @@ function visible(ticket, user, state, config) {
   if (personalScope(user)) return requesterIds(ticket).includes(id(user.id)) ||
     Boolean(can(user, 'scope.assigned') && ticket.assigneeId && id(ticket.assigneeId) === id(user.id)) ||
     assignedTicketIds(user, state).some(ticketId => sourceTicketIds(ticket).includes(ticketId))
+  if (cctvTicketCustomerIds(user, state).includes(id(ticket.customerId))) return true
   if (can(user, 'scope.all') || isOwn(ticket, user)) return true
   if (can(user,'scope.assigned') && ticket.assigneeId && id(ticket.assigneeId) === id(user.id)) return true
   if (can(user, 'scope.area') && config.areas.some(area => area.id === ticket.areaId && area.memberIds.some(member => id(member) === id(user.id)))) return true
@@ -253,4 +259,4 @@ function present(ticket, user, entries = [], aliases = [], detailed = false, con
 function duplicatesToken(customerId, tickets) {
   return crypto.createHash('sha256').update(JSON.stringify([customerId, tickets.map(ticket => [ticket.id, ticket.version]).sort((a, b) => a[0].localeCompare(b[0]))])).digest('hex')
 }
-module.exports = { STATUSES, PRIORITIES, OPEN_STATUSES, ORIGINS, ACTION_PERMISSIONS, fail, can, id, normalized, clone, text, email, timestamp, defaultConfig, validateConfig, classification, personalScope, assignedTicketIds, visible, assertVisible, assignees, snapshot, intakeCustomerReadable, customerFor, duplicateCustomer, assertDuplicate, duplicatePreview, newTicket, entry, present, metadataAttachment, duplicatesToken, subject }
+module.exports = { STATUSES, PRIORITIES, OPEN_STATUSES, ORIGINS, ACTION_PERMISSIONS, fail, can, id, normalized, clone, text, email, timestamp, defaultConfig, validateConfig, classification, personalScope, assignedTicketIds, cctvTicketCustomerIds, visible, assertVisible, assignees, snapshot, intakeCustomerReadable, customerFor, duplicateCustomer, assertDuplicate, duplicatePreview, newTicket, entry, present, metadataAttachment, duplicatesToken, subject }

@@ -272,6 +272,8 @@ function createTicketStore({ sql, db }) {
       } else if(!d.can(user,'scope.all')) {
         const uid=String(user.id),parts=['created_by_id=?','requester_id=?'];args.push(uid,uid);if(d.can(user,'scope.assigned')){parts.push('assignee_id=?');args.push(uid)}
         parts.push(pg?"(data::jsonb -> 'participantIds') @> ?::jsonb":"EXISTS (SELECT 1 FROM json_each(data,'$.participantIds') WHERE value=?)");args.push(pg?JSON.stringify([uid]):uid)
+        const cctvCustomers=d.cctvTicketCustomerIds(user,state)
+        if(cctvCustomers.length){parts.push('customer_id IN ('+cctvCustomers.map(()=>'?').join(',')+')');args.push(...cctvCustomers)}
         const areas=d.can(user,'scope.area')?config.areas.filter(a=>a.memberIds.includes(uid)).map(a=>a.id):[]
         if(areas.length){parts.push('area_id IN ('+areas.map(()=>'?').join(',')+')');args.push(...areas)}
         const legacy=policy.can(user,'followups.view')?(state.history||[]).filter(r=>r.followup&&read.serviceInReadScope(r,user,state)).map(r=>String(r.followup.id||'followup:'+r.id)):[]
