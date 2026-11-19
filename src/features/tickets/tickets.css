@@ -155,3 +155,15 @@ body.dark .tickets-create-form, [data-theme="dark"] .tickets-create-form { --tic
   min-height:32px; font:inherit;
 }
 .tickets-validation-link:focus-visible { outline:2px solid var(--ticket-error); outline-offset:2px; }
+
+.tickets-timeline > li.tickets-author-colored {
+  --ticket-author-color: hsl(var(--ticket-author-hue) 58% 44%);
+  border-left: 5px solid var(--ticket-author-color);
+  background: color-mix(in srgb, var(--ticket-author-color) 10%, var(--ap-surface, #fff));
+}
+.tickets-author-colored > .tickets-timeline-heading > strong {
+  border-radius: 5px;
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--ticket-author-color) 17%, var(--ap-surface, #fff));
+  color: var(--ap-text, #25374b);
+}
