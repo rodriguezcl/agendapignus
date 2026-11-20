@@ -119,12 +119,12 @@ function serviceResponse(record, user) {
   return catalog.isGranular(user) ? read.sanitizeService(record, user) : projectLegacyCollectionReceipts(record, user)
 }
 function recordBaseMatches(current, base, user) {
-  if (!catalog.isGranular(user)) return JSON.stringify(projectLegacyCollectionReceipts(current, user)) === JSON.stringify(projectLegacyCollectionReceipts(base, user))
   const normalize = value => {
     if (Array.isArray(value)) return value.map(normalize)
     if (!value || typeof value !== 'object') return value
     return Object.fromEntries(Object.keys(value).filter(key => !['supervisorVisible', 'customerCctvRequirement'].includes(key)).sort().map(key => [key, normalize(value[key])]))
   }
+  if (!catalog.isGranular(user)) return JSON.stringify(normalize(projectLegacyCollectionReceipts(current, user))) === JSON.stringify(normalize(projectLegacyCollectionReceipts(base, user)))
   return JSON.stringify(normalize(read.sanitizeService(current, user))) === JSON.stringify(normalize(base))
 }
 function restoreServiceProposal(current, proposed, user, state) {

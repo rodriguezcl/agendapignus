@@ -1,3 +1,4 @@
+import { alignHistoryWrite } from './features/history/application/history-write-baseline.mjs'
 import { combineRegistrationNotifications } from '../shared/registration/notifications.mjs'
 import FormsInbox from './features/registration/FormsInbox.jsx'
 import SalesBooking from './features/registration/SalesBooking.jsx'
@@ -1070,7 +1071,10 @@ export default function App() {
   }
   const persistHistoryContact = (record, checked) => persistStateCommand(() => historyRecordRepository.setContacted(record, checked))
   const persistHistoryRecord = async (base, record, categoryCorrection = null) => {
-    const updates = Array.isArray(base) ? base : null
+    const display = JSON.parse(lastPersistedSnapshotRef.current || 'null')
+    const align = (before, after) => alignHistoryWrite(before, after, display, lastServerSnapshotRef.current, stateRevisionRef.current)
+    const updates = Array.isArray(base) ? base.map(item => ({ ...item, ...align(item.base, item.record) })) : null
+    if (!updates) ({ base, record } = align(base, record))
     try {
       const payload = await persistStateCommand(() => updates
         ? historyRecordRepository.updateMany(updates)
@@ -1085,6 +1089,7 @@ export default function App() {
     }
   }
   const persistHistoryRecordRemoval = async record => {
+    record = alignHistoryWrite(record, null, JSON.parse(lastPersistedSnapshotRef.current || 'null'), lastServerSnapshotRef.current, stateRevisionRef.current).base
     try {
       const payload = await persistStateCommand(() => historyRecordRepository.remove(record))
       setNotice(record?.vehicleControl ? 'El control vehicular fue eliminado correctamente.' : 'El servicio fue eliminado correctamente.')
