@@ -238,12 +238,12 @@ export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, o
     dayPlanCache.set(day, result)
     return result
   }
-  const advancedGuardForDay = day => {
+  const advancedGuardForDay = (day, sourceDay = '', departingTask = null) => {
     if (!isSaturday(day)) return null
     const friday = new Date(`${day}T12:00:00`)
     friday.setDate(friday.getDate() - 1)
     const fridayKey = friday.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
-    return findAdvancedSaturdayGuard({ fridayPlan: dayPlan(fridayKey), saturdayPlan: dayPlan(day) })
+    return findAdvancedSaturdayGuard({ fridayPlan: dayPlan(fridayKey), saturdayPlan: dayPlan(day), departingTask: sourceDay === fridayKey ? departingTask : null })
   }
   const updateDay = (day, mutate) => setWeekly(previous => {
     const defaults = createDay(day, previous)
@@ -617,7 +617,7 @@ export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, o
     if (holidayCalendar.loading) { setNotice('Esperá mientras se verifica el calendario de feriados.'); return }
     if (holidayCalendar.error) { setNotice('No se pudo verificar el calendario de feriados. Reintentá antes de mover el servicio.'); return }
     if (destinationHoliday.blocked) { setNotice(destinationHoliday.decision?.status === 'closed' ? 'La fecha de destino fue definida como día no operativo.' : 'Primero definí si el feriado de destino será laboral o no operativo.'); return }
-    const destinationAdvance = advancedGuardForDay(destinationDay)
+    const destinationAdvance = advancedGuardForDay(destinationDay, day, originalTask)
     if (destinationAdvance) { setNotice(advancedSaturdayGuardMessage(destinationAdvance)); return }
     const schedule = taskMoveScheduleState(destinationDay, movedTask, weekly, destinationTeam.teamId)
     if (!schedule.valid) { setNotice(schedule.message); return }

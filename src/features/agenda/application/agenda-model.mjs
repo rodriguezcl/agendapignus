@@ -108,13 +108,14 @@ export const assignGuardToEmptySaturday = (teams, date, weekly, activeTechs) => 
   return teams.map((team, index) => index === 0 ? { ...team, memberIds: technicianId ? [technicianId] : [], members: [name] } : team)
 }
 
-export const advancedGuardForSaturdayDate = (date, weekly, saturdayTeams) => {
+export const advancedGuardForSaturdayDate = (date, weekly, saturdayTeams, sourceDay = '', departingTask = null) => {
   if (!isSaturday(date)) return null
   const friday = new Date(`${date}T12:00:00`)
   friday.setDate(friday.getDate() - 1)
   const fridayKey = friday.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   return findAdvancedSaturdayGuard({
     fridayPlan: weekly?.[fridayKey],
+    departingTask: sourceDay === fridayKey ? departingTask : null,
     saturdayPlan: { ...(weekly?.[date] || {}), teams: saturdayTeams || weekly?.[date]?.teams || [] }
   })
 }

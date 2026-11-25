@@ -76,3 +76,36 @@ test('un servicio de Rodrigo en otro equipo del viernes impide el solapamiento',
   const next = applyStateOperations(state, move(state, command))
   assert.throws(() => validateChangedAgendaSchedules(next, state), /incompatibles/)
 })
+
+
+test('permite devolver la guardia al sábado y libera el bloqueo sin perder datos', async () => {
+  const { findAdvancedSaturdayGuard } = await import('../src/domain/agenda/weekend-guard.mjs')
+  const { state, command, move } = await prepare()
+  const advanced = applyStateOperations(state, move(state, command))
+  const fridayPlan = advanced.agenda.weekly[friday]
+  const saturdayPlan = advanced.agenda.weekly[saturday]
+  const task = fridayPlan.teams[0].tasks[0]
+  assert.ok(findAdvancedSaturdayGuard({ fridayPlan, saturdayPlan }))
+  assert.equal(findAdvancedSaturdayGuard({ fridayPlan, saturdayPlan, departingTask: task }), null)
+  const returned = applyStateOperations(advanced, move(advanced, {
+    sourceDay: friday, sourceTeamId: fridayPlan.teams[0].teamId, day: saturday, team: saturdayPlan.teams[0],
+    task: { ...task, time: '09:00' }, record: { ...advanced.history[0], date: saturday, time: '09:00', teamId: saturdayPlan.teams[0].teamId }
+  }))
+  assert.equal(findAdvancedSaturdayGuard({ fridayPlan: returned.agenda.weekly[friday], saturdayPlan: returned.agenda.weekly[saturday] }), null)
+  assert.equal(returned.history.length, 1)
+  assert.equal(returned.history[0].date, saturday)
+  assert.equal(returned.history[0].photoUrl, '/photo.jpg')
+  assert.equal(returned.agenda.weekly[saturday].teams[0].tasks.filter(t => t.taskId === task.taskId).length, 1)
+  assert.equal(returned.agenda.weekly[friday].teams[0].tasks.some(t => t.taskId === task.taskId), false)
+})
+
+test('mantiene el bloqueo si queda otra guardia el viernes o se mueve otro servicio', async () => {
+  const { findAdvancedSaturdayGuard } = await import('../src/domain/agenda/weekend-guard.mjs')
+  const { state, command, move } = await prepare()
+  const advanced = applyStateOperations(state, move(state, command))
+  const fridayPlan = advanced.agenda.weekly[friday]
+  const task = fridayPlan.teams[0].tasks[0]
+  assert.ok(findAdvancedSaturdayGuard({ fridayPlan, departingTask: { taskId: 'different' } }))
+  fridayPlan.teams[0].tasks.push({ taskId: 'another', client: 'Otro', time: '18:00' })
+  assert.equal(findAdvancedSaturdayGuard({ fridayPlan, departingTask: task }).fridayTask.taskId, 'another')
+})

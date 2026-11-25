@@ -31,7 +31,7 @@ const teamIncludesTechnician = (team, technicianId, technicianName) => {
  * Detecta si el técnico de guardia sabatina ya cubrió esa guardia el viernes.
  * El rango es inclusivo: 16:00 a 20:00.
  */
-export const findAdvancedSaturdayGuard = ({ fridayPlan, saturdayPlan }) => {
+export const findAdvancedSaturdayGuard = ({ fridayPlan, saturdayPlan, departingTask = null }) => {
   const saturdayTeams = saturdayPlan?.teams || []
   const saturdayTeam = saturdayTeams[0]
   const assignedSaturdayId = saturdayTeam?.memberIds?.[0] || ''
@@ -40,6 +40,9 @@ export const findAdvancedSaturdayGuard = ({ fridayPlan, saturdayPlan }) => {
 
   for (const fridayTeam of fridayPlan?.teams || []) {
     const advancedTask = (fridayTeam.tasks || []).find(task => {
+      // Evaluate availability after removing the service being moved.
+      if (departingTask && ((departingTask.taskId && String(task.taskId || '') === String(departingTask.taskId)) ||
+        (departingTask.historyId && String(task.historyId || '') === String(departingTask.historyId)))) return false
       const minutes = timeInMinutes(task?.time || task?.scheduledTime)
       return hasScheduledService(task) && minutes !== null && minutes >= 16 * 60 && minutes <= 20 * 60
     })

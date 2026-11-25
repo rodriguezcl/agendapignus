@@ -765,7 +765,7 @@ export function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, 
     if (day === date && destinationTeam.teamId === sourceTeam.teamId) { setNotice('Elegí otro equipo o una fecha diferente.'); return }
     if (holidayCalendar.loading || holidayCalendar.error) { setNotice('Esperá a que se verifique el calendario de feriados antes de reasignar.'); return }
     if (holidayIsBlocked(holidayForDate(holidayCalendar.records, day, weekly), holidayDecisionForDate(weekly, day))) { setNotice('La fecha de destino no está habilitada. Revisá la configuración del feriado.'); return }
-    if (advancedGuardForSaturdayDate(day, weekly, moveDayPlan(day).teams)) { setNotice('La guardia de ese sábado fue adelantada. Elegí la fecha de la guardia.'); return }
+    if (advancedGuardForSaturdayDate(day, weekly, moveDayPlan(day).teams, date, task)) { setNotice('La guardia de ese sábado fue adelantada. Elegí la fecha de la guardia.'); return }
     if (!destinationTeam.members?.length) { setNotice('El equipo de destino no tiene técnicos asignados.'); return }
     const durationCustomized = task.estimatedMinutesCustomized === true || Number(taskMove.estimatedMinutes) !== Number(serviceEstimateForTask(task, serviceForTask(task)))
     const movedTask = stampServiceRecord({ ...task, time: taskMove.time, estimatedMinutes: taskMove.estimatedMinutes, estimatedMinutesCustomized: durationCustomized }, authUser)
