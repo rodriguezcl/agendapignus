@@ -22,9 +22,10 @@ const fixture = (edit = true, download = true) => ({ customer: { customerId: 'cu
 function nodes(node, predicate) { return [...(predicate(node) ? [node] : []), ...(node.children || []).flatMap(child => nodes(child, predicate))] }
 function render(tab, data = fixture()) { const html = renderToStaticMarkup(React.createElement(ui.CctvCustomerDetail, { customerId: 'customer-1', initialData: data, initialTab: tab })); return { html, document: parseDocument(html) } }
 
-test('la ficha muestra los seis apartados, el requerimiento y una trazabilidad distinta por autor', () => {
+test('la ficha muestra la solapa de tickets, el requerimiento y una trazabilidad distinta por autor', () => {
   const { html, document } = render('general')
-  assert.equal(nodes(document, node => node.attribs?.role === 'tab').length, 6)
+  assert.equal(nodes(document, node => node.attribs?.role === 'tab').length, 7)
+  assert.match(render('tickets').html, /Cargando tickets de la cuenta/)
   assert.match(html, /Requiere llave de ingreso/)
   assert.match(html, /Supervisión CCTV/)
   assert.match(html, /Administración/)
