@@ -46,6 +46,11 @@
       "Fichas, seguimiento CCTV, historial del cliente, importación y abonos."
     ],
     [
+      "cctv",
+      "Servicios de CCTV",
+      "Cuentas con CCTV, novedades, documentos, mantenimiento, planimetría, mejoras y ficha técnica."
+    ],
+    [
       "forms",
       "Formularios",
       "Bandeja de altas, respuestas, correcciones y gestiones pendientes en SoftGuard."
@@ -151,6 +156,33 @@
       "all": [],
       "any": [],
       "note": "",
+      "sensitive": false
+    },
+    {
+      "id": "cctv.view",
+      "label": "Consultar Servicios de CCTV",
+      "groups": ["cctv"],
+      "all": [],
+      "any": [],
+      "note": "Sólo cuentas con Servicio de CCTV. Los técnicos consultan las cuentas de sus servicios asignados visibles.",
+      "sensitive": false
+    },
+    {
+      "id": "cctv.edit",
+      "label": "Gestionar fichas y documentos de CCTV",
+      "groups": ["cctv"],
+      "all": ["cctv.view"],
+      "any": [],
+      "note": "Registrar novedades, adjuntar informes y planos, gestionar mantenimiento, mejoras y equipos. Los técnicos sólo consultan.",
+      "sensitive": true
+    },
+    {
+      "id": "cctv.download",
+      "label": "Descargar documentos de CCTV",
+      "groups": ["cctv"],
+      "all": ["cctv.view"],
+      "any": [],
+      "note": "La descarga respeta el acceso a la cuenta y conserva los archivos originales.",
       "sensitive": false
     },
     {

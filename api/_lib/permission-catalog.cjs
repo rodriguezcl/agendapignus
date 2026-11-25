@@ -77,6 +77,8 @@ function legacySelection(subject) {
   grant('collections.confirm collections.amount collections.method', feature('collectionsManage', 'collections'))
   grant('customers.create', accounts || plan)
   grant('customers.edit customers.coordinates customers.cctv subscriptions.correct customers.softguard.resolve', accounts)
+  grant('cctv.view cctv.download', supervisor || technical || moduleOn('cctv'))
+  grant('cctv.edit', supervisor || (!technician && !operator && moduleOn('cctv')))
   grant('customers.delete', feature('accountsDelete', 'accounts'))
   grant('customers.import', feature('accountsImport', 'accounts'))
   grant('subscriptions.read', moduleOn('accounts') && financial)
@@ -126,7 +128,16 @@ function normalizePermissions(selection) {
 function resolvePermissions(subject) {
   if (subject?.[SNAPSHOT]) return subject[SNAPSHOT]
   if (roleCode(subject) === 'administrator') return Object.fromEntries(CATALOG.map(item => [item.id, true]))
-  return normalizePermissions(isGranular(subject) ? rawPermissions(subject) : legacySelection(subject))
+  if (!isGranular(subject)) return normalizePermissions(legacySelection(subject))
+  const selection = { ...rawPermissions(subject) }, code = roleCode(subject)
+  // Existing built-in roles receive the new module once. Explicit choices in
+  // the permission editor always win, including a deliberate denial.
+  const supervisor = code === 'supervisor' && selection['accounts.view'] === true
+  const technician = code === 'technician' && selection['technical.view'] === true
+  for (const [key, value] of Object.entries({ 'cctv.view': supervisor || technician, 'cctv.edit': supervisor, 'cctv.download': supervisor || technician })) {
+    if (!hasOwn(selection, key)) selection[key] = value
+  }
+  return normalizePermissions(selection)
 }
 // Explicit immutable request snapshots avoid resolving the catalogue for every
 // record while ordinary mutable callers still observe revocations immediately.
@@ -191,7 +202,7 @@ const READ_ONLY_IDS = new Set([
   'planning.copy', 'weekly.daily', 'weekly.monthlyTeams.read', 'weekly.monthlyHours.read', 'weekly.monthlyVehicles.read', 'weekly.guards.read',
   'collections.timeline', 'customers.backup', 'subscriptions.read', 'map.customer', 'employees.requests.read', 'vehicles.mileage.read',
   'vehicle.controls.read', 'vehicle.insurance.read', 'vehicle.documents.read', 'technical.history', 'service.documents.read', 'settings.roles.read',
-  'settings.workday.read', 'audit.detail', 'registration.read', 'registration.sensitive'
+  'settings.workday.read', 'audit.detail', 'registration.read', 'registration.sensitive', 'cctv.download'
 ])
 function hasAnyWrite(subject) {
   const permissions = resolvePermissions(subject)

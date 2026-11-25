@@ -1,0 +1,40 @@
+.cctv-plan-editor, .cctv-equipment-editor { --cctv-border: var(--ap-border, #d6dde7); --cctv-ink: var(--ap-text, #203449); --cctv-muted: var(--ap-muted, #65748a); --cctv-canvas: var(--ap-surface, #fff); --cctv-grid: var(--ap-border, #dce0e5); color: var(--cctv-ink); min-width: 0; }
+.cctv-editor-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cctv-editor-toolbar button, .cctv-editor-footer button, .cctv-equipment-add button, .cctv-editor-undo button { min-height: 40px; padding: 8px 12px; border: 1px solid var(--cctv-border); border-radius: 7px; background: var(--ap-surface, #fff); color: var(--cctv-ink); cursor: pointer; font: inherit; font-size: 13px; }
+.cctv-editor-toolbar button[aria-pressed="true"] { background: var(--ap-accent-soft, #fff4d8); border-color: var(--ap-accent, #956600); color: var(--ap-accent, #956600); }
+.cctv-plan-keyboard-add { margin-top: 10px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--cctv-border); border-radius: 7px; background: var(--ap-surface, #fff); color: var(--cctv-ink); font: inherit; cursor: pointer; }
+.cctv-plan-editor button:disabled, .cctv-equipment-editor button:disabled { opacity: .5; cursor: default; }
+.cctv-plan-editor :is(button, input, select, textarea):focus-visible, .cctv-equipment-editor :is(button, input, select, textarea, summary):focus-visible { outline: 3px solid #2976b8; outline-offset: 2px; }
+.cctv-editor-help { color: var(--cctv-muted); font-size: 13px; line-height: 1.5; margin: 12px 0; }
+.cctv-plan-viewport { border: 1px solid var(--cctv-border); border-radius: 9px; overflow: hidden; background: var(--cctv-canvas, #fff); }
+.cctv-plan-canvas { display: block; width: 100%; height: auto; touch-action: none; user-select: none; }
+.cctv-plan-canvas.is-readonly { touch-action: auto; }
+.cctv-plan-canvas text { fill: var(--cctv-ink); font-family: inherit; font-size: 14px; }
+.cctv-plan-symbol { stroke: var(--ap-info, #226a9e); stroke-width: 2.5; fill: none; }
+.cctv-plan-line { stroke: var(--ap-muted, #626c78); stroke-width: 3; }
+.cctv-plan-hit { stroke: transparent; stroke-width: 20; fill: transparent; }
+.cctv-plan-canvas [data-plan-element] { cursor: grab; }
+.cctv-plan-canvas.is-readonly [data-plan-element] { cursor: default; }
+.cctv-plan-canvas .is-selected .cctv-plan-symbol, .cctv-plan-canvas .is-selected .cctv-plan-line { stroke: var(--ap-accent, #956600); stroke-width: 4; }
+.cctv-plan-canvas .is-selected circle.cctv-plan-hit { fill: color-mix(in srgb, var(--ap-accent, #956600) 12%, transparent); stroke-width: 1; stroke: var(--ap-accent, #956600); }
+.cctv-plan-properties { display: grid; gap: 12px; padding: 14px; margin-top: 12px; border: 1px solid var(--cctv-border); border-radius: 8px; background: var(--ap-surface-alt, #f7f9fb); }
+.cctv-editor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cctv-editor-full { grid-column: 1 / -1; }
+.cctv-plan-editor label, .cctv-equipment-editor label { display: grid; gap: 6px; min-width: 0; font-size: 13px; font-weight: 600; }
+.cctv-plan-editor :is(input, select, textarea), .cctv-equipment-editor :is(input, select, textarea) { box-sizing: border-box; width: 100%; min-height: 42px; min-width: 0; padding: 9px 11px; border: 1px solid var(--cctv-border); border-radius: 6px; background: var(--ap-input, #fff); color: var(--cctv-ink); font: inherit; font-weight: 400; }
+.cctv-editor-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; font-size: 12px; color: var(--cctv-muted); }
+.cctv-equipment-list { display: grid; gap: 12px; }
+.cctv-equipment-card { border: 1px solid var(--cctv-border); border-radius: 9px; overflow: hidden; background: var(--ap-surface, #fff); }
+.cctv-equipment-card > summary { cursor: pointer; padding: 14px; background: var(--ap-surface-alt, #f7f9fb); overflow-wrap: anywhere; }
+.cctv-equipment-card > summary > span { display: block; margin-top: 5px; font-size: 12px; color: var(--cctv-muted); }
+.cctv-equipment-fields { display: grid; gap: 14px; padding: 16px; }
+.cctv-equipment-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0; padding: 16px; }
+.cctv-equipment-facts dt { font-size: 12px; color: var(--cctv-muted); margin-bottom: 5px; }
+.cctv-equipment-facts dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.cctv-equipment-facts > div:last-child { grid-column: 1 / -1; }
+.cctv-equipment-add { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+.cctv-equipment-add > label { flex: 1 1 220px; }
+.cctv-equipment-add > span { width: 100%; font-size: 12px; color: var(--cctv-muted); }
+.cctv-editor-empty { padding: 20px; border: 1px dashed var(--cctv-border); border-radius: 8px; color: var(--cctv-muted); }
+.cctv-editor-undo { margin-top: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px; background: var(--ap-surface-alt, #f7f9fb); border-radius: 6px; }
+@media (max-width: 600px) { .cctv-editor-grid, .cctv-equipment-facts { grid-template-columns: 1fr; } .cctv-editor-toolbar > button { flex: 1 1 125px; } .cctv-equipment-fields { padding: 12px; } .cctv-plan-editor :is(input, select, textarea), .cctv-equipment-editor :is(input, select, textarea) { font-size: 16px; } }

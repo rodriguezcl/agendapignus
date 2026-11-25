@@ -5,9 +5,9 @@ const custom = permissions => ({ roleCode: 'role-test', role: 'Prueba', permissi
 
 test('catalogue contains unique capabilities with known acyclic prerequisites', () => {
   assert.equal(policy.validateCatalog(), true)
-  assert.equal(policy.CATALOG.length, 163)
-  assert.equal(policy.MODULES.length, 17)
-  assert.equal(policy.PERMISSION_GROUPS.length, 18)
+  assert.equal(policy.CATALOG.length, 166)
+  assert.equal(policy.MODULES.length, 18)
+  assert.equal(policy.PERMISSION_GROUPS.length, 19)
   assert.equal(policy.MODULES.some(([id]) => id === 'notifications'), false)
   assert.equal(policy.PERMISSION_GROUPS.some(([id]) => id === 'notifications'), true)
   assert.equal(policy.BY_ID['notifications.view'], undefined)

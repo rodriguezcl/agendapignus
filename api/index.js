@@ -1490,6 +1490,14 @@ module.exports = async function handler(req, res) {
     }
     if (req.method === 'POST' && route === '/history/completion-correction') return await handleCategoryCorrection(req, res, sql, session.user, true)
     if (req.method === 'POST' && route === '/history/category-correction') return await handleCategoryCorrection(req, res, sql, session.user)
+    if (route === '/cctv' || route === '/cctv/attachments') {
+      const { cctvRequest, cctvError, attachmentHeaders } = require('./_lib/cctv-http.cjs')
+      try {
+        const result = await cctvRequest({ connection: sql, kind: 'sql', user: session.user, state: await readState(sql), method: req.method, route, query: Object.fromEntries(new URL(req.url, 'http://localhost').searchParams), input: req.method === 'POST' ? requestBody(req) : {} })
+        if (result.file) { securityHeaders(res); for (const [key, value] of Object.entries(attachmentHeaders(result.file))) res.setHeader(key, value); return res.status(200).send(result.file.data) }
+        return send(res, 200, result.body)
+      } catch (error) { const failure = cctvError(error); return send(res, failure.status, failure.body) }
+    }
     if (route === '/tickets' || route.startsWith('/tickets/')) {
       const { ticketRequest, ticketError, attachmentHeaders } = require('./_lib/tickets-http.cjs')
       try {

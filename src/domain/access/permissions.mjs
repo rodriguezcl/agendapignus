@@ -15,6 +15,7 @@ export const MODULE_PERMISSIONS = [
   ['followups', 'Seguimientos', 'Consultar solicitudes y gestionar acciones sobre clientes'],
   ['history', 'Historial', 'Consultar y gestionar trabajos registrados'],
   ['accounts', 'Abonados y clientes', 'Consultar y administrar abonados y clientes'],
+  ['cctv', 'Servicios de CCTV', 'Consultar novedades, documentos, planos y equipos de las cuentas con CCTV'],
   ['map', 'Mapa', 'Consultar la distribución geográfica y concentración de abonados'],
   ['employees', 'Colaboradores', 'Administrar técnicos y accesos'],
   ['services', 'Tipos de servicio', 'Administrar el catálogo de servicios'],
@@ -64,6 +65,7 @@ export const resolvedRolePermissions = role => {
     Object.keys(resolved).forEach(key => { resolved[key] = false })
     resolved.history = true
     resolved.accounts = true
+    resolved.cctv = true
     return resolved
   }
   FEATURE_PERMISSIONS.forEach(([, featureKey]) => {

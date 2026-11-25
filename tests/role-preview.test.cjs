@@ -134,7 +134,7 @@ test('legacy preview migration preserves role identity, technical scopes and not
   assert.equal(technician.technical.visible, true)
   assert.equal(technician.portalOnly, true)
   assert.deepEqual(technician.scopes.map(scope => scope.value), ['assigned', 'assigned', 'related'])
-  assert.deepEqual(technician.visibleModules.map(module => module.id), ['tickets', 'technical'])
+  assert.deepEqual(technician.visibleModules.map(module => module.id), ['tickets', 'cctv', 'technical'])
   assert.deepEqual(technician.enabledNotifications.map(item => item.id), ['notifications.tickets'])
 })
 

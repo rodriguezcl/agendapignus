@@ -55,7 +55,7 @@ export function buildRolePreview(role, { technicalEnabled = false } = {}) {
   })
   const visibleModules = modules.filter(module => module.visible)
   const hiddenModules = modules.filter(module => !module.visible)
-  const portalOnly = technicalConfigured && eligible && visibleModules.every(module => ['technical', 'tickets', 'followups'].includes(module.id))
+  const portalOnly = technicalConfigured && eligible && visibleModules.every(module => ['technical', 'tickets', 'followups', 'cctv'].includes(module.id))
   const readOnly = !hasAnyWrite(subject)
   const helpVisible = !readOnly && !portalOnly
   const navigation = navigationForModules([

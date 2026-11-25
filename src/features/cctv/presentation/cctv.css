@@ -1,0 +1,130 @@
+.cctv-services {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  color: var(--ap-text, #233447);
+}
+.cctv-services h2, .cctv-services h3, .cctv-services h4 { margin: 0; }
+.cctv-services p { margin: 0; }
+.cctv-services button, .cctv-services input, .cctv-services textarea, .cctv-services select { font: inherit; }
+.cctv-list-toolbar, .cctv-detail-toolbar, .cctv-customer-heading, .cctv-inline-actions, .cctv-author-line, .cctv-improvement-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.cctv-list-toolbar { align-items: end; }
+.cctv-news-filters { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(2, minmax(140px, 1fr)); gap: 12px; }
+.cctv-news-filters > label { display: grid; gap: 7px; margin: 0; font-size: 13px; font-weight: 600; }
+.cctv-list-toolbar > label:first-child { flex: 1 1 280px; }
+.cctv-detail-toolbar, .cctv-customer-heading { justify-content: space-between; }
+.cctv-list-toolbar > label:not(.cctv-check), .cctv-form label:not(.cctv-check), .cctv-file-field > label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.cctv-services input:not([type='checkbox']), .cctv-services select, .cctv-services textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--ap-border, #d6dde5);
+  border-radius: 7px;
+  background: var(--ap-surface, #fff);
+  color: var(--ap-text, #233447);
+  box-sizing: border-box;
+  font-weight: 400;
+}
+.cctv-services textarea { resize: vertical; line-height: 1.5; }
+.cctv-services label.cctv-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 0;
+  font-weight: 400;
+  cursor: pointer;
+}
+.cctv-services label.cctv-check > input[type='checkbox'] { width: 18px !important; min-width: 18px; height: 18px; min-height: 18px; margin: 0; accent-color: var(--ap-accent, #976d00); }
+.cctv-muted, .cctv-services small { color: var(--ap-muted, #65758a); font-size: 12px; line-height: 1.5; }
+.cctv-table-wrap { overflow: auto; border: 1px solid var(--ap-border, #d6dde5); border-radius: 9px; background: var(--ap-surface, #fff); }
+.cctv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cctv-table th { padding: 14px 16px; background: var(--ap-surface-alt, #f7f8fa); color: var(--ap-muted, #65758a); text-align: left; font-size: 12px; }
+.cctv-table td { padding: 15px 16px; border-top: 1px solid var(--ap-border, #d6dde5); vertical-align: middle; }
+.cctv-table th:last-child, .cctv-table td:last-child { width: 120px; }
+.cctv-table td button { white-space: nowrap; }
+.cctv-empty { padding: 20px 4px; color: var(--ap-muted, #65758a); font-size: 13px; }
+.cctv-table-wrap > .cctv-empty { padding: 24px; }
+.cctv-badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 6px; background: var(--ap-surface-alt, #f1f4f6); color: var(--ap-text, #233447); font-size: 12px; font-weight: 600; }
+.cctv-badge-pending { background: var(--ap-accent-soft, #fff4d8); color: var(--ap-accent, #956800); }
+.cctv-detail { display: grid; gap: 20px; min-width: 0; }
+.cctv-customer-heading { padding-bottom: 6px; }
+.cctv-customer-heading > div { display: grid; gap: 6px; min-width: 0; }
+.cctv-customer-heading h2 { font-size: 22px; overflow-wrap: anywhere; }
+.cctv-customer-heading p:not(.eyebrow) { color: var(--ap-muted, #65758a); font-size: 13px; }
+.cctv-readonly { display: flex; align-items: center; gap: 7px; color: var(--ap-muted, #65758a); font-size: 13px; }
+.cctv-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--ap-border, #d6dde5); }
+.cctv-tabs > button { min-height: 42px; padding: 10px 14px; border: 1px solid var(--ap-border, #d6dde5); border-radius: 7px; background: var(--ap-surface, #fff); color: var(--ap-text, #233447); cursor: pointer; }
+.cctv-tabs > button.active { border-color: var(--ap-accent, #976d00); background: var(--ap-accent, #976d00); color: var(--ap-accent-ink, #fff); }
+.cctv-panel { display: grid; gap: 20px; padding: 24px; border: 1px solid var(--ap-border, #d6dde5); border-radius: 9px; background: var(--ap-surface, #fff); min-width: 0; }
+.cctv-panel h3 { font-size: 18px; }
+.cctv-panel h4 { font-size: 15px; }
+.cctv-data-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin: 0; padding: 4px 0 16px; }
+.cctv-data-grid > div { display: grid; gap: 6px; min-width: 0; }
+.cctv-data-grid dt { color: var(--ap-muted, #65758a); font-size: 12px; }
+.cctv-data-grid dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.cctv-form { display: grid; gap: 16px; padding: 18px; border: 1px solid var(--ap-border, #d6dde5); border-radius: 8px; background: var(--ap-surface-alt, #f7f8fa); min-width: 0; }
+.cctv-form > fieldset { display: grid; gap: 16px; min-width: 0; padding: 0; margin: 0; border: 0; }
+.cctv-form > button, .cctv-form > fieldset > button { justify-self: start; }
+.cctv-file-field { display: grid; gap: 8px; min-width: 0; }
+.cctv-file-field input[type='file'] { padding: 8px; }
+.cctv-file-field .cctv-inline-actions > span { overflow-wrap: anywhere; }
+.cctv-maintenance-summary { display: grid; gap: 12px; padding: 18px; border-left: 3px solid var(--ap-accent, #976d00); background: var(--ap-surface-alt, #f7f8fa); border-radius: 7px; font-size: 13px; }
+.cctv-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; font-size: 13px; }
+.cctv-entries, .cctv-timeline { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.cctv-entry { --cctv-author-color: hsl(var(--ticket-author-hue, 210) 55% 43%); display: grid; gap: 12px; padding: 17px; border: 1px solid var(--ap-border, #d6dde5); border-left: 4px solid var(--cctv-author-color); border-radius: 7px; background: color-mix(in srgb, var(--cctv-author-color) 8%, var(--ap-surface, #fff)); min-width: 0; }
+.cctv-author-line { gap: 8px 12px; font-size: 12px; }
+.cctv-author-line > strong { padding: 4px 7px; border-radius: 5px; background: color-mix(in srgb, var(--cctv-author-color, #65758a) 14%, var(--ap-surface, #fff)); color: var(--ap-text, #233447); }
+.cctv-author-line > time { color: var(--ap-muted, #65758a); }
+.cctv-entry h4 { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cctv-attachment { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; color: var(--ap-accent, #976d00); font-size: 13px; overflow-wrap: anywhere; text-decoration: underline; }
+.cctv-attachment > svg { flex: none; }
+.cctv-entry details > summary, .cctv-history > summary { cursor: pointer; font-size: 13px; font-weight: 600; padding: 8px 0; }
+.cctv-history > .cctv-timeline { margin-top: 12px; }
+.cctv-improvement-title { justify-content: space-between; }
+.cctv-improvement-title .cctv-check { flex: 1; }
+.cctv-completion { color: var(--ap-muted, #65758a); font-size: 12px; }
+.cctv-completed .cctv-improvement-title strong { color: var(--ap-muted, #65758a); }
+.cctv-alert { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border: 1px solid var(--ap-border, #d6dde5); border-left: 4px solid #b94040; border-radius: 7px; background: var(--ap-surface, #fff); font-size: 13px; }
+.cctv-success { padding: 12px 16px; border-left: 3px solid #21835c; border-radius: 6px; background: var(--ap-surface-alt, #f7f8fa); font-size: 13px; }
+.cctv-embedded { width: 100%; }
+@media (max-width: 760px) {
+  .cctv-news-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cctv-news-filters > label:first-child { grid-column: 1 / -1; }
+  .cctv-panel { padding: 16px; }
+  .cctv-form { padding: 14px; }
+  .cctv-data-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cctv-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .cctv-table, .cctv-table tbody, .cctv-table tr { display: block; width: 100%; }
+  .cctv-table tr + tr { border-top: 1px solid var(--ap-border, #d6dde5); }
+  .cctv-table td, .cctv-table td:last-child { display: flex; justify-content: space-between; align-items: start; gap: 16px; border: 0; width: auto; padding: 9px 14px; }
+  .cctv-table td::before { content: attr(data-label); flex: 0 0 36%; color: var(--ap-muted, #65758a); font-size: 12px; }
+  .cctv-table td:last-child::before { display: none; }
+  .cctv-table td:last-child > button { width: 100%; justify-content: center; }
+  .cctv-table td:first-child { padding-top: 17px; }
+  .cctv-table td:last-child { padding-bottom: 17px; }
+  .cctv-tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 10px; }
+  .cctv-tabs > button { flex: 0 0 auto; }
+  .cctv-list-toolbar > button { flex: 1 1 100%; }
+  .cctv-customer-heading h2 { font-size: 20px; }
+}
+@media (max-width: 440px) {
+  .cctv-data-grid { grid-template-columns: 1fr; }
+  .cctv-panel { padding: 12px; }
+  .cctv-entry { padding: 12px; }
+  .cctv-form > button, .cctv-form > fieldset > button { width: 100%; justify-self: stretch; }
+}
