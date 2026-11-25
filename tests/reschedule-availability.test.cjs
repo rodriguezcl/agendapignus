@@ -31,3 +31,21 @@ test('vehicle controls reserve 15 minutes', async () => {
   assert.equal(availableRescheduleTeams(input, record, '2026-09-21', '15:30').length, 0)
   assert.equal(availableRescheduleTeams(input, record, '2026-09-21', '16:00').length, 1)
 })
+
+test('paused controls release history reschedule slots without removing assignments or reports', async () => {
+  const { availableRescheduleTeams } = await load()
+  const { rescheduleSlots } = await import('../src/domain/agenda/reschedule-slots.mjs')
+  const day = '2099-10-09', paused = {_vehicleControls:{paused:true}}
+  const control = {taskId:'control',vehicleControl:true,service:'Control vehicular',time:'15:45',estimatedMinutes:15,status:'Pendiente'}
+  const input = [{teamId:'one',memberIds:['a'],tasks:[control]}], before=structuredClone(input)
+  const service = {id:'new',service:'Visita',estimatedMinutes:15}
+  assert.deepEqual(availableRescheduleTeams(input,service,day,'15:45'),[])
+  assert.equal(availableRescheduleTeams(input,service,day,'15:45',paused).length,1)
+  const slots = rescheduleSlots(day,service,input,(date,time,record)=>availableRescheduleTeams(input,record,date,time,paused),new Date('2099-10-01T12:00:00Z'),paused)
+  assert.ok(slots[0].slots.some(slot=>slot.time==='15:45'))
+  assert.deepEqual(availableRescheduleTeams(input,control,day,'15:45',paused),[])
+  assert.deepEqual(rescheduleSlots(day,control,input,()=>input,new Date('2099-10-01T12:00:00Z'),paused)[0].slots,[])
+  assert.deepEqual(input,before)
+  const completed=[{...input[0],tasks:[{...control,status:'Completado',completedAt:'2099-10-09T19:00:00Z'}]}]
+  assert.deepEqual(availableRescheduleTeams(completed,service,day,'15:45',paused),[])
+})

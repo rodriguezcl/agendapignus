@@ -12,6 +12,8 @@ import VehicleInsuranceDownload from "../../../components/VehicleInsuranceDownlo
 import { prettyDate, currentLocalDate } from "../../../presentation/formatting.mjs";
 import VehicleMileageStats from "../../../components/VehicleMileageStats.jsx";
 import VehicleControlPhotos from "../../../components/VehicleControlPhotos.jsx";
+import controlPause from "../../../../api/_lib/vehicle-controls-pause.cjs";
+import "./vehicles.css";
 
 export const blankVehicle = () => ({ brand: '', model: '', year: String(new Date().getFullYear()), mileage: '', plate: '', insuranceExpiresOn: '', insuranceFileName: '', insuranceUploadedAt: '', insuranceDocumentUrl: '' })
 
@@ -19,7 +21,7 @@ export const readFileAsDataUrl = file => new Promise((resolve, reject) => { cons
 
 export const insuranceExpired = (vehicle, today = currentLocalDate()) => Boolean(vehicle?.insuranceExpiresOn && vehicle.insuranceExpiresOn < today)
 
-export function Vehicles({ history = [], vehicles, setVehicles, setNotice, ask, isAdministrator, stateRevision, refreshRemoteState, editRequest, onEditRequestHandled }) {
+export function Vehicles({ history = [], weekly = {}, persistWeeklyConfiguration, vehicles, setVehicles, setNotice, ask, isAdministrator, stateRevision, refreshRemoteState, editRequest, onEditRequestHandled }) {
   const { can } = useActionPermissions()
   const [mileageVehicle, setMileageVehicle] = useState(null)
   const [photoHistory, setPhotoHistory] = useState(null)
@@ -33,6 +35,25 @@ export function Vehicles({ history = [], vehicles, setVehicles, setNotice, ask, 
   const [vehicleAttachments, setVehicleAttachments] = useState([])
   const [attachmentsPreparing, setAttachmentsPreparing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [controlsSaving, setControlsSaving] = useState(false)
+  const controlsPaused = controlPause.vehicleControlsPaused(weekly)
+  const canManageControls = can('vehicles.edit') && Boolean(persistWeeklyConfiguration)
+  const toggleControls = async () => {
+    if (!canManageControls || controlsSaving) return
+    const paused = !controlsPaused
+    setControlsSaving(true)
+    try {
+      await persistWeeklyConfiguration(snapshot => ({
+        ...snapshot,
+        agenda: { ...snapshot.agenda, weekly: {
+          ...snapshot.agenda?.weekly,
+          _vehicleControls: { paused }
+        } }
+      }))
+      setNotice(paused ? 'Controles vehiculares pausados. Los controles pendientes quedan ocultos en la agenda.' : 'Controles vehiculares habilitados. Los controles pendientes vuelven a aparecer en la agenda.')
+    } catch (error) { setNotice({ message: `No se pudo cambiar la configuración de los controles. ${error.message || 'Intentá nuevamente.'}`, tone: 'error' }) }
+    finally { setControlsSaving(false) }
+  }
   const canEdit = can('vehicles.edit') || can('vehicles.mileage.edit') || can('vehicle.insurance.write', isAdministrator) || can('vehicle.documents.read', isAdministrator)
   const canSaveFields = !editing || can('vehicles.edit') || can('vehicles.mileage.edit') || can('vehicle.insurance.write', isAdministrator)
   const maximumYear = new Date().getFullYear() + 1
@@ -94,6 +115,10 @@ export function Vehicles({ history = [], vehicles, setVehicles, setNotice, ask, 
   }, true)
   return <>
     <div className="module-intro"><ModuleIntroduction><p className="eyebrow">FLOTA DE LA EMPRESA</p><h1>Flota</h1><p>Administrá la flota y mantené disponible la documentación vigente.</p></ModuleIntroduction>{can('vehicles.create') && <button title="Abrí el formulario para registrar un vehículo de la empresa." className="primary" onClick={startCreate}><Icon name="plus" />Nuevo vehículo</button>}</div>
+    <section className="vehicle-controls-settings" aria-label="Controles vehiculares" aria-busy={controlsSaving}>
+      <div><strong>Controles vehiculares {controlsPaused ? 'pausados' : 'habilitados'}</strong><p>{controlsPaused ? 'Los controles pendientes están ocultos en la agenda hasta que vuelvas a habilitarlos.' : 'Los controles semanales aparecen en la agenda de los responsables.'} Los controles realizados y sus fotos se conservan.</p></div>
+      {canManageControls && <button type="button" className={controlsPaused ? 'primary' : 'secondary'} disabled={controlsSaving} onClick={toggleControls}><Icon name={controlsPaused ? 'play' : 'pause'} size={16} />{controlsSaving ? 'Guardando…' : controlsPaused ? 'Reanudar controles' : 'Pausar controles'}</button>}
+    </section>
     {open && <EditorModal active={Boolean(editing)} title="Editar vehículo" onClose={() => setOpen(false)} busy={saving || attachmentsPreparing} dirty={JSON.stringify(form) !== JSON.stringify(initialForm) || Boolean(insuranceFile) || vehicleAttachments.length > 0}>{({ requestClose }) => <form className="vehicle-form" onSubmit={save} aria-busy={saving || attachmentsPreparing}>
       <label><RequiredLabel>Marca</RequiredLabel><input required maxLength="80" autoFocus disabled={Boolean(editing) && !can('vehicles.edit')} value={form.brand} onChange={event => setForm({ ...form, brand: event.target.value })} /></label>
       <label><RequiredLabel>Modelo</RequiredLabel><input required maxLength="120" disabled={Boolean(editing) && !can('vehicles.edit')} value={form.model} onChange={event => setForm({ ...form, model: event.target.value })} /></label>

@@ -48,7 +48,7 @@ async function notificationsFor(sql, state, user, now = new Date()) {
     try { passwordResetRequests = JSON.parse(row?.value || '[]') } catch { /* malformed legacy preference */ }
   }
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
-  const operational = technicalOnly ? [] : selectDashboardNotifications({ ...projected, user, today, now: now.getTime(), passwordResetRequests })
+  const operational = technicalOnly ? [] : selectDashboardNotifications({ ...projected, weekly: state.agenda?.weekly, user, today, now: now.getTime(), passwordResetRequests })
   const tickets = policy.can(user, 'notifications.tickets') && policy.can(user, 'tickets.view')
     ? (await require('./tickets-http.cjs').storeFor(sql, 'sql').query(user, state, { mode: 'notifications' })).notifications : []
   const registrations=await require('./native-registration.cjs').notices(sql,'sql',state,user)

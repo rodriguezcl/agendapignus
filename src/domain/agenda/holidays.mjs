@@ -1,3 +1,5 @@
+import { rescheduleVehicleControlRecords } from '../vehicles/vehicle-controls.mjs'
+import { moveRecordInWeeklyAgenda } from '../../features/agenda/application/agenda-model.mjs'
 export const holidayForDate = (records, date, weekly = {}) => (records || []).find(record => record.date === date) || (weekly._holidayOverrides?.[date]?.transferredFrom ? { date, name: weekly._holidayOverrides[date].holidayName } : null)
 
 export const holidayDecisionForDate = (weekly, date) => weekly?._holidayOverrides?.[date] || null
@@ -18,8 +20,18 @@ export function transferHoliday(state, { from, to, holiday, user, today, now = n
   if (overrides[from]?.transferredTo) throw new Error('Este feriado ya fue trasladado. Abrí su nueva fecha.')
   if (overrides[to]?.transferredFrom || overrides[to]?.transferredTo) throw new Error('La fecha de destino ya participa en otro traslado.')
   const metadata = { holidayName: holiday.name, decidedAt: now, decidedById: user.id, decidedByName: user.name }
-  return { ...state, agenda: { ...state.agenda, weekly: { ...weekly, _holidayOverrides: { ...overrides,
+  let nextWeekly = { ...weekly, _holidayOverrides: { ...overrides,
     [from]: { ...metadata, status: 'working', transferredTo: to },
     [to]: { ...metadata, status: 'closed', transferredFrom: from }
-  } } } }
+  } }
+  const history = rescheduleVehicleControlRecords(state.history || [], { weekly: nextWeekly, fromDate: today })
+  const moved = (state.history || []).map((before,index) => ({ before, after: history[index] })).filter(({before,after}) => before.vehicleControl && (before.date !== after.date || before.time !== after.time))
+  const changedDays = new Set()
+  for (const {before,after} of moved) {
+    nextWeekly = moveRecordInWeeklyAgenda(nextWeekly, after, after.date, before.date)
+    changedDays.add(before.date); changedDays.add(after.date)
+  }
+  const agenda = { ...state.agenda, weekly: nextWeekly }
+  if (changedDays.has(agenda.date) && nextWeekly[agenda.date]) agenda.teams = nextWeekly[agenda.date].teams
+  return { ...state, history, agenda }
 }

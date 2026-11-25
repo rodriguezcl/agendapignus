@@ -147,6 +147,16 @@ const agendaTaskWasAlreadyScheduled = (task, date, previousPlan, previousHistory
 }
 
 function validateChangedAgendaSchedules(state, previousState = null) {
+  require('./vehicle-control-schedule-policy.cjs').validateVehicleControlSchedules(state, previousState)
+  const withoutPausedOccupancy = source => {
+    const { vehicleControlsPaused, pausedVehicleControl } = require('./vehicle-controls-pause.cjs')
+    if (!source || !vehicleControlsPaused(source.agenda?.weekly)) return source
+    const weekly = source.agenda.weekly
+    const cleanTeams = (teams, date) => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !pausedVehicleControl({ ...task, ...historyRecordForAgendaTask(task, date, source.history) }, weekly)) }))
+    return { ...source, history: (source.history || []).filter(record => !pausedVehicleControl(record, weekly)), agenda: { ...source.agenda, teams: cleanTeams(source.agenda.teams, source.agenda.date), weekly: Object.fromEntries(Object.entries(weekly).map(([day, plan]) => [day, day.startsWith('_') ? plan : { ...plan, teams: cleanTeams(plan?.teams, day) }])) } }
+  }
+  state = withoutPausedOccupancy(state)
+  previousState = withoutPausedOccupancy(previousState)
   if (previousState) {
     const oldRecords = new Map((previousState.history || []).map(r => [String(r.id), r]))
     for (const record of state.history || []) {

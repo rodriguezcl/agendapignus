@@ -55,24 +55,21 @@ const classified = new Set(Object.values(RECORD_GROUPS).flat())
 const nonempty = value => value != null && value !== '' && value !== false && value !== 0 && (!Array.isArray(value) || value.length)
 function validScheduledControl(record, state, day = record?.date) {
   if (!record?.vehicleControl) return false
-  const friday = String(record.vehicleControlScheduledFriday || '')
+  const { vehicleControlFriday, vehicleControlSchedule } = require('./vehicle-control-schedule.cjs')
+  const friday = vehicleControlFriday(record)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(friday) || new Date(`${friday}T12:00:00Z`).getUTCDay() !== 5) return false
   const month = friday.slice(0, 7), config = state.agenda?.weekly?._monthlyTeams?.[month]
   const assignment = config?.vehicleAssignments?.find(item => id(item.vehicleId) === id(record.vehicleId))
   const responsible = assignment?.weeklyOverrides?.[friday] || assignment?.technicianId
   const employee = (state.employees || []).find(item => id(item.id) === id(responsible))
   const vehicle = (state.vehicles || []).find(item => id(item.id) === id(record.vehicleId))
-  let expectedDay = friday
-  for (let count = 0; count < 14; count++) {
-    const weekday = new Date(`${expectedDay}T12:00:00Z`).getUTCDay()
-    if (weekday >= 1 && weekday <= 5 && state.agenda?.weekly?._holidayOverrides?.[expectedDay]?.status !== 'closed') break
-    const date = new Date(`${expectedDay}T12:00:00Z`); date.setUTCDate(date.getUTCDate() - 1); expectedDay = date.toISOString().slice(0, 10)
-  }
+  let expected
+  try { expected = vehicleControlSchedule(friday, state.agenda?.weekly, record.teamId) } catch { return false }
   const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
   const expectedId = `vehicle-control-${friday}-${record.vehicleId}`
-  return Boolean(assignment && employee && vehicle && expectedDay === day && day >= today && record.monthlyVehicleAssignment === month &&
+  return Boolean(assignment && employee && vehicle && expected.date === day && day >= today && record.monthlyVehicleAssignment === month &&
     id(record.id || record.historyId) === expectedId && id(record.sourceTaskId || record.taskId) === expectedId &&
-    record.serviceId === 'vehicle-weekly-control' && record.service === 'Control semanal de vehículo' && record.time === '15:45' && Number(record.estimatedMinutes) === 15 &&
+    record.serviceId === 'vehicle-weekly-control' && record.service === 'Control semanal de vehículo' && record.time === expected.time && Number(record.estimatedMinutes) === expected.estimatedMinutes &&
     same((record.technicianIds || []).map(String), [id(responsible)]) && same(record.technicians, [employee.name]) &&
     !record.customerId && !record.address && !record.phone && !record.startedAt && !record.completedAt && !record.technicalStatus && (!record.status || record.status === 'Pendiente'))
 }
@@ -351,6 +348,11 @@ function assertAgendaChange(before = {}, after = {}, user, state, derived = { te
     if (key === '_workday') { requirePermission(user, 'settings.workday.manage'); continue }
     if (key === '_frozenMonthOptions') { requirePermission(user, 'settings.frozenMonths'); continue }
     if (key === '_holidayOverrides') { requirePermission(user, 'weekly.holidays'); continue }
+    if (key === '_vehicleControls') {
+      requirePermission(user, 'vehicles.edit')
+      if (!newWeekly[key] || typeof newWeekly[key].paused !== 'boolean' || Object.keys(newWeekly[key]).some(field => field !== 'paused')) fail('vehicles.edit', 'Configuración de controles vehiculares inválida.')
+      continue
+    }
     if (key === '_annualGuards') { requirePermission(user, 'weekly.guards.manage'); continue }
     if (key === '_monthlyTeams') {
       const previous = oldWeekly[key] || {}, next = newWeekly[key] || {}

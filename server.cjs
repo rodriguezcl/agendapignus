@@ -771,15 +771,16 @@ function readTechnicianState(user) {
   const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
   const journeyHistory = rows('work_history')
   const gate = require('./api/_lib/technician-agenda-gate.cjs')
-  const cutoff = gate.cutoff(journeyHistory, user)
-  const history = journeyHistory.filter(record => record.awaitingConfirmation !== true && gate.visible(record, cutoff))
+  const weekly = readState().agenda?.weekly || {}
+  const cutoff = gate.cutoff(journeyHistory, user, undefined, weekly)
+  const history = journeyHistory.filter(record => record.awaitingConfirmation !== true && !require('./api/_lib/vehicle-controls-pause.cjs').pausedVehicleControl(record, weekly) && gate.visible(record, cutoff))
   const assignedHistory = history.filter(record => record.technicianIds?.some(id => String(id) === technicianId))
   const activeAssigned = assignedHistory.filter(record => String(record.date || '') >= today && !record.technicalStatus && !['Completado', 'Avance registrado', 'Cancelado', 'Reprogramado'].includes(record.status))
   const activeCustomerIds = new Set(activeAssigned.map(record => String(record.customerId || '')).filter(Boolean))
   const activeCustomerAccounts = new Set(activeAssigned.map(record => String(record.clientAccount || String(record.client || '').trim().split(/\s+/)[0] || '').trim().toUpperCase()).filter(Boolean))
   return {
     revision: currentStateRevision(),
-    roles: [], employees: [], services: [], vehicles: readState().vehicles || [], customers: [], agenda: null, preferences: {},
+    roles: [], employees: [], services: [], vehicles: readState().vehicles || [], customers: [], agenda: weekly._vehicleControls ? { weekly: { _vehicleControls: weekly._vehicleControls } } : null, preferences: {},
     // El nombre es solamente una etiqueta visible. El acceso se decide siempre
     // mediante el identificador inmutable del empleado autenticado.
     history: history.filter(record => {
@@ -826,7 +827,7 @@ function localStateProjection(state, user) {
     vehicles: userCan(user, 'vehicles') || userCan(user, 'weeklyVehicles') ? state.vehicles : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : userCan(user, 'map') ? (state.customers || []).map(require('./api/_lib/subscriber-map-access.cjs').mapCustomer) : [],
     history: userCan(user, 'history') || userCan(user, 'accounts') || userCan(user, 'collections') ? state.history : [],
-    agenda: canPlan ? state.agenda : null
+    agenda: canPlan ? state.agenda : userCan(user, 'vehicles') || state.agenda?.weekly?._vehicleControls ? { weekly: { ...(state.agenda?.weekly?._vehicleControls ? { _vehicleControls: state.agenda.weekly._vehicleControls } : {}) } } : null
   }
 }
 
@@ -914,7 +915,7 @@ function authorizedIncomingState(state, user) {
   }
   const currentAgenda = current.agenda || {}
   const incomingAgenda = state.agenda || {}
-  const { _holidayOverrides: ignoredHolidayOverrides, _annualGuards: ignoredAnnualGuards, _monthlyTeams: ignoredMonthlyTeams, ...incomingWeeklyWithoutProtectedConfiguration } = incomingAgenda.weekly || {}
+  const { _vehicleControls: ignoredVehicleControls, _holidayOverrides: ignoredHolidayOverrides, _annualGuards: ignoredAnnualGuards, _monthlyTeams: ignoredMonthlyTeams, ...incomingWeeklyWithoutProtectedConfiguration } = incomingAgenda.weekly || {}
   const currentMonthly = currentAgenda.weekly?._monthlyTeams || {}
   const incomingMonthly = incomingAgenda.weekly?._monthlyTeams || {}
   const protectedMonthly = Object.fromEntries([...new Set([...Object.keys(currentMonthly), ...Object.keys(incomingMonthly)])].map(month => {
@@ -929,8 +930,11 @@ function authorizedIncomingState(state, user) {
       ...(canConfigureAnything && proposed.configurationHistory ? { configurationHistory: proposed.configurationHistory } : {})
     }]
   }))
-  const protectedWeekly = administrator ? incomingAgenda.weekly : {
+  const vehicleControls = userCan(user, 'vehicles') ? incomingAgenda.weekly?._vehicleControls ?? currentAgenda.weekly?._vehicleControls : currentAgenda.weekly?._vehicleControls
+  if (vehicleControls && (typeof vehicleControls.paused !== 'boolean' || Object.keys(vehicleControls).some(field => field !== 'paused'))) throw new Error('Configuración de controles vehiculares inválida.')
+  const protectedWeekly = administrator ? { ...incomingAgenda.weekly, ...(vehicleControls ? { _vehicleControls: vehicleControls } : {}) } : {
     ...incomingWeeklyWithoutProtectedConfiguration,
+    ...(vehicleControls ? { _vehicleControls: vehicleControls } : {}),
     ...(currentAgenda.weekly?._holidayOverrides ? { _holidayOverrides: currentAgenda.weekly._holidayOverrides } : {}),
     ...(userCan(user, 'weeklyGuards') ? (incomingAgenda.weekly?._annualGuards ? { _annualGuards: incomingAgenda.weekly._annualGuards } : {}) : (currentAgenda.weekly?._annualGuards ? { _annualGuards: currentAgenda.weekly._annualGuards } : {})),
     ...(Object.keys(protectedMonthly).length ? { _monthlyTeams: protectedMonthly } : {})
@@ -938,7 +942,7 @@ function authorizedIncomingState(state, user) {
   const agenda = {
     ...currentAgenda,
     ...(userCan(user, 'agenda') ? { date: incomingAgenda.date, teams: incomingAgenda.teams } : {}),
-    ...(userCan(user, 'weekly') ? { weekly: protectedWeekly } : {})
+    ...(userCan(user, 'weekly') ? { weekly: protectedWeekly } : vehicleControls ? { weekly: { ...currentAgenda.weekly, _vehicleControls: vehicleControls } } : {})
   }
   const existingCustomerIds = new Set((current.customers || []).map(customer => String(customer.customerId)))
   const planningCustomers = canPlan ? [...(current.customers || []), ...(state.customers || []).filter(customer => !existingCustomerIds.has(String(customer.customerId)) && customerKind(customer) === 'client')] : current.customers
@@ -1143,6 +1147,7 @@ function stampStateServiceTrace(state, previousAgenda, previousHistory, user) {
 
 function managedHistoryRecord(current, proposed, user, now = new Date().toISOString(), accessState) {
   proposed = endpointPolicy.restoreServiceProposal(current, proposed, user, accessState)
+  require('./api/_lib/vehicle-control-schedule-policy.cjs').assertVehicleControlSchedule({ ...current, ...proposed }, current, (accessState || readState()).agenda?.weekly)
   if (isGranular(user)) granularWrite.assertServiceChange(current, { ...current, ...proposed }, user, accessState)
   require('./api/_lib/completed-service-policy.cjs').assertCompletedServiceChange(current, proposed)
   if (current.serviceJourney) {
@@ -1215,6 +1220,7 @@ async function saveState(state, user) {
     error.statusCode = 409
     throw error
   }
+  state = require('./api/_lib/vehicle-controls-resume.cjs').resumeVehicleControls(state, previousState)
   state = require('./api/_lib/inactive-employee-assignments.cjs').removeInactiveAssignments(state)
   state = require('./api/_lib/team-service-assignments.cjs').synchronizeTeamServiceAssignments(state, previousState)
   require('./api/_lib/multi-service.cjs').validateServiceTypes(state)
@@ -2409,7 +2415,7 @@ const server = http.createServer((req, res) => {
       try {
         const previousRow = db.prepare('SELECT data FROM work_history WHERE id = ?').get(String(recordId || ''))
         const previous = previousRow?.data ? JSON.parse(previousRow.data) : null
-        endpointPolicy.assertTechnicalAction(user, previous, isGranular(user) ? readState() : undefined, 'start')
+        endpointPolicy.assertTechnicalAction(user, previous, readState(), 'start')
         const next = startTechnicianServiceRecord(previous, user)
         if (next === previous) {
           db.exec('COMMIT')
@@ -2453,7 +2459,7 @@ const server = http.createServer((req, res) => {
           if ((record.technicalStatus === type || type === 'Completado' && record.workCompletion) && String(record.technicalReportedById) === String(user.id)) return send(res, 200, { record: technicianSafeRecord(record, user) })
           return send(res, 409, { error: 'Este servicio ya fue informado desde otra sesión.' })
         }
-      endpointPolicy.assertTechnicalAction(user, record, isGranular(user) ? readState() : undefined, type)
+      endpointPolicy.assertTechnicalAction(user, record, priorState, type)
       require('./api/_lib/service-journeys.cjs').assertJourneyReport(record, type, readState().history)
       const completingVehicleControl = Boolean(record.vehicleControl && type === 'Completado')
       let vehicleChange = null

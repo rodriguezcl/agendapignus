@@ -10,6 +10,7 @@ import { canReadRecord } from '../access/record-scope.mjs'
 import policy from '../../../api/_lib/permission-catalog.cjs'
 import alarmZones from '../../../api/_lib/alarm-zones.cjs'
 import addressChange from '../../../api/_lib/address-change.cjs'
+import controlPause from '../../../api/_lib/vehicle-controls-pause.cjs'
 
 export const DASHBOARD_PENDING_NOTICES = [
   { key: 'today', title: 'Pendientes de gestión', detail: 'Servicios de hoy que todavía requieren gestión.', tone: 'warning' },
@@ -71,13 +72,13 @@ export function visibleNotificationCustomers(customers = [], history = [], user)
  * request state: this selector performs no requests, mutation or clock reads.
  * Targets describe navigation only; resolution remains in the existing modules.
  */
-export function selectDashboardNotifications({ history = [], vehicles = [], customers = [], passwordResetRequests = [], today, now, isAdministrator = false, permissions = {}, user } = {}) {
+export function selectDashboardNotifications({ history = [], weekly = {}, vehicles = [], customers = [], passwordResetRequests = [], today, now, isAdministrator = false, permissions = {}, user } = {}) {
   const subject = isAdministrator ? { ...user, roleCode: 'administrator' } : user || { permissions }
   const administrator = policy.roleCode(subject) === 'administrator'
   const access = dashboardNotificationAccess(subject)
   const can = key => access[key] === true
   const receives = category => administrator || can(`notifications.${category}`)
-  history = history.filter(record => administrator || canReadRecord(record, subject, customers))
+  history = history.filter(record => !controlPause.pausedVehicleControl(record, weekly) && (administrator || canReadRecord(record, subject, customers)))
   // Old in-memory commercial/contact fields must not outlive their permission.
   if (!can('records.financial') || !can('records.contact')) history = history.map(record => ({ ...record, form: undefined, formEmail: undefined }))
   const visibleCustomers = visibleNotificationCustomers(customers, history, subject)

@@ -5,9 +5,9 @@ function resolved(record) {
   if (record?.status === 'Requiere revisión' && record.technicianRequest === 'Reprogramación solicitada') return true
   return Boolean(record?.technicalStatus || ['Completado', 'Avance registrado'].includes(record?.status))
 }
-function cutoff(records = [], user, today = localDate()) {
+function cutoff(records = [], user, today = localDate(), weekly = {}) {
   return records.filter(record => (!user || record.technicianIds?.some(id => String(id) === String(user.id)))
-    && !record.awaitingConfirmation && !resolved(record) && /^\d{4}-\d{2}-\d{2}$/.test(record.date || '') && record.date <= today)
+    && !require('./vehicle-controls-pause.cjs').pausedVehicleControl(record, weekly) && !record.awaitingConfirmation && !resolved(record) && /^\d{4}-\d{2}-\d{2}$/.test(record.date || '') && record.date <= today)
     .map(record => record.date).sort()[0] || ''
 }
 const visible = (record, date) => !date || !record.date || record.date <= date

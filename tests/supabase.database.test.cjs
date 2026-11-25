@@ -30,7 +30,34 @@ test('consulta sólo historial relacionado y vehículos para refrescar la agenda
   assert.equal((queries[0].statement.match(/jsonb_array_elements_text/g) || []).length, 2)
   assert.doesNotMatch(queries[0].statement, /technicianIds'[^\n]*\?/)
   assert.deepEqual(queries[0].values, ['tech-1', '2026-09-10', 'tech-1'])
-  assert.doesNotMatch(queries[0].statement, /pignus_customers|pignus_agendas|pignus_employees|pignus_roles/)
+  assert.doesNotMatch(queries[0].statement, /pignus_customers|pignus_employees|pignus_roles|select data from pignus_agendas/)
+  assert.equal(state.agenda, null)
+})
+
+test('la lectura móvil legacy transmite la pausa a la proyección técnica y libera la agenda siguiente', async () => {
+  const { visibleStateForUser, visibleTechnicianStateForUser } = require('../api/_lib/core.cjs')
+  const user = { id: 'tech-1', roleCode: 'technician' }
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const oldControl = { id: 'control', date: '2020-01-01', status: 'Pendiente', vehicleControl: true, technicianIds: ['tech-1'] }
+  const history = [oldControl, { ...oldControl, id: 'completed-control', status: 'Completado', technicalStatus: 'Completado', technicalObservation: 'Informe conservado' }, { id: 'today', date: today, status: 'Pendiente', technicianIds: ['tech-1'] }]
+  for (const vehicle_controls of [{ paused: true }, { paused: false }, null]) {
+    let queries = 0
+    const sql = async strings => {
+      queries++
+      assert.ok(strings.join('').includes("data->'weekly'->'_vehicleControls'"), 'La consulta debe obtener el indicador de pausa')
+      return [{ history, vehicle_controls, preferences: { state_revision: '15' } }]
+    }
+    const state = await readTechnicianState(sql, user.id, today)
+    assert.equal(queries, 1)
+    assert.deepEqual(state.agenda, vehicle_controls ? { weekly: { _vehicleControls: vehicle_controls } } : null)
+    for (const project of [visibleStateForUser, visibleTechnicianStateForUser]) {
+      const result = project(state, user)
+      assert.equal(result.history.some(record => record.id === 'control'), vehicle_controls?.paused !== true)
+      assert.equal(result.history.some(record => record.id === 'today'), vehicle_controls?.paused === true)
+      assert.equal(result.history.find(record => record.id === 'completed-control').technicalObservation, 'Informe conservado')
+      assert.deepEqual(result.agenda, state.agenda)
+    }
+  }
 })
 
 test('reconstruye el estado de Supabase en una única consulta agregada', async () => {

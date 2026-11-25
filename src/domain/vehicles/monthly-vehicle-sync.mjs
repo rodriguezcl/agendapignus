@@ -1,3 +1,4 @@
+import controlPause from '../../../api/_lib/vehicle-controls-pause.cjs'
 import { suggestedVehicleAssignments, buildVehicleControlRecords, vehicleControlTask, vehicleControlFriday } from './vehicle-controls.mjs'
 
 const same = (a, b) => String(a) === String(b)
@@ -15,7 +16,11 @@ export function synchronizeMonthlyVehicles(state, { month, teams, vehicles, tech
     const weeklyOverrides = Object.fromEntries(Object.entries(old?.weeklyOverrides || {}).filter(([, id]) => !same(id, old.technicianId)))
     return { ...assignment, ...(Object.keys(weeklyOverrides).length ? { weeklyOverrides } : {}) }
   })
-  const generated = buildVehicleControlRecords({ month, assignments, vehicles, technicians, teams, fromDate, holidays, holidayOverrides: weekly._holidayOverrides || {} })
+  if (controlPause.vehicleControlsPaused(weekly)) {
+    weekly._monthlyTeams = { ...weekly._monthlyTeams, [month]: { ...previous, teams, vehicleAssignments: assignments } }
+    return next
+  }
+  const generated = buildVehicleControlRecords({ month, assignments, vehicles, technicians, teams, fromDate, holidays, weekly, holidayOverrides: weekly._holidayOverrides || {} })
   const existing = next.history.filter(record => record.vehicleControl && (record.monthlyVehicleAssignment || vehicleControlFriday(record).slice(0, 7)) === month)
   const freshMonth = !previous.vehicleAssignments?.length && !existing.length
   const targets = freshMonth ? generated : existing.filter(record => editable(record, fromDate)).map(record => {

@@ -90,11 +90,13 @@ async function readTechnicianState(sql, technicianId, today) {
           or nullif(history.data->>'customerId', '') in (select customer_id from active_customers where customer_id is not null)
           or upper(coalesce(nullif(history.data->>'clientAccount', ''), split_part(coalesce(history.data->>'client', ''), ' ', 1))) in (select account from active_customers where account <> '')
       ), '[]'::jsonb) as history,
+      (select data->'weekly'->'_vehicleControls' from pignus_agendas where id = 'current') as vehicle_controls,
       coalesce((select jsonb_object_agg(key, value) from pignus_preferences where key in ('state_revision', 'vehicles')), '{}'::jsonb) as preferences
   `
   return {
     revision: Number(state.preferences?.state_revision || 0),
-    roles: [], employees: [], services: [], customers: [], reviews: [], agenda: null,
+    roles: [], employees: [], services: [], customers: [], reviews: [],
+    agenda: state.vehicle_controls ? { weekly: { _vehicleControls: state.vehicle_controls } } : null,
     history: state.history || [],
     vehicles: vehicleCollection(state.preferences?.vehicles),
     preferences: {}

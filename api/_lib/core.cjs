@@ -170,8 +170,8 @@ function projectStateForUser(state, user, ticketUser = user) {
   if (user.roleCode === 'technician') {
     const journeyHistory = state.history
     const gate = require('./technician-agenda-gate.cjs')
-    const cutoff = gate.cutoff(state.history, user)
-    state = { ...state, history: state.history.filter(record => record.awaitingConfirmation !== true && gate.visible(record, cutoff)) }
+    const cutoff = gate.cutoff(state.history, user, undefined, state.agenda?.weekly)
+    state = { ...state, history: state.history.filter(record => record.awaitingConfirmation !== true && !require('./vehicle-controls-pause.cjs').pausedVehicleControl(record, state.agenda?.weekly) && gate.visible(record, cutoff)) }
     const technicianId = String(user.id)
     const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
     const assignedHistory = state.history.filter(record => record.technicianIds?.some(id => String(id) === technicianId))
@@ -190,7 +190,7 @@ function projectStateForUser(state, user, ticketUser = user) {
     })
     return {
       revision: state.revision,
-      roles: [], employees: [], services: [], vehicles: (state.vehicles || []).map(vehicle => ({ ...technicianVehicle(vehicle), ...(assignedHistory.some(record => record.vehicleControl && String(record.vehicleId) === String(vehicle.id)) ? { mileage: vehicle.mileage == null ? null : Number(vehicle.mileage) } : {}) })), customers: [], agenda: null, preferences: {},
+      roles: [], employees: [], services: [], vehicles: (state.vehicles || []).map(vehicle => ({ ...technicianVehicle(vehicle), ...(assignedHistory.some(record => record.vehicleControl && String(record.vehicleId) === String(vehicle.id)) ? { mileage: vehicle.mileage == null ? null : Number(vehicle.mileage) } : {}) })), customers: [], agenda: state.agenda?.weekly?._vehicleControls ? { weekly: { _vehicleControls: state.agenda.weekly._vehicleControls } } : null, preferences: {},
       history: visibleHistory.map(record => technicianSafeRecord(record.serviceJourney ? { ...record, journeyActiveIndexes: require('./service-journeys.cjs').activeJourneyIndexes(record, journeyHistory) } : record, ticketUser))
     }
   }
@@ -218,7 +218,7 @@ function projectStateForUser(state, user, ticketUser = user) {
     vehicles: userCan(user, 'vehicles') || userCan(user, 'weeklyVehicles') ? state.vehicles || [] : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : userCan(user, 'map') ? (state.customers || []).map(require('./subscriber-map-access.cjs').mapCustomer) : [],
     history: userCan(user, 'history') || userCan(user, 'accounts') || userCan(user, 'collections') ? projectLegacyCollectionReceipts(state.history, user) : [],
-    agenda: canPlan ? projectLegacyCollectionReceipts(state.agenda, user) : null,
+    agenda: canPlan ? projectLegacyCollectionReceipts(state.agenda, user) : userCan(user, 'vehicles') || state.agenda?.weekly?._vehicleControls ? { weekly: { ...(state.agenda?.weekly?._vehicleControls ? { _vehicleControls: state.agenda.weekly._vehicleControls } : {}) } } : null,
     preferences: state.preferences
   }
 }
@@ -259,7 +259,7 @@ function authorizeIncomingState(incoming, current, user) {
   }
   const currentAgenda = current.agenda || {}
   const incomingAgenda = incoming.agenda || {}
-  const { _workday: ignoredWorkday, _holidayOverrides: ignoredHolidayOverrides, _annualGuards: ignoredAnnualGuards, _monthlyTeams: ignoredMonthlyTeams, _frozenMonthOptions: ignoredFrozenMonthOptions, ...incomingWeeklyWithoutProtectedConfiguration } = incomingAgenda.weekly || {}
+  const { _vehicleControls: ignoredVehicleControls, _workday: ignoredWorkday, _holidayOverrides: ignoredHolidayOverrides, _annualGuards: ignoredAnnualGuards, _monthlyTeams: ignoredMonthlyTeams, _frozenMonthOptions: ignoredFrozenMonthOptions, ...incomingWeeklyWithoutProtectedConfiguration } = incomingAgenda.weekly || {}
   const currentMonthly = currentAgenda.weekly?._monthlyTeams || {}
   const incomingMonthly = incomingAgenda.weekly?._monthlyTeams || {}
   const protectedMonthly = Object.fromEntries([...new Set([...Object.keys(currentMonthly), ...Object.keys(incomingMonthly)])].map(month => {
@@ -274,8 +274,11 @@ function authorizeIncomingState(incoming, current, user) {
       ...(canConfigureAnything && proposed.configurationHistory ? { configurationHistory: proposed.configurationHistory } : {})
     }]
   }))
-  const protectedWeekly = administrator ? incomingAgenda.weekly : {
+  const vehicleControls = userCan(user, 'vehicles') ? incomingAgenda.weekly?._vehicleControls ?? currentAgenda.weekly?._vehicleControls : currentAgenda.weekly?._vehicleControls
+  if (vehicleControls && (typeof vehicleControls.paused !== 'boolean' || Object.keys(vehicleControls).some(field => field !== 'paused'))) throw new Error('Configuración de controles vehiculares inválida.')
+  const protectedWeekly = administrator ? { ...incomingAgenda.weekly, ...(vehicleControls ? { _vehicleControls: vehicleControls } : {}) } : {
     ...incomingWeeklyWithoutProtectedConfiguration,
+    ...(vehicleControls ? { _vehicleControls: vehicleControls } : {}),
     ...(currentAgenda.weekly?._workday ? { _workday: currentAgenda.weekly._workday } : {}),
     ...(currentAgenda.weekly?._frozenMonthOptions !== undefined ? { _frozenMonthOptions: currentAgenda.weekly._frozenMonthOptions } : {}),
     ...(currentAgenda.weekly?._holidayOverrides ? { _holidayOverrides: currentAgenda.weekly._holidayOverrides } : {}),
@@ -307,7 +310,7 @@ function authorizeIncomingState(incoming, current, user) {
     agenda: {
       ...currentAgenda,
       ...(userCan(user, 'agenda') ? { date: incomingAgenda.date, teams: incomingAgenda.teams } : {}),
-      ...(userCan(user, 'weekly') ? { weekly: protectedWeekly } : {})
+      ...(userCan(user, 'weekly') ? { weekly: protectedWeekly } : vehicleControls ? { weekly: { ...currentAgenda.weekly, _vehicleControls: vehicleControls } } : {})
     }
   }, current, user, canPlan))
 }
@@ -318,6 +321,7 @@ function customerKind(customer) {
 }
 
 function normalizeStateForSave(state, current, { allowEarlyCompletion = false } = {}) {
+  state = require('./vehicle-controls-resume.cjs').resumeVehicleControls(state, current)
   state = { ...state, services: require('./address-change.cjs').ensureAddressChangeService(state.services) }
   state = require('./inactive-employee-assignments.cjs').removeInactiveAssignments(state)
   state = persistentStateInput(state)

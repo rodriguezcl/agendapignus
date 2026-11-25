@@ -718,7 +718,7 @@ async function handleTechnicianStart(req, res, sql, user) {
       const currentRevision = Number(revisionRows[0]?.value || 0)
       const rows = await transaction`select data from pignus_work_history where id = ${String(recordId || '')} for update`
       const previous = rows[0]?.data
-      if (isGranular(user)) endpointPolicy.assertTechnicalAction(user, previous, await readState(transaction), 'start')
+      endpointPolicy.assertTechnicalAction(user, previous, await readState(transaction), 'start')
       const next = startTechnicianServiceRecord(previous, user)
       if (next === previous) return { record: previous, revision: currentRevision }
       const currentState = await readState(transaction)
@@ -850,6 +850,7 @@ async function clearDailyAgenda(sql, user) {
 
 function managedHistoryRecord(current, proposed, user, now, accessState) {
   proposed = endpointPolicy.restoreServiceProposal(current, proposed, user, accessState)
+  require('./_lib/vehicle-control-schedule-policy.cjs').assertVehicleControlSchedule({ ...current, ...proposed }, current, accessState?.agenda?.weekly)
   if (isGranular(user)) granularWrite.assertServiceChange(current, { ...current, ...proposed }, user, accessState)
   require('./_lib/completed-service-policy.cjs').assertCompletedServiceChange(current, proposed)
   require('./_lib/service-confirmation.cjs').assertServiceConfirmationChange(current, { ...current, ...proposed }, now)

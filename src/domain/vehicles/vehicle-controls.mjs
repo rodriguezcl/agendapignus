@@ -1,3 +1,5 @@
+import controlPause from '../../../api/_lib/vehicle-controls-pause.cjs'
+import controlSchedule from '../../../api/_lib/vehicle-control-schedule.cjs'
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 
 export const VEHICLE_CONTROL_SERVICE = 'Control semanal de vehículo'
@@ -94,62 +96,44 @@ export function suggestedVehicleAssignments(vehicles, teams, { month = '', assig
 
 export const vehicleControlId = (date, vehicleId) => `vehicle-control-${date}-${vehicleId}`
 
-const previousDate = date => {
-  const value = new Date(`${date}T12:00:00Z`)
-  value.setUTCDate(value.getUTCDate() - 1)
-  return value.toISOString().slice(0, 10)
-}
-
-const weekday = date => new Date(`${date}T12:00:00Z`).getUTCDay()
-
-export const vehicleControlFriday = record => {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(String(record?.vehicleControlScheduledFriday || ''))) return record.vehicleControlScheduledFriday
-  return String(record?.id || '').match(/^vehicle-control-(\d{4}-\d{2}-\d{2})-/)?.[1] || record?.date || ''
-}
+export const vehicleControlFriday = controlSchedule.vehicleControlFriday
+export const vehicleControlSchedule = controlSchedule.vehicleControlSchedule
 
 export function vehicleControlOperationalDate(friday, holidays = [], holidayOverrides = {}) {
-  const holidayDates = new Set((holidays || []).map(item => String(item?.date || '')).filter(Boolean))
-  let candidate = friday
-  // Los controles se realizan en una jornada ordinaria de lunes a viernes. Un
-  // feriado solamente se salta cuando Administración ya lo definió como cerrado.
-  for (let attempts = 0; attempts < 14; attempts += 1) {
-    const day = weekday(candidate)
-    const configuredHoliday = holidayDates.has(candidate) || Object.prototype.hasOwnProperty.call(holidayOverrides || {}, candidate)
-    const closedHoliday = configuredHoliday && holidayOverrides?.[candidate]?.status === 'closed'
-    if (day >= 1 && day <= 5 && !closedHoliday) return candidate
-    candidate = previousDate(candidate)
-  }
-  return friday
+  return vehicleControlSchedule(friday, { _holidayOverrides: holidayOverrides }).date
 }
 
-export function rescheduleVehicleControlRecords(records, { holidays = [], holidayOverrides = {} } = {}) {
+export function rescheduleVehicleControlRecords(records, { holidays = [], weekly = {}, holidayOverrides = weekly._holidayOverrides || {}, fromDate = '' } = {}) {
+  if (controlPause.vehicleControlsPaused(weekly)) return records || []
   return (records || []).map(record => {
-    if (!record?.vehicleControl || record.technicalStatus || record.status === 'Completado') return record
+    if (!record?.vehicleControl || (fromDate && record.date < fromDate) || record.startedAt || record.completedAt || record.technicalStatus || record.technicalReportedAt || ['Completado', 'Cancelado', 'Reprogramado', 'Avance registrado'].includes(record.status)) return record
     const friday = vehicleControlFriday(record)
-    const date = vehicleControlOperationalDate(friday, holidays, holidayOverrides)
-    return date === record.date && record.vehicleControlScheduledFriday === friday
+    const schedule = vehicleControlSchedule(friday, { ...weekly, _holidayOverrides: holidayOverrides }, record.teamId)
+    return schedule.date === record.date && schedule.time === record.time && record.vehicleControlScheduledFriday === friday
       ? record
-      : { ...record, date, vehicleControlScheduledFriday: friday }
+      : { ...record, ...schedule, vehicleControlScheduledFriday: friday }
   })
 }
 
-export function buildVehicleControlRecords({ month, assignments, vehicles, technicians, teams, fromDate = '', holidays = [], holidayOverrides = {} }) {
+export function buildVehicleControlRecords({ month, assignments, vehicles, technicians, teams, fromDate = '', holidays = [], weekly = {}, holidayOverrides = weekly._holidayOverrides || {} }) {
+  if (controlPause.vehicleControlsPaused(weekly)) return []
   const byVehicle = new Map((vehicles || []).map(vehicle => [String(vehicle.id), vehicle]))
   const byTechnician = new Map((technicians || []).map(technician => [String(technician.id), technician]))
   return monthFridays(month).flatMap(friday => (assignments || []).map(assignment => {
-    const date = vehicleControlOperationalDate(friday, holidays, holidayOverrides)
-    if (fromDate && date < fromDate) return null
+    if (fromDate && friday < fromDate) return null
     const vehicle = byVehicle.get(String(assignment.vehicleId))
     const assignedTechnicianId = assignment.weeklyOverrides?.[friday] || assignment.technicianId
     const technician = byTechnician.get(String(assignedTechnicianId))
     if (!vehicle || !technician) return null
     const teamIndex = (teams || []).findIndex(team => (team.memberIds || []).some(id => String(id) === String(technician.id)))
+    const schedule = vehicleControlSchedule(friday, { ...weekly, _holidayOverrides: holidayOverrides }, teams?.[teamIndex]?.teamId)
+    if (fromDate && schedule.date < fromDate) return null
     const id = vehicleControlId(friday, vehicle.id)
     return {
       id,
       sourceTaskId: id,
-      date,
-      time: VEHICLE_CONTROL_TIME,
+      date: schedule.date,
+      time: schedule.time,
       serviceId: VEHICLE_CONTROL_SERVICE_ID,
       service: VEHICLE_CONTROL_SERVICE,
       estimatedMinutes: VEHICLE_CONTROL_ESTIMATED_MINUTES,

@@ -79,6 +79,9 @@ function assertServiceAccess(user, record, state, { write: writing = false, perm
 }
 
 function assertTechnicalAction(user, record, state, type) {
+  if (require('./vehicle-controls-pause.cjs').pausedVehicleControl(record, state?.agenda?.weekly)) {
+    throw Object.assign(new Error('Los controles vehiculares están pausados desde Flota.'), { statusCode: 409, code: 'VEHICLE_CONTROLS_PAUSED' })
+  }
   if (!catalog.isGranular(user)) return
   const key = record?.vehicleControl ? 'technical.vehicleControl' : ({
     'Completado': 'technical.complete', 'Avance registrado': 'technical.progress',

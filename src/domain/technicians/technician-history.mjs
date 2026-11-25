@@ -1,3 +1,4 @@
+import controlPause from '../../../api/_lib/vehicle-controls-pause.cjs'
 import agendaGate from '../../../api/_lib/technician-agenda-gate.cjs'
 export const technicianAgendaCutoff = agendaGate.cutoff
 const normalize = value => String(value || '')
@@ -72,11 +73,11 @@ export function technicianAgendaGroups(services, today) {
   ]
 }
 
-export function technicianAgendaServices(records, today) {
+export function technicianAgendaServices(records, today, weekly = {}) {
   const tomorrow = nextCalendarDate(today)
-  const cutoff = agendaGate.cutoff(records, null, today)
+  const cutoff = agendaGate.cutoff(records, null, today, weekly)
   return (records || []).filter(record => {
-    if (record.awaitingConfirmation === true || technicianRecordResolved(record)) return false
+    if (controlPause.pausedVehicleControl(record, weekly) || record.awaitingConfirmation === true || technicianRecordResolved(record)) return false
     const date = String(record?.date || '')
     // La agenda operativa incluye cualquier pendiente vencido y limita el
     // futuro al día siguiente. La misma regla se aplica a controles vehiculares
@@ -86,10 +87,10 @@ export function technicianAgendaServices(records, today) {
     String(left.time || left.scheduledTime || '99:99').localeCompare(String(right.time || right.scheduledTime || '99:99')))
 }
 
-export function overdueVehicleControls(records, today) {
-  return (records || []).filter(record => record?.vehicleControl && record.date < today && !technicianRecordResolved(record))
+export function overdueVehicleControls(records, today, weekly = {}) {
+  return (records || []).filter(record => !controlPause.pausedVehicleControl(record, weekly) && record?.vehicleControl && record.date < today && !technicianRecordResolved(record))
 }
 
-export function blockingOverdueVehicleControl(records, index, today) {
-  return (records || []).slice(0, index).find(record => record?.vehicleControl && record.date < today && !technicianRecordResolved(record)) || null
+export function blockingOverdueVehicleControl(records, index, today, weekly = {}) {
+  return (records || []).slice(0, index).find(record => !controlPause.pausedVehicleControl(record, weekly) && record?.vehicleControl && record.date < today && !technicianRecordResolved(record)) || null
 }

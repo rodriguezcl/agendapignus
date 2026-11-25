@@ -1,3 +1,4 @@
+import controlPause from '../../../../api/_lib/vehicle-controls-pause.cjs'
 import React, { useEffect, useRef, useState } from 'react'
 import MonthlyHoursSettings from '../../../components/MonthlyHoursSettings.jsx'
 import ModuleIntroduction from '../../../components/ModuleIntroduction.jsx'
@@ -208,7 +209,8 @@ export default function OperationalPlanning({ weekly = {}, activeTechs = [], veh
   }))
   const saveMonthlyVehicleSetup = async (scheduleOnly = false) => {
     if (busyRef.current || pastMonthSelected || (scheduleOnly ? !requirePermission('weekly.controls.schedule') : !canConfigureWeekly('weeklyVehicles'))) return
-    const generateControls = !granular || scheduleOnly
+    if (scheduleOnly && controlPause.vehicleControlsPaused(weekly)) { setNotice('Los controles vehiculares están pausados. Podés reactivarlos desde Flota.'); return }
+    const generateControls = (!granular || scheduleOnly) && !controlPause.vehicleControlsPaused(weekly)
     if (generateControls && !calendarReady()) return
     if (scheduleOnly && !monthlyTeams[monthlyVehicleSetup?.month]?.vehicleAssignments?.length) { setNotice('Guardá primero una asignación mensual válida antes de generar controles.'); return }
     const assignments = (scheduleOnly ? monthlyTeams[monthlyVehicleSetup?.month]?.vehicleAssignments : monthlyVehicleSetup?.assignments) || []
@@ -229,7 +231,7 @@ export default function OperationalPlanning({ weekly = {}, activeTechs = [], veh
       const snapshot = assignmentSnapshot.find(item => String(item.vehicleId) === String(assignment.vehicleId))
       return { ...assignment, vehicle: snapshot?.vehicle || '', technician: snapshot?.technician || '' }
     })
-    const records = buildVehicleControlRecords({ month: monthlyVehicleSetup.month, assignments: persistedAssignments, vehicles, technicians: activeTechs, teams, fromDate: today, holidays: holidayCalendar.records, holidayOverrides: weekly._holidayOverrides || {} })
+    const records = (generateControls ? buildVehicleControlRecords({ month: monthlyVehicleSetup.month, assignments: persistedAssignments, vehicles, technicians: activeTechs, teams, fromDate: today, holidays: holidayCalendar.records, weekly, holidayOverrides: weekly._holidayOverrides || {} }) : [])
       .filter(record => !weeklyTaskRemovalAliases(vehicleControlTask(record)).some(alias => (weekly?.[record.date]?.removedTaskIds || []).includes(alias)))
     const updateWeekly = (previous, generatedControls = []) => {
       let next = { ...previous }
@@ -399,9 +401,10 @@ export default function OperationalPlanning({ weekly = {}, activeTechs = [], veh
               })}</div>
             </fieldset>
             <ConfigurationHistoryPanel history={monthlyTeams[monthKey]?.configurationHistory} type="vehicles" />
+            {controlPause.vehicleControlsPaused(weekly) && <p role="status">Los controles vehiculares están pausados. Se conservan las asignaciones mensuales y el historial. Podés reactivarlos desde Flota.</p>}
             <div className="planning-vehicle-actions">
               {canConfigureWeekly('weeklyVehicles') && panelActions('Guardar responsables', () => saveMonthlyVehicleSetup(false))}
-              {granular && can('weekly.controls.schedule') && !pastMonthSelected && <button type="button" className="secondary" disabled={busy || dirty || !monthlyTeams[monthKey]?.vehicleAssignments?.length} title="Generá controles con la asignación mensual guardada." onClick={() => saveMonthlyVehicleSetup(true)}>Generar controles</button>}
+              {granular && can('weekly.controls.schedule') && !pastMonthSelected && <button type="button" className="secondary" disabled={busy || dirty || controlPause.vehicleControlsPaused(weekly) || !monthlyTeams[monthKey]?.vehicleAssignments?.length} title="Generá controles con la asignación mensual guardada." onClick={() => saveMonthlyVehicleSetup(true)}>Generar controles</button>}
             </div>
           </>}
         </>}

@@ -1,9 +1,11 @@
+import controlPause from '../../../api/_lib/vehicle-controls-pause.cjs'
 import { planningHoursForDay } from './service-gaps.mjs'
 import { minutesAsTime, timeInMinutes, taskOccupiedInterval } from './service-scheduling.mjs'
 import { teamHasAdvancedFridayGuard } from './weekend-guard.mjs'
 
 export function rescheduleSlots(day, record, teams, availableTeams, now = new Date(), weekly = null) {
   const rows = teams.map(team => ({ ...team, slots: [] }))
+  if (controlPause.pausedVehicleControl(record, weekly)) return rows
   const hours = planningHoursForDay(day)
   if (!hours || !/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return rows
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(now).map(part => [part.type, part.value]))

@@ -40,12 +40,14 @@ export function recordHolidayDecision(setWeekly, setNotice, date, holiday, statu
     }
   }
   const sourceHistory = history || globalThis.__pignusHistory || []
-  const rescheduledHistory = rescheduleVehicleControlRecords(sourceHistory, { holidays, holidayOverrides: nextWeekly._holidayOverrides })
-  const movedControls = sourceHistory.map((record, index) => ({ before: record, after: rescheduledHistory[index] })).filter(({ before, after }) => before?.vehicleControl && before.date !== after.date)
+  let rescheduledHistory
+  try { rescheduledHistory = rescheduleVehicleControlRecords(sourceHistory, { holidays, weekly: nextWeekly, holidayOverrides: nextWeekly._holidayOverrides, fromDate: currentLocalDate() }) }
+  catch (error) { setNotice(error.message); return }
+  const movedControls = sourceHistory.map((record, index) => ({ before: record, after: rescheduledHistory[index] })).filter(({ before, after }) => before?.vehicleControl && (before.date !== after.date || before.time !== after.time))
   movedControls.forEach(({ before, after }) => { nextWeekly = moveRecordInWeeklyAgenda(nextWeekly, after, after.date, before.date) })
   setWeekly(nextWeekly)
   const replaceHistory = setHistory || globalThis.__pignusSetHistory
-  if (replaceHistory) replaceHistory(previous => rescheduleVehicleControlRecords(previous, { holidays, holidayOverrides: nextWeekly._holidayOverrides }))
+  if (replaceHistory) replaceHistory(previous => rescheduleVehicleControlRecords(previous, { holidays, weekly: nextWeekly, holidayOverrides: nextWeekly._holidayOverrides, fromDate: currentLocalDate() }))
   const controlNotice = movedControls.length ? ` Se reprogramaron ${movedControls.length} control(es) vehicular(es) pendiente(s) al último día operativo anterior.` : ''
   setNotice(`${status === 'working' ? `${prettyDate(date)} quedó habilitado como día laboral.` : `${prettyDate(date)} quedó definido como día no operativo.`}${controlNotice}`)
 }

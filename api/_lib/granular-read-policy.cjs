@@ -45,7 +45,8 @@ function serviceInReadScope(record, user, state) {
 function serviceReadable(record, user, state) {
   if (permissions.roleCode(user) === 'technician') {
     const gate = require('./technician-agenda-gate.cjs')
-    if (!gate.visible(record, gate.cutoff(state?.history, user))) return false
+    if (require('./vehicle-controls-pause.cjs').pausedVehicleControl(record, state?.agenda?.weekly)) return false
+    if (!gate.visible(record, gate.cutoff(state?.history, user, undefined, state?.agenda?.weekly))) return false
   }
   if (!serviceInReadScope(record, user, state)) return false
   if (record.vehicleControl && permissions.can(user, 'vehicle.controls.read')) return true
@@ -159,6 +160,7 @@ function granularVisibleState(state, user) {
   // Planning needs the applicable workday to validate a proposed appointment.
   if (any(user, ['weekly.view', 'agenda.view', 'settings.workday.read']) && state.agenda?.weekly?._workday) weekly._workday = state.agenda.weekly._workday
   if (any(user, ['planning.freeze', 'settings.frozenMonths']) && state.agenda?.weekly?._frozenMonthOptions) weekly._frozenMonthOptions = state.agenda.weekly._frozenMonthOptions
+  if (state.agenda?.weekly?._vehicleControls) weekly._vehicleControls = state.agenda.weekly._vehicleControls
   const customerLookup = any(user, ['planning.create', 'planning.linkAccount', 'planning.reservation.link', 'history.edit'])
   let customers = can('accounts.view') || can('map.view') || customerLookup ? (state.customers || []).filter(customer => customerReadable(customer, user, state)) : []
   if (can('accounts.view')) customers = customers.map(customer => sanitizeCustomer(customer, user))
@@ -203,7 +205,7 @@ function granularVisibleState(state, user) {
     services: any(user, ['services.view', 'planning.create', 'planning.edit', 'history.edit', 'history.category']) ? state.services || [] : can('dashboard.view') ? (state.services || []).map(({ id, name, code, category }) => ({ id, name, code, category })) : [],
     vehicles: (state.vehicles || []).filter(vehicle => vehicleReadable(vehicle, user, state)).map(vehicle => sanitizeVehicle(vehicle, user)),
     history: [...historyWithZones.values()],
-    agenda: any(user, ['weekly.view', 'agenda.view', 'settings.view']) ? { date: state.agenda?.date, teams: can('agenda.view') ? teams(state.agenda?.teams) : [], weekly } : null,
+    agenda: any(user, ['weekly.view', 'agenda.view', 'settings.view', 'vehicles.view', 'vehicles.edit', 'technical.view']) ? { date: state.agenda?.date, teams: can('agenda.view') ? teams(state.agenda?.teams) : [], weekly } : state.agenda?.weekly?._vehicleControls ? { weekly: { _vehicleControls: state.agenda.weekly._vehicleControls } } : null,
     preferences: {}
   }
 }

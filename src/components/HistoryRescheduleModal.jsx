@@ -1,3 +1,5 @@
+import controlPause from '../../api/_lib/vehicle-controls-pause.cjs'
+import vehicleControlScheduling from '../../api/_lib/vehicle-control-schedule.cjs'
 import React, { useState } from 'react'
 import Icon from './ui/Icon.jsx'
 import { rescheduleSlots } from '../domain/agenda/reschedule-slots.mjs'
@@ -6,12 +8,23 @@ import { durationLabel } from '../domain/agenda/duration-label.mjs'
 import './history-reschedule-modal.css'
 
 export default function HistoryRescheduleModal({ record, estimatedMinutes, scheduling, minimumDate, blocked, onCancel, onSaved }) {
-  const [day, setDay] = useState('')
+  const [chosenDay, setDay] = useState('')
+  const paused = controlPause.pausedVehicleControl(record, scheduling?.weekly)
+  let controlSlot = null, controlError = ''
+  try { if (record.vehicleControl && !paused) controlSlot = vehicleControlScheduling.vehicleControlSchedule(vehicleControlScheduling.vehicleControlFriday(record), scheduling?.weekly, record.teamId) }
+  catch (failure) { controlError = failure.message }
+  const day = record.vehicleControl ? controlSlot?.date || '' : chosenDay
   const [selection, setSelection] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const invalidDay = day && (day < minimumDate || (day === record.date && requiresDifferentRescheduleDay(record)))
-  const teams = day && !invalidDay ? rescheduleSlots(day, { ...record, estimatedMinutes }, scheduling?.assignedTeamsForDate?.(day) || [], scheduling?.teamsForDate || (() => []), new Date(), scheduling?.weekly) : []
+  const availableTeams = day && !invalidDay ? rescheduleSlots(day, { ...record, estimatedMinutes }, scheduling?.assignedTeamsForDate?.(day) || [], scheduling?.teamsForDate || (() => []), new Date(), scheduling?.weekly) : []
+  const teams = record.vehicleControl ? availableTeams.map(team => {
+    try {
+      const slot = vehicleControlScheduling.vehicleControlSchedule(vehicleControlScheduling.vehicleControlFriday(record), scheduling?.weekly, team.teamId)
+      return { ...team, slots: team.slots.filter(item => slot.date === day && item.time === slot.time) }
+    } catch { return { ...team, slots: [] } }
+  }) : availableTeams
   const selectedTeam = teams.find(team => String(team.teamId) === String(selection?.teamId) && team.slots.some(slot => slot.time === selection?.time))
   const busy = blocked || saving
   const save = async () => {
@@ -24,11 +37,14 @@ export default function HistoryRescheduleModal({ record, estimatedMinutes, sched
   return <div className="modal-layer"><section className="modal history-reschedule-modal" role="dialog" aria-modal="true" aria-labelledby="reschedule-title">
     <button type="button" className="close-modal" aria-label="Volver al detalle" title="Volvé al detalle sin reprogramar." disabled={saving} onClick={onCancel}><Icon name="close" /></button>
     <p className="eyebrow">HISTORIAL · REPROGRAMACIÓN</p><h2 id="reschedule-title">Reprogramar servicio</h2><p>{record.client}</p>
-    <div className="reschedule-overview"><div><strong>{record.service}</strong><p>Duración estimada: {durationLabel(estimatedMinutes)}</p></div><label>Reprogramar para<input type="date" min={minimumDate} value={day} disabled={busy} onChange={event => { setDay(event.target.value); setSelection(null); setError('') }} /></label></div>
+    <div className="reschedule-overview"><div><strong>{record.service}</strong><p>Duración estimada: {durationLabel(estimatedMinutes)}</p></div><label>Reprogramar para<input type="date" min={minimumDate} value={day} disabled={busy || Boolean(record.vehicleControl)} onChange={event => { setDay(event.target.value); setSelection(null); setError('') }} /></label></div>
     <h3>Disponibilidad por equipo</h3><p>Elegí un horario de inicio. Las opciones contemplan la duración completa y la reserva del servicio.</p>
     {blocked && <p role="alert" className="field-error">El servicio cambió desde otra sesión. Volvé al detalle y revisá la versión actual.</p>}
+    {paused && <p role="status">Los controles vehiculares están pausados. Reactivalos desde Flota para reprogramarlos.</p>}
+    {record.vehicleControl && !paused && <p>El control tiene fecha y horario fijos: viernes, o jueves/miércoles si los días anteriores no son operativos, 15 minutos antes del cierre.</p>}
+    {controlError && <p className="field-error" role="alert">{controlError}</p>}
     {invalidDay && <p role="alert" className="field-error">Elegí una fecha desde hoy, distinta del día original para una reprogramación pendiente.</p>}
-    {!day && <p className="reschedule-empty">Seleccioná un día para consultar los horarios disponibles.</p>}
+    {!day && !paused && <p className="reschedule-empty">Seleccioná un día para consultar los horarios disponibles.</p>}
     {day && !invalidDay && !teams.length && <p className="reschedule-empty">No hay equipos habilitados con técnicos asignados para este día.</p>}
     <div className="reschedule-team-list">{teams.map(team => <article className="reschedule-team" key={team.teamId}><header><strong>{team.label}</strong><small>{team.members?.join(' / ')}</small></header>{team.slots.length ? <div className="reschedule-slots">{team.slots.map(slot => <button type="button" key={slot.time} className={selectedTeam?.teamId === team.teamId && selection?.time === slot.time ? 'primary' : 'secondary'} aria-pressed={selectedTeam?.teamId === team.teamId && selection?.time === slot.time} title={`${team.label}: ${slot.time}–${slot.end}`} disabled={busy} onClick={() => { setSelection({ teamId: team.teamId, ...slot }); setError('') }}>{slot.time}</button>)}</div> : <p>Sin disponibilidad para este servicio.</p>}</article>)}</div>
     {selectedTeam && <div className="reschedule-selection" role="status"><strong>{selectedTeam.label} · {day.split('-').reverse().join('/')} · {selection.time}–{selection.end}</strong><p>Selección pendiente de confirmar.</p></div>}

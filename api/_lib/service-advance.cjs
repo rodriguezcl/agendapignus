@@ -58,6 +58,7 @@ function startServiceEarly(record, user, now = Date.now()) {
 }
 
 function resolveServiceAdvance(record, administrator, decision, now = Date.now()) {
+  if (decision === 'approved' && record?.vehicleControl) throw businessError('Los controles vehiculares tienen fecha y horario fijos; no admiten adelantos manuales.')
   if (decision === 'approved') require('./service-confirmation.cjs').assertServiceConfirmed(record)
   if (!record) throw businessError('El servicio no existe.', 404)
   if (!['approved', 'denied'].includes(decision)) throw businessError('La decisión indicada no es válida.')
