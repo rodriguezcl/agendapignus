@@ -196,3 +196,16 @@
   .app-shell[data-theme] .planning-hours li button { display: block; margin: 8px 0 0; }
   .app-shell[data-theme] .planning-hours .monthly-time-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Show every selected technician's full name in monthly planning. */
+.app-shell[data-theme] .operational-planning .team-technicians-field .service-types-trigger > span:first-child {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.app-shell[data-theme] .operational-planning .team-technicians-field .service-types-trigger {
+  height: auto;
+  align-items: flex-start;
+}
