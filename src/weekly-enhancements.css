@@ -347,10 +347,8 @@
   font-weight: 500;
   line-height: 1.3;
   overflow-wrap: anywhere;
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  display: block;
+  overflow: visible;
 }
 
 .weekly-technicians-picker {
@@ -1932,3 +1930,11 @@ body.dark .week-task-summary > .week-task-locality { color: #b8ccbf; }
 
 .holiday-decision-actions > .holiday-transfer { grid-column: 1 / -1; width: 100%; min-width: 0; }
 .holiday-transfer input[type="date"] { width: 100%; min-width: 0; }
+
+/* Keep full technician names readable in the daily agenda as well. */
+.daily-team-identity .daily-team-member-names {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}

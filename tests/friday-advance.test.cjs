@@ -96,7 +96,7 @@ test('permite devolver la guardia al sábado y libera el bloqueo sin perder dato
   assert.equal(returned.history[0].date, saturday)
   assert.equal(returned.history[0].photoUrl, '/photo.jpg')
   assert.equal(returned.agenda.weekly[saturday].teams[0].tasks.filter(t => t.taskId === task.taskId).length, 1)
-  assert.equal(returned.agenda.weekly[friday].teams[0].tasks.some(t => t.taskId === task.taskId), false)
+  assert.equal(returned.agenda.weekly[friday].teams.flatMap(t => t.tasks || []).some(t => t.taskId === task.taskId), false)
 })
 
 test('mantiene el bloqueo si queda otra guardia el viernes o se mueve otro servicio', async () => {
@@ -108,4 +108,24 @@ test('mantiene el bloqueo si queda otra guardia el viernes o se mueve otro servi
   assert.ok(findAdvancedSaturdayGuard({ fridayPlan, departingTask: { taskId: 'different' } }))
   fridayPlan.teams[0].tasks.push({ taskId: 'another', client: 'Otro', time: '18:00' })
   assert.equal(findAdvancedSaturdayGuard({ fridayPlan, departingTask: task }).fridayTask.taskId, 'another')
+})
+
+
+test('oculta equipo temporal vacío de ambas vistas y conserva equipos comunes o con otro servicio', async () => {
+ const { state, command, move } = await prepare()
+ const advanced = applyStateOperations(state, move(state, command))
+ advanced.agenda.date = friday
+ advanced.agenda.teams = structuredClone(advanced.agenda.weekly[friday].teams)
+ const source = advanced.agenda.weekly[friday].teams[0]
+ const back = { sourceDay: friday, sourceTeamId: source.teamId, day: saturday, team: advanced.agenda.weekly[saturday].teams[0], task: { ...source.tasks[0], time: '09:00' }, record: { ...advanced.history[0], date: saturday, time: '09:00' } }
+ const returned = applyStateOperations(advanced, move(advanced, back))
+ const { emptyFridayAdvanceTeam } = await import('../src/domain/agenda/friday-advance.mjs')
+ assert.equal(returned.agenda.weekly[friday].teams.filter(t => !emptyFridayAdvanceTeam(t)).length, 0)
+ assert.equal(returned.agenda.teams.filter(t => !emptyFridayAdvanceTeam(t)).length, 0)
+ source.tasks.push({ taskId: 'keep', client: 'Otro cliente', time: '18:00' })
+ const retained = applyStateOperations(advanced, move(advanced, back))
+ assert.equal(retained.agenda.weekly[friday].teams[0].tasks[0].taskId, 'keep')
+ assert.equal(emptyFridayAdvanceTeam({ teamId: 'ordinary', tasks: [] }), false)
+ assert.equal(emptyFridayAdvanceTeam({ teamId: 'friday-guard-empty', tasks: [] }), true)
+ assert.equal(emptyFridayAdvanceTeam({ teamId: 'friday-guard-note', tasks: [{ internalNote: 'Conservar' }] }), false)
 })

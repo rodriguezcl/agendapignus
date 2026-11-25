@@ -54,7 +54,7 @@ export const findAdvancedSaturdayGuard = ({ fridayPlan, saturdayPlan, departingT
     candidates.push({
       technicianId,
       technicianName,
-      displayName: String(technicianName || 'El técnico').trim().split(/\s+/)[0],
+      displayName: String(technicianName || 'El técnico').trim(),
       fridayTime: advancedTask.time || advancedTask.scheduledTime,
       fridayTask: advancedTask
     })

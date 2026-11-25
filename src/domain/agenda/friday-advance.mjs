@@ -14,3 +14,8 @@ export function fridayAdvanceDestination(day, sourceTeam, fridayPlan, today) {
   }
   return { day: friday, team, plan: { ...fridayPlan, teams: existing ? teams : [...teams, team] }, index: existing ? teams.indexOf(existing) : teams.length }
 }
+
+// Only disposable teams created for a Friday advance; keep ordinary teams.
+export const emptyFridayAdvanceTeam = team => String(team?.teamId || '').startsWith('friday-guard-') && !(team.tasks || []).some(task =>
+  task.manualSlot || task.historyId || task.customerId || task.serviceId || task.vehicleControl ||
+  ['client', 'service', 'address', 'phone', 'detail', 'internalNote'].some(key => String(task[key] || '').trim()))
