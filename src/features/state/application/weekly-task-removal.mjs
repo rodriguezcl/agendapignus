@@ -25,6 +25,9 @@ function resolveTaskIndex(tasks, { taskId, historyId, taskIndex, time }) {
     (historyId && sameId(task.historyId, historyId))
   )
   if (byIdentity >= 0) return byIdentity
+  // A stale removal must never target a new client occupying the same slot.
+  // Index/time matching is only safe for legacy commands without identity.
+  if (taskId || historyId) return -1
   const candidate = (tasks || [])[Number(taskIndex)]
   if (!candidate) return -1
   const candidateTime = String(candidate.time || candidate.scheduledTime || '').trim()

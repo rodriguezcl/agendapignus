@@ -64,17 +64,20 @@ async function readTechnicianState(sql, technicianId, today) {
   // jobs, the customer context needed for active jobs, vehicles and revision;
   // never aggregate the administrative catalog or the complete agenda.
   const [state] = await sql`
-    with active_customers as (
-      select
-        nullif(data->>'customerId', '') as customer_id,
-        upper(coalesce(nullif(data->>'clientAccount', ''), split_part(coalesce(data->>'client', ''), ' ', 1))) as account
+    with assigned_history as (
+      select data
       from pignus_work_history
       where exists (
         select 1
         from jsonb_array_elements_text(coalesce(data->'technicianIds', '[]'::jsonb)) as assigned(technician_id)
         where assigned.technician_id = ${String(technicianId)}
       )
-        and coalesce(data->>'date', '') >= ${String(today)}
+    ), active_customers as (
+      select
+        nullif(data->>'customerId', '') as customer_id,
+        upper(coalesce(nullif(data->>'clientAccount', ''), split_part(coalesce(data->>'client', ''), ' ', 1))) as account
+      from assigned_history
+      where coalesce(data->>'date', '') >= ${String(today)}
         and coalesce(data->>'technicalStatus', '') = ''
         and coalesce(data->>'status', 'Pendiente') not in ('Completado', 'Avance registrado', 'Cancelado', 'Reprogramado')
     )
@@ -90,6 +93,15 @@ async function readTechnicianState(sql, technicianId, today) {
           or nullif(history.data->>'customerId', '') in (select customer_id from active_customers where customer_id is not null)
           or upper(coalesce(nullif(history.data->>'clientAccount', ''), split_part(coalesce(history.data->>'client', ''), ' ', 1))) in (select account from active_customers where account <> '')
       ), '[]'::jsonb) as history,
+      coalesce((
+        select jsonb_agg(jsonb_build_object(
+          'serviceJourney', jsonb_build_object('id', data->'serviceJourney'->'id', 'index', data->'serviceJourney'->'index'),
+          'status', 'Cancelado'
+        ))
+        from pignus_work_history
+        where (data->>'status' = 'Cancelado' or data->>'technicalStatus' = 'Cancelado')
+          and nullif(data->'serviceJourney'->>'id', '') in (select data->'serviceJourney'->>'id' from assigned_history)
+      ), '[]'::jsonb) as journey_cancellations,
       (select data->'weekly'->'_vehicleControls' from pignus_agendas where id = 'current') as vehicle_controls,
       coalesce((select jsonb_object_agg(key, value) from pignus_preferences where key in ('state_revision', 'vehicles')), '{}'::jsonb) as preferences
   `
@@ -98,6 +110,7 @@ async function readTechnicianState(sql, technicianId, today) {
     roles: [], employees: [], services: [], customers: [], reviews: [],
     agenda: state.vehicle_controls ? { weekly: { _vehicleControls: state.vehicle_controls } } : null,
     history: state.history || [],
+    journeyCancellations: state.journey_cancellations || [],
     vehicles: vehicleCollection(state.preferences?.vehicles),
     preferences: {}
   }

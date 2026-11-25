@@ -58,4 +58,12 @@ function validateServiceJourneys(state, previous = null) {
   for (const record of previous?.history || []) if (record.serviceJourney && !history.some(item => String(item.id) === String(record.id))) throw new Error('No se puede eliminar una jornada vinculada. Cancelala para conservar el historial del servicio.')
 }
 
-module.exports = { ADVANCE, activeJourneyIndexes, isIntermediate, assertJourneyReport, validateServiceJourneys }
+// Active indexes are response metadata, derived from canonical cancellations.
+// Never store a client projection as the source of truth for later visits.
+function stripJourneyProjection(value) {
+  if (Array.isArray(value)) return value.map(stripJourneyProjection)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'journeyActiveIndexes').map(([key, item]) => [key, stripJourneyProjection(item)]))
+}
+
+module.exports = { ADVANCE, activeJourneyIndexes, isIntermediate, assertJourneyReport, validateServiceJourneys, stripJourneyProjection }

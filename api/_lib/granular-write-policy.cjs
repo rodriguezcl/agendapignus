@@ -14,6 +14,10 @@ const identity = value => object(value) ? ['id', 'taskId', 'historyId', 'teamId'
 // must survive a PUT as well as PATCH. Unsolicited hidden values are ignored;
 // visible changes pass through field and record authorization below.
 function restoreHidden(proposed, current, visible) {
+  if (object(proposed) && Object.hasOwn(proposed, 'journeyActiveIndexes')) {
+    proposed = { ...proposed }
+    delete proposed.journeyActiveIndexes
+  }
   if (proposed == null && visible == null && current != null) return current
   if (Array.isArray(current) && Array.isArray(proposed) && Array.isArray(visible)) {
     const key = [...current, ...visible, ...proposed].map(identity).find(Boolean)
@@ -74,7 +78,19 @@ function validScheduledControl(record, state, day = record?.date) {
     !record.customerId && !record.address && !record.phone && !record.startedAt && !record.completedAt && !record.technicalStatus && (!record.status || record.status === 'Pendiente'))
 }
 
-function assertServiceChange(before, after, user, state, { planning = false, task = false, monthlyAssignment = null } = {}) {
+function pendingJourneyRemoved(before, after, agenda, previousAgenda) {
+  if (!before?.serviceJourney || (before.status || 'Pendiente') !== 'Pendiente' || after?.status !== 'Cancelado' ||
+      ['startedAt', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'completedAt', 'journeyClosedAt', 'technicianRequest'].some(key => nonempty(before[key]))) return false
+  if (after.scheduledDate !== '' || after.awaitingConfirmation !== false) return false
+  const permitted = new Set(['status', 'scheduledDate', 'awaitingConfirmation'])
+  if (changed(before, after, [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(key => !permitted.has(key)))) return false
+  const matches = value => id(value.historyId || value.sourceHistoryId) === id(before.id) || Boolean(before.sourceTaskId && id(value.taskId || value.sourceTaskId) === id(before.sourceTaskId))
+  const linked = source => (source?.teams || []).concat(...Object.entries(source?.weekly || {}).filter(([day]) => !day.startsWith('_')).map(([, plan]) => plan?.teams || [])).some(team => (team.tasks || []).some(matches))
+  const aliases = [`history:${before.id}`, id(before.id), ...(before.sourceTaskId ? [`task:${before.sourceTaskId}`, id(before.sourceTaskId)] : [])]
+  return linked(previousAgenda) && !linked(agenda) && (agenda?.weekly?.[before.date]?.removedTaskIds || []).some(value => aliases.includes(id(value)))
+}
+
+function assertServiceChange(before, after, user, state, { planning = false, task = false, monthlyAssignment = null, previousAgenda = null } = {}) {
   require('./softguard-presence.cjs').assertActiveService(before,after,state.customers)
   if (same(before, after)) return
   const populated = value => value && ['serviceId', 'service', 'customerId', 'client', 'vehicleControl', 'subscriberReservation'].some(key => nonempty(value[key]))
@@ -82,6 +98,13 @@ function assertServiceChange(before, after, user, state, { planning = false, tas
   if (task && before && !populated(before) && populated(after)) return assertServiceChange(null, after, user, state, { planning, task })
   const scopeRecord = before || after
   if (!read.serviceWritable(scopeRecord, user, state) || after && !read.serviceWritable(after, user, { ...state, history: [...(state.history || []).filter(row => id(row.id) !== id(after.id)), after] })) fail('scope.services.write')
+  // Removing an untouched linked visit retains its cancelled history entry.
+  // This is the same planning permission as removing an independent service,
+  // only when its cards are removed atomically and no other fields change.
+  if (!task && pendingJourneyRemoved(before, after, state.agenda, previousAgenda)) {
+    requirePermission(user, 'planning.remove')
+    return
+  }
   if (!after) {
     requirePermission(user, planning ? 'planning.remove' : 'history.delete')
     if (before.vehicleControl) requirePermission(user, planning ? 'vehicle.controls.omit' : 'vehicle.controls.delete')
@@ -154,6 +177,7 @@ function assertServiceChange(before, after, user, state, { planning = false, tas
 
 function prepareServiceProposal(before, after, user, state) {
   if (!after) return after
+  after = require('./service-journeys.cjs').stripJourneyProjection(after)
   if (before?.date && after.date && before.date !== after.date && !after.vehicleControl) {
     requirePermission(user, 'planning.reschedule')
     const now = new Date().toISOString()
@@ -425,7 +449,7 @@ function authorizeGranularState(incoming, current, user) {
   collectionChanges(current.history, next.history, 'id', (before, after) => {
     const agenda = after ? next.agenda : current.agenda
     const linked = (agenda?.teams || []).concat(...Object.entries(agenda?.weekly || {}).filter(([key]) => !key.startsWith('_')).map(([, plan]) => plan?.teams || [])).some(team => (team.tasks || []).some(task => id(task.historyId) === id((after || before).id) || task.taskId && id(task.taskId) === id((after || before).sourceTaskId)))
-    assertServiceChange(before, after, user, authorizationState, { planning: linked && !catalog.can(user, 'history.edit'), monthlyAssignment: derived.records.get(id((after || before).id)) })
+    assertServiceChange(before, after, user, authorizationState, { planning: linked && !catalog.can(user, 'history.edit'), monthlyAssignment: derived.records.get(id((after || before).id)), previousAgenda: current.agenda })
   })
   assertAgendaChange(current.agenda, next.agenda, user, authorizationState, derived)
   if (!same(current.reviews, next.reviews)) fail('reviews', 'Las reseñas históricas no son editables.')

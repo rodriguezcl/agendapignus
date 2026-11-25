@@ -11,6 +11,34 @@ const team = tasks => ({
   tasks
 })
 
+test('reintentar una baja no elimina al nuevo cliente que ocupa el mismo horario', async () => {
+  const { weeklyTaskRemovalOperations } = await import('../src/features/state/application/weekly-task-removal.mjs')
+  const day = '2099-01-06'
+  const removed = { id: 'journey-2', sourceTaskId: 'old-task', date: day, time: '09:00', status: 'Cancelado', serviceJourney: { id: 'journey', index: 2, total: 4 } }
+  const replacement = { id: 'new-service', sourceTaskId: 'new-task', date: day, time: '09:00', status: 'Pendiente', client: 'Otro cliente' }
+  const task = { ...replacement, taskId: replacement.sourceTaskId, historyId: replacement.id }
+  const snapshot = { history: [removed, replacement], agenda: { date: day, teams: [team([structuredClone(task)])], weekly: { [day]: { teams: [team([task])], removedTaskIds: ['task:old-task', 'history:journey-2'] } } } }
+  const command = { day, teamId: 'team-2', taskId: 'old-task', historyId: 'journey-2', taskIndex: 0, time: '09:00' }
+  const operations = weeklyTaskRemovalOperations(snapshot, command)
+  assert.deepEqual(operations, [])
+  assert.deepEqual(applyStateOperations(snapshot, operations), snapshot)
+})
+
+test('la baja semanal no usa el índice para borrar otra tarjeta de la proyección diaria', async () => {
+  const { weeklyTaskRemovalOperations } = await import('../src/features/state/application/weekly-task-removal.mjs')
+  const day = '2099-01-06'
+  const record = { id: 'journey-2', sourceTaskId: 'old-task', date: day, time: '09:00', status: 'Pendiente', serviceJourney: { id: 'journey', index: 2, total: 4 } }
+  const oldTask = { ...record, taskId: record.sourceTaskId, historyId: record.id }
+  const replacement = { id: 'new-service', sourceTaskId: 'new-task', date: day, time: '09:00', status: 'Pendiente', client: 'Otro cliente' }
+  const newTask = { ...replacement, taskId: replacement.sourceTaskId, historyId: replacement.id }
+  const snapshot = { history: [record, replacement], agenda: { date: day, teams: [team([newTask])], weekly: { [day]: { teams: [team([oldTask])] } } } }
+  const next = applyStateOperations(snapshot, weeklyTaskRemovalOperations(snapshot, { day, teamId: 'team-2', taskId: 'old-task', historyId: 'journey-2', taskIndex: 0, time: '09:00' }))
+  assert.equal(next.history.find(item => item.id === record.id).status, 'Cancelado')
+  assert.deepEqual(next.history.find(item => item.id === replacement.id), replacement)
+  assert.deepEqual(next.agenda.teams[0].tasks, [newTask])
+  assert.equal(next.agenda.weekly[day].teams[0].tasks.length, 0)
+})
+
 test('omite un control y elimina su pendiente de todas las proyecciones en una sola operación', async () => {
   const { weeklyTaskRemovalOperations } = await import('../src/features/state/application/weekly-task-removal.mjs')
   const control = { taskId: 'control-partner', historyId: 'history-partner', time: '15:30', vehicleControl: true }

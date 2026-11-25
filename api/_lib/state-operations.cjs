@@ -1,6 +1,6 @@
 const { mergeConcurrentState } = require('./state-merge.cjs')
 const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
-  ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value
+  ? Object.fromEntries(Object.keys(value).filter(key => key !== 'journeyActiveIndexes').sort().map(key => [key, canonical(value[key])])) : value
 const equal = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b))
 const forbidden = new Set(['__proto__', 'prototype', 'constructor'])
 const sections = new Set(['roles', 'employees', 'services', 'vehicles', 'customers', 'history', 'reviews', 'agenda', 'preferences'])

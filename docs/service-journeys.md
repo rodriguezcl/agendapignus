@@ -18,6 +18,18 @@ Implementación verificada automáticamente. Commit y despliegue autorizados por
 
 Cliente y tipo de servicio se actualizan conjuntamente en todas las jornadas antes de comenzar el trabajo. Cuando cualquier visita tiene inicio o gestión registrada, esos campos quedan protegidos. La vinculación de una reserva PIG con su cuenta definitiva permanece disponible como excepción independiente y conserva los informes y datos provisorios originales. Cada visita conserva sus fechas, equipos, duración y notas. El servidor aplica la misma regla a las escrituras y rechaza cambios contradictorios.
 
+## Liberar una jornada para otro cliente
+
+1. En Agenda semanal, abrir la tarjeta de la jornada pendiente que se quiere liberar y elegir **Quitar jornada**. En Agenda diaria, usar la misma acción en la fila del servicio.
+2. Confirmar la baja de esa visita. Queda cancelada en el historial y se libera su horario; las otras visitas conservan sus fechas, equipos, informes y archivos.
+3. En la franja disponible, elegir **Agregar servicio** y cargar al otro cliente como un servicio independiente.
+
+Por ejemplo, si se quita la tercera visita de un trabajo de cuatro jornadas, las etiquetas pasan a **Jornada 1 de 3**, **Jornada 2 de 3** y **Jornada 3 de 3**. La planificación original conserva los cuatro registros para consultar su trazabilidad. La nueva última jornada admite completar el trabajo cuando las anteriores activas ya fueron informadas.
+
+Cambiar el cliente de una visita no la separa del grupo: ese cambio corresponde a todo el trabajo y se protege cuando ya existe un inicio o informe. La agenda avisa este alcance. Una visita iniciada debe resolverse desde Historial antes de liberar el horario; retirar una tarjeta ya informada conserva su resultado y no la convierte en una cancelación.
+
+El conteo vigente se calcula con el historial completo, también cuando el usuario sólo puede consultar algunas visitas. Es información de lectura: no se persiste desde el navegador ni interviene en la comparación de versiones de un servicio.
+
 ## Verificación
 
 - Suite completa: 580 pruebas aprobadas, sin fallos, incluyendo identidad compartida y protección posterior al inicio.

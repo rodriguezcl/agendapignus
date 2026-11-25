@@ -168,7 +168,7 @@ function projectStateForUser(state, user, ticketUser = user) {
   if (require('./permission-catalog.cjs').isGranular(user)) return require('./granular-read-policy.cjs').granularVisibleState(state, user)
   if (isOperator(user)) return projectLegacyCollectionReceipts(operatorState(state), user)
   if (user.roleCode === 'technician') {
-    const journeyHistory = state.history
+    const journeyHistory = [...state.history, ...(state.journeyCancellations || [])]
     const gate = require('./technician-agenda-gate.cjs')
     const cutoff = gate.cutoff(state.history, user, undefined, state.agenda?.weekly)
     state = { ...state, history: state.history.filter(record => record.awaitingConfirmation !== true && !require('./vehicle-controls-pause.cjs').pausedVehicleControl(record, state.agenda?.weekly) && gate.visible(record, cutoff)) }
@@ -227,7 +227,7 @@ function persistentStateInput(state) {
   // Match the root fields reconstructed by storage. Session/response metadata
   // and request options must never enter the operational state or its hash.
   return Object.fromEntries(['revision', 'roles', 'employees', 'services', 'vehicles', 'customers', 'history', 'reviews', 'agenda', 'preferences']
-    .filter(key => Object.hasOwn(state, key)).map(key => [key, state[key]]))
+    .filter(key => Object.hasOwn(state, key)).map(key => [key, require('./service-journeys.cjs').stripJourneyProjection(state[key])]))
 }
 
 function authorizeIncomingState(incoming, current, user) {

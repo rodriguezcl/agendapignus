@@ -1,6 +1,6 @@
 const canonical = value => {
   if (Array.isArray(value)) return value.map(canonical)
-  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]))
+  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).filter(key => key !== 'journeyActiveIndexes').sort().map(key => [key, canonical(value[key])]))
   return value
 }
 

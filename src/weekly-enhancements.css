@@ -831,10 +831,15 @@ body.dark .weekly-task-move {
 }
 
 .weekly-modal-team {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
   margin: -4px 0 18px;
   color: #647b6b;
   font-size: .88rem;
 }
+.weekly-modal-team > .journey-label { display: inline-flex; margin: 0; white-space: nowrap; }
 
 .weekly-task-form {
   display: grid;
@@ -1895,11 +1900,14 @@ body.dark .week-task-summary.available-slot:focus-visible {
 .historical-day-service .past-field-money { font-weight: 700; }
 .weekly-service-modal-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
   margin: 16px 0;
-  padding-bottom: 16px;
+  padding: 4px 4px 16px;
   border-bottom: 1px solid var(--border, #d8e3da);
 }
 .weekly-service-modal-actions > button {
@@ -1909,12 +1917,16 @@ body.dark .week-task-summary.available-slot:focus-visible {
   gap: 8px;
   min-height: 44px;
   padding: 10px 14px;
-  white-space: normal;
+  white-space: nowrap;
   word-break: normal;
 }
 .weekly-service-modal-actions .weekly-service-delete { color: #b63737; }
-@media (max-width: 600px) {
-  .weekly-service-modal-actions > button { flex: 1 1 100%; }
+.modal.modal .weekly-service-modal-actions > button {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  white-space: nowrap;
 }
 .week-task-summary > .week-task-locality {
   display: block;

@@ -78,6 +78,7 @@ function customerReadable(customer, user, state) {
 function sanitizeService(record, user, state) {
   if (!record) return record
   let result = scrubFields(record, permissions.can(user, 'records.financial'), permissions.can(user, 'records.contact'))
+  if (record.serviceJourney && Array.isArray(state?.history)) result.journeyActiveIndexes = require('./service-journeys.cjs').activeJourneyIndexes(record, state.history)
   if (!permissions.can(user, 'followups.view') && !permissions.can(user, 'tickets.view')) delete result.followup
   if (state) result.supervisorVisible = customerForRecord(record, state)?.cctvService === true
   if (!permissions.can(user, 'records.financial')) for (const key of FINANCIAL_FIELDS) delete result[key]

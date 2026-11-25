@@ -1,6 +1,6 @@
 // Transport only the changed entities, never a replacement history snapshot.
 const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
-  ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value
+  ? Object.fromEntries(Object.keys(value).filter(key => key !== 'journeyActiveIndexes').sort().map(key => [key, canonical(value[key])])) : value
 const equal = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b))
 const identityKey = path => path.at(-1) === 'customers' ? 'customerId'
   : path.at(-1) === 'tasks' ? 'taskId' : path.at(-1) === 'teams' ? 'teamId' : 'id'
