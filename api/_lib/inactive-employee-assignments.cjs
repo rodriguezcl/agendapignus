@@ -3,6 +3,7 @@ const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300
 // Preserve reports and historical team snapshots. Only operational assignments
 // are removed; services themselves are never deleted or marked completed.
 function removeInactiveAssignments(state, today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })) {
+  state = require('./redistribute-inactive-guards.cjs').redistributeInactiveGuards(state, today)
   const inactive = (state.employees || []).filter(employee => employee.status === 'Inactivo')
   if (!inactive.length) return state
   const ids = new Set(inactive.map(employee => String(employee.id)))

@@ -153,7 +153,7 @@ function granularVisibleState(state, user) {
         ...(can('weekly.monthlyVehicles.read') ? { vehicleAssignments: config.vehicleAssignments } : {}),
         ...(any(user, ['weekly.monthlyTeams.read', 'weekly.monthlyHours.read', 'weekly.monthlyVehicles.read']) ? { configurationHistory: config.configurationHistory } : {})
       }]))
-    } else if (key === '_annualGuards') weekly[key] = can('weekly.guards.read') ? value : Object.fromEntries(Object.entries(value || {}).map(([year, config]) => [year, { startDate: config.startDate, rotation: config.rotation }]))
+    } else if (key === '_annualGuards') weekly[key] = can('weekly.guards.read') ? value : Object.fromEntries(Object.entries(value || {}).map(([year, config]) => [year, { startDate: config.startDate, rotation: config.rotation, effectiveFrom: config.effectiveFrom, previousRotations: config.previousRotations }]))
     else if (key === '_holidayOverrides') weekly[key] = value
   }
   // Planning needs the applicable workday to validate a proposed appointment.

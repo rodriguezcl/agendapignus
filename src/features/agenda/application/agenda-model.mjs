@@ -92,7 +92,7 @@ export const default2026GuardRotationFor = activeTechs => {
 
 export const guardForDateWithDefaults = (date, weekly, activeTechs) => {
   const configured = annualGuardForDate(date, weekly)
-  if (configured) return configured
+  if (weekly?._annualGuards?.[String(date).slice(0,4)]) return configured
   const rotation = String(date || '').startsWith('2026-') ? default2026GuardRotationFor(activeTechs) : []
   return rotation.length ? annualGuardForDate(date, { _annualGuards: { 2026: { startDate: firstSaturdayOfYear(2026), rotation } } }) : null
 }
