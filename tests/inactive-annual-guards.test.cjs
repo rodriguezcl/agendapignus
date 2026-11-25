@@ -48,3 +48,30 @@ test('sin técnicos activos deja turnos vacíos y no altera años pasados', () =
  assert.equal(guardForDate('2026-11-28',next.agenda.weekly._annualGuards[2026]),null)
  assert.deepEqual(next.agenda.weekly._annualGuards[2025],state.agenda.weekly._annualGuards[2025])
 })
+
+test('la redistribución conserva la atribución de informes y correcciones en ambas proyecciones', () => {
+ for (const source of ['history', 'task', 'daily']) {
+  for (const evidence of [{ technicalObservation: 'Observación original' }, { workCompletion: { corrections: [{ reason: 'Corrección original' }] } }]) {
+   const state = fixture(), date = '2026-12-12'
+   const originalGuard = guardForDate(date, state.agenda.weekly._annualGuards[2026])
+   assert.equal(originalGuard.technicianId, 'b')
+   const record = { id: 'report', sourceTaskId: 'report-task', date, teamId: 'guard', status: 'Pendiente', technicianIds: ['b'], technicians: ['B'], ...(source === 'history' ? evidence : {}) }
+   const task = { taskId: 'report-task', historyId: 'report', status: 'Pendiente', technicianIds: ['b'], technicians: ['B'], ...(source === 'task' ? evidence : {}) }
+   state.history = [record]
+   state.agenda.weekly[date] = { teams: [{ teamId: 'guard', memberIds: ['b'], members: ['B'], tasks: [task] }] }
+   if (source === 'daily') {
+    state.agenda.date = date
+    state.agenda.teams = structuredClone(state.agenda.weekly[date].teams)
+    Object.assign(state.agenda.teams[0].tasks[0], evidence)
+    delete state.agenda.teams[0].tasks[0].historyId
+   }
+   const next = removeInactiveAssignments(state, '2026-11-25')
+   const nextTask = next.agenda.weekly[date].teams[0].tasks[0]
+   assert.deepEqual(nextTask, task, 'La tarjeta con evidencia propia o del historial conserva la atribución')
+   assert.deepEqual(next.history[0], record, 'La evidencia de la tarjeta también protege la atribución del historial')
+   if (source === 'daily') assert.deepEqual(next.agenda.teams[0].tasks, state.agenda.teams[0].tasks)
+   assert.equal(guardForDate(date, next.agenda.weekly._annualGuards[2026]).technicianId === 'b', false)
+   assert.deepEqual(next.agenda.weekly[date].teams[0].memberIds, [], 'El inactivo deja de integrar el equipo operativo')
+  }
+ }
+})

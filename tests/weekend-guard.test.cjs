@@ -14,7 +14,7 @@ test('la guardia del sábado se considera adelantada por el mismo técnico el vi
   const saturdayPlan = { teams: [team('tech-1', 'Santos Díaz', [available('08:30')])] }
   const advance = findAdvancedSaturdayGuard({ fridayPlan, saturdayPlan })
 
-  assert.equal(advance.displayName, 'Santos')
+  assert.equal(advance.displayName, 'Santos Díaz')
   assert.equal(advance.hasSaturdayConflict, false)
   assert.deepEqual(suppressAdvancedSaturdayAvailability(saturdayPlan, advance).teams, [])
   assert.match(advancedSaturdayGuardMessage(advance), /Santos.*viernes.*16:00.*sábado/i)
@@ -27,7 +27,7 @@ test('infiere el técnico de guardia desde el viernes cuando el sábado todavía
   const advance = findAdvancedSaturdayGuard({ fridayPlan, saturdayPlan })
 
   assert.equal(advance.technicianId, 'tech-1')
-  assert.equal(advance.displayName, 'Santos')
+  assert.equal(advance.displayName, 'Santos Díaz')
   assert.deepEqual(suppressAdvancedSaturdayAvailability(saturdayPlan, advance).teams, [])
 })
 
@@ -49,7 +49,7 @@ test('mantiene la guardia del viernes aunque intenten asignar otro técnico el s
   const advance = findAdvancedSaturdayGuard({ fridayPlan, saturdayPlan })
 
   assert.equal(advance.technicianId, 'tech-leo')
-  assert.equal(advance.displayName, 'Leonardo')
+  assert.equal(advance.displayName, 'Leonardo Rivadelo')
   assert.deepEqual(suppressAdvancedSaturdayAvailability(saturdayPlan, advance).teams, [])
 })
 

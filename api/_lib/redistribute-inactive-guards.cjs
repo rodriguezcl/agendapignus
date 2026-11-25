@@ -1,4 +1,5 @@
 const { guardForDate, firstSaturday } = require('./annual-guard-rotation.cjs')
+const { serviceAssignmentProtection } = require('./service-assignment-history.cjs')
 const identity = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 const dayAfter = (day, count) => { const date = new Date(day + 'T12:00:00Z'); date.setUTCDate(date.getUTCDate() + count); return date.toISOString().slice(0,10) }
 function redistributeInactiveGuards(state, today) {
@@ -24,8 +25,7 @@ function redistributeInactiveGuards(state, today) {
   changedYears.add(year)
  }
  if (!changedYears.size) return state
- const assignments = new Map(), historyById = new Map((state.history || []).map(r => [String(r.id), r]))
- const open = record => !record?.startedAt && !record?.technicalStatus && !record?.completedAt && !['Completado','Cancelado','Reprogramado','Avance registrado'].includes(record?.status)
+ const assignments = new Map(), protectedAssignments = serviceAssignmentProtection(state)
  const updateTeams = (teams, day) => {
   if (!day || day <= today) return teams
   const weekday = new Date(day + 'T12:00:00Z').getUTCDay()
@@ -35,7 +35,7 @@ function redistributeInactiveGuards(state, today) {
   const after = guardForDate(saturday, configs[saturday.slice(0,4)])
   return (teams || []).map((team,index) => {
    const wasGuard = weekday === 6 ? index === 0 && ((team.memberIds || []).length === 0 || team.memberIds?.some(id => String(id) === String(before?.technicianId))) : String(team.label || '').startsWith('Guardia')
-   if (!wasGuard || (team.tasks || []).some(t => !open(historyById.get(String(t.historyId)) || t))) return team
+   if (!wasGuard || (team.tasks || []).some(protectedAssignments.task)) return team
    const memberIds = after?.technicianId ? [after.technicianId] : [], members = after?.name ? [after.name] : []
    assignments.set(day + ':' + team.teamId, { technicianIds: memberIds, technicians: members })
    return { ...team, memberIds, members, ...(weekday === 5 ? { label: after ? 'Guardia · ' + after.name : 'Guardia' } : {}), tasks: (team.tasks || []).map(t => ({ ...t, technicianIds: memberIds, technicians: members })) }
@@ -44,7 +44,7 @@ function redistributeInactiveGuards(state, today) {
  const nextWeekly = Object.fromEntries(Object.entries(weekly).map(([day,plan]) => [day, /^\d{4}-\d{2}-\d{2}$/.test(day) ? { ...plan, teams: updateTeams(plan.teams,day) } : plan]))
  nextWeekly._annualGuards = configs
  const agenda = { ...state.agenda, weekly: nextWeekly, teams: updateTeams(state.agenda.teams, state.agenda.date) }
- const history = (state.history || []).map(r => { const assignment = assignments.get(r.date + ':' + r.teamId); return assignment && open(r) ? { ...r, ...assignment } : r })
+ const history = (state.history || []).map(r => { const assignment = assignments.get(r.date + ':' + r.teamId); return assignment && !protectedAssignments.record(r) ? { ...r, ...assignment } : r })
  return { ...state, agenda, history }
 }
 module.exports = { redistributeInactiveGuards }

@@ -147,6 +147,7 @@ const agendaTaskWasAlreadyScheduled = (task, date, previousPlan, previousHistory
 }
 
 function validateChangedAgendaSchedules(state, previousState = null) {
+  require('./guard-assignment-policy.cjs').validateGuardAssignments(state, previousState)
   require('./vehicle-control-schedule-policy.cjs').validateVehicleControlSchedules(state, previousState)
   const withoutPausedOccupancy = source => {
     const { vehicleControlsPaused, pausedVehicleControl } = require('./vehicle-controls-pause.cjs')

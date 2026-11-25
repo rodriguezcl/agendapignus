@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const { removeInactiveAssignments } = require('../api/_lib/inactive-employee-assignments.cjs')
 const employee = { id: 'leo', name: 'Leonardo Rivadero', firstName: 'Leonardo', lastName: 'Rivadero', status: 'Inactivo', roleId: 'tech', email: 'leo@example.test' }
 const pair = { technicianIds: ['leo', 'santos'], technicians: ['Leonardo Rivadero', 'Santos'] }
-const pending = { id: 'pending', ...pair, date: '2026-11-26', status: 'Pendiente', technicalObservation: 'Conservar', workCompletion: { corrections: ['original'] } }
+const pending = { id: 'pending', ...pair, date: '2026-11-26', status: 'Pendiente', detail: 'Conservar detalle de agenda' }
 const completed = { ...pending, id: 'closed', status: 'Completado' }
 const team = { teamId: 'team', memberIds: pair.technicianIds, members: pair.technicians, tasks: [{ ...pending, historyId: 'pending' }, { ...completed, historyId: 'closed' }] }
 const fixture = () => ({ employees: [employee], history: [pending, completed], agenda: { date: '2026-11-26', teams: [team], weekly: { '2026-11-26': { teams: [team] }, '2026-11-20': { teams: [team] }, _monthlyTeams: { '2026-11': { teams: [team] } } } } })
@@ -11,8 +11,7 @@ test('retira solo al inactivo de servicios abiertos y planificación; conserva i
   const state = fixture(), before = structuredClone(state)
   const next = removeInactiveAssignments(state, '2026-11-25')
   assert.deepEqual(next.history[0].technicianIds, ['santos'])
-  assert.equal(next.history[0].technicalObservation, 'Conservar')
-  assert.deepEqual(next.history[0].workCompletion, pending.workCompletion)
+  assert.equal(next.history[0].detail, pending.detail)
   assert.deepEqual(next.history[1], completed)
   for (const t of [next.agenda.teams[0], next.agenda.weekly['2026-11-26'].teams[0], next.agenda.weekly._monthlyTeams['2026-11'].teams[0]]) {
     assert.deepEqual(t.memberIds, ['santos'])

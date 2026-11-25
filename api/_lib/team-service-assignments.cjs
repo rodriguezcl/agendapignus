@@ -1,4 +1,5 @@
 const same = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || [])
+const { serviceAssignmentProtection } = require('./service-assignment-history.cjs')
 
 // Membership changes affect open, not-yet-started ordinary services only.
 // Completed reports and vehicle controls retain their original responsibility.
@@ -19,8 +20,10 @@ function synchronizeTeamServiceAssignments(state, previous) {
   // Missing dates do not identify the same day (undefined === undefined).
   if (state.agenda?.date && state.agenda.date === previous?.agenda?.date) collect(state.agenda.date, state.agenda.teams, previous.agenda.teams)
   if (!changed.size) return state
+  const protectedAssignments = serviceAssignmentProtection(state)
+  const previousProtection = serviceAssignmentProtection(previous)
   return { ...state, history: (state.history || []).map(record => {
-    if (record.vehicleControl || record.startedAt || record.technicalStatus || record.technicalReportedAt || record.technicianRequest || !['Pendiente', undefined, ''].includes(record.status)) return record
+    if (record.vehicleControl || protectedAssignments.record(record) || previousProtection.record(record) || !['Pendiente', undefined, ''].includes(record.status)) return record
     const team = changed.get(`${record.date}:${record.teamId}`)
     return team ? { ...record, technicianIds: [...(team.memberIds || [])], technicians: [...(team.members || [])] } : record
   }) }

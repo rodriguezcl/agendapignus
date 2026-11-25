@@ -37,7 +37,7 @@ import SystemState from "./components/ui/SystemState.jsx";
 import SoftGuardVerification from "./components/SoftGuardVerification.jsx";
 import SoftGuardRetirementReminder from "./components/SoftGuardRetirementReminder.jsx";
 import { fetchAuthWithRetry, fetchWithTimeout } from "./infrastructure/http/fetch-timeout.mjs";
-import { DEFAULT_2026_GUARD_ROTATION, firstSaturdayOfYear } from "./domain/agenda/annual-guards.mjs";
+import { nextSaturdayAfter } from "./domain/agenda/annual-guards.mjs";
 import addressChange from '../api/_lib/address-change.cjs'
 import { ensureVehicleControlService } from "./domain/vehicles/vehicle-controls.mjs";
 import { normalizeServiceEstimatedMinutes } from "./domain/agenda/service-scheduling.mjs";
@@ -1347,13 +1347,15 @@ export default function App() {
   const isAdministrator = permissionUser?.roleCode === 'administrator' || (!permissionUser?.roleCode && normalizeRoleName(permissionUser?.role) === 'administrador')
   useEffect(() => {
     if (!isAdministrator || !databaseReady) return
+    const effectiveFrom = nextSaturdayAfter(currentLocalDate())
+    if (!effectiveFrom.startsWith('2026-')) return
     const rotation = default2026GuardRotationFor(activeTechs)
-    if (rotation.length !== DEFAULT_2026_GUARD_ROTATION.length) return
-    setWeekly(previous => previous?._annualGuards?.['2026'] ? previous : {
+    if (!rotation.length) return
+    setWeekly(previous => Object.hasOwn(previous?._annualGuards || {}, '2026') ? previous : {
       ...previous,
       _annualGuards: {
         ...(previous?._annualGuards || {}),
-        2026: { startDate: firstSaturdayOfYear(2026), rotation }
+        2026: { startDate: effectiveFrom, effectiveFrom, rotation }
       }
     })
   }, [isAdministrator, databaseReady, activeTechs.map(tech => `${tech.id}:${tech.name}`).join('|')])

@@ -1,4 +1,5 @@
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+const { serviceAssignmentProtection } = require('./service-assignment-history.cjs')
 
 // Preserve reports and historical team snapshots. Only operational assignments
 // are removed; services themselves are never deleted or marked completed.
@@ -15,9 +16,8 @@ function removeInactiveAssignments(state, today = new Date().toLocaleDateString(
     if (keep.length === positions.length) return item
     return { ...item, [idKey]: keep.filter(index => oldIds[index] != null).map(index => oldIds[index]), [nameKey]: keep.filter(index => oldNames[index] != null).map(index => oldNames[index]) }
   }
-  const closed = item => ['Completado', 'Cancelado', 'Reprogramado'].includes(item?.status)
-  const records = new Map((state.history || []).map(record => [String(record.id), record]))
-  const cleanTask = task => closed(records.get(String(task.historyId)) || task) ? task : strip(task, 'technicianIds', 'technicians')
+  const protectedAssignments = serviceAssignmentProtection(state)
+  const cleanTask = task => protectedAssignments.task(task) ? task : strip(task, 'technicianIds', 'technicians')
   const teams = (items, day) => (items || []).map(team => ({
     ...(day && day < today ? team : (() => {
       const next = strip(team, 'memberIds', 'members')
@@ -27,7 +27,7 @@ function removeInactiveAssignments(state, today = new Date().toLocaleDateString(
   }))
   const agenda = state.agenda
   return { ...state,
-    history: (state.history || []).map(record => closed(record) ? record : strip(record, 'technicianIds', 'technicians')),
+    history: (state.history || []).map(record => protectedAssignments.record(record) ? record : strip(record, 'technicianIds', 'technicians')),
     ...(agenda ? { agenda: { ...agenda, teams: teams(agenda.teams, agenda.date), weekly: Object.fromEntries(Object.entries(agenda.weekly || {}).map(([day, plan]) => {
       if (day === '_monthlyTeams') return [day, Object.fromEntries(Object.entries(plan || {}).map(([month, config]) => [month, month < today.slice(0, 7) ? config : { ...config, teams: teams(config.teams) }]))]
       return [day, /^\d{4}-\d{2}-\d{2}$/.test(day) ? { ...plan, teams: teams(plan.teams, day) } : plan]

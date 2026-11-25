@@ -213,7 +213,7 @@ function projectStateForUser(state, user, ticketUser = user) {
   return {
     revision: state.revision,
     roles: state.roles,
-    employees: userCan(user, 'employees') ? state.employees.map(publicEmployee) : state.employees.map(({ id, firstName, lastName, name, roleId, role, status, technicalEnabled, canReceiveCash }) => ({ id, firstName, lastName, name, roleId, role, status, technicalEnabled: technicalEnabled === true, canReceiveCash: canReceiveCash === true })),
+    employees: userCan(user, 'employees') ? state.employees.map(publicEmployee) : state.employees.map(({ id, firstName, lastName, name, roleId, role, status, technicalEnabled, canReceiveCash, employmentStartDate }) => ({ id, firstName, lastName, name, roleId, role, status, technicalEnabled: technicalEnabled === true, canReceiveCash: canReceiveCash === true, guardEligibleFrom: require('./guard-eligibility.cjs').guardEligibleFrom({ employmentStartDate }) })),
     services: userCan(user, 'services') || canPlan || userCan(user, 'history') ? ensureVehicleControlService(state.services) : [],
     vehicles: userCan(user, 'vehicles') || userCan(user, 'weeklyVehicles') ? state.vehicles || [] : [],
     customers: userCan(user, 'accounts') || canPlan || userCan(user, 'history') ? state.customers : userCan(user, 'map') ? (state.customers || []).map(require('./subscriber-map-access.cjs').mapCustomer) : [],
@@ -227,7 +227,7 @@ function persistentStateInput(state) {
   // Match the root fields reconstructed by storage. Session/response metadata
   // and request options must never enter the operational state or its hash.
   return Object.fromEntries(['revision', 'roles', 'employees', 'services', 'vehicles', 'customers', 'history', 'reviews', 'agenda', 'preferences']
-    .filter(key => Object.hasOwn(state, key)).map(key => [key, require('./service-journeys.cjs').stripJourneyProjection(state[key])]))
+    .filter(key => Object.hasOwn(state, key)).map(key => [key, require('./service-journeys.cjs').stripJourneyProjection(key === 'employees' && Array.isArray(state[key]) ? state[key].map(({ guardEligibleFrom, ...employee }) => employee) : state[key])]))
 }
 
 function authorizeIncomingState(incoming, current, user) {
@@ -321,9 +321,11 @@ function customerKind(customer) {
 }
 
 function normalizeStateForSave(state, current, { allowEarlyCompletion = false } = {}) {
+  state = require('./employee-employment-date.cjs').normalizeEmployeeEmploymentDates(state, current)
   state = require('./vehicle-controls-resume.cjs').resumeVehicleControls(state, current)
   state = { ...state, services: require('./address-change.cjs').ensureAddressChangeService(state.services) }
   state = require('./inactive-employee-assignments.cjs').removeInactiveAssignments(state)
+  state = require('./onboard-technicians.cjs').reconcileNewTechnicians(state, current)
   state = persistentStateInput(state)
   require('./multi-service.cjs').validateServiceTypes(state)
   state = require('./service-schedule-sync.cjs').synchronizeServiceSchedules(state, current)

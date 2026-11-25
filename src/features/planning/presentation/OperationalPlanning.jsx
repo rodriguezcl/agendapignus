@@ -10,7 +10,7 @@ import { isGranular, normalizeRoleName } from '../../../domain/access/permission
 import { currentLocalDate, prettyDate } from '../../../presentation/formatting.mjs'
 import { createTeamId } from '../../../infrastructure/browser/identity.mjs'
 import { useNationalHolidays } from '../../agenda/application/useNationalHolidays.js'
-import { default2026GuardRotationFor, defaultServiceTasksForDate, isSaturday, assignGuardToEmptySaturday, weeklyTaskRemovalAliases, sortTasksByTime } from '../../agenda/application/agenda-model.mjs'
+import { defaultServiceTasksForDate, isSaturday, assignGuardToEmptySaturday, weeklyTaskRemovalAliases, sortTasksByTime } from '../../agenda/application/agenda-model.mjs'
 import { prepareVehicleControlGeneration, sameGeneratedVehicleControl } from '../../agenda/application/vehicle-control-generation.mjs'
 import { ConfigurationHistoryPanel } from '../../agenda/presentation/AgendaFields.jsx'
 import { monthlyTeamRotation, monthlyEligibleTechnicians } from '../../../domain/agenda/monthly-team-rotation.mjs'
@@ -18,7 +18,8 @@ import { synchronizeMonthlyTeams } from '../../../domain/agenda/monthly-team-syn
 import { synchronizeMonthlyVehicles } from '../../../domain/vehicles/monthly-vehicle-sync.mjs'
 import { appendConfigurationHistory, teamConfigurationSnapshot, vehicleConfigurationSnapshot, guardConfigurationSnapshot } from '../../../domain/configuration/configuration-history.mjs'
 import { suggestedVehicleAssignments, monthFridays, buildVehicleControlRecords, vehicleControlTask, vehicleLabel } from '../../../domain/vehicles/vehicle-controls.mjs'
-import { firstSaturdayOfYear } from '../../../domain/agenda/annual-guards.mjs'
+import { firstSaturdayOfYear, suggestedAnnualGuardRotation, annualGuardEntryFor } from '../../../domain/agenda/annual-guards.mjs'
+import guardEligibility from '../../../../api/_lib/guard-eligibility.cjs'
 import { swapVehicleResponsibilities } from '../../state/application/vehicle-responsibility-swap.mjs'
 import './operational-planning.css'
 
@@ -71,15 +72,6 @@ export default function OperationalPlanning({ weekly = {}, activeTechs = [], veh
   const holidayCalendar = useNationalHolidays([monthKey.slice(0, 4)])
   const previousMonthKey = (() => { const value = new Date(`${monthKey}-01T12:00:00`); value.setMonth(value.getMonth() - 1); return value.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).slice(0, 7) })()
   const priorVehicleAssignmentHistory = Object.entries(monthlyTeams).filter(([month, config]) => month < monthKey && config?.vehicleAssignments?.length).sort(([left], [right]) => left.localeCompare(right)).map(([, config]) => config.vehicleAssignments)
-  const suggestedAnnualGuardRotation = year => {
-    const configured = weekly._annualGuards?.[year]?.rotation
-    if (configured?.length) return structuredClone(configured)
-    if (String(year) === '2026') {
-      const preset = default2026GuardRotationFor(activeTechs)
-      if (preset.length) return preset
-    }
-    return structuredClone(weekly._annualGuards?.[String(Number(year) - 1)]?.rotation || [])
-  }
   const createDay = (day, sourceWeekly = weekly) => {
     const sources = sourceWeekly._monthlyTeams?.[day.slice(0, 7)]?.teams || [null, null, null]
     const createTeam = (index, source) => ({ teamId: source?.teamId || createTeamId(), memberIds: source?.memberIds || [], members: source?.members || [], tasks: defaultServiceTasksForDate(day, sourceWeekly), label: source?.label || `Equipo ${index + 1}` })
@@ -294,16 +286,16 @@ export default function OperationalPlanning({ weekly = {}, activeTechs = [], veh
       reportError(`No se guardaron los responsables. ${error.message || 'Revisá la versión actual e intentá nuevamente.'}`)
     } finally { endSave() }
   }
-  const annualGuardDraft = year => ({ year: String(year), rotation: /^\d{4}$/.test(String(year)) ? suggestedAnnualGuardRotation(String(year)) : [] })
+  const annualGuardDraft = year => ({ year: String(year), rotation: /^\d{4}$/.test(String(year)) ? suggestedAnnualGuardRotation(String(year), weekly, activeTechs) : [] })
   const updateAnnualGuardTechnician = (index, technicianId) => {
     const technician = activeTechs.find(item => String(item.id) === String(technicianId))
     if (!technician) return
-    setAnnualGuardSetup(previous => ({ ...previous, rotation: previous.rotation.map((item, itemIndex) => itemIndex === index ? { technicianId: technician.id, name: technician.name } : item) }))
+    setAnnualGuardSetup(previous => ({ ...previous, rotation: previous.rotation.map((item, itemIndex) => itemIndex === index ? annualGuardEntryFor(technician) : item) }))
   }
   const addAnnualGuardTechnician = () => {
     const available = activeTechs.find(tech => !annualGuardSetup.rotation.some(item => String(item.technicianId) === String(tech.id))) || activeTechs[0]
     if (!available) return
-    setAnnualGuardSetup(previous => ({ ...previous, rotation: [...previous.rotation, { technicianId: available.id, name: available.name }] }))
+    setAnnualGuardSetup(previous => ({ ...previous, rotation: [...previous.rotation, annualGuardEntryFor(available)] }))
   }
   const moveAnnualGuardTechnician = (index, direction) => setAnnualGuardSetup(previous => {
     const destination = index + direction
@@ -315,7 +307,10 @@ export default function OperationalPlanning({ weekly = {}, activeTechs = [], veh
   const removeAnnualGuardTechnician = index => setAnnualGuardSetup(previous => ({ ...previous, rotation: previous.rotation.filter((_, itemIndex) => itemIndex !== index) }))
   const saveAnnualGuardSetup = async () => {
     if (!canConfigureWeekly('weeklyGuards') || busyRef.current) return
-    const rotation = annualGuardSetup?.rotation || []
+    const rotation = (annualGuardSetup?.rotation || []).map(entry => {
+      const technician = activeTechs.find(item => String(item.id) === String(entry.technicianId))
+      return technician ? { ...entry, ...annualGuardEntryFor(technician) } : entry
+    })
     const duplicated = new Set(rotation.map(item => String(item.technicianId || item.name))).size !== rotation.length
     if (!/^\d{4}$/.test(annualGuardSetup?.year || '') || !rotation.length || duplicated) return
     const year = annualGuardSetup.year
@@ -409,12 +404,12 @@ export default function OperationalPlanning({ weekly = {}, activeTechs = [], veh
           </>}
         </>}
         {activeTab === 'weeklyGuards' && annualGuardSetup && <>
-          <header className="planning-panel-heading"><h2>Guardias de fin de semana</h2><p>El orden de rotación se repite cada sábado del año. Las excepciones diarias se conservan.</p></header>
+          <header className="planning-panel-heading"><h2>Guardias de fin de semana</h2><p>El orden de rotación se repite cada sábado del año. Cada técnico empieza a cubrir guardias al cumplir 60 días desde su ingreso; podés incluirlo ahora y se incorporará automáticamente desde esa fecha. Las excepciones diarias se conservan.</p></header>
           <label className="annual-guard-year">Año<input type="number" min="2026" max="2100" value={guardYear} disabled={busy} onChange={event => { const value = event.target.value; requestLeave(() => setGuardYear(value)) }} /></label>
           <fieldset className="planning-editable-fields" disabled={!canConfigureWeekly('weeklyGuards') || busy}>
             <div className="annual-guard-list">{annualGuardSetup.rotation.map((guard, index) => {
               const legacyGuard = guard.name && !activeTechs.some(tech => String(tech.id) === String(guard.technicianId))
-              return <div className="annual-guard-row" key={`${guard.technicianId || guard.name}-${index}`}><span>{index + 1}</span><select aria-label={`Técnico ${index + 1} de la rotación`} value={guard.technicianId || ''} onChange={event => updateAnnualGuardTechnician(index, event.target.value)}>{legacyGuard && <option value={guard.technicianId || ''}>{guard.name} (no activo)</option>}{activeTechs.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}</select><button type="button" className="secondary" aria-label={`Subir a ${guard.name}`} disabled={index === 0} onClick={() => moveAnnualGuardTechnician(index, -1)}>↑</button><button type="button" className="secondary" aria-label={`Bajar a ${guard.name}`} disabled={index === annualGuardSetup.rotation.length - 1} onClick={() => moveAnnualGuardTechnician(index, 1)}>↓</button><button type="button" className="icon-btn delete" aria-label={`Quitar a ${guard.name}`} onClick={() => removeAnnualGuardTechnician(index)}><Icon name="trash" size={15} /></button></div>
+              return <div className="annual-guard-row" key={`${guard.technicianId || guard.name}-${index}`}><span>{index + 1}</span><select aria-label={`Técnico ${index + 1} de la rotación`} value={guard.technicianId || ''} onChange={event => updateAnnualGuardTechnician(index, event.target.value)}>{legacyGuard && <option value={guard.technicianId || ''}>{guard.name} (no activo)</option>}{activeTechs.map(tech => { const eligibleFrom = guardEligibility.guardEligibleFrom(tech); return <option key={tech.id} value={tech.id}>{tech.name}{eligibleFrom ? ` · Guardias desde ${eligibleFrom.split('-').reverse().join('/')}` : ''}</option> })}</select><button type="button" className="secondary" aria-label={`Subir a ${guard.name}`} disabled={index === 0} onClick={() => moveAnnualGuardTechnician(index, -1)}>↑</button><button type="button" className="secondary" aria-label={`Bajar a ${guard.name}`} disabled={index === annualGuardSetup.rotation.length - 1} onClick={() => moveAnnualGuardTechnician(index, 1)}>↓</button><button type="button" className="icon-btn delete" aria-label={`Quitar a ${guard.name}`} onClick={() => removeAnnualGuardTechnician(index)}><Icon name="trash" size={15} /></button></div>
             })}</div>
             {canConfigureWeekly('weeklyGuards') && <button type="button" className="secondary annual-guard-add" disabled={!activeTechs.length || !validYear} onClick={addAnnualGuardTechnician}><Icon name="plus" size={15} />Agregar técnico</button>}
           </fieldset>

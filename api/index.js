@@ -850,6 +850,7 @@ async function clearDailyAgenda(sql, user) {
 
 function managedHistoryRecord(current, proposed, user, now, accessState) {
   proposed = endpointPolicy.restoreServiceProposal(current, proposed, user, accessState)
+  require('./_lib/guard-assignment-policy.cjs').assertGuardServiceAssignment({ ...current, ...proposed }, current, accessState)
   require('./_lib/vehicle-control-schedule-policy.cjs').assertVehicleControlSchedule({ ...current, ...proposed }, current, accessState?.agenda?.weekly)
   if (isGranular(user)) granularWrite.assertServiceChange(current, { ...current, ...proposed }, user, accessState)
   require('./_lib/completed-service-policy.cjs').assertCompletedServiceChange(current, proposed)

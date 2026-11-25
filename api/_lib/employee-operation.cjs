@@ -19,8 +19,12 @@ function applyEmployeeOperation(current, operations, user) {
     if (current.employees.some(item => String(item.id) !== targetId && String(item.email).trim().toLowerCase() === String(employee.email).trim().toLowerCase())) throw new Error('Ya existe un empleado con ese correo electrónico.')
     return { ...employee, firstName, lastName, name: `${firstName} ${lastName}`, roleId: role.id, role: role.name, technicalEnabled: !require('./permission-catalog.cjs').isGranular(role) && ['operator', 'supervisor'].includes(role.code || legacyRoleCode(role)) ? false : employee.technicalEnabled === true }
   })
-  const next = { ...current, employees: secureEmployees(employees, current.employees) }
+  const next = require('./employee-employment-date.cjs').normalizeEmployeeEmploymentDates({ ...current, employees: secureEmployees(employees, current.employees) }, current)
   if ((current.roles || []).some(require('./permission-catalog.cjs').isGranular)) require('./granular-write-policy.cjs').assertActiveAdministrator(next, current)
-  return require('./inactive-employee-assignments.cjs').removeInactiveAssignments(next)
+  const cleaned = require('./inactive-employee-assignments.cjs').removeInactiveAssignments(next)
+  const reconciled = require('./onboard-technicians.cjs').reconcileNewTechnicians(cleaned, current)
+  require('./guard-assignment-policy.cjs').validateGuardAssignments(reconciled, current)
+  if (JSON.stringify(reconciled.agenda) !== JSON.stringify(cleaned.agenda)) require('./scheduling-validation.cjs').validateChangedAgendaSchedules(reconciled, current)
+  return reconciled
 }
 module.exports = { employeeOnly, applyEmployeeOperation }

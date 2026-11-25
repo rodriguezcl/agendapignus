@@ -1147,6 +1147,7 @@ function stampStateServiceTrace(state, previousAgenda, previousHistory, user) {
 
 function managedHistoryRecord(current, proposed, user, now = new Date().toISOString(), accessState) {
   proposed = endpointPolicy.restoreServiceProposal(current, proposed, user, accessState)
+  require('./api/_lib/guard-assignment-policy.cjs').assertGuardServiceAssignment({ ...current, ...proposed }, current, accessState || readState())
   require('./api/_lib/vehicle-control-schedule-policy.cjs').assertVehicleControlSchedule({ ...current, ...proposed }, current, (accessState || readState()).agenda?.weekly)
   if (isGranular(user)) granularWrite.assertServiceChange(current, { ...current, ...proposed }, user, accessState)
   require('./api/_lib/completed-service-policy.cjs').assertCompletedServiceChange(current, proposed)
@@ -1220,8 +1221,10 @@ async function saveState(state, user) {
     error.statusCode = 409
     throw error
   }
+  state = require('./api/_lib/employee-employment-date.cjs').normalizeEmployeeEmploymentDates(state, previousState)
   state = require('./api/_lib/vehicle-controls-resume.cjs').resumeVehicleControls(state, previousState)
   state = require('./api/_lib/inactive-employee-assignments.cjs').removeInactiveAssignments(state)
+  state = require('./api/_lib/onboard-technicians.cjs').reconcileNewTechnicians(state, previousState)
   state = require('./api/_lib/team-service-assignments.cjs').synchronizeTeamServiceAssignments(state, previousState)
   require('./api/_lib/multi-service.cjs').validateServiceTypes(state)
   state = require('./api/_lib/service-schedule-sync.cjs').synchronizeServiceSchedules(state, previousState)

@@ -920,7 +920,7 @@ test('el administrador configura una rotación anual editable para las guardias 
   const styles = fs.readFileSync(path.resolve(__dirname, '../src/features/planning/presentation/operational-planning.css'), 'utf8')
   assert.match(source, /Guardias de fin de semana/)
   assert.match(source, /Guardar guardias del año/)
-  assert.match(source, /default2026GuardRotationFor/)
+  assert.match(source, /suggestedAnnualGuardRotation/)
   assert.match(source, /assignGuardToEmptySaturday/)
   assert.match(source, /_annualGuards/)
   assert.match(source, /canConfigureWeekly\('weeklyGuards'\)/)

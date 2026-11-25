@@ -410,6 +410,7 @@ function assertAgendaChange(before = {}, after = {}, user, state, derived = { te
 }
 
 function authorizeGranularState(incoming, current, user) {
+  if (Array.isArray(incoming.employees)) incoming = { ...incoming, employees: incoming.employees.map(employee => Object.fromEntries(Object.entries(employee).filter(([key, value]) => key !== 'guardEligibleFrom' && value !== undefined))) }
   user = catalog.permissionSnapshot(user)
   const visible = read.granularVisibleState(current, user)
   const next = restoreHidden({ ...current, ...incoming }, current, visible)
