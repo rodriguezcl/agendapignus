@@ -92,7 +92,7 @@ export function HistoryBulkView({ history, setHistory, customers, services, empl
   const historyPageCount = Math.max(1, Math.ceil(matchingRecords.length / historyPageSize))
   const currentHistoryPage = Math.min(historyPage, historyPageCount)
   const records = matchingRecords.slice((currentHistoryPage - 1) * historyPageSize, currentHistoryPage * historyPageSize)
-  const technicianNames = record => record.technicians?.map(name => String(name).trim().split(/\s+/)[0]).filter(Boolean).join(' / ') || 'Sin asignar'
+  const technicianNames = record => record.technicians?.map(name => String(name).trim()).filter(Boolean).join(' / ') || 'Sin asignar'
   const status = record => historyStatusLabel(record)
   const liveDetail = detail ? history.find(record => String(record.id) === String(detail.id)) : null
   useEffect(() => { setHistoryPage(1); setSelected([]) }, [search, fromDate, toDate, statusFilter, serviceFilter])

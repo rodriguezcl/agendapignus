@@ -61,3 +61,11 @@
 @media (max-width: 640px) {
   .history-contact-cell::before { content: 'Contactado OK'; margin-right: 12px; }
 }
+
+/* Preserve full names in the assigned technicians column. */
+.history-table .history-technicians > span {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
