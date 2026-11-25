@@ -1190,6 +1190,12 @@ async function saveState(state, user) {
       const next = applyEmployeeOperation(current, state.operations, user)
       auditChanges(current.employees, next.employees, 'id', 'Empleado', user)
       replaceRows('employees', next.employees, 'id', current.employees)
+      auditChanges(current.history, next.history, 'id', 'Servicio / historial', user)
+      for (const record of require('./api/_lib/record-changes.cjs').recordChanges(current.history, next.history).changed) db.prepare('INSERT INTO work_history (id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data').run(String(record.id), JSON.stringify(record))
+      if (JSON.stringify(current.agenda) !== JSON.stringify(next.agenda)) {
+        writeAudit(user, 'Modificó', 'Agenda técnica', 'agenda-actual', current.agenda, next.agenda)
+        db.prepare('INSERT INTO agendas (id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data').run('current', JSON.stringify(next.agenda))
+      }
       const revision = currentStateRevision() + 1
       db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(revision))
       db.exec('COMMIT')
@@ -1209,6 +1215,7 @@ async function saveState(state, user) {
     error.statusCode = 409
     throw error
   }
+  state = require('./api/_lib/inactive-employee-assignments.cjs').removeInactiveAssignments(state)
   state = require('./api/_lib/team-service-assignments.cjs').synchronizeTeamServiceAssignments(state, previousState)
   require('./api/_lib/multi-service.cjs').validateServiceTypes(state)
   state = require('./api/_lib/service-schedule-sync.cjs').synchronizeServiceSchedules(state, previousState)

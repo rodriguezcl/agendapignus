@@ -319,6 +319,7 @@ function customerKind(customer) {
 
 function normalizeStateForSave(state, current, { allowEarlyCompletion = false } = {}) {
   state = { ...state, services: require('./address-change.cjs').ensureAddressChangeService(state.services) }
+  state = require('./inactive-employee-assignments.cjs').removeInactiveAssignments(state)
   state = persistentStateInput(state)
   require('./multi-service.cjs').validateServiceTypes(state)
   state = require('./service-schedule-sync.cjs').synchronizeServiceSchedules(state, current)

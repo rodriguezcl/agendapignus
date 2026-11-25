@@ -21,6 +21,6 @@ function applyEmployeeOperation(current, operations, user) {
   })
   const next = { ...current, employees: secureEmployees(employees, current.employees) }
   if ((current.roles || []).some(require('./permission-catalog.cjs').isGranular)) require('./granular-write-policy.cjs').assertActiveAdministrator(next, current)
-  return next
+  return require('./inactive-employee-assignments.cjs').removeInactiveAssignments(next)
 }
 module.exports = { employeeOnly, applyEmployeeOperation }

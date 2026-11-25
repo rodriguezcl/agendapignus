@@ -102,7 +102,8 @@ export const assignGuardToEmptySaturday = (teams, date, weekly, activeTechs) => 
   const guard = guardForDateWithDefaults(date, weekly, activeTechs)
   if (!guard) return teams
   const technician = activeTechs.find(tech => String(tech.id) === String(guard.technicianId)) || activeTechs.find(tech => normalizeServiceName(tech.name) === normalizeServiceName(guard.name))
-  const name = technician?.name || guard.name
+  if (!technician) return teams
+  const name = technician.name
   const technicianId = technician?.id || guard.technicianId
   if (!name) return teams
   return teams.map((team, index) => index === 0 ? { ...team, memberIds: technicianId ? [technicianId] : [], members: [name] } : team)
