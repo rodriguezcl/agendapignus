@@ -8,6 +8,18 @@ const { sqlParameters } = require('./ticket-mail-store.cjs')
 const table = 'pignus_product_overrides'
 const schema = 'CREATE TABLE IF NOT EXISTS ' + table + ' (id TEXT PRIMARY KEY, data TEXT NOT NULL, last_request TEXT NOT NULL, photo_type TEXT, photo_bytes BLOB, CHECK ((photo_type IS NULL) = (photo_bytes IS NULL)))'
 const allMetadata = 'SELECT data FROM ' + table + ' ORDER BY id'
+const parseMetadata = rows => rows.map(row => JSON.parse(row.data))
+
+// Service saves already own a database connection. Read the catalog on that
+// same connection, including on a fresh installation with bundled products only.
+function sqliteProductOverrides(db) {
+  const present = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table)
+  return present ? parseMetadata(db.prepare(allMetadata).all()) : []
+}
+async function postgresProductOverrides(transaction) {
+  const [result] = await transaction.unsafe('SELECT to_regclass($1) IS NOT NULL AS present', [table])
+  return result.present ? parseMetadata(await transaction.unsafe(allMetadata)) : []
+}
 const save = 'INSERT INTO ' + table + ' (id,data,last_request,photo_type,photo_bytes) VALUES (?,?,?,?,?) ' +
   'ON CONFLICT (id) DO UPDATE SET data=excluded.data, last_request=excluded.last_request, ' +
   'photo_type=COALESCE(excluded.photo_type,' + table + '.photo_type), photo_bytes=COALESCE(excluded.photo_bytes,' + table + '.photo_bytes)'
@@ -85,7 +97,7 @@ function createProductStore({ db, sql }) {
   const rows = (statement, values = []) => sql ? sql.unsafe(sqlParameters(statement), values) : db.prepare(statement).all(...values)
   async function list() {
     await ensure()
-    return (await rows(allMetadata)).map(row => JSON.parse(row.data))
+    return parseMetadata(await rows(allMetadata))
   }
   async function photo(id) {
     if (typeof id !== 'string') fail('Imagen no encontrada.', 404, 'PRODUCT_PHOTO_NOT_FOUND')
@@ -116,4 +128,4 @@ function createProductStore({ db, sql }) {
   return { list, photo, update }
 }
 
-module.exports = { createProductStore }
+module.exports = { createProductStore, sqliteProductOverrides, postgresProductOverrides }

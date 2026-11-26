@@ -9,6 +9,9 @@ function assertCompletedServiceChange(before, after, { referenceRepair = false, 
   if (before && !categoryCorrection && !require('node:util').isDeepStrictEqual(before.categoryCorrections, after?.categoryCorrections)) throw Object.assign(new Error('La trazabilidad de categorías sólo se modifica desde Corregir categoría.'), { statusCode: 409 })
   if (!workCompletionChange && before && !isCompleted(before) && isCompleted(after) && require('./work-completion.cjs').typesFor(before).length > 1) throw Object.assign(new Error('Este servicio incluye varios trabajos. El técnico debe informar el resultado de cada uno desde Cerrar servicio.'), { statusCode: 409 })
   if (!isCompleted(before) || !after) return
+  if (after.materials !== undefined && !require('node:util').isDeepStrictEqual(before.materials ?? [], after.materials)) {
+    throw Object.assign(new Error('Este servicio ya fue completado. Los productos entregados deben conservarse en el historial.'), { statusCode: 409, code: 'COMPLETED_SERVICE_LOCKED' })
+  }
   // A reservation may acquire its definitive identity without losing its report.
   const linking = before.subscriberReservation === true && after.subscriberReservation === false && after.customerId && /^PIG-/i.test(after.clientAccount || '') && after.reservationOriginal && after.reservationLinkedAt
   const referenceFields = ['customerId', 'client', 'clientAccount', 'clientNameAtService']

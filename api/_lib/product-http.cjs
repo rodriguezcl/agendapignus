@@ -5,7 +5,8 @@ const stores = new WeakMap()
 async function productRequest({ connection, kind, method, route, user, query = {}, input }) {
   if (user?.id == null || user.status === 'Inactivo') throw Object.assign(new Error('Iniciá sesión para consultar Productos.'), { statusCode: 403 })
   const canManage = policy.roleCode(user) === 'administrator'
-  if (!canManage && (method !== 'GET' || !policy.can(user, 'cctv.view'))) {
+  const canRead = ['cctv.view', 'planning.create', 'planning.edit'].some(permission => policy.can(user, permission))
+  if (!canManage && (method !== 'GET' || !canRead)) {
     throw Object.assign(new Error('No tenés permiso para realizar esta acción en Productos.'), { statusCode: 403 })
   }
   if (!stores.has(connection)) stores.set(connection, createProductStore({ [kind]: connection }))

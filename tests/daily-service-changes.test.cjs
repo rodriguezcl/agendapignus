@@ -42,3 +42,18 @@ test('discard preserves an unanswered freeze choice independently of an explicit
     assert.equal(restored.historyId, 'saved')
   }
 })
+test('las cantidades de materiales cuentan como edición y descartar recupera la entrega guardada', async () => {
+  const { serviceHasChanges, restoreSavedService } = await import('../src/domain/agenda/service-changes.mjs')
+  const { agendaHasUnsavedServices } = await import('../src/domain/agenda/unsaved-agenda.mjs')
+  const line = { productId: 'sensor', model: 'PIR', name: 'Sensor PIR', quantity: 2 }
+  const record = { id: 'work-1', date: '2099-10-08', teamId: 'A', materials: [line] }
+  const task = { historyId: 'work-1', materials: [{ ...line, quantity: 3 }] }
+  const inAgenda = task => agendaHasUnsavedServices({ teams: [{ teamId: 'A', tasks: [task] }], history: [record], date: record.date })
+  assert.equal(serviceHasChanges(task, record), true)
+  assert.equal(inAgenda(task), true)
+  const restored = restoreSavedService(task, record)
+  assert.deepEqual(restored.materials, record.materials)
+  assert.notEqual(restored.materials[0], record.materials[0])
+  assert.equal(inAgenda(restored), false)
+  assert.equal(serviceHasChanges({}, { materials: [] }), false)
+})

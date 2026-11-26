@@ -508,6 +508,8 @@ async function handleSaveState(req, res, sql, user) {
         throw error
       }
       if (!employeeCommand && !planningClick) {
+        const delivery = require('./_lib/service-materials.cjs').prepareServiceMaterials(next, current)
+        next = delivery.apply(delivery.needsCatalog ? await require('./_lib/product-store.cjs').postgresProductOverrides(transaction) : [])
         next = normalizeStateForSave(next, current, { allowEarlyCompletion: isGranular(user) ? canPermission(user, 'history.completeEarly') : user.roleCode === 'administrator' })
         next.employees = secureEmployees(next.employees, current.employees)
         validateState(next, current)

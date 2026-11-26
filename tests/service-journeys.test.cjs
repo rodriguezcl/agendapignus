@@ -38,6 +38,18 @@ test('planificar jornadas conserva una cobranza confirmada sin copiar su confirm
   assert.equal(next.history[0].collection.status, 'confirmed')
   assert.equal(next.history[1].collection, undefined)
 })
+test('distribuir el servicio en jornadas nuevas conserva la entrega una sola vez', async () => {
+  const { state, options, planServiceJourneyOperations } = await planned()
+  const materials = [{ productId: 'custom:p', model: 'SKU', brand: 'Marca', name: 'Marca · Sensor', quantity: 2 }]
+  state.history[0].materials = materials
+  state.agenda.teams[0].tasks[0].materials = materials
+  state.agenda.weekly[state.history[0].date].teams[0].tasks[0].materials = materials
+  const next = applyStateOperations(state, planServiceJourneyOperations(state, { ...options, base: state.history[0] }))
+  assert.deepEqual(next.history[0].materials, materials)
+  assert.equal(next.history[1].materials, undefined)
+  assert.equal(next.agenda.weekly[next.history[1].date].teams[0].tasks[0].materials, undefined)
+})
+
 test('stale base or invalid destination never generates partial reservations',async()=>{
   const {state,options,planServiceJourneyOperations:plan}=await planned()
   assert.throws(()=>plan({...state,history:[{...state.history[0],detail:'changed'}]},options),/cambió/)
@@ -173,6 +185,8 @@ test('technician visibility preserves journey labels but excludes private planni
 
 test('normalized storage round-trips all journeys and the new advance status', async () => {
   const { next } = await planned()
+  const materials = [{ productId: 'custom:p', brand: 'Garnet', model: 'SKU', name: 'Garnet · Detector', quantity: 2 }]
+  for (const row of [next.history[0], next.agenda.teams[0].tasks[0], next.agenda.weekly[next.history[0].date].teams[0].tasks[0]]) row.materials = materials
   const fs=require('node:fs'),path=require('node:path')
   const { PGlite }=await import('@electric-sql/pglite'),pg=await PGlite.create()
   const { buildShadowCandidate,insertShadowCandidate }=require('../api/_lib/normalization-rehearsal.cjs')

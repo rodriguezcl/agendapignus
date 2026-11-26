@@ -5,6 +5,7 @@ import EquipmentModelInput from './EquipmentModelInput.jsx'
 import ProductPhotos from './ProductPhotos.jsx'
 import { equipmentCatalogFor, isPerimeter } from '../domain/equipment-catalog.mjs'
 import { useProductCatalog } from '../../products/application/useProductCatalog.mjs'
+import { productName, productOptionLabel } from '../../products/domain/product-name.mjs'
 import './cctv-editors.css'
 
 const makeId = () => `plan-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`
@@ -43,6 +44,7 @@ export function PlanimetryEditor({ value, equipment = [], onChange, readOnly = f
     return counts
   }, [drawing])
   const availableUnits = item => item ? Math.max(0, (item.quantity ?? 1) - (unitsOnPlan.get(item.id) || 0)) : 0
+  const inventoryLabel = item => [productOptionLabel(catalog.find(item) || item, item.model), item.label, item.location].filter(Boolean).join(' · ')
   const placementItem = equipment.find(item => item.id === placementId)
   const linkedItem = selected?.equipmentId && equipment.find(item => item.id === selected.equipmentId)
   const canDuplicate = selected && drawing.elements.length < schema.MAX_DRAWING_ELEMENTS && (!selected.equipmentId || availableUnits(linkedItem) > 0)
@@ -148,13 +150,13 @@ export function PlanimetryEditor({ value, equipment = [], onChange, readOnly = f
         <option value="">{equipment.length ? 'Elegí un equipo para ubicar en el plano' : 'Todavía no hay equipos guardados en esta cuenta'}</option>
         {equipment.map(item => {
           const available = availableUnits(item)
-          return <option key={item.id} value={item.id} disabled={!available}>{[equipmentName(item), item.brand, item.model, item.location].filter(Boolean).join(' · ')} · {available} de {item.quantity ?? 1} por ubicar</option>
+          return <option key={item.id} value={item.id} disabled={!available}>{inventoryLabel(item)} · {available} de {item.quantity ?? 1} por ubicar</option>
         })}
       </select>
     </label>}
     {!readOnly && error && <p role="status">No se pudo actualizar el catálogo de productos. Los equipos de la ficha técnica siguen disponibles.</p>}
     {!readOnly && equipment.length > 0 && <ProductPhotos catalog={catalog} selected={placementItem} choices={equipment}
-      photoChoice={item => ({ ...item, detail: [equipmentName(item), item.location, `${availableUnits(item)} por ubicar`].filter(Boolean).join(' · '), disabled: !availableUnits(item) })}
+      photoChoice={item => ({ ...item, detail: [productName(catalog.find(item) || item), item.label, item.location, `${availableUnits(item)} por ubicar`].filter(Boolean).join(' · '), disabled: !availableUnits(item) })}
       disabled={disabled || drawing.elements.length >= schema.MAX_DRAWING_ELEMENTS} onChoose={id => changeTool('inventory', id)} />}
     {!readOnly && <div className="cctv-editor-toolbar" role="group" aria-label="Herramientas del plano">
       <button type="button" disabled={disabled} aria-pressed={tool === 'select'} onClick={() => changeTool('select')}>Seleccionar / mover</button>
@@ -214,7 +216,7 @@ export function PlanimetryEditor({ value, equipment = [], onChange, readOnly = f
         <label>Etiqueta / nota<input disabled={disabled} maxLength={selected.type === 'text' ? 1000 : 160} value={originalSelected?.label || ''} onChange={event => updateSelected({ label: event.target.value })} /></label>
         {selected.equipmentId ? <><p className="cctv-plan-source">
           <strong>Vinculado a la ficha técnica</strong>
-          {[linkedItem && equipmentName(linkedItem), selected.brand, selected.model].filter(Boolean).join(' · ')}
+          {linkedItem ? inventoryLabel(linkedItem) : [selected.model, selected.brand].filter(Boolean).join(' · ')}
         </p>{linkedItem && <ProductPhotos catalog={catalog} selected={linkedItem} />}</> : (modelKinds || category === 'alarm' || perimeter) && <>
           {!perimeter && <label>{category === 'alarm' ? 'Marca de la alarma' : 'Marca del equipo'}<select disabled={disabled || loading || Boolean(error)} value={brand} onChange={event => updateSelected({ brand: event.target.value, model: '' })}>
             <option value="">Todas las marcas</option>

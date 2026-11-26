@@ -13,7 +13,7 @@ function sanitizeTechnicianFollowup(record, user) {
   // El historial del cliente puede incluir otras visitas; sus referencias no
   // conceden acceso al reclamo que debe atender otro técnico.
   if (!(record.technicianIds || []).some(value => userId && String(value) === userId)) {
-    const { sourceTicketId, ticketNumber, ticketResolution, ...rest } = visible
+    const { sourceTicketId, ticketNumber, ticketResolution, materials, ...rest } = visible
     visible = rest
   }
   return visible

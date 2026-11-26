@@ -4,6 +4,7 @@ export const serviceEditableFields = ['time', 'serviceId', 'service', 'customerI
 export function serviceHasChanges(task, saved) {
   if (!saved) return true
   if (Boolean(task.awaitingConfirmation) !== Boolean(saved.awaitingConfirmation)) return true
+  if (!sameServiceMaterials(task.materials, saved.materials)) return true
   const value = (item, key) => key === 'serviceCharges' ? JSON.stringify(item?.[key] ?? null) : key === 'freezeMonthlyFee' ? (item?.[key] ?? null) : key === 'frozenMonths' ? Number(item?.[key] || 0) : String(item?.[key] ?? '')
   if (serviceEditableFields.some(key => value(task, key) !== value(saved, key))) return true
   if (Boolean(task?.servicePhotoAttached) !== Boolean(saved?.servicePhotoAttached)) return true
@@ -23,8 +24,14 @@ export function restoreSavedService(task, saved) {
     clientNameAtService: saved.clientNameAtService || '',
     estimatedMinutesCustomized: saved.estimatedMinutesCustomized,
     internalChecklist: (saved.internalChecklist || []).map(item => ({ ...item })),
+    materials: (saved.materials || []).map(item => ({ ...item })),
     servicePhotoAttached: Boolean(saved.servicePhotoAttached),
     newCustomer: false,
     subscriberReservation: false
   }
+}
+
+export function sameServiceMaterials(left = [], right = []) {
+  return left.length === right.length && left.every((item, index) =>
+    item.productId === right[index].productId && item.quantity === right[index].quantity)
 }

@@ -1,3 +1,5 @@
+import { sameServiceMaterials } from './service-changes.mjs'
+
 const text = value => String(value || '').trim()
 const sortedIds = values => [...new Set((values || []).map(value => text(value)).filter(Boolean))].sort()
 const sameIds = (left, right) => JSON.stringify(sortedIds(left)) === JSON.stringify(sortedIds(right))
@@ -5,7 +7,7 @@ const sameIds = (left, right) => JSON.stringify(sortedIds(left)) === JSON.string
 const taskHasContent = task => Boolean(task && (
   task.historyId || task.customerId || task.serviceId ||
   ['client', 'service', 'address', 'phone', 'detail', 'internalNote'].some(key => text(task[key])) ||
-  (task.internalChecklist || []).some(item => text(item?.text))
+  (task.internalChecklist || []).some(item => text(item?.text)) || task.materials?.length
 ))
 
 const sameReference = (task, record, idKey, nameKey) => {
@@ -23,6 +25,7 @@ const taskMatchesRecord = (task, team, teamIndex, record, date) => {
   if (!identityMatches) return false
   const teamMatches = team.teamId && record.teamId ? text(team.teamId) === text(record.teamId) : text(record.team) === `Equipo ${teamIndex + 1}`
   return teamMatches && JSON.stringify(task.serviceCharges ?? null) === JSON.stringify(record.serviceCharges ?? null) &&
+    sameServiceMaterials(task.materials, record.materials) &&
     Boolean(task.awaitingConfirmation) === Boolean(record.awaitingConfirmation) &&
     sameIds(team.memberIds, record.technicianIds) &&
     text(record.time || record.scheduledTime) === text(task.time) &&

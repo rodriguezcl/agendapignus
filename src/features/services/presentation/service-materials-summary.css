@@ -1,0 +1,22 @@
+.service-materials-summary {
+  margin-block: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--ap-border, #d9dfe7);
+  border-radius: 8px;
+  background: var(--ap-surface-alt, #f7f8fa);
+  color: var(--ap-text, #243041);
+}
+.service-materials-summary h3 { margin: 0 0 .5rem; font-size: 1rem; }
+.service-materials-summary ul { margin: 0; padding: 0; list-style: none; }
+.service-materials-summary li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .75rem;
+  padding-block: .55rem;
+}
+.service-materials-summary li + li { border-top: 1px solid var(--ap-border, #d9dfe7); }
+.service-materials-summary li div { min-width: 0; overflow-wrap: anywhere; }
+.service-materials-summary small { display: block; margin-top: .15rem; color: var(--ap-muted, #516071); }
+.service-materials-summary li > span { flex: none; font-variant-numeric: tabular-nums; }
+.technician-service.is-collapsed > .service-materials-summary { display: none; }

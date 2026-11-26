@@ -1,13 +1,12 @@
 import React, { useMemo, useState } from 'react'
 import schema from '../../../../shared/cctv-schema.cjs'
-import catalog from '../../../../shared/product-catalog.cjs'
 import ModuleIntroduction from '../../../components/ModuleIntroduction.jsx'
 import EditorModal from '../../../components/ui/EditorModal.jsx'
 import Icon from '../../../components/ui/Icon.jsx'
 import { sortOptionsAlphabetically } from '../../../domain/shared/catalog-order.mjs'
-import { normalizeSearchText } from '../../../domain/shared/normalization.mjs'
 import { useProductCatalog } from '../application/useProductCatalog.mjs'
 import { productName, productType } from '../domain/product-name.mjs'
+import { indexProducts, productSearchWords } from '../domain/product-search.mjs'
 import ProductForm, { editableFields, ReferencePhoto } from './ProductForm.jsx'
 import './products.css'
 
@@ -91,13 +90,9 @@ export default function Products() {
   const [page, setPage] = useState(1), [size, setSize] = useState(20)
   const [dialog, setDialog] = useState(null), [notice, setNotice] = useState('')
   const brands = useMemo(() => sortOptionsAlphabetically([...new Set(products.map(product => product.brand).filter(Boolean))]), [products])
-  const index = useMemo(() => sortOptionsAlphabetically(products, product => `${product.brand} ${product.model}`).map(product => {
-    const name = productName(product)
-    const searchable = normalizeSearchText([name, catalog.searchableModel(product), EQUIPMENT_CATEGORIES[product.category], productType(product)].join(' '))
-    return { product, name, searchable }
-  }), [products])
+  const index = useMemo(() => indexProducts(products), [products])
   const matches = useMemo(() => {
-    const words = filters.search.trim().split(/\s+/).map(normalizeSearchText).filter(Boolean)
+    const words = productSearchWords(filters.search)
     return index.filter(({ product, searchable }) =>
       (!filters.category || product.category === filters.category) && (!filters.brand || product.brand === filters.brand) &&
       (filters.state === 'all' || product.active === (filters.state === 'active')) && words.every(word => searchable.includes(word)))

@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
+import { productName } from '../../products/domain/product-name.mjs'
 
 const PAGE_SIZE = 8
 
@@ -29,6 +30,7 @@ export default function ProductPhotos({ catalog, selected, choices = [], photoCh
     {reference?.image ? <div className="cctv-photo-preview">
       <ProductThumbnail image={reference.image} model={selected.model} caption={reference.caption} enlarge />
       <div><strong>{selected.model}</strong>
+        <small>{productName(reference)}</small>
         {reference.caption && <small>{reference.caption}</small>}
         {catalog.isSharedProductImage(reference.image) && <small>Esta imagen corresponde a varios modelos. Verificá el código del equipo.</small>}
         {!sourceProvided && reference.source && <a href={reference.source} target="_blank" rel="noreferrer">Ver ficha del producto</a>}

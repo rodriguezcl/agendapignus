@@ -31,6 +31,8 @@ export function planServiceJourneyOperations(snapshot, { base, visits, today, te
     if (index) {
       // The first visit owns the payment history for the whole service.
       delete child.collection
+      // A new visit has its own equipment handover.
+      delete child.materials
       for (const key of ['completedAt', 'startedAt', 'technicalStatus', 'technicalObservation', 'technicalReportedAt', 'technicalReportedById', 'technicalReportedByName', 'servicePhotoUrl', 'servicePhotoAttachedAt']) delete child[key]
       child.servicePhotoAttached = false
     }

@@ -161,6 +161,26 @@ test('Planimetría ofrece el inventario de la cuenta abierta solo a quienes pued
   assert.equal(inventoryOptions(data).length, 0)
 })
 
+test('Ficha técnica y Planimetría muestran el mismo código y nombre completo que Productos', async () => {
+  const { productName } = await import('../src/features/products/domain/product-name.mjs')
+  const { baseProducts } = require('../shared/product-catalog.cjs')
+  const product = baseProducts.find(item => item.brand === 'Hikvision' && item.model === 'DS-7632NI-K2')
+  const data = fixture()
+  const item = { id: 'grabador-1', category: product.category, kind: product.kind, label: 'Grabador de portería', brand: product.brand, model: product.model, location: 'Sala norte', quantity: 2 }
+  data.dossier.equipment = [item]
+  const choiceText = (tab, id) => {
+    const [option] = nodes(render(tab, data).document, node => node.name === 'option' && node.attribs.value === id)
+    assert.ok(option, id)
+    return option.children.map(child => child.data).join('')
+  }
+  const expected = product.model + ' · ' + productName(product)
+  assert.equal(choiceText('equipment', product.id), expected)
+  assert.equal(choiceText('plans', item.id), expected + ' · Grabador de portería · Sala norte · 2 de 2 por ubicar')
+  item.model = 'Modelo manual'
+  assert.match(choiceText('equipment', 'saved-model'), /^Modelo manual · Hikvision · Grabador NVR$/)
+  assert.match(choiceText('plans', item.id), /^Modelo manual · Hikvision · Grabador NVR · Grabador de portería/)
+})
+
 test('una nueva versión conserva ubicaciones e historial al cambiar el modelo, reducir la cantidad o quitar un equipo de la ficha', async () => {
   const { reconcilePlanEquipment } = await import('../src/features/cctv/domain/plan-equipment.mjs')
   const item = { id: 'lote-1', category: 'cctv', kind: 'ip_camera', brand: 'Dahua', model: 'Modelo actualizado', label: 'Ingreso', quantity: 1 }

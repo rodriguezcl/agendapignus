@@ -45,7 +45,7 @@ function restoreHidden(proposed, current, visible) {
 }
 
 const RECORD_GROUPS = {
-  notes: ['internalNote'], checklist: ['internalChecklist'], ready: ['servicePreparation'],
+  notes: ['internalNote'], checklist: ['internalChecklist'], ready: ['servicePreparation'], materials: ['materials'],
   account: ['customerId', 'client', 'clientAccount', 'clientNameAtService'],
   commercial: ['serviceCharges', 'amount', 'paymentMethod', 'monthlyFee', 'form', 'formEmail'],
   freeze: ['freezeMonthlyFee', 'frozenMonths', 'monthlyFeeEffectiveFrom'],
@@ -96,7 +96,10 @@ function assertServiceChange(before, after, user, state, { planning = false, tas
   require('./softguard-presence.cjs').assertActiveService(before,after,state.customers)
   if (same(before, after)) return
   const populated = value => value && ['serviceId', 'service', 'customerId', 'client', 'vehicleControl', 'subscriberReservation'].some(key => nonempty(value[key]))
-  if (task && !populated(before) && !populated(after)) return
+  if (task && !populated(before) && !populated(after)) {
+    if (after?.materials?.length && changed(before, after, RECORD_GROUPS.materials)) requirePermission(user, 'planning.create')
+    return
+  }
   if (task && before && !populated(before) && populated(after)) return assertServiceChange(null, after, user, state, { planning, task })
   const scopeRecord = before || after
   if (!read.serviceWritable(scopeRecord, user, state) || after && !read.serviceWritable(after, user, { ...state, history: [...(state.history || []).filter(row => id(row.id) !== id(after.id)), after] })) fail('scope.services.write')
@@ -137,6 +140,7 @@ function assertServiceChange(before, after, user, state, { planning = false, tas
   }
   if (changed(before, after, RECORD_GROUPS.notes)) requirePermission(user, 'planning.notes')
   if (changed(before, after, RECORD_GROUPS.checklist)) requirePermission(user, 'planning.checklist')
+  if (after.materials !== undefined && !same(before.materials ?? [], after.materials)) requirePermission(user, 'planning.edit')
   if (changed(before, after, RECORD_GROUPS.ready)) requirePermission(user, 'planning.ready')
   const training = !before.customerId && !after.customerId && /capacitacion/.test(String(after.service || before.service || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase())
   if (changed(before, after, RECORD_GROUPS.account.filter(key => !scheduleDerived.has(key)))) requirePermission(user, training ? planning ? 'planning.edit' : 'history.edit' : before.subscriberReservation && !after.subscriberReservation ? 'planning.reservation.link' : 'planning.linkAccount')

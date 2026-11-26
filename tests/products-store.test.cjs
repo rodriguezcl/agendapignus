@@ -5,11 +5,13 @@ const { DatabaseSync } = require('node:sqlite')
 const { pgliteAdapter } = require('./helpers/pglite-adapter.cjs')
 const { productRequest } = require('../api/_lib/product-http.cjs')
 const { baseProducts } = require('../shared/product-catalog.cjs')
+const { postgresProductOverrides, sqliteProductOverrides } = require('../api/_lib/product-store.cjs')
 
 const admin = { id: 'admin', roleCode: 'administrator' }
 const tech = { id: 'tech', roleCode: 'technician' }
 const supervisor = { id: 'supervisor', roleCode: 'supervisor' }
 const other = { id: 'user', roleCode: 'user' }
+const planner = { id: 'planner', roleCode: 'coordinator', permissions: { weekly: true } }
 const newId = () => 'custom:' + randomUUID()
 const png = { mimeType: 'image/png', contentBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WL+lrkAAAAASUVORK5CYII=' }
 const editable = { category: 'alarm', kind: 'sensor', brand: 'Marca local', model: 'S-10', description: '', source: '', active: true }
@@ -27,7 +29,8 @@ async function setup(engine) {
     close = () => pg.close()
   }
   const request = (user, method, route, options) => productRequest({ user, method, route, connection, kind: engine === 'sqlite' ? 'db' : 'sql', ...options })
-  return { close, list: user => request(user, 'GET', '/products').then(result => result.body),
+  return { close, serviceOverrides: () => engine === 'sqlite' ? sqliteProductOverrides(connection) : postgresProductOverrides(connection),
+    list: user => request(user, 'GET', '/products').then(result => result.body),
     update: (input, user = admin) => request(user, 'POST', '/products', { input }).then(result => result.body.product),
     photo: (id, user = admin) => request(user, 'GET', '/products/photo', { query: { id } }).then(result => result.file) }
 }
@@ -36,6 +39,7 @@ for (const engine of ['sqlite', 'postgres']) {
   test('Productos ' + engine + ': alta con foto, edición, baja y recuperación del catálogo', async t => {
     const api = await setup(engine)
     t.after(api.close)
+    assert.deepEqual(await api.serviceOverrides(), [])
     assert.deepEqual(await api.list(admin), { overrides: [], canManage: true })
     assert.equal((await api.list(supervisor)).canManage, false)
     assert.equal((await api.list(tech)).canManage, false)
@@ -44,6 +48,8 @@ for (const engine of ['sqlite', 'postgres']) {
 
     const id = newId()
     const create = { id, expectedVersion: 0, product: editable, photo: png }
+    assert.equal((await api.list(planner)).canManage, false)
+    await assert.rejects(api.update(create, planner), { statusCode: 403 })
     await assert.rejects(api.update(create, supervisor), { statusCode: 403 })
     await assert.rejects(api.update(create, tech), { statusCode: 403 })
     await assert.rejects(api.update({ ...create, photo: undefined }), { statusCode: 400 })
@@ -56,6 +62,7 @@ for (const engine of ['sqlite', 'postgres']) {
     assert.equal(concurrent.find(item => item.status === 'rejected').reason.code, 'PRODUCT_DUPLICATE')
     const saved = concurrent.find(item => item.status === 'fulfilled').value
     assert.equal(saved.version, 1)
+    assert.deepEqual(await api.serviceOverrides(), [saved])
     assert.match(saved.image, /^\/api\/products\/photo\?id=/)
     assert.deepEqual(await api.update({ ...create, id: saved.id }), saved)
     assert.deepEqual((await api.photo(saved.id, tech)).data, Buffer.from(png.contentBase64, 'base64'))

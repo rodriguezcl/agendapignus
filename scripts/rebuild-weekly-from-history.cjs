@@ -12,6 +12,7 @@ const taskFromHistory = record => ({
   address: record.address || '',
   phone: record.phone || '',
   detail: record.detail || '',
+  ...(record.materials ? { materials: record.materials } : {}),
   installationZone: record.installationZone || '',
   paymentMethod: record.paymentMethod || '',
   amount: record.amount || '',

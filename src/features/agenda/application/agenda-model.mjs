@@ -134,7 +134,7 @@ export const advancedGuardForSaturdayDate = (date, weekly, saturdayTeams, source
 export const taskHasContent = task => Boolean(task && (
   task.historyId || task.customerId || task.serviceId ||
   ['client', 'service', 'address', 'phone', 'detail', 'internalNote'].some(key => String(task[key] || '').trim()) ||
-  normalizeInternalChecklist(task.internalChecklist).some(item => item.text.trim())
+  normalizeInternalChecklist(task.internalChecklist).some(item => item.text.trim()) || task.materials?.length
 ))
 
 export const serviceTimeInMinutes = time => {

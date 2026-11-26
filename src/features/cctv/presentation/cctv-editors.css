@@ -8,7 +8,7 @@
 .cctv-editor-help { color: var(--cctv-muted); font-size: 13px; line-height: 1.5; margin: 12px 0; }
 .cctv-plan-viewport { border: 1px solid var(--cctv-border); border-radius: 9px; overflow: auto; max-height: min(72vh, 780px); background: var(--cctv-canvas, #fff); }
 .cctv-plan-editor > .cctv-editor-toolbar + .cctv-editor-toolbar { margin-top: 8px; }
-.cctv-model-picker { display: grid; align-content: start; gap: 8px; }
+.cctv-model-picker { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; align-content: start; gap: 8px; }
 .cctv-plan-inventory { margin-bottom: 12px; }
 .cctv-plan-source { display: grid; gap: 4px; margin: 0; overflow-wrap: anywhere; }
 .cctv-model-picker small { color: var(--cctv-muted); }

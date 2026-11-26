@@ -1224,6 +1224,8 @@ async function saveState(state, user) {
     error.statusCode = 409
     throw error
   }
+  const delivery = require('./api/_lib/service-materials.cjs').prepareServiceMaterials(state, previousState)
+  state = delivery.apply(delivery.needsCatalog ? require('./api/_lib/product-store.cjs').sqliteProductOverrides(db) : [])
   state = require('./api/_lib/employee-employment-date.cjs').normalizeEmployeeEmploymentDates(state, previousState)
   state = require('./api/_lib/vehicle-controls-resume.cjs').resumeVehicleControls(state, previousState)
   state = require('./api/_lib/inactive-employee-assignments.cjs').removeInactiveAssignments(state)

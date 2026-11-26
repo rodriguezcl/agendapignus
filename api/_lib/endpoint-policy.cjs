@@ -139,6 +139,11 @@ function recordBaseMatches(current, base, user) {
 }
 function restoreServiceProposal(current, proposed, user, state) {
   proposed = require('./service-journeys.cjs').stripJourneyProjection(proposed)
+  if (proposed.materials !== undefined && !write.same(proposed.materials, current.materials ?? [])) {
+    throw Object.assign(new Error('Los productos entregados se modifican desde la agenda del servicio.'), { statusCode: 409, code: 'SERVICE_MATERIAL_HISTORY' })
+  }
+  if (current.materials !== undefined) proposed.materials = current.materials
+  else delete proposed.materials
   if (!catalog.isGranular(user)) return restoreLegacyCollectionReceipts(proposed, current, user)
   const restored = write.restoreHidden(proposed, current, read.sanitizeService(current, user))
   return state ? write.prepareServiceProposal(current, restored, user, state) : restored
