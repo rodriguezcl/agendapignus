@@ -2,6 +2,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { randomUUID } from 'node:crypto'
+import productImageOrigins from './shared/cctv-product-image-origins.json'
 
 const buildId = randomUUID()
 const versionManifest = {
@@ -12,7 +13,7 @@ const versionManifest = {
 }
 
 const securityHeaders = {
-  'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+  'Content-Security-Policy': `default-src 'self'; img-src 'self' data: ${productImageOrigins.join(' ')}; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
   'Referrer-Policy': 'no-referrer',
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',

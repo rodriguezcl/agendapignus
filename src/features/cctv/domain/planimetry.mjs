@@ -32,6 +32,7 @@ export const symbolPath = type => ({
   alarm: 'M-13 9c5-7-2-21 13-21S8 2 13 9z M-4 14h8 M0-16v4',
   barrier: 'M-20-18h6v36h-6z M14-18h6v36h-6z M-11-12h22 M-11 0h22 M-11 12h22',
   fence: 'M-21-14v32 M0-14v32 M21-14v32 M-24-8h48 M-24 1h48 M-24 10h48',
+  equipment: 'M-17-14h34v28h-34z M-10-6h20 M-10 2h5 M0 2h5',
 }[type] || '')
 const xml = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[character]))
 export function drawingSvg(value) {
@@ -48,7 +49,7 @@ export function drawingSvg(value) {
     }
     const shape = element.type === 'text' ? '' : `<path d="${symbolPath(element.type)}" transform="rotate(${element.rotation || 0} ${element.x} ${element.y}) translate(${element.x} ${element.y})" fill="none" stroke="#1e4b63" stroke-width="2.5"/>`
     const y = element.y + (element.type === 'text' ? 0 : 33)
-    const model = element.model ? `<text x="${element.x}" y="${y + 16}" text-anchor="middle" font-size="11">${xml([element.brand, element.model].filter(Boolean).join(' '))}</text>` : ''
+    const model = element.brand || element.model ? `<text x="${element.x}" y="${y + 16}" text-anchor="middle" font-size="11">${xml([element.brand, element.model].filter(Boolean).join(' '))}</text>` : ''
     return `${shape}<text x="${element.x}" y="${y}" text-anchor="middle">${xml(element.label)}</text>${model}`
   }).join('')
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="650" viewBox="0 0 1000 650" role="img" aria-label="Plano de equipos"><rect width="1000" height="650" fill="white"/><g font-family="Arial,sans-serif" font-size="14" fill="#172e40">${elements}</g></svg>`

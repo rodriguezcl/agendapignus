@@ -48,7 +48,10 @@ function applyCctvCommand(current, command, user, file = null, at = new Date().t
     }
     case 'addPlan': {
       let drawing = null
-      if (payload.drawing != null) { try { drawing = validateDrawing(payload.drawing) } catch (error) { fail(error.message) } }
+      if (payload.drawing != null) {
+        try { drawing = validateDrawing(payload.drawing, dossier.equipment ?? []) }
+        catch (error) { fail(error.message) }
+      }
       if (!file && !drawing?.elements?.length) fail('Adjuntá un plano o agregá elementos al esquema.')
       const plan = entry({ title: text(payload.title, 'Título', 160, true), notes: text(payload.notes, 'Observaciones del plano', 10000), version: dossier.plans.length + 1, ...(file ? { file } : {}), ...(drawing ? { drawing } : {}) })
       dossier.plans.push(plan); summary = `Plano versión ${plan.version}: ${plan.title}`; details = { planId: plan.id, version: plan.version }

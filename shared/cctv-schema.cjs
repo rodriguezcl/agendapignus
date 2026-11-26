@@ -2,8 +2,9 @@ const DRAWING_WIDTH = 1000
 const DRAWING_HEIGHT = 650
 const MAX_DRAWING_ELEMENTS = 200
 const MAX_EQUIPMENT_ITEMS = 100
-const DRAWING_TYPES = Object.freeze({ camera: 'Cámara', recorder: 'Grabador', alarm: 'Alarma', barrier: 'Barrera infrarroja', fence: 'Cerco eléctrico', line: 'Línea', text: 'Texto', wall: 'Pared', door: 'Puerta', window: 'Ventana', cable: 'Cableado', area: 'Área' })
+const DRAWING_TYPES = Object.freeze({ camera: 'Cámara', recorder: 'Grabador', alarm: 'Alarma', barrier: 'Barrera infrarroja', fence: 'Cerco eléctrico', equipment: 'Otro equipo', line: 'Línea', text: 'Texto', wall: 'Pared', door: 'Puerta', window: 'Ventana', cable: 'Cableado', area: 'Área' })
 const DRAWING_SEGMENTS = Object.freeze(['line', 'wall', 'door', 'window', 'cable', 'area'])
+const EQUIPMENT_SYMBOLS = ['camera', 'recorder', 'alarm', 'barrier', 'fence', 'equipment']
 const EQUIPMENT_CATEGORIES = Object.freeze({ cctv: 'Cámaras / CCTV', alarm: 'Alarma', barrier: 'Barrera infrarroja', fence: 'Cerco eléctrico', other: 'Otro equipo' })
 const EQUIPMENT_KINDS = Object.freeze({
   cctv: { dvr: 'Grabador DVR', xvr: 'Grabador XVR', nvr: 'Grabador NVR', analog_camera: 'Cámara analógica', ip_camera: 'Cámara IP', switch: 'Switch', other: 'Otro equipo de CCTV' },
@@ -36,6 +37,19 @@ const DETAILS_BY_KIND = Object.freeze({
   infrared: ['rangeMeters', 'beams', 'pairs', 'zone', 'communication'], energizer: ['perimeterMeters', 'wireLines', 'zones', 'battery'], fence: ['perimeterMeters', 'wireLines', 'zones'], other: [],
 })
 const defaultDrawing = () => ({ width: DRAWING_WIDTH, height: DRAWING_HEIGHT, elements: [] })
+function drawingTypeForEquipment({ category, kind }) {
+  if (category === 'cctv') {
+    if (['analog_camera', 'ip_camera'].includes(kind)) return 'camera'
+    if (['dvr', 'xvr', 'nvr'].includes(kind)) return 'recorder'
+  }
+  return ['alarm', 'barrier', 'fence'].includes(category) ? category : 'equipment'
+}
+function equipmentSymbolFields(item) {
+  return {
+    type: drawingTypeForEquipment(item), equipmentId: item.id,
+    ...(item.brand && { brand: item.brand }), ...(item.model && { model: item.model })
+  }
+}
 const equipmentFields = (category, kind) => category === 'alarm'
   ? ['alarmConnection', ...(DETAILS_BY_KIND[kind] || [])] : (DETAILS_BY_KIND[kind] || [])
 function invalid(message) { throw Object.assign(new TypeError(message), { statusCode: 400, code: 'CCTV_VALIDATION' }) }
@@ -57,27 +71,38 @@ function number(value, label, min, max, integer = false) {
   return value
 }
 function unique(items, label) { if (new Set(items.map(item => item.id)).size !== items.length) invalid(`${label}: hay identificadores repetidos.`) }
-function validateDrawing(value) {
+function drawingEquipmentSnapshot(element, inventory, placed) {
+  if (element.equipmentId == null && element.model == null && element.brand == null) return {}
+  if (!EQUIPMENT_SYMBOLS.includes(element.type)) invalid('Solo los símbolos de equipos admiten datos de equipamiento.')
+  const equipmentId = element.equipmentId == null ? null : id(element.equipmentId, 'Equipo de la ficha técnica')
+  const model = text(element.model, 'Modelo', 100)
+  const brand = text(element.brand, 'Marca', 100)
+  if (equipmentId && inventory) {
+    const source = inventory.get(equipmentId)
+    if (!source) invalid('El equipo seleccionado no figura en la ficha técnica de esta cuenta.')
+    if (drawingTypeForEquipment(source) !== element.type) invalid('El símbolo no corresponde al tipo de equipo de la ficha técnica.')
+    const count = (placed.get(equipmentId) || 0) + 1
+    if (count > (source.quantity ?? 1)) invalid('La cantidad de unidades ubicadas en este plano supera la registrada en la ficha técnica.')
+    placed.set(equipmentId, count)
+    return equipmentSymbolFields(source)
+  }
+  return { ...(equipmentId && { equipmentId }), ...(model && { model }), ...(brand && { brand }) }
+}
+// A new version uses the account's inventory. Historical versions are read using their saved symbols.
+function validateDrawing(value, equipment) {
   if (value == null) return defaultDrawing()
   object(value, 'Plano'); keys(value, ['width', 'height', 'elements'], 'Plano')
   if (value.width !== DRAWING_WIDTH || value.height !== DRAWING_HEIGHT) invalid('El plano debe tener un tamaño de 1000 × 650.')
   if (!Array.isArray(value.elements) || value.elements.length > MAX_DRAWING_ELEMENTS) invalid(`El plano admite hasta ${MAX_DRAWING_ELEMENTS} elementos.`)
+  const inventory = equipment && new Map(equipment.map(item => [item.id, item]))
+  const placed = new Map()
   const elements = value.elements.map(element => {
-    object(element, 'Elemento'); keys(element, ['id', 'type', 'x', 'y', 'x2', 'y2', 'label', 'rotation', 'model', 'brand'], 'Elemento')
+    object(element, 'Elemento'); keys(element, ['id', 'type', 'x', 'y', 'x2', 'y2', 'label', 'rotation', 'model', 'brand', 'equipmentId'], 'Elemento')
     if (!Object.hasOwn(DRAWING_TYPES, element.type)) invalid('El tipo de elemento del plano no es válido.')
     const item = { id: id(element.id, 'Elemento'), type: element.type, x: number(element.x, 'Posición horizontal', 0, DRAWING_WIDTH), y: number(element.y, 'Posición vertical', 0, DRAWING_HEIGHT), label: text(element.label, 'Etiqueta', element.type === 'text' ? 1000 : 160) }
     if (DRAWING_SEGMENTS.includes(element.type)) { item.x2 = number(element.x2, 'Final horizontal', 0, DRAWING_WIDTH); item.y2 = number(element.y2, 'Final vertical', 0, DRAWING_HEIGHT) }
     else if (element.x2 != null || element.y2 != null) invalid('El elemento no admite un segundo punto.')
-    if (element.model != null) {
-      if (!['camera', 'recorder', 'alarm', 'barrier', 'fence'].includes(element.type)) invalid('Este símbolo no admite un modelo.')
-      const model = text(element.model, 'Modelo', 100)
-      if (model) item.model = model
-    }
-    if (element.brand != null) {
-      if (!['alarm', 'barrier', 'fence'].includes(element.type)) invalid('Este símbolo no admite una marca.')
-      const brand = text(element.brand, 'Marca', 100)
-      if (brand) item.brand = brand
-    }
+    Object.assign(item, drawingEquipmentSnapshot(element, inventory, placed))
     if (element.rotation != null) item.rotation = number(element.rotation, 'Orientación', 0, 360)
     return item
   })
@@ -102,4 +127,4 @@ function validateEquipmentItems(value) {
   })
   unique(items, 'Ficha técnica'); return items
 }
-module.exports = { DRAWING_WIDTH, DRAWING_HEIGHT, MAX_DRAWING_ELEMENTS, MAX_EQUIPMENT_ITEMS, DRAWING_TYPES, DRAWING_SEGMENTS, EQUIPMENT_CATEGORIES, EQUIPMENT_KINDS, FIELD_DEFINITIONS, DETAILS_BY_KIND, equipmentFields, defaultDrawing, validateDrawing, validateEquipmentItems }
+module.exports = { DRAWING_WIDTH, DRAWING_HEIGHT, MAX_DRAWING_ELEMENTS, MAX_EQUIPMENT_ITEMS, DRAWING_TYPES, DRAWING_SEGMENTS, EQUIPMENT_CATEGORIES, EQUIPMENT_KINDS, FIELD_DEFINITIONS, DETAILS_BY_KIND, equipmentFields, defaultDrawing, drawingTypeForEquipment, equipmentSymbolFields, validateDrawing, validateEquipmentItems }

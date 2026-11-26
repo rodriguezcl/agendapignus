@@ -9,9 +9,25 @@
 .cctv-plan-viewport { border: 1px solid var(--cctv-border); border-radius: 9px; overflow: auto; max-height: min(72vh, 780px); background: var(--cctv-canvas, #fff); }
 .cctv-plan-editor > .cctv-editor-toolbar + .cctv-editor-toolbar { margin-top: 8px; }
 .cctv-model-picker { display: grid; align-content: start; gap: 8px; }
+.cctv-plan-inventory { margin-bottom: 12px; }
+.cctv-plan-source { display: grid; gap: 4px; margin: 0; overflow-wrap: anywhere; }
 .cctv-model-picker small { color: var(--cctv-muted); }
 .cctv-model-picker summary { cursor: pointer; font-size: 13px; }
 .cctv-model-picker details[open] summary { margin-bottom: 6px; }
+.cctv-product-photos { display: grid; gap: 8px; min-width: 0; }
+.cctv-plan-inventory + .cctv-product-photos { margin-bottom: 12px; }
+.cctv-product-photos > button { justify-self: start; }
+.cctv-photo-preview, .cctv-photo-pages { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.cctv-photo-preview > div, .cctv-photo-choice > span { display: grid; gap: 5px; overflow-wrap: anywhere; }
+.cctv-photo-preview > div { min-width: 0; }
+.cctv-photo-preview > a { cursor: zoom-in; }
+.cctv-product-photo, .cctv-photo-missing { width: 112px; max-width: 100%; height: 84px; border-radius: 5px; }
+.cctv-product-photo { display: block; object-fit: contain; background: white; }
+.cctv-photo-missing { display: grid; place-items: center; font-size: 12px; color: var(--cctv-muted); }
+.cctv-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(138px, 100%), 1fr)); gap: 8px; }
+.cctv-photo-grid .cctv-photo-choice { display: grid; align-content: start; justify-items: center; gap: 8px; padding: 8px; min-width: 0; height: auto; white-space: normal; text-align: center; border: 1px solid var(--cctv-border); border-radius: 6px; color: var(--cctv-ink); background: var(--cctv-canvas); cursor: pointer; }
+.cctv-photo-choice[aria-pressed="true"] { outline: 2px solid var(--ap-accent, #956600); outline-offset: -2px; }
+.cctv-photo-pages { justify-content: space-between; margin-top: 8px; }
 .cctv-plan-canvas { display: block; width: 100%; height: auto; touch-action: none; user-select: none; }
 .cctv-plan-canvas.is-readonly { touch-action: auto; }
 .cctv-plan-canvas.is-panning, .cctv-plan-canvas.is-panning [data-plan-element] { touch-action: pan-x pan-y; cursor: grab; }

@@ -142,6 +142,41 @@ test('el esquema guardado puede servir de base sin alterar su versión original'
   assert.doesNotMatch(render('plans', data).html, /Usar como base/)
 })
 
+test('Planimetría ofrece el inventario de la cuenta abierta solo a quienes pueden editar', () => {
+  const data = fixture()
+  const item = { id: 'cam-norte', category: 'cctv', kind: 'ip_camera', label: 'Acceso norte', brand: 'Dahua', model: 'Modelo de prueba', quantity: 2 }
+  data.dossier.equipment = [item]
+  const inventoryOptions = source => {
+    const selector = nodes(render('plans', source).document, node => node.name === 'select' && node.attribs['aria-label'] === 'Equipo de la ficha técnica')[0]
+    return selector ? nodes(selector, node => node.name === 'option' && node.attribs.value) : []
+  }
+  const [option] = inventoryOptions(data)
+  assert.equal(option.attribs.value, item.id)
+  const text = option.children.map(child => child.data).join('')
+  for (const name of [item.label, item.brand, item.model]) assert.ok(text.includes(name), name)
+  const anotherAccount = fixture()
+  anotherAccount.dossier.equipment = [{ ...item, id: 'cam-sur', label: 'Acceso sur' }]
+  assert.deepEqual(inventoryOptions(anotherAccount).map(option => option.attribs.value), ['cam-sur'])
+  data.capabilities.edit = false
+  assert.equal(inventoryOptions(data).length, 0)
+})
+
+test('una nueva versión conserva ubicaciones e historial al cambiar el modelo, reducir la cantidad o quitar un equipo de la ficha', async () => {
+  const { reconcilePlanEquipment } = await import('../src/features/cctv/domain/plan-equipment.mjs')
+  const item = { id: 'lote-1', category: 'cctv', kind: 'ip_camera', brand: 'Dahua', model: 'Modelo actualizado', label: 'Ingreso', quantity: 1 }
+  const first = { id: 'cam-1', type: 'camera', x: 100, y: 200, label: 'Portón', rotation: 45, equipmentId: item.id, brand: 'Dahua', model: 'Modelo original' }
+  const second = { ...first, id: 'cam-2', label: 'Portería', x: 210 }
+  const removed = { id: 'grabador', type: 'recorder', equipmentId: 'equipo-retirado', brand: 'Otra marca', model: 'Grabador original', label: 'Sala', x: 420, y: 308 }
+  const manual = { id: 'texto', type: 'text', label: 'Acceso', x: 245, y: 107 }
+  const saved = { width: 1000, height: 650, elements: [first, second, removed, manual] }
+  const before = structuredClone(saved)
+  const { drawing, notice } = reconcilePlanEquipment(saved, [item])
+  const detach = ({ equipmentId, ...rest }) => rest
+  assert.deepEqual(drawing.elements, [{ ...first, model: item.model }, detach(second), detach(removed), manual])
+  assert.ok(notice)
+  assert.deepEqual(saved, before)
+})
+
 test('datos generales incluye contactos y el historial conserva ambos inventarios sin editores', () => {
   const data = fixture(false)
   Object.assign(data.customer, { phone: '111', contact: 'Guardia', contactName: 'Persona del ingreso', contactPhone: '222' })

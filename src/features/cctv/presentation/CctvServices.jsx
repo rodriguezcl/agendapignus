@@ -6,6 +6,7 @@ import CctvRequirementSelect from '../../../components/CctvRequirementSelect.jsx
 import { ticketAuthorColors } from '../../tickets/ticket-author-colors.mjs'
 import { normalizeSearchText } from '../../../domain/shared/normalization.mjs'
 import { cctvRepository, createCctvCommandSession, cctvAttachmentUrl, encodeCctvFile } from '../../../infrastructure/repositories/cctv-repository.mjs'
+import { reconcilePlanEquipment } from '../domain/plan-equipment.mjs'
 import PlanimetryEditor from './PlanimetryEditor.jsx'
 import EquipmentEditor from './EquipmentEditor.jsx'
 import CctvAccountTickets from './CctvAccountTickets.jsx'
@@ -26,7 +27,7 @@ const TABS = {
   },
   plans: {
     label: 'Planimetría',
-    description: 'La ubicación de las cámaras se documenta con un dibujo o un croquis en imagen o PDF. Cada versión del plano queda guardada.'
+    description: 'Los equipos de la ficha técnica se pueden ubicar en el plano con su marca y modelo. También se puede adjuntar un croquis en imagen o PDF. Cada versión queda guardada.'
   },
   improvements: {
     label: 'Mejoras',
@@ -73,7 +74,9 @@ export const rebaseCctvDrafts = ({ drafts, baseline, dossier, savedSection }) =>
     nextDrafts[section] = structuredClone(replace ? latest[section] : drafts[section])
     nextBaseline[section] = structuredClone(replace ? latest[section] : baseline[section])
   }
-  return { drafts: nextDrafts, baseline: nextBaseline }
+  const plan = reconcilePlanEquipment(nextDrafts.plans.drawing, dossier?.equipment)
+  nextDrafts.plans.drawing = plan.drawing
+  return { drafts: nextDrafts, baseline: nextBaseline, planNotice: plan.notice }
 }
 const authorId = item => String(item?.author?.id || item?.author?.name || 'Sistema')
 const authorName = item => item?.author?.name || 'Sistema'
@@ -156,7 +159,7 @@ export function CctvCustomerDetail({ customerId, repository = cctvRepository, pe
       else {
         const next = rebaseCctvDrafts({ drafts, baseline: baseline.current, dossier: result.dossier })
         baseline.current = next.baseline; setDrafts(next.drafts)
-        setNotice('La ficha se actualizó. Tus cambios sin guardar se conservaron y los demás apartados muestran la información actual. Revisá tu borrador antes de guardar nuevamente.')
+        setNotice(['La ficha se actualizó. Revisá tu borrador antes de volver a guardar.', next.planNotice].filter(Boolean).join(' '))
       }
     } catch (cause) { if (alive.current) setLoadError(cause.message) }
     finally { busyRef.current = false; if (alive.current) setLoading(false) }
@@ -173,7 +176,7 @@ export function CctvCustomerDetail({ customerId, repository = cctvRepository, pe
       attempts.current.accepted(command); setData(result)
       const next = rebaseCctvDrafts({ drafts, baseline: baseline.current, dossier: result.dossier, savedSection: section })
       baseline.current = next.baseline; setDrafts(next.drafts)
-      setNotice('La información se guardó correctamente.'); onSaved?.(result)
+      setNotice(['La información se guardó correctamente.', next.planNotice].filter(Boolean).join(' ')); onSaved?.(result)
     } catch (cause) {
       if (!alive.current) return
       const stale = cause.status === 409 || cause.payload?.code === 'CCTV_VERSION_CONFLICT'
@@ -221,8 +224,10 @@ export function CctvCustomerDetail({ customerId, repository = cctvRepository, pe
   }
   const usePlan = item => {
     if (!canEdit || disabled) return
-    edit('plans', cctvPlanDraftFromVersion(item)); setPlanToReplace(null)
-    setNotice('El esquema se cargó como base. Al guardar se creará una nueva versión y se conservará la anterior.')
+    const draft = cctvPlanDraftFromVersion(item)
+    const plan = reconcilePlanEquipment(draft.drawing, dossier.equipment)
+    edit('plans', { ...draft, drawing: plan.drawing }); setPlanToReplace(null)
+    setNotice(['El esquema se cargó como base. Al guardar se creará una nueva versión y se conservará la anterior.', plan.notice].filter(Boolean).join(' '))
     planForm.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     planForm.current?.querySelector('input')?.focus({ preventScroll: true })
   }
@@ -284,7 +289,7 @@ export function CctvCustomerDetail({ customerId, repository = cctvRepository, pe
             <label>Nombre del plano<input required maxLength={160} value={drafts.plans.title} onChange={event => edit('plans', { title: event.target.value })} /></label>
             <label>Notas (opcional)<textarea aria-label="Notas (opcional)" rows={3} maxLength={10000} value={drafts.plans.notes} onChange={event => edit('plans', { notes: event.target.value })} /></label>
             <CctvFileField value={drafts.plans.file} onChange={file => edit('plans', { file })} onBusyChange={setFileBusy} disabled={disabled} allowImages />
-            <PlanimetryEditor value={drafts.plans.drawing} onChange={drawing => edit('plans', { drawing })} disabled={disabled} allowDownload={canDownload} />
+            <PlanimetryEditor value={drafts.plans.drawing} equipment={dossier.equipment ?? []} onChange={drawing => edit('plans', { drawing })} disabled={disabled} allowDownload={canDownload} />
             <button className="primary" disabled={saveDisabled || !drafts.plans.title.trim() || !(drafts.plans.file || drafts.plans.drawing?.elements?.length)}><Icon name="check" />Guardar nueva versión</button>
           </fieldset></form>}
           {planToReplace && <div className="cctv-alert" role="alertdialog" aria-label="Reemplazar borrador del plano"><p>Ya tenés un plano sin guardar. Para usar «{planToReplace.title}» como base, se reemplazará ese borrador. Las versiones guardadas se conservan.</p><div className="cctv-inline-actions"><button type="button" className="secondary" disabled={disabled} onClick={() => setPlanToReplace(null)}>Conservar borrador</button><button type="button" className="primary" disabled={disabled} onClick={() => usePlan(planToReplace)}>Reemplazar borrador</button></div></div>}

@@ -128,6 +128,36 @@ for (const engine of ['sqlite', 'postgres']) {
     } finally { await env.close() }
   })
 
+  test(`CCTV ${engine}: cada versión del plano usa equipos y cantidades de su propia ficha`, async () => {
+    const env = await environment(engine), state = fixture()
+    const item = { ...equipment, id: 'nvr-a' }
+    const marker = { id: 'norte', type: 'recorder', equipmentId: item.id, label: 'Acceso norte', x: 15, y: 30 }
+    const second = { ...marker, id: 'sur', label: 'Acceso sur', x: 300 }
+    const payload = (...elements) => ({ title: 'Equipos instalados', drawing: { width: 1000, height: 650, elements } })
+    try {
+      await env.store.run(admin, state, command('saveEquipment', { items: [item] }))
+      await env.store.run(admin, state, command('saveEquipment', { items: [{ ...item, id: 'nvr-b' }] }, 0, { customerId: 'b' }))
+      await rejects(() => env.store.run(admin, state, command('addPlan', payload({ ...marker, equipmentId: 'nvr-b' }), 1)), 400)
+      await rejects(() => env.store.run(admin, state, command('addPlan', payload({ ...marker, type: 'alarm' }), 1)), 400)
+      await rejects(() => env.store.run(admin, state, command('addPlan', payload({ ...marker, type: 'text' }), 1)), 400)
+      await rejects(() => env.store.run(admin, state, command('addPlan', payload(marker, second, { ...marker, id: 'tercero' }), 1)), 400)
+      const create = command('addPlan', payload({ ...marker, model: 'Otro modelo', brand: 'Otra marca' }, second), 1)
+      const saved = await env.store.run(supervisor, state, create)
+      const original = saved.dossier.plans[0].drawing
+      assert.deepEqual(original.elements, [marker, second].map(entry => ({ ...entry, model: item.model, brand: item.brand })))
+      await env.store.run(admin, state, command('saveEquipment', { items: [{ ...item, quantity: 1, model: '', brand: 'Marca nueva' }] }, 2))
+      await rejects(() => env.store.run(supervisor, state, command('addPlan', payload(marker), 2)), 409, 'CCTV_VERSION_CONFLICT')
+      const latest = await env.store.run(admin, state, command('addPlan', payload({ ...marker, model: item.model }), 3))
+      assert.deepEqual(latest.dossier.plans[1].drawing.elements, [{ ...marker, brand: 'Marca nueva' }])
+      await env.store.run(admin, state, command('saveEquipment', { items: [] }, 4))
+      await rejects(() => env.store.run(admin, state, command('addPlan', payload(marker), 5)), 400)
+      const detail = await env.store.detail(tech, state, 'a')
+      assert.deepEqual(detail.dossier.plans[0].drawing, original)
+      assert.deepEqual(detail.dossier.plans[1], latest.dossier.plans[1])
+      assert.deepEqual(detail.dossier.equipment, [])
+    } finally { await env.close() }
+  })
+
   test(`CCTV ${engine}: bytes separados, descargas autorizadas y adjuntos aislados por cuenta`, async () => {
     const env = await environment(engine), state = fixture()
     try {

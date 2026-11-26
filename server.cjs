@@ -3,6 +3,7 @@ const { userCan, assertVehicleControlOmissionAuthorized } = require('./api/_lib/
 const { publicEmployee, auditSafe, hashPassword, verifyPassword } = require('./api/_lib/employee-credentials.cjs')
 const { reportDate, compareReportRecords: compareReportRecordFields, professionalExcelHtml } = require('./api/_lib/report-formatting.cjs')
 const http = require('node:http')
+const productImageOrigins = require('./shared/cctv-product-image-origins.json').join(' ')
 const { fetchWeather } = require('./api/_lib/weather.cjs')
 const { isOperator, operatorRouteAllowed, operatorState } = require('./api/_lib/operator-access.cjs')
 const { retirementClientLabel } = require('./api/_lib/retirement-label.cjs')
@@ -1462,7 +1463,7 @@ function setBrowserSecurityHeaders(res) {
   res.setHeader('X-Frame-Options', 'DENY')
   res.setHeader('Referrer-Policy', 'no-referrer')
   res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()')
-  res.setHeader('Content-Security-Policy', "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src https://www.google.com; img-src 'self' data: https://tile.openstreetmap.org; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'")
+  res.setHeader('Content-Security-Policy', `default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src https://www.google.com; img-src 'self' data: https://tile.openstreetmap.org ${productImageOrigins}; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'`)
   if (secureCookies) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
 }
 

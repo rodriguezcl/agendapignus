@@ -2,6 +2,7 @@ import React, { useEffect, useId, useRef, useState } from 'react'
 import schema from '../../../../shared/cctv-schema.cjs'
 import { changeEquipmentKind, newEquipmentItem, removeEquipment, reorderEquipment } from '../domain/equipment.mjs'
 import EquipmentModelInput from './EquipmentModelInput.jsx'
+import ProductPhotos from './ProductPhotos.jsx'
 import { alarmBrands, equipmentModelGroups, hasPerimeterCatalog, perimeterCatalog } from '../domain/equipment-catalog.mjs'
 import './cctv-editors.css'
 
@@ -42,6 +43,7 @@ export function EquipmentEditor({ value = [], onChange, readOnly = false, disabl
         <summary><strong>{item.label || kindLabel}</strong><span>{schema.EQUIPMENT_CATEGORIES[item.category]} · {item.quantity || 1} unidad(es){item.location ? ` · ${item.location}` : ''}</span></summary>
         {readOnly ? <dl className="cctv-equipment-facts">
           {[['Tipo', kindLabel], ['Marca', item.brand], ['Modelo', item.model], ['Cantidad', item.quantity], ['Ubicación', item.location], ...fields.map(key => [schema.FIELD_DEFINITIONS[key].label, item.details?.[key]]), ['Observaciones', item.notes]].filter(([, value]) => value != null && value !== '').map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{String(value)}</dd></div>)}
+          {item.model && <div><dt>Imagen de referencia</dt><dd><ProductPhotos selected={item} sourceProvided={Boolean(perimeter?.products[item.model]?.url)} /></dd></div>}
           {perimeter?.products[item.model]?.url && <div><dt>Proveedor</dt><dd><a href={perimeter.products[item.model].url} target="_blank" rel="noreferrer">Ver ficha en IR Seguridad</a></dd></div>}
         </dl> : <div className="cctv-equipment-fields">
           <div className="cctv-editor-grid">
@@ -51,7 +53,7 @@ export function EquipmentEditor({ value = [], onChange, readOnly = false, disabl
             <label>Cantidad<input disabled={disabled} type="number" min="1" max="10000" step="1" value={item.quantity ?? ''} onChange={event => update(item.id, { quantity: event.target.value === '' ? '' : Number(event.target.value) })} /></label>
             <label>Marca<input disabled={disabled} maxLength="100" value={item.brand || ''} onChange={event => update(item.id, { brand: event.target.value })} list={item.category === 'alarm' ? alarmBrandsId : undefined} placeholder={item.category === 'cctv' ? 'Ej.: Dahua' : item.category === 'alarm' ? 'Elegí o escribí una marca' : undefined} /></label>
             {Object.keys(modelGroups).length
-              ? <EquipmentModelInput key={`${item.category}:${item.kind}:${perimeter ? '' : item.brand}`} disabled={disabled} value={item.model} label={perimeter ? 'Modelo / SKU de IR Seguridad' : `Modelo ${item.brand.trim()}`} groups={modelGroups} kindLabels={schema.EQUIPMENT_KINDS[item.category]} products={perimeter?.products} onChange={selectModel} />
+              ? <EquipmentModelInput key={`${item.category}:${item.kind}:${perimeter ? '' : item.brand}`} disabled={disabled} value={item.model} category={item.category} brand={item.brand} label={perimeter ? 'Modelo / SKU de IR Seguridad' : `Modelo ${item.brand.trim()}`} groups={modelGroups} kindLabels={schema.EQUIPMENT_KINDS[item.category]} products={perimeter?.products} onChange={selectModel} />
               : <label>Modelo<input disabled={disabled} maxLength="100" value={item.model || ''} onChange={event => update(item.id, { model: event.target.value })} /></label>}
             <label className="cctv-editor-full">Ubicación<input disabled={disabled} maxLength="250" value={item.location || ''} onChange={event => update(item.id, { location: event.target.value })} /></label>
             {fields.map(key => {
