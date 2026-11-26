@@ -13,11 +13,6 @@ import './products.css'
 const { EQUIPMENT_CATEGORIES, EQUIPMENT_KINDS } = schema
 const defaultFilters = { search: '', category: '', brand: '', state: 'active' }
 const kindLabel = product => EQUIPMENT_KINDS[product.category]?.[product.kind] || product.kind
-function searchableModel(product) {
-  if (product.category !== 'cctv' || catalog.normalizedBrand(product.brand) !== 'dahua') return product.model
-  const code = catalog.catalogModelKey(product)
-  return `${product.model} DH-${code} DHI-${code}`
-}
 
 function ProductState({ active }) {
   return <span className={active ? 'products-state products-state-active' : 'products-state'}>{active ? 'Activo' : 'De baja'}</span>
@@ -97,7 +92,7 @@ export default function Products() {
   const [dialog, setDialog] = useState(null), [notice, setNotice] = useState('')
   const brands = useMemo(() => sortOptionsAlphabetically([...new Set(products.map(product => product.brand).filter(Boolean))]), [products])
   const index = useMemo(() => sortOptionsAlphabetically(products, product => `${product.brand} ${product.model}`).map(product => ({
-    product, searchable: normalizeSearchText([product.brand, searchableModel(product), product.description, EQUIPMENT_CATEGORIES[product.category], kindLabel(product)].join(' ')),
+    product, searchable: normalizeSearchText([product.brand, catalog.searchableModel(product), product.description, EQUIPMENT_CATEGORIES[product.category], kindLabel(product)].join(' ')),
   })), [products])
   const matches = useMemo(() => {
     const words = filters.search.trim().split(/\s+/).map(normalizeSearchText).filter(Boolean)

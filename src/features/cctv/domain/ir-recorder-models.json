@@ -1,0 +1,196 @@
+[
+  {
+    "brand": "Dahua",
+    "model": "DHI-NVR2116HS-I",
+    "kind": "nvr",
+    "description": "16 canales IP con funciones de análisis WizSense.",
+    "source": "https://irseguridad.com.ar/producto/nvr-dahua-de-16-canales-wizsense",
+    "image": "https://irseguridad.com.ar/img/products/SMZSSOycfoxXytLalzQk1JGj8YKQZqeUCIMiSM1l.jpg"
+  },
+  {
+    "brand": "Dahua",
+    "model": "NVR1108HS-S3-H",
+    "kind": "nvr",
+    "description": "8 canales IP en formato de 1 U con compresión H.265+.",
+    "source": "https://irseguridad.com.ar/producto/nvr-dahua-de-8-canales-con-inteligencia-1u-h-265",
+    "image": "https://irseguridad.com.ar/img/products/actYyhp94yMe4fmDUxKu75WZavFuUFWdlH0TLJ4o.jpg"
+  },
+  {
+    "brand": "Dahua",
+    "model": "NVR1108HS-W-S2-CE",
+    "kind": "nvr",
+    "description": "8 canales IP, conexión Wi-Fi y una bahía para disco. Variante CE.",
+    "source": "https://irseguridad.com.ar/producto/nvr-dahua-de-8-canales-1u-1hdd-1080p",
+    "image": "https://irseguridad.com.ar/img/products/BoOkQoyfnK3fD2avB3PGINuKmprgeCPEmmDrZWUN.png"
+  },
+  {
+    "brand": "Dahua",
+    "model": "NVR2108HS-I",
+    "kind": "nvr",
+    "description": "8 canales IP con resolución 4K y funciones de análisis WizSense.",
+    "source": "https://irseguridad.com.ar/producto/nvr-dahua-de-8-canales-wizsense-4k",
+    "image": "https://irseguridad.com.ar/img/products/LNlLgHJ4uCpCmmposAxl50qzKTBQ12umY6XN6Xkv.jpg"
+  },
+  {
+    "brand": "Dahua",
+    "model": "NVR2216-I",
+    "kind": "nvr",
+    "description": "16 canales IP con detección inteligente, reconocimiento facial y dos bahías para discos.",
+    "source": "https://irseguridad.com.ar/producto/nvr-dahua-de-16-canales-wizsense-2-hdd-smd-con-reconocimiento-facial",
+    "image": "https://irseguridad.com.ar/img/products/lk4kklHL2zy4JQddA5g18bTsCVBXGZT1jr0HMC8q.jpg"
+  },
+  {
+    "brand": "Dahua",
+    "model": "NVR4232-4KS2/L",
+    "kind": "nvr",
+    "description": "32 canales IP, dos bahías para discos y compatibilidad con análisis en las cámaras.",
+    "source": "https://irseguridad.com.ar/producto/nvr-dahua-de-32-canales-1u-2hdd-ia-por-camara",
+    "image": "https://irseguridad.com.ar/img/products/sg5Lr7lssYjwAI5WCAzmJbNk7ZBIQW0Lcid90zkb.jpg"
+  },
+  {
+    "brand": "Dahua",
+    "model": "NVR5216-4KS2",
+    "kind": "nvr",
+    "description": "16 canales IP con compresión H.265, salida 4K y dos bahías para discos.",
+    "source": "https://irseguridad.com.ar/producto/nvr-16ch-2hdd-4k-h-265-320mpbs",
+    "image": "https://irseguridad.com.ar/img/products/1971/Hw8IPrLixAVCu5BsGp47KTjqtJfQb2eaEg3h6vZk.webp"
+  },
+  {
+    "brand": "Dahua",
+    "model": "NVR5232-4KS2",
+    "kind": "nvr",
+    "description": "32 canales IP con compresión H.265 y dos bahías para discos.",
+    "source": "https://irseguridad.com.ar/producto/nvr-de-32-canales-12-mpx-2hdd-h-265-dahua",
+    "image": "https://irseguridad.com.ar/img/products/yEm6aAQtiiba4seT6mkjsBN8tNA5XK6MvxknVt6F.jpg"
+  },
+  {
+    "brand": "Dahua",
+    "model": "NVR608H-64-XI",
+    "kind": "nvr",
+    "description": "64 canales IP con análisis WizMind y ocho bahías para discos en formato de 2 U.",
+    "source": "https://irseguridad.com.ar/producto/nvr-dahua-wizmind-de-64-canales-2u-y-8-discos-duros",
+    "image": "https://irseguridad.com.ar/img/products/1870/PX6C8pBQ9ZaMgsFh2wiuJeqc3OSYdmDWoHRkGKAf.webp"
+  },
+  {
+    "brand": "Dahua",
+    "model": "DH-XVR5104HS-I3",
+    "kind": "xvr",
+    "description": "4 canales analógicos con detección de personas y vehículos mediante SMD Plus.",
+    "source": "https://irseguridad.com.ar/producto/xvr-dahua-de-4-canales-pentahibrida-5mpx-1080p-1u",
+    "image": "https://irseguridad.com.ar/img/products/Twzx0YRNF6YnsVaiemBin2stHerz2AtPNREG4CJW.jpg"
+  },
+  {
+    "brand": "Dahua",
+    "model": "DH-XVR5116HS-I3",
+    "kind": "xvr",
+    "description": "16 canales analógicos, entrada de cámaras IP y compresión H.265+.",
+    "source": "https://irseguridad.com.ar/producto/xvr-dahua-de-16-canales-con-inteligencia-1080p",
+    "image": "https://irseguridad.com.ar/img/products/mk9oFTjnRUgOgjt2YcrGcKmoXKr1ZxfbIYqC1EMF.jpg"
+  },
+  {
+    "brand": "Dahua",
+    "model": "DH-XVR5208AN-4KL-I3",
+    "kind": "xvr",
+    "description": "8 canales analógicos, compatible con cinco tecnologías de video y resolución 4K.",
+    "source": "https://irseguridad.com.ar/producto/xvr-dahua-de-8-canales-con-inteligencia-penta-brid-4k-value",
+    "image": "https://irseguridad.com.ar/img/products/wyWPJq5ZXwWPUV7KBF8A7HxWWOhCQtYLZGmyGhNX.jpg"
+  },
+  {
+    "brand": "Dahua",
+    "model": "DH-XVR5232AN-I3",
+    "kind": "xvr",
+    "description": "32 canales analógicos, compatible con cinco tecnologías de video y ancho de banda de hasta 128 Mbps.",
+    "source": "https://irseguridad.com.ar/producto/xvr-dahua-de-32-canales-pentabrid-128-mbps",
+    "image": "https://irseguridad.com.ar/img/products/DfrGpuLZvlOrbQCjnlmfHfvYjGKKJLiyZE00W7tG.jpg"
+  },
+  {
+    "brand": "Dahua",
+    "model": "XVR1B04-I",
+    "kind": "xvr",
+    "description": "4 canales analógicos, formatos 1080N y 720p, y una bahía para disco.",
+    "source": "https://irseguridad.com.ar/producto/xvr-dahua-de-4-canales-wizsense-penta-brid-1080n-720p-cooper-1u-1hdd",
+    "image": "https://irseguridad.com.ar/img/products/VVnXXM8nwTBoGoku2gjAWFCR75vL7yZKFH7c6ur6.jpg"
+  },
+  {
+    "brand": "Dahua",
+    "model": "XVR1B08-I",
+    "kind": "xvr",
+    "description": "8 canales analógicos, formatos 1080N y 720p, y una bahía para disco.",
+    "source": "https://irseguridad.com.ar/producto/xvr-dahua-de-8-canales-wizsense-pentabrid-1080n-720p-cooper",
+    "image": "https://irseguridad.com.ar/img/products/Ih8NUw6KwyboTiozf0elQcL7hqQbXIDI9p3oaWD6.jpg"
+  },
+  {
+    "brand": "Dahua",
+    "model": "XVR1B16-I",
+    "kind": "xvr",
+    "description": "16 canales analógicos y dos canales IP adicionales con análisis WizSense.",
+    "source": "https://irseguridad.com.ar/producto/xvr-dahua-de-16-canales-wizsense-ai-720p-2-ip",
+    "image": "https://irseguridad.com.ar/img/products/wTbZEU1WfIZsaqINoX3pgTaMbUKIw6Z3uIctrOPS.jpg"
+  },
+  {
+    "brand": "Dahua",
+    "model": "XVR4232AN-I",
+    "kind": "xvr",
+    "description": "32 canales analógicos con detección inteligente de personas.",
+    "source": "https://irseguridad.com.ar/producto/xvr-dahua-de-32-canales-wizsense-deteccion-de-humanos",
+    "image": "https://irseguridad.com.ar/img/products/2151/lFKT27DYjGJuIk08rcLNX6AmzSehqOaVfds4HQb5.webp"
+  },
+  {
+    "brand": "Dahua",
+    "model": "XVR5108H-4KL-I3",
+    "kind": "xvr",
+    "description": "8 canales analógicos con resolución 4K y funciones de análisis WizSense.",
+    "source": "https://irseguridad.com.ar/producto/xvr-de-8-canales-con-inteligencia-penta-brid-4k-wizsense-dahua",
+    "image": "https://irseguridad.com.ar/img/products/1627/yZCzuws64NFB9cYv1KifTSXQbhxre3R8IAP07Jto.webp"
+  },
+  {
+    "brand": "Dahua",
+    "model": "XVR5108H-I2",
+    "kind": "xvr",
+    "description": "8 canales analógicos y cuatro canales IP adicionales con análisis de video.",
+    "source": "https://irseguridad.com.ar/producto/xvr-dahua-de-8-canales-4-ip-con-ia",
+    "image": "https://irseguridad.com.ar/img/products/xv77ymUK3tBrm6wGo35Lw41DCyBa0uKZaBB6OaPM.jpg"
+  },
+  {
+    "brand": "Dahua",
+    "model": "XVR5116H-4KL-I3",
+    "kind": "xvr",
+    "description": "16 canales analógicos con resolución 4K y compresión H.265+.",
+    "source": "https://irseguridad.com.ar/producto/xvr-de-16-canales-pentahibrido-4k-con-inteligencia-dahua",
+    "image": "https://irseguridad.com.ar/img/products/2954/qIEyVpHAjatUdhNFkwvBeomXDcb3Q6Zz72CKlGRL.webp"
+  },
+  {
+    "brand": "Dahua",
+    "model": "XVR5116HE-I3",
+    "kind": "xvr",
+    "description": "16 canales analógicos, análisis WizSense y una bahía para disco.",
+    "source": "https://irseguridad.com.ar/producto/xvr-grabadora-de-video-digital-wizsense-mini-1u-1-hdd-16-canales-5-mp-1080p",
+    "image": "https://irseguridad.com.ar/img/products/2459/QZcLp2wm7E4SzuTR8lFVtsGoPiN0eDd3WkUHCA6x.webp"
+  },
+  {
+    "brand": "Dahua",
+    "model": "XVR5232AN-S2-V2",
+    "kind": "xvr",
+    "description": "32 canales analógicos, hasta 128 Mbps y dos bahías para discos.",
+    "source": "https://irseguridad.com.ar/producto/xvr-dahua-de-32-canales-128-mbps-soporta-2-hdd-sata-hasta-16tb",
+    "image": "https://irseguridad.com.ar/img/products/8G7zbjNBbltmGh3A7jnx0BrDmIVoErNqMOgDRiDp.jpg"
+  },
+  {
+    "brand": "IMOU",
+    "model": "NVR-N110-8A0E",
+    "kind": "nvr",
+    "description": "Grabador NVR de 10 canales IP · H.265 · HDMI 4K y VGA · 1 disco SATA de hasta 16 TB",
+    "source": "https://irseguridad.com.ar/producto/nvr-imou-10ch-onvif",
+    "image": "https://irseguridad.com.ar/img/products/2386/BpoFEHY4AU9XqT2ybQcCiadrjK0wR8P5e6NLzlVm.webp",
+    "caption": "IMOU utiliza la misma vista frontal para los modelos de 10 y 18 canales."
+  },
+  {
+    "brand": "IMOU",
+    "model": "NVR-N118-8A0E",
+    "kind": "nvr",
+    "description": "Grabador NVR de 18 canales IP · H.265 · HDMI 4K y VGA · 1 disco SATA de hasta 16 TB",
+    "source": "https://irseguridad.com.ar/producto/nvr-imou-de-18ch-onvif",
+    "image": "https://irseguridad.com.ar/img/products/2385/ksbiewpnEcflXHoNq2yzQPLu5maVFGh6v7UBxJOT.webp",
+    "caption": "IMOU utiliza la misma vista frontal para los modelos de 10 y 18 canales."
+  }
+]

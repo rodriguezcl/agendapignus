@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import productCatalog from '../../../../shared/product-catalog.cjs'
 import ProductPhotos from './ProductPhotos.jsx'
 import { isIrSource, isPerimeter } from '../domain/equipment-catalog.mjs'
 const normalize = value => String(value || '').normalize('NFD').toUpperCase().replace(/^(?:DH|DHI)-/, '').replace(/[^A-Z0-9]/g, '')
@@ -16,7 +17,7 @@ export default function EquipmentModelInput({ value, onChange, category, kind, b
   const matches = options.filter(product => {
     if (kinds.includes(family) && product.kind !== family) return false
     if (!search.length) return true
-    const searchable = normalize([product.model, product.brand, product.description].join(' '))
+    const searchable = normalize([productCatalog.searchableModel(product), product.brand, product.description].join(' '))
     return search.every(word => searchable.includes(word))
   })
   const visible = showAll ? matches : matches.slice(0, 60)

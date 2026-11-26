@@ -5,12 +5,31 @@ const alarmImages = require('../src/features/cctv/domain/alarm-product-images.js
 const perimeterModels = require('../src/features/cctv/domain/ir-perimeter-models.json')
 const perimeterImages = require('../src/features/cctv/domain/perimeter-product-images.json')
 const irCameras = require('../src/features/cctv/domain/ir-camera-models.json')
+const irRecorders = require('../src/features/cctv/domain/ir-recorder-models.json')
+const dahuaModelAliases = require('../src/features/cctv/domain/ir-dahua-model-aliases.json')
 
 const normalized = value => String(value || '').normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase()
 const normalizedBrand = value => normalized(value).replace(/^dahua technology$/, 'dahua')
+const isDahuaCctv = ({ category, brand }) => category === 'cctv' && normalizedBrand(brand) === 'dahua'
+const dahuaCode = model => normalized(model).replace(/^dhi?-/, '')
+const equivalentDahuaCodes = new Map()
+for (const [supplier, manufacturer] of Object.entries(dahuaModelAliases)) {
+  const canonical = dahuaCode(manufacturer), alias = dahuaCode(supplier)
+  const codes = equivalentDahuaCodes.get(canonical) || [canonical]
+  codes.push(alias)
+  equivalentDahuaCodes.set(canonical, codes)
+  equivalentDahuaCodes.set(alias, codes)
+}
 function catalogModelKey({ category, brand, model }) {
-  const value = normalized(model)
-  return category === 'cctv' && normalizedBrand(brand) === 'dahua' ? value.replace(/^dhi?-/, '') : value
+  if (!isDahuaCctv({ category, brand })) return normalized(model)
+  const code = dahuaCode(model)
+  return equivalentDahuaCodes.get(code)?.[0] || code
+}
+function searchableModel(product) {
+  if (!isDahuaCctv(product)) return product.model
+  const code = dahuaCode(product.model)
+  const codes = equivalentDahuaCodes.get(code) || [code]
+  return [product.model, ...codes.flatMap(value => ['DH-' + value, 'DHI-' + value])].join(' ')
 }
 const productKey = product => JSON.stringify([normalized(product.category), normalizedBrand(product.brand), catalogModelKey(product)])
 const createBaseProductId = (category, brand, model) => ['base', normalized(category), normalizedBrand(brand), catalogModelKey({ category, brand, model })].map(encodeURIComponent).join(':')
@@ -36,12 +55,12 @@ for (const [category, families] of Object.entries(perimeterModels)) {
     for (const item of items) addBase(category, kind, item.brand || '', item.model, perimeterImages[item.model], item.component)
   }
 }
-const irCameraIdsByKey = new Map()
-for (const camera of irCameras) {
-  const id = createBaseProductId('cctv', camera.brand, camera.model)
+const irCctvIds = new Set(Object.values(dahuaModelAliases).map(model => createBaseProductId('cctv', 'Dahua', model)))
+for (const equipment of [...irCameras, ...irRecorders]) {
+  const id = createBaseProductId('cctv', equipment.brand, equipment.model)
   if (baseProductsById.has(id)) continue
-  addBase('cctv', camera.kind, camera.brand, camera.model, camera, camera.description)
-  irCameraIdsByKey.set(productKey({ ...camera, category: 'cctv' }), id)
+  addBase('cctv', equipment.kind, equipment.brand, equipment.model, equipment, equipment.description)
+  irCctvIds.add(id)
 }
 const baseProducts = Array.from(baseProductsById.values())
 function mergeCatalog(overrides = []) {
@@ -50,11 +69,11 @@ function mergeCatalog(overrides = []) {
   // An administrator may already have added (or retired) this supplier model
   // under a custom ID before it became part of the bundled catalog.
   for (const product of overrides) {
-    const supplierId = irCameraIdsByKey.get(productKey(product))
-    if (supplierId && supplierId !== product.id) combined.delete(supplierId)
+    const supplierId = createBaseProductId(product.category, product.brand, product.model)
+    if (irCctvIds.has(supplierId) && supplierId !== product.id) combined.delete(supplierId)
   }
   for (const product of overrides) combined.set(product.id, product)
   return Array.from(combined.values())
 }
 
-module.exports = { baseProducts, baseProductsById, productKey, catalogModelKey, normalizedBrand, createBaseProductId, mergeCatalog }
+module.exports = { baseProducts, baseProductsById, productKey, catalogModelKey, searchableModel, normalizedBrand, createBaseProductId, mergeCatalog }
