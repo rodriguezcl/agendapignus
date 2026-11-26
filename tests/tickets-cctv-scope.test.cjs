@@ -37,5 +37,17 @@ for (const engine of ['sqlite', 'postgres']) test(engine + ': CCTV supervisor re
    state.customers[0].cctvService=true
   }
   assert.equal((await store.query({id:'operator',roleCode:'operator'},state,{})).total,0)
+  const newlyViewed = { customerId: 'another-cctv', cctvService: true, account: 'CLI-2', name: 'Cuenta Sur' }
+  state.customers.push(newlyViewed)
+  const command = {
+   action: 'create', commandId: require('node:crypto').randomUUID(), automaticTitle: true, scope: 'customer',
+   origin: 'phone', categoryId: 'cameras', description: 'Una cámara del ingreso dejó de funcionar.', customerId: newlyViewed.customerId
+  }
+  const { ticket } = await store.run(legacy, state, command)
+  assert.equal(ticket.customerId, newlyViewed.customerId)
+  assert.equal(ticket.customerSnapshot.name, newlyViewed.name)
+  const listFor = customerId => store.query(legacy, state, { mode: 'list', customerId })
+  assert.deepEqual((await listFor(newlyViewed.customerId)).items.map(row => row.id), [ticket.id])
+  assert.ok((await listFor('cctv')).items.every(row => row.id !== ticket.id))
  } finally { if (db) db.close(); if (pg) await pg.close() }
 })

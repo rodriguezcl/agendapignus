@@ -6,7 +6,12 @@ const { parseDocument } = require('htmlparser2')
 let ui
 test.before(() => {
   const root = path.resolve(__dirname, '..')
-  const bundled = require('esbuild').buildSync({ entryPoints: [path.join(root, 'src/features/cctv/presentation/CctvServices.jsx')], bundle: true, write: false, platform: 'node', format: 'cjs', external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent' })
+  const bundled = require('esbuild').buildSync({
+    stdin: { contents: `export * from './src/features/cctv/presentation/CctvServices.jsx';
+      export { NewTicket } from './src/features/tickets/Tickets.jsx';
+      export { PermissionsProvider } from './src/presentation/contexts/permissions-context.jsx';`, resolveDir: root },
+    bundle: true, write: false, platform: 'node', format: 'cjs', external: ['react', 'react-dom'], loader: { '.css': 'empty' }, logLevel: 'silent'
+  })
   const compiled = new Module(path.join(root, 'cctv-ui-render.cjs'), module)
   compiled.paths = module.paths; compiled._compile(bundled.outputFiles[0].text, compiled.id); ui = compiled.exports
 })
@@ -46,6 +51,36 @@ test('la consulta de novedades permite descargar sin mostrar opciones de edició
   assert.match(html, /Desde/)
   assert.match(html, /Hasta/)
   assert.equal(nodes(render('news', fixture(false, false)).document, node => node.name === 'a').length, 0)
+})
+
+test('la solapa permite iniciar un ticket sólo con permiso de alta', () => {
+  const detail = React.createElement(ui.CctvCustomerDetail, {
+    customerId: 'customer-1', initialData: fixture(), initialTab: 'tickets'
+  })
+  for (const allowed of [true, false]) {
+    const user = { id: 'user', roleCode: 'custom', permissions: { __catalogV2: true, 'tickets.view': true, 'tickets.create': allowed } }
+    const html = renderToStaticMarkup(React.createElement(ui.PermissionsProvider, { user }, detail))
+    assert.match(html, /Cargando tickets de la cuenta/)
+    assert.equal(html.includes('Nuevo ticket'), allowed)
+  }
+})
+
+test('el alta desde la ficha conserva la cuenta visible y el alta general permite elegir otra', () => {
+  const customer = { id: 'customer-1', name: 'Cuenta Norte', account: 'CLI-1', address: 'Av. Central 12' }
+  const metadata = { config: { categories: [
+    { id: 'cameras', name: 'Revisión de cámaras', customerPolicy: 'required' },
+    { id: 'internal', name: 'Trámite sin cuenta', customerPolicy: 'none' }
+  ] } }
+  const form = props => renderToStaticMarkup(React.createElement(ui.NewTicket, { metadata, ...props }))
+  const fixed = form({ fixedCustomer: customer })
+  assert.match(fixed, /CLI-1 Cuenta Norte/)
+  assert.match(fixed, /Av\. Central 12/)
+  assert.match(fixed, /Revisión de cámaras/)
+  assert.doesNotMatch(fixed, /Cambiar cuenta|type="search"|Trámite sin cuenta/)
+  const ordinary = form({ initial: { customerId: customer.id, customer } })
+  assert.match(ordinary, /Cambiar cuenta/)
+  assert.match(ordinary, /name="ticket-scope"/)
+  assert.match(ordinary, /Trámite sin cuenta/)
 })
 
 test('una mejora realizada conserva la propuesta, el autor y la fecha de realización', () => {

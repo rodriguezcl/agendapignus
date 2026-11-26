@@ -1,14 +1,38 @@
 import React, { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
+import Icon from '../../../components/ui/Icon.jsx'
 import { requestJson } from '../../../infrastructure/http/json-request.mjs'
+import { usePermissions } from '../../../presentation/contexts/permissions-context.jsx'
+import { NewTicket } from '../../tickets/Tickets.jsx'
 import { ticketDate, ticketNumber, ticketStatusLabel } from '../../tickets/ticket-ui.mjs'
 
 const pageSize = 20
 
-export default function CctvAccountTickets({ customerId, onOpenTicket }) {
+export default function CctvAccountTickets({ customer, onOpenTicket }) {
+  const customerId = customer.customerId
+  const { can } = usePermissions()
+  const canCreate = can('tickets.create')
   const [page, setPage] = useState(1)
   const [retry, setRetry] = useState(0)
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [metadata, setMetadata] = useState(null)
+  const [createError, setCreateError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  useEffect(() => {
+    if (!creating || !canCreate) return
+    const controller = new AbortController()
+    requestJson('/api/tickets?view=metadata&includeMailStatus=false', { signal: controller.signal }, 'No se pudo abrir el formulario del ticket.')
+      .then(data => { if (!controller.signal.aborted) setMetadata(data) })
+      .catch(failure => {
+        if (controller.signal.aborted) return
+        setCreateError(failure.message)
+        setCreating(false)
+      })
+    return () => controller.abort()
+  }, [creating, canCreate])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -26,8 +50,29 @@ export default function CctvAccountTickets({ customerId, onOpenTicket }) {
     setRetry(value => value + 1)
   }
 
+  const startTicket = () => {
+    setNotice('')
+    setCreateError('')
+    setMetadata(null)
+    setCreating(true)
+  }
+  const ticketSaved = (ticket, message) => {
+    setCreating(false)
+    setNotice(ticket?.number ? `${ticketNumber(ticket)} · ${message}` : message)
+    load(1)
+  }
+
   return <>
-    <h3>Tickets asociados</h3>
+    <div className="cctv-detail-toolbar"><h3>Tickets asociados</h3>
+      {canCreate && <button type="button" className="primary" disabled={creating} onClick={startTicket}><Icon name="plus" size={17} />Nuevo ticket</button>}
+    </div>
+    {canCreate && creating && !metadata && <p role="status">Cargando formulario de ticket…</p>}
+    {createError && <p className="cctv-alert" role="alert">{createError}</p>}
+    {notice && <p className="cctv-success" role="status">{notice}</p>}
+    {canCreate && creating && metadata && createPortal(
+      <NewTicket metadata={metadata} fixedCustomer={{ ...customer, id: customerId }} onClose={() => setCreating(false)} onSaved={ticketSaved} />,
+      document.querySelector('.app-shell') || document.body
+    )}
     {error ? <div className="cctv-alert" role="alert">{error}
       <button type="button" className="secondary" onClick={() => load(page)}>Reintentar</button>
     </div> : !result ? <p role="status">Cargando tickets de la cuenta…</p> : result.total === 0
