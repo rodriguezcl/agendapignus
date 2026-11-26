@@ -12,12 +12,13 @@ import {PermissionsProvider}from './src/presentation/contexts/permissions-contex
 ${styles}
 const params=new URLSearchParams(location.search),mode=params.get('mode');document.body.classList.toggle('dark',params.get('theme')==='dark');
 const record={id:'qa',client:'PIG-7001 CLIENTE DE PRUEBA',service:mode==='regular'?'Service de cámaras':'Instalación de alarma',customerId:'c'};
+if(mode==='resume')record.alarmZones={version:1,complete:false,zones:[{number:3,name:'Patio',attribute:'Instantánea',sensor:'PIR cableado',sensorOther:''}]};
 window.__pignusRefreshRemoteState=async()=>{};
 createRoot(document.getElementById('root')).render(<PermissionsProvider user={{id:'admin',roleCode:'administrator'}}>{mode==='account'?<div className="modal-layer"><section className="modal customer-detail-modal"><h2>PIG-7001 · Cliente de prueba</h2><AlarmZonesSection customerId="c"/></section></div>:<TechnicianReportModal record={record} type={mode==='advance'?'Avance registrado':'Completado'} serviceLabel={record.service} onPendingAttachmentsChange={()=>{}} onPreparingChange={()=>{}} onClose={()=>{}} onSubmit={async value=>{window.__submitted=value}}/>}</PermissionsProvider>);
 `},outfile:path.join(out,'fixture.js'),bundle:true,platform:'browser',format:'iife',external:['/pignus-owl-white.svg','/logo-pignus.png'],loader:{'.png':'dataurl','.svg':'dataurl','.woff2':'dataurl'},logLevel:'silent'})
 const sample={recordId:'qa',client:'PIG-7001 CLIENTE DE PRUEBA',date:'2026-10-26',report:{version:1,complete:true,reportedAt:'2026-10-26T16:00:00Z',reportedByName:'Técnico de prueba',zones:[{number:1,name:'Puerta principal',attribute:'Demorada',sensor:'Magnético cableado',sensorOther:''}]}}
 ;(async()=>{const browser=await chromium.launch({headless:true,channel:'msedge'});try{
-for(const [width,theme,mode] of [[390,'light','single'],[390,'light','form'],[360,'dark','form'],[1280,'light','form'],[390,'light','advance'],[390,'light','regular'],[390,'light','account']]){
+for(const [width,theme,mode] of [[390,'light','single'],[390,'light','form'],[360,'dark','form'],[1280,'light','form'],[390,'light','advance'],[390,'light','resume'],[390,'light','regular'],[390,'light','account']]){
  const context=await browser.newContext({viewport:{width,height:900}}),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message))
  await page.route('**/*',async route=>{const u=new URL(route.request().url());
   if(u.pathname==='/fixture.js'||u.pathname==='/fixture.css')return route.fulfill({path:path.join(out,u.pathname.slice(1)),contentType:u.pathname.endsWith('css')?'text/css':'application/javascript'});
@@ -32,6 +33,15 @@ for(const [width,theme,mode] of [[390,'light','single'],[390,'light','form'],[36
  }else{
   await page.locator('.technician-status-modal textarea').first().fill('Se probó el sistema y quedó funcionando.');
   if(mode==='regular'){assert.equal(await page.locator('.alarm-zone-card').count(),0);}
+  else if(mode==='resume'){
+   assert.deepEqual(await page.locator('.alarm-zone-card legend').allTextContents(),['Zona 01','Zona 03']);
+   assert.equal(await page.locator('#zone-1-name').inputValue(),'');
+   assert.equal(await page.locator('#zone-3-name').inputValue(),'Patio');
+   assert(await page.getByRole('button',{name:'Continuar',exact:true}).isDisabled());
+   await page.locator('#zone-1-name').fill('Ingreso principal');
+   await page.getByRole('combobox',{name:'Atributo de zona 1',exact:true}).selectOption('Demorada');
+   await page.getByRole('combobox',{name:'Sensor de zona 1',exact:true}).selectOption('Magnético cableado');
+  }
   else{
    assert.equal(await page.locator('.alarm-zone-card').count(),3);assert.equal(await page.locator('#zone-1-name').inputValue(),'');
    if(mode!=='advance')assert(await page.getByRole('button',{name:'Continuar',exact:true}).isDisabled());
@@ -59,7 +69,12 @@ for(const [width,theme,mode] of [[390,'light','single'],[390,'light','form'],[36
    }
   }
   await page.getByRole('button',{name:'Continuar',exact:true}).click();await page.getByRole('button',{name:'Sí, confirmar estado',exact:true}).click();await page.waitForFunction(()=>window.__submitted);
-  const sent=await page.evaluate(()=>window.__submitted);if(mode==='single')assert.deepEqual(sent.alarmZones.filter(z=>z.name).map(z=>z.number),[1]);else if(mode!=='regular')assert.deepEqual(sent.alarmZones.map(z=>z.number),[1,3,4]);else assert.equal(sent.alarmZones,undefined);
+  const sent=await page.evaluate(()=>window.__submitted);
+  if(mode==='resume')assert.deepEqual(sent.alarmZones,[
+   {number:1,name:'Ingreso principal',attribute:'Demorada',sensor:'Magnético cableado',sensorOther:''},
+   {number:3,name:'Patio',attribute:'Instantánea',sensor:'PIR cableado',sensorOther:''}
+  ]);
+  else if(mode==='single')assert.deepEqual(sent.alarmZones.filter(z=>z.name).map(z=>z.number),[1]);else if(mode!=='regular')assert.deepEqual(sent.alarmZones.map(z=>z.number),[1,3,4]);else assert.equal(sent.alarmZones,undefined);
  }
  const overflow=await page.locator('.modal').first().evaluate(el=>({width:el.clientWidth,scroll:el.scrollWidth}));assert(overflow.scroll<=overflow.width+2,JSON.stringify({width,theme,mode,overflow}));assert.deepEqual(errors,[]);
  await page.screenshot({path:path.join(out,`result-${width}-${theme}-${mode}.png`),fullPage:true});await context.close();console.log('PASS',width,theme,mode)
