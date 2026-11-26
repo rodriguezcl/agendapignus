@@ -81,6 +81,7 @@ test('PostgreSQL real limita las cancelaciones al grupo asignado sin recuperar v
   try {
     await pg.exec(`
       create table pignus_work_history (id text primary key, work_date date, created_at timestamptz default now(), data jsonb not null);
+      create table pignus_customers (customer_id text primary key, account text unique, data jsonb not null);
       create table pignus_agendas (id text primary key, data jsonb not null);
       create table pignus_preferences (key text primary key, value text);
       insert into pignus_preferences values ('state_revision', '16');

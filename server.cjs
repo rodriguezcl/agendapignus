@@ -1855,7 +1855,7 @@ const server = http.createServer((req, res) => {
     const revision = currentStateRevision()
     const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
     if (require('./api/_lib/conditional-technician-state.cjs').technicianStateUnchanged(Object.fromEntries(url.searchParams), revision, today)) return send(res, 200, { unchanged: true, revision, day: today })
-    return send(res, 200, isGranular(user) ? readStateForUser(user) : { ...readTechnicianState(user), sessionUser: user })
+    return send(res, 200, require('./api/_lib/core.cjs').visibleTechnicianStateForUser(readState(), user))
   }
   if (req.method === 'GET' && req.url === '/api/state') {
     const user = requireSession(req, res)
@@ -2106,6 +2106,30 @@ const server = http.createServer((req, res) => {
         writeAudit(user||{id:'public-form',name:'Formulario del cliente'},event.action,'Formulario de alta',event.id,{}, {version:event.version})
       }
     }})).then(result=>send(res,200,result)).catch(error=>send(res,error.statusCode||500,http.errorBody(error)))
+  }
+  if (req.method === 'POST' && url.pathname === '/api/cctv/requirement') {
+    const user = requireSession(req, res)
+    if (!user) return
+    return readJson(req, 20_000).then(input => {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const { before, after } = require('./api/_lib/cctv-requirement.cjs').applyCctvRequirement(readState(), input, user)
+        if (before !== after) {
+          db.prepare('UPDATE customers SET data = ? WHERE account = ?').run(JSON.stringify(after), before.account)
+          writeAudit(user, 'Actualizó el requerimiento de CCTV', 'Abonado / Cliente', String(before.customerId),
+            { cctvRequirement: before.cctvRequirement || '' }, { cctvRequirement: after.cctvRequirement })
+          db.prepare('DELETE FROM preferences WHERE key = ?').run(CUSTOMER_IMPORT_BACKUP_KEY)
+          db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(currentStateRevision() + 1))
+        }
+        const customer = require('./api/_lib/cctv-access.cjs').presentCctvCustomer(after, user)
+        const state = readStateForUser(user)
+        db.exec('COMMIT')
+        return { ok: true, customer, revision: state.revision, state }
+      } catch (error) { db.exec('ROLLBACK'); throw error }
+    }).then(result => send(res, 200, result)).catch(error => {
+      const failure = require('./api/_lib/cctv-http.cjs').cctvError(error)
+      return send(res, failure.status, failure.body)
+    })
   }
   if (url.pathname === '/api/cctv' || url.pathname === '/api/cctv/attachments') {
     const user = requireSession(req, res)

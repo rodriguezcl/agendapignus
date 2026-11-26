@@ -39,12 +39,12 @@ function createFixtureDatabase(filename) {
       id, firstName: 'CCTV', lastName: id, name: `CCTV ${id}`, roleId: role.id, role: role.name,
       email: `${id}@cctv-http.test`, status: 'Activo', passwordHash: hashPassword(password)
     })
-    const service = { id: 'camera-service', name: 'Service de cámaras', code: 'camera-service', status: 'Activo', category: 'service' }
+    const service = { id: 'camera-service', name: 'Service de cámaras', code: 'camera-service', status: 'Activo', category: 'service', estimatedMinutes: 15 }
     put(db, 'services', 'id', service)
     for (const [id, account, cctvService] of [['a', 'PIG-9901', true], ['b', 'PIG-9902', true], ['off', 'PIG-9903', false]]) put(db, 'customers', 'account', {
       customerId: id, account, cctvService, kind: 'subscriber', type: 'Residencial', name: `CUENTA SINTÉTICA ${id}`, address: 'Calle ficticia 123', street: 'Calle ficticia 123', locality: 'Córdoba', province: 'Córdoba', phone: '3510000000', monthlyFee: 99999, fields: {}
     })
-    put(db, 'work_history', 'id', { id: 'assigned-work', customerId: 'a', clientAccount: 'PIG-9901', client: 'PIG-9901 CUENTA SINTÉTICA a', date: '2020-01-07', time: '09:00', estimatedMinutes: 60, serviceId: service.id, service: service.name, technicianIds: ['tech'], technicians: ['CCTV tech'], status: 'Completado', technicalStatus: 'Completado', technicalObservation: 'Informe sintético', completedAt: '2020-01-07T13:00:00Z', team: 'Equipo 1' })
+    put(db, 'work_history', 'id', { id: 'assigned-work', customerId: 'a', clientAccount: 'PIG-9901', client: 'PIG-9901 CUENTA SINTÉTICA a', date: '2020-01-07', time: '09:00', estimatedMinutes: service.estimatedMinutes, serviceId: service.id, service: service.name, technicianIds: ['tech'], technicians: ['CCTV tech'], status: 'Completado', technicalStatus: 'Completado', technicalObservation: 'Informe sintético', completedAt: '2020-01-07T13:00:00Z', team: 'Equipo 1' })
     put(db, 'agendas', 'id', { id: 'current', date: '2020-01-07', teams: [], weekly: {} })
     db.prepare('INSERT INTO preferences(key,value) VALUES (?,?),(?,?)').run('state_revision', '0', 'vehicles', '[]')
   } finally { db.close() }
@@ -58,7 +58,7 @@ async function unusedPort() {
   return port
 }
 
-test('CCTV HTTP real: permisos, expediente privado, PDF, CAS y reintentos por cuenta', { timeout: 60000 }, async () => {
+test('CCTV HTTP real: permisos, expediente privado, PDF, CAS y reintentos por cuenta', { timeout: 60000 }, async t => {
   const temporaryRoot = path.resolve(root, 'tmp')
   fs.mkdirSync(temporaryRoot, { recursive: true })
   const directory = fs.mkdtempSync(path.join(temporaryRoot, 'cctv-http-'))
@@ -155,6 +155,46 @@ test('CCTV HTTP real: permisos, expediente privado, PDF, CAS y reintentos por cu
     assert.equal((await api(`/api/cctv/attachments?customerId=a&attachmentId=${attachmentId}`, tech)).status, 404)
     updateFlag(true)
     assert.equal((await json(await api('/api/cctv?customerId=a', admin))).dossier.version, 2)
+    await t.test('el requerimiento comparte el dato de Abonados y clientes y del técnico, y detecta ediciones cruzadas', async () => {
+      const key = 'Requiere llave de ingreso'
+      const save = (cookie, expectedRequirement, cctvRequirement, customerId = 'a') => api('/api/cctv/requirement', cookie, {
+        method: 'POST', body: JSON.stringify({ customerId, expectedRequirement, cctvRequirement })
+      })
+      const accountState = () => api('/api/state', admin).then(json)
+      const original = await accountState()
+      const customer = original.customers.find(item => item.customerId === 'a')
+      const changeFromAccounts = (revision, before, after, existed = true) => api('/api/state', admin, {
+        method: 'PATCH', body: JSON.stringify({ revision, operations: [
+          { path: ['customers', { key: 'customerId', id: 'a' }, 'cctvRequirement'], existed, exists: true, before, after }
+        ] })
+      })
+
+      assert.equal((await save(null, '', key)).status, 401)
+      assert.equal((await save(tech, '', key)).status, 403)
+      assert.equal((await save(supervisor, '', key, 'off')).status, 404)
+      assert.equal((await save(supervisor, '', 'Valor desconocido')).status, 400)
+      const saved = await json(await save(supervisor, '', key))
+      assert.equal(saved.customer.cctvRequirement, key)
+      assert.equal(saved.customer.monthlyFee, undefined)
+      assert.equal(saved.revision, original.revision + 1)
+      const retried = await json(await save(supervisor, '', key))
+      assert.equal(retried.revision, saved.revision)
+      const current = await accountState()
+      assert.deepEqual(current.customers.find(item => item.customerId === 'a'), { ...customer, cctvRequirement: key })
+      const technicianView = await json(await api('/api/cctv?customerId=a', tech))
+      assert.equal(technicianView.customer.cctvRequirement, key)
+      const technical = await json(await api('/api/technician/state', tech))
+      assert.equal(technical.history.find(item => item.id === 'assigned-work').customerCctvRequirement, key)
+
+      assert.equal((await changeFromAccounts(original.revision, customer.cctvRequirement, 'Otro', Object.hasOwn(customer, 'cctvRequirement'))).status, 409)
+      await json(await changeFromAccounts(current.revision, key, 'Otro'))
+      assert.equal((await json(await api('/api/cctv?customerId=a', supervisor))).customer.cctvRequirement, 'Otro')
+      const stale = await save(supervisor, key, '')
+      assert.equal(stale.status, 409)
+      assert.equal((await stale.json()).code, 'CCTV_REQUIREMENT_CONFLICT')
+      await json(await save(admin, 'Otro', ''))
+      assert.equal((await accountState()).customers.find(item => item.customerId === 'a').cctvRequirement || '', '')
+    })
     const tooLarge = await api('/api/cctv', admin, { method: 'POST', body: JSON.stringify({ ...command('Grande', 2), padding: 'x'.repeat(4_300_001) }) })
     assert.equal(tooLarge.status, 413, await tooLarge.clone().text())
     const malformed = await api('/api/cctv', admin, { method: 'POST', body: '{' })

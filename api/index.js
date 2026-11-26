@@ -39,7 +39,7 @@ async function scanExpiredMonthlyMeetings(sql) {
 const { writeProfessionalPdf } = require('../scripts/professional-pdf.cjs')
 const { subscriptionHeaders, subscriptionColumns } = require('./_lib/subscription-report.cjs')
 const { database, readTechnicianState, replaceCollections } = require('./_lib/database.cjs')
-const { readApplicationRevision: readRevision, readApplicationState: readState } = require('./_lib/storage-router.cjs')
+const { readApplicationRevision: readRevision, readApplicationState: readState, readApplicationTechnicianState } = require('./_lib/storage-router.cjs')
 const { coordinateStateWrite } = require('./_lib/state-write-coordinator.cjs')
 const saveSnapshots = require('./_lib/save-snapshot-cache.cjs').createSaveSnapshotCache()
 const { appendOperationalAudit: appendAudit, deleteServicePhoto, setAuxiliaryPreference, upsertServicePhoto, upsertVehicleControlPhoto, upsertVehicleInsuranceDocument } = require('./_lib/operational-storage.cjs')
@@ -1141,6 +1141,32 @@ async function handleFollowups(req, res, sql, user) {
   } catch (error) { return send(res, error.statusCode || 400, { error: error.message || 'No se pudo gestionar el seguimiento.' }) }
 }
 
+async function handleCctvRequirement(req, res, sql, user) {
+  const { applyCctvRequirement } = require('./_lib/cctv-requirement.cjs')
+  const { presentCctvCustomer } = require('./_lib/cctv-access.cjs')
+  try {
+    const input = requestBody(req)
+    const result = await require('./_lib/prepared-catalog-write.cjs').executePreparedCatalogWrite(sql, {
+      snapshots: saveSnapshots, audit: appendAudit,
+      prepare: current => {
+        const { before, after, state } = applyCctvRequirement(current, input, user)
+        const entries = [auditEntry(user, 'Actualizó el requerimiento de CCTV', 'Abonado / Cliente', String(after.customerId),
+          { cctvRequirement: before.cctvRequirement || '' }, { cctvRequirement: after.cctvRequirement || '' })]
+        return { next: state, entries, response: { customer: presentCctvCustomer(after, user), state } }
+      },
+      persist: async (transaction, current, next, revision, projection) => {
+        await persistStateCollections(transaction, current, next, revision, projection)
+        await setAuxiliaryPreference(transaction, CUSTOMER_IMPORT_BACKUP_KEY, null)
+      }
+    })
+    const { customer, revision, state } = result
+    return send(res, 200, { ok: true, customer, revision, state: visibleStateForUser({ ...state, revision }, user) })
+  } catch (error) {
+    const failure = require('./_lib/cctv-http.cjs').cctvError(error)
+    return send(res, failure.status, failure.body)
+  }
+}
+
 async function handleSoftguardRetirement(req, res, sql, user) {
   try {
     const input = requestBody(req)
@@ -1420,7 +1446,7 @@ module.exports = async function handler(req, res) {
       const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
       const revision = await readRevision(sql)
       if (require('./_lib/conditional-technician-state.cjs').technicianStateUnchanged(req.query, revision, today)) return send(res, 200, { unchanged: true, revision, day: today })
-      const state = isGranular(session.user) ? await readState(sql) : await readTechnicianState(sql, session.user.id, today)
+      const state = isGranular(session.user) ? await readState(sql) : await readApplicationTechnicianState(sql, session.user.id, today)
       return send(res, 200, require('./_lib/core.cjs').visibleTechnicianStateForUser(state, session.user))
     }
     if (req.method === 'GET' && route === '/state') {
@@ -1490,6 +1516,7 @@ module.exports = async function handler(req, res) {
     }
     if (req.method === 'POST' && route === '/history/completion-correction') return await handleCategoryCorrection(req, res, sql, session.user, true)
     if (req.method === 'POST' && route === '/history/category-correction') return await handleCategoryCorrection(req, res, sql, session.user)
+    if (req.method === 'POST' && route === '/cctv/requirement') return await handleCctvRequirement(req, res, sql, session.user)
     if (route === '/cctv' || route === '/cctv/attachments') {
       const { cctvRequest, cctvError, attachmentHeaders } = require('./_lib/cctv-http.cjs')
       try {

@@ -19,7 +19,7 @@ export const NAVIGATION_ITEMS = [
   ['tickets', 'check', 'operation'],
   ['myServices', 'tools', 'operation'],
   ['accounts', 'accounts', 'customers'],
-  ['cctv', 'camera', 'customers'],
+  ['cctv', 'cctv', 'customers'],
   ['forms', 'audit', 'customers'],
   ['collections', 'wallet', 'customers'],
   ['map', 'map', 'customers'],

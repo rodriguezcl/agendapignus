@@ -10,7 +10,7 @@ test('permite varias operaciones de base simultáneas con un límite acotado', (
   assert.equal(databasePoolSize({ PIGNUS_DB_POOL_MAX: '99' }), 10)
 })
 
-test('consulta sólo historial relacionado y vehículos para refrescar la agenda técnica', async () => {
+test('consulta sólo historial, referencias de cuenta y vehículos para refrescar la agenda técnica', async () => {
   const queries = []
   const sql = async (strings, ...values) => {
     queries.push({ statement: strings.join('?'), values })
@@ -30,8 +30,69 @@ test('consulta sólo historial relacionado y vehículos para refrescar la agenda
   assert.equal((queries[0].statement.match(/jsonb_array_elements_text/g) || []).length, 2)
   assert.doesNotMatch(queries[0].statement, /technicianIds'[^\n]*\?/)
   assert.deepEqual(queries[0].values, ['tech-1', '2026-09-10', 'tech-1'])
-  assert.doesNotMatch(queries[0].statement, /pignus_customers|pignus_employees|pignus_roles|select data from pignus_agendas/)
+  assert.doesNotMatch(queries[0].statement, /jsonb_agg\(c\.data|pignus_employees|pignus_roles|select data from pignus_agendas/)
   assert.equal(state.agenda, null)
+})
+
+test('el detalle técnico legacy toma el requerimiento actualizado por ID o código sin descargar el padrón', async () => {
+  const { PGlite } = await import('@electric-sql/pglite')
+  const { pgliteAdapter } = require('./helpers/pglite-adapter.cjs')
+  const { visibleTechnicianStateForUser } = require('../api/_lib/core.cjs')
+  const pg = await PGlite.create()
+  try {
+    await pg.exec(`
+      create table pignus_work_history (id text primary key, work_date date, created_at timestamptz default now(), data jsonb);
+      create table pignus_customers (customer_id text primary key, account text unique, data jsonb);
+      create table pignus_agendas (id text primary key, data jsonb);
+      create table pignus_preferences (key text primary key, value text);
+      insert into pignus_customers values
+        ('one','PIG-1','{"cctvService":true,"cctvRequirement":"Otro","private":"oculto"}'),
+        ('two','CLI-2','{"cctvService":false,"cctvRequirement":"Otro"}'),
+        ('other','CLI-3','{"cctvService":true,"cctvRequirement":"Otro"}');
+      insert into pignus_work_history (id, data) values
+        ('a','{"id":"a","customerId":"one","technicianIds":["tech"]}'),
+        ('b','{"id":"b","client":"  pig-1  Cliente","technicianIds":["tech"]}'),
+        ('c','{"id":"c","clientAccount":"cli-2","technicianIds":["tech"],"customerCctvRequirement":"dato anterior"}'),
+        ('d','{"id":"d","customerId":"other","technicianIds":["other"]}');
+    `)
+    const statements = [], sql = pgliteAdapter(pg, statements)
+    const snapshot = () => readTechnicianState(sql, 'tech', '2026-11-26')
+    const project = state => visibleTechnicianStateForUser(state, { id: 'tech', roleCode: 'technician' })
+    const before = await snapshot()
+    assert.equal(statements.length, 1)
+    assert.deepEqual(before.customers.map(customer => customer.customerId).sort(), ['one', 'two'])
+    assert.ok(before.customers.every(customer => !Object.hasOwn(customer, 'private')))
+    assert.deepEqual(project(before).history.map(record => record.customerCctvRequirement), ['Otro', 'Otro', ''])
+    await pg.exec(`update pignus_customers set data = jsonb_set(data, '{cctvRequirement}', '"Requiere llave de ingreso"') where customer_id = 'one'`)
+    const after = project(await snapshot())
+    assert.deepEqual(after.customers, [])
+    assert.deepEqual(after.history.map(record => record.customerCctvRequirement), ['Requiere llave de ingreso', 'Requiere llave de ingreso', ''])
+  } finally {
+    await pg.close()
+  }
+})
+
+test('la consulta técnica de un rol anterior respeta el modelo de almacenamiento activo', async () => {
+  const { readApplicationTechnicianState } = require('../api/_lib/storage-router.cjs')
+  for (const model of ['legacy', 'normalized']) {
+    const sql = async strings => {
+      assert.equal(model, 'legacy')
+      assert.match(strings.join('?'), /related_history/)
+      return [{ related_customers: [{ customerId: 'legacy' }], preferences: { state_revision: '4' } }]
+    }
+    sql.query = async statement => {
+      if (statement.includes('as import_batch')) return [{ import_batch: 'import_batch' }]
+      if (statement.startsWith('select id from')) return [{ id: 1 }]
+      if (statement.startsWith('select active_model')) return [{ active_model: model, active_revision: 4 }]
+      if (statement.includes('as batch_table')) return [{ batch_table: 'batch', control_table: 'control' }]
+      assert.equal(model, 'normalized', 'el almacenamiento anterior debe conservar su consulta acotada')
+      assert.match(statement, /normalized_shadow\.source_record_evidence/)
+      return [{ revision: 4, storage_control: { model, revision: 4 }, evidence: [{ collection: 'customers', original_payload: { customerId: model } }] }]
+    }
+    const snapshot = await readApplicationTechnicianState(sql, 'tech', '2026-11-26')
+    assert.deepEqual(snapshot.customers, [{ customerId: model }])
+    assert.equal(snapshot.revision, 4)
+  }
 })
 
 test('la lectura móvil legacy transmite la pausa a la proyección técnica y libera la agenda siguiente', async () => {

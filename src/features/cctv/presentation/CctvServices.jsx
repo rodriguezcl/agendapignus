@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import { usePermissions } from '../../../presentation/contexts/permissions-context.jsx'
 import ModuleIntroduction from '../../../components/ModuleIntroduction.jsx'
 import Icon from '../../../components/ui/Icon.jsx'
+import CctvRequirementSelect from '../../../components/CctvRequirementSelect.jsx'
 import { ticketAuthorColors } from '../../tickets/ticket-author-colors.mjs'
 import { normalizeSearchText } from '../../../domain/shared/normalization.mjs'
 import { cctvRepository, createCctvCommandSession, cctvAttachmentUrl, encodeCctvFile } from '../../../infrastructure/repositories/cctv-repository.mjs'
@@ -13,7 +14,7 @@ import './cctv.css'
 const TABS = {
   general: {
     label: 'Datos generales',
-    description: 'Consultá la dirección, los datos de contacto, el requerimiento de CCTV y el historial de actividad de la cuenta.'
+    description: 'Acá se consultan la dirección, los datos de contacto y el historial de la cuenta, y se actualiza el requerimiento de CCTV.'
   },
   news: {
     label: 'Novedades',
@@ -77,7 +78,7 @@ export const rebaseCctvDrafts = ({ drafts, baseline, dossier, savedSection }) =>
 const authorId = item => String(item?.author?.id || item?.author?.name || 'Sistema')
 const authorName = item => item?.author?.name || 'Sistema'
 
-export default function CctvServices({ initialCustomerId = '', allowBack = true, embedded = false, onClose, navigationGuardRef, repository = cctvRepository, initialCustomers }) {
+export default function CctvServices({ initialCustomerId = '', allowBack = true, embedded = false, onClose, navigationGuardRef, repository = cctvRepository, persistRequirement = repository.saveRequirement, initialCustomers }) {
   const { can } = usePermissions()
   const [customers, setCustomers] = useState(initialCustomers || null), [selected, setSelected] = useState(initialCustomerId)
   const [search, setSearch] = useState(''), [onlyPending, setOnlyPending] = useState(false), [error, setError] = useState(''), [loading, setLoading] = useState(!initialCustomers)
@@ -115,7 +116,7 @@ export default function CctvServices({ initialCustomerId = '', allowBack = true,
   if (!canView) return <section className="cctv-services"><p>No tenés permiso para consultar los servicios de CCTV.</p></section>
   return <section className={`cctv-services${embedded ? ' cctv-embedded' : ''}`} aria-label="Servicios de CCTV">
     {!embedded && <div className="module-intro"><ModuleIntroduction><h1>Servicios de CCTV</h1><p>Información, mantenimiento y mejoras de las cuentas con servicio de CCTV.</p></ModuleIntroduction></div>}
-    {selected ? <CctvCustomerDetail key={selected} customerId={selected} repository={repository} onDraftStateChange={stateChanged} onOpenTicket={ticketId => requestLeave(() => window.dispatchEvent(new CustomEvent('open-ticket', { detail: { ticketId } })))} onSaved={() => setReload(value => value + 1)} onBack={allowBack ? () => requestLeave(() => { draftRef.current = { dirty: false, busy: false }; setSelected('') }) : undefined} onClose={onClose ? () => requestLeave(onClose) : undefined} /> : <>
+    {selected ? <CctvCustomerDetail key={selected} customerId={selected} repository={repository} persistRequirement={persistRequirement} onDraftStateChange={stateChanged} onOpenTicket={ticketId => requestLeave(() => window.dispatchEvent(new CustomEvent('open-ticket', { detail: { ticketId } })))} onSaved={() => setReload(value => value + 1)} onBack={allowBack ? () => requestLeave(() => { draftRef.current = { dirty: false, busy: false }; setSelected('') }) : undefined} onClose={onClose ? () => requestLeave(onClose) : undefined} /> : <>
       <div className="cctv-list-toolbar"><label>Buscar cuenta<input type="search" placeholder="Nombre, cuenta o dirección" value={search} onChange={event => setSearch(event.target.value)} /></label><label className="cctv-check"><input type="checkbox" checked={onlyPending} onChange={event => setOnlyPending(event.target.checked)} />Con mejoras pendientes</label><button type="button" className="secondary" disabled={loading} onClick={() => setReload(value => value + 1)}><Icon name="refresh" />Actualizar</button></div>
       {error && <div className="cctv-alert" role="alert">{error} <button type="button" className="secondary" disabled={loading} onClick={() => setReload(value => value + 1)}>Reintentar</button></div>}
       {loading && <p role="status">Cargando cuentas de CCTV…</p>}
@@ -125,18 +126,19 @@ export default function CctvServices({ initialCustomerId = '', allowBack = true,
   </section>
 }
 
-export function CctvCustomerDetail({ customerId, repository = cctvRepository, onBack, onClose, onSaved, onDraftStateChange, onOpenTicket, initialData = null, initialTab = 'general' }) {
+export function CctvCustomerDetail({ customerId, repository = cctvRepository, persistRequirement = repository.saveRequirement, onBack, onClose, onSaved, onDraftStateChange, onOpenTicket, initialData = null, initialTab = 'general' }) {
   const { can } = usePermissions()
   const [data, setData] = useState(initialData), [loading, setLoading] = useState(!initialData), [loadError, setLoadError] = useState('')
   const [tab, setTab] = useState(initialTab), [drafts, setDrafts] = useState(() => draftsFor(initialData?.dossier))
   const [newsSearch, setNewsSearch] = useState(''), [newsFrom, setNewsFrom] = useState(''), [newsTo, setNewsTo] = useState('')
   const [planToReplace, setPlanToReplace] = useState(null)
+  const [requirementDraft, setRequirementDraft] = useState(null)
   const planForm = useRef(null)
   const [busy, setBusy] = useState(false), [fileBusy, setFileBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState(''), [conflict, setConflict] = useState(false)
   const baseline = useRef(draftsFor(initialData?.dossier)), busyRef = useRef(false), alive = useRef(true), attempts = useRef(null)
   const tabId = useId()
   if (!attempts.current) attempts.current = createCctvCommandSession()
-  const dirty = serialize(drafts) !== serialize(baseline.current)
+  const dirty = Boolean(requirementDraft) || serialize(drafts) !== serialize(baseline.current)
   useEffect(() => { onDraftStateChange?.({ dirty, busy: busy || fileBusy || loading }); return () => onDraftStateChange?.({ dirty: false, busy: false }) }, [dirty, busy, fileBusy, loading, onDraftStateChange])
   const load = async (preserveDraft = false) => {
     if (busyRef.current) return
@@ -145,6 +147,9 @@ export function CctvCustomerDetail({ customerId, repository = cctvRepository, on
       const result = await repository.detail(customerId)
       if (!alive.current) return
       setData(result); setConflict(false); setError('')
+      const currentRequirement = result.customer.cctvRequirement || ''
+      setRequirementDraft(previous => preserveDraft && previous && previous.value !== currentRequirement
+        ? { value: previous.value, expected: currentRequirement } : null)
       if (!preserveDraft) { const next = draftsFor(result.dossier); baseline.current = structuredClone(next); setDrafts(next) }
       else {
         const next = rebaseCctvDrafts({ drafts, baseline: baseline.current, dossier: result.dossier })
@@ -185,6 +190,27 @@ export function CctvCustomerDetail({ customerId, repository = cctvRepository, on
   }, [data])
   const disabled = busy || fileBusy || loading
   const saveDisabled = disabled || conflict
+  const saveRequirement = async event => {
+    event.preventDefault()
+    if (!canEdit || saveDisabled || busyRef.current || !requirementDraft) return
+    busyRef.current = true; setBusy(true); setError(''); setNotice('')
+    try {
+      const result = await persistRequirement({ customerId, expectedRequirement: requirementDraft.expected, cctvRequirement: requirementDraft.value })
+      if (!alive.current) return
+      setData(previous => ({ ...previous, customer: result.customer }))
+      setRequirementDraft(null)
+      setNotice('El requerimiento de CCTV se guardó en la cuenta.')
+      onSaved?.()
+    } catch (cause) {
+      if (!alive.current) return
+      const stale = cause.status === 409
+      setConflict(stale)
+      setError(stale ? 'El requerimiento cambió. Actualizá la ficha para revisar el valor guardado antes de volver a guardar.' : cause.message || 'No se pudo guardar el requerimiento.')
+    } finally {
+      busyRef.current = false
+      if (alive.current) setBusy(false)
+    }
+  }
   const usePlan = item => {
     if (!canEdit || disabled) return
     edit('plans', cctvPlanDraftFromVersion(item)); setPlanToReplace(null)
@@ -197,7 +223,9 @@ export function CctvCustomerDetail({ customerId, repository = cctvRepository, on
     if (serialize(drafts.plans) !== serialize(baseline.current.plans)) setPlanToReplace(item)
     else usePlan(item)
   }
-  const generalFields = [['Cuenta', customer.account], ['Cliente', customer.name], ['Dirección', customer.address], ['Teléfono', customer.phone], ['Correo electrónico', customer.email], ...[['Contacto', customer.contact], ['Nombre del contacto', customer.contactName], ['Teléfono del contacto', customer.contactPhone]].filter(([, value]) => typeof value === 'string' && value.trim()), ['Requerimiento de CCTV', customer.cctvRequirement || 'Sin especificar']]
+  const currentRequirement = customer.cctvRequirement || ''
+  const generalFields = [['Cuenta', customer.account], ['Cliente', customer.name], ['Dirección', customer.address], ['Teléfono', customer.phone], ['Correo electrónico', customer.email], ...[['Contacto', customer.contact], ['Nombre del contacto', customer.contactName], ['Teléfono del contacto', customer.contactPhone]].filter(([, value]) => typeof value === 'string' && value.trim())]
+  if (!canEdit) generalFields.push(['Requerimiento de CCTV', currentRequirement || 'Sin especificar'])
   const submit = (event, action, payload, section) => { event.preventDefault(); void save(action, payload, section) }
   return <div className="cctv-detail" aria-busy={disabled || undefined}>
     <div className="cctv-detail-toolbar"><div className="cctv-inline-actions">{onBack && <button type="button" className="secondary" disabled={disabled} onClick={onBack}>← Volver a cuentas</button>}{onClose && <button type="button" className="secondary" disabled={disabled} onClick={onClose}><Icon name="close" />Cerrar</button>}</div>{data && <span className="cctv-muted">Última actualización: {cctvTimestamp(dossier.updatedAt)}</span>}</div>
@@ -215,7 +243,21 @@ export function CctvCustomerDetail({ customerId, repository = cctvRepository, on
       </div>
       <section className="cctv-panel" role="tabpanel" id={`${tabId}-panel-${tab}`} aria-labelledby={`${tabId}-${tab}`} aria-describedby={`${tabId}-description`}>
         {tab === 'tickets' && (can('tickets.view') ? <CctvAccountTickets key={customerId} customer={customer} onOpenTicket={onOpenTicket} /> : <p>No tenés permiso para consultar los tickets de esta cuenta.</p>)}
-        {tab === 'general' && <><h3>Datos generales</h3><dl className="cctv-data-grid">{generalFields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || 'Sin registrar'}</dd></div>)}</dl><h3>Actividad de la cuenta</h3><ActivityTimeline entries={dossier.activity || []} colors={colorByAuthor} /></>}
+        {tab === 'general' && <>
+          <h3>Datos generales</h3>
+          <dl className="cctv-data-grid">{generalFields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || 'Sin registrar'}</dd></div>)}</dl>
+          {canEdit && <form className="cctv-form" onSubmit={saveRequirement}>
+            <CctvRequirementSelect value={requirementDraft?.value ?? currentRequirement} disabled={disabled} onChange={event => {
+              const value = event.target.value
+              setRequirementDraft(value === currentRequirement ? null : { value, expected: requirementDraft?.expected ?? currentRequirement })
+              setNotice('')
+            }} />
+            {requirementDraft && <small>Valor guardado en la cuenta: {currentRequirement || 'Sin especificar'}</small>}
+            <button type="submit" className="primary" disabled={saveDisabled || !requirementDraft}><Icon name="check" />Guardar requerimiento</button>
+          </form>}
+          <h3>Actividad de la cuenta</h3>
+          <ActivityTimeline entries={dossier.activity || []} colors={colorByAuthor} />
+        </>}
         {tab === 'news' && <><h3>Novedades</h3>{canEdit && <form className="cctv-form" onSubmit={event => submit(event, 'addNews', drafts.news, 'news')}><fieldset disabled={disabled}><label>Título<input required maxLength={160} value={drafts.news.title} onChange={event => edit('news', { title: event.target.value })} /></label><label>Observación<textarea aria-label="Observación" required rows={4} maxLength={10000} value={drafts.news.body} onChange={event => edit('news', { body: event.target.value })} /></label><CctvFileField value={drafts.news.file} onChange={file => edit('news', { file })} onBusyChange={setFileBusy} disabled={disabled} /><button className="primary" disabled={saveDisabled || !drafts.news.title.trim() || !drafts.news.body.trim()}><Icon name="plus" />Guardar novedad</button></fieldset></form>}<div className="cctv-news-filters"><label>Buscar novedad<input type="search" placeholder="Título, observación o archivo" value={newsSearch} onChange={event => setNewsSearch(event.target.value)} /></label><label>Desde<input type="date" value={newsFrom} onChange={event => setNewsFrom(event.target.value)} /></label><label>Hasta<input type="date" value={newsTo} min={newsFrom || undefined} onChange={event => setNewsTo(event.target.value)} /></label></div>{newsFrom && newsTo && newsFrom > newsTo && <p className="field-error">La fecha hasta debe ser igual o posterior a la fecha desde.</p>}<div className="cctv-entries">{visibleNews.map(item => <Entry key={item.id} item={item} colors={colorByAuthor}><h4>{item.title}</h4><p className="cctv-text">{item.body}</p><Attachment file={item.file} customerId={customerId} allowed={canDownload} /></Entry>)}{!visibleNews.length && <p className="cctv-empty">{dossier.news?.length ? 'No hay novedades que coincidan con los filtros.' : 'Todavía no hay novedades registradas.'}</p>}</div></>}
         {tab === 'maintenance' && <><h3>Poda y mantenimiento</h3><div className="cctv-maintenance-summary"><p className="cctv-text">{dossier.maintenance?.observation || 'Sin observaciones de mantenimiento.'}</p><p><strong>Próxima revisión:</strong> {dateLabel(dossier.maintenance?.nextDate)}</p>{dossier.maintenance?.at && <AuthorLine item={dossier.maintenance} />}</div>{canEdit && <form className="cctv-form" onSubmit={event => submit(event, 'saveMaintenance', drafts.maintenance, 'maintenance')}><fieldset disabled={disabled}><label>Observaciones<textarea aria-label="Observaciones" required rows={5} maxLength={10000} value={drafts.maintenance.observation} onChange={event => edit('maintenance', { observation: event.target.value })} /></label><label>Próxima revisión (opcional)<input type="date" value={drafts.maintenance.nextDate} onChange={event => edit('maintenance', { nextDate: event.target.value })} /></label><button className="primary" disabled={saveDisabled || !drafts.maintenance.observation.trim() || serialize(drafts.maintenance) === serialize(baseline.current.maintenance)}><Icon name="check" />Guardar mantenimiento</button></fieldset></form>}<h4>Historial de mantenimiento</h4><ActivityTimeline entries={(dossier.activity || []).filter(item => item.action === 'saveMaintenance')} colors={colorByAuthor} /></>}
         {tab === 'plans' && <><h3>Planimetría</h3>

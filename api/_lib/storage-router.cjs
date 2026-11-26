@@ -1,4 +1,4 @@
-const { readRevision: readLegacyRevision, readState: readLegacyState } = require('./database.cjs')
+const { readRevision: readLegacyRevision, readState: readLegacyState, readTechnicianState } = require('./database.cjs')
 const { fingerprint } = require('./normalization-analysis.cjs')
 const { readNormalizedState } = require('./normalized-state-repository.cjs')
 const { normalizedShadowIsPrepared } = require('./operational-storage.cjs')
@@ -82,6 +82,14 @@ async function readApplicationState(sql, options = {}) {
   return legacy
 }
 
+async function readApplicationTechnicianState(sql, technicianId, today) {
+  if (storageMode() === 'persistent' && await normalizedShadowIsPrepared(sql) && (await readStorageControl(sql)).model === 'normalized') {
+    const current = await readPersistentSnapshot(sql)
+    if (current) return current
+  }
+  return readTechnicianState(sql, technicianId, today)
+}
+
 async function readApplicationRevision(sql, options = {}) {
   const mode = storageMode(options.environment)
   const readLegacy = options.readLegacyRevision || readLegacyRevision
@@ -96,4 +104,4 @@ async function readApplicationRevision(sql, options = {}) {
   return control.model === 'normalized' ? Number(control.revision || 0) : Number(await readLegacy(sql) || 0)
 }
 
-module.exports = { compareApplicationStates, readApplicationRevision, readApplicationState, storageMode, preparedSnapshots }
+module.exports = { compareApplicationStates, readApplicationRevision, readApplicationState, readApplicationTechnicianState, storageMode, preparedSnapshots }

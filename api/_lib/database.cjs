@@ -80,11 +80,8 @@ async function readTechnicianState(sql, technicianId, today) {
       where coalesce(data->>'date', '') >= ${String(today)}
         and coalesce(data->>'technicalStatus', '') = ''
         and coalesce(data->>'status', 'Pendiente') not in ('Completado', 'Avance registrado', 'Cancelado', 'Reprogramado')
-    )
-    select
-      coalesce((
-        select jsonb_agg(history.data order by history.work_date, history.created_at, history.id)
-        from pignus_work_history history
+    ), related_history as (
+        select history.id, history.work_date, history.created_at, history.data from pignus_work_history history
         where exists (
           select 1
           from jsonb_array_elements_text(coalesce(history.data->'technicianIds', '[]'::jsonb)) as assigned(technician_id)
@@ -92,7 +89,21 @@ async function readTechnicianState(sql, technicianId, today) {
         )
           or nullif(history.data->>'customerId', '') in (select customer_id from active_customers where customer_id is not null)
           or upper(coalesce(nullif(history.data->>'clientAccount', ''), split_part(coalesce(history.data->>'client', ''), ' ', 1))) in (select account from active_customers where account <> '')
-      ), '[]'::jsonb) as history,
+    )
+    select
+      coalesce((select jsonb_agg(data order by work_date, created_at, id) from related_history), '[]'::jsonb) as history,
+      coalesce((
+        select jsonb_agg(jsonb_build_object(
+          'customerId', c.customer_id, 'account', c.account,
+          'cctvService', c.data->'cctvService', 'cctvRequirement', c.data->'cctvRequirement'
+        ))
+        from pignus_customers c
+        where c.customer_id in (select data->>'customerId' from related_history)
+           or upper(trim(c.account)) in (
+             select nullif(upper(trim(coalesce(nullif(data->>'clientAccount', ''), substring(trim(data->>'client') from '^[^[:space:]]+')))), '')
+             from related_history
+           )
+      ), '[]'::jsonb) as related_customers,
       coalesce((
         select jsonb_agg(jsonb_build_object(
           'serviceJourney', jsonb_build_object('id', data->'serviceJourney'->'id', 'index', data->'serviceJourney'->'index'),
@@ -107,7 +118,7 @@ async function readTechnicianState(sql, technicianId, today) {
   `
   return {
     revision: Number(state.preferences?.state_revision || 0),
-    roles: [], employees: [], services: [], customers: [], reviews: [],
+    roles: [], employees: [], services: [], customers: state.related_customers || [], reviews: [],
     agenda: state.vehicle_controls ? { weekly: { _vehicleControls: state.vehicle_controls } } : null,
     history: state.history || [],
     journeyCancellations: state.journey_cancellations || [],

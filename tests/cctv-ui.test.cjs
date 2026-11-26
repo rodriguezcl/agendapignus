@@ -153,6 +153,19 @@ test('datos generales incluye contactos y el historial conserva ambos inventario
   assert.doesNotMatch(html, /Quitar equipo|Agregar equipo/)
 })
 
+test('Datos generales permite editar el requerimiento guardado y conserva la vista de consulta', () => {
+  const { document } = render('general')
+  const [select] = nodes(document, node => node.name === 'select')
+  const options = nodes(select, node => node.name === 'option')
+  assert.deepEqual(options.map(option => option.attribs.value), ['', 'Requiere llave de ingreso', 'Otro'])
+  assert.equal(options.find(option => 'selected' in option.attribs).attribs.value, 'Requiere llave de ingreso')
+  const [save] = nodes(document, node => node.name === 'button' && node.children?.some(child => child.data === 'Guardar requerimiento'))
+  assert.ok('disabled' in save.attribs)
+  const readonly = render('general', fixture(false))
+  assert.match(readonly.html, /Requiere llave de ingreso/)
+  assert.doesNotMatch(readonly.html, /Guardar requerimiento/)
+})
+
 test('los nombres accesibles de selectores y observaciones no dependen del contenido guardado', () => {
   const data = fixture()
   data.dossier.equipment = [{ id: 'cam-1', category: 'cctv', kind: 'camera', quantity: 1, notes: 'Ingreso revisado', details: { technology: 'IP' } }]

@@ -213,14 +213,16 @@ export function TechnicianPortal({ user, history, setHistory, weekly = {}, setWe
     desktopNavigation.id = 'technician-navigation'
     desktopNavigation.setAttribute('aria-label', 'Menú técnico')
     desktopNavigation.className = `sidebar technician-sidebar ${menuOpen ? 'open' : ''}`
-    desktopNavigation.innerHTML = '<div class="brand" aria-label="Pignus"></div><p class="nav-label">MÓDULOS</p><nav aria-label="Módulos técnicos"><button title="Consultá tus servicios asignados y sus horarios." data-view="agenda">▣ <span>Agenda técnica</span></button><button title="Consultá los servicios que ya informaste." data-view="history">◷ <span>Historial</span></button><button title="Consultá el estado de tus solicitudes." data-view="tickets">✓ <span>Tickets</span></button><button title="Consultá novedades, planos y equipos de las cuentas de tus servicios asignados." data-view="cctv">▣ <span>Servicios de CCTV</span></button><button title="Consultá la documentación de los vehículos de la empresa." data-view="vehicles">▰ <span>Flota</span></button><button title="Consultá las instrucciones de uso y preguntas frecuentes." data-view="help">? <span>Centro de ayuda</span></button></nav><div class="sidebar-bottom">v2.0 · Agenda técnica</div>'
+    desktopNavigation.innerHTML = '<div class="brand" aria-label="Pignus"></div><p class="nav-label">MÓDULOS</p><nav aria-label="Módulos técnicos"><button title="Consultá tus servicios asignados y sus horarios." data-view="agenda">▣ <span>Agenda técnica</span></button><button title="Consultá los servicios que ya informaste." data-view="history">◷ <span>Historial</span></button><button title="Consultá el estado de tus solicitudes." data-view="tickets">✓ <span>Tickets</span></button><button title="Consultá novedades, planos y equipos de las cuentas de tus servicios asignados." data-view="cctv"><span>Servicios de CCTV</span></button><button title="Consultá la documentación de los vehículos de la empresa." data-view="vehicles">▰ <span>Flota</span></button><button title="Consultá las instrucciones de uso y preguntas frecuentes." data-view="help">? <span>Centro de ayuda</span></button></nav><div class="sidebar-bottom">v2.0 · Agenda técnica</div>'
     desktopNavigation.querySelectorAll('button').forEach(button => {
       if ((button.dataset.view === 'history' && !can('technical.history')) || (button.dataset.view === 'vehicles' && !canViewVehicles)) { button.remove(); return }
       button.classList.toggle('active', button.dataset.view === view)
       button.onclick = () => requestTicketNavigation(() => { setView(button.dataset.view); setMenuOpen(false) })
     })
     if (!can('tickets.view')) desktopNavigation.querySelector('[data-view=tickets]')?.remove()
-    if (!can('cctv.view')) desktopNavigation.querySelector('[data-view=cctv]')?.remove()
+    const cctvButton = desktopNavigation.querySelector('[data-view=cctv]')
+    if (can('cctv.view')) cctvButton.prepend(createIconElement('cctv'))
+    else cctvButton.remove()
     if (onBack) {
       const back = document.createElement('button'); back.title = "Volvé a los módulos de gestión desde la vista del técnico."
       back.type = 'button'; back.textContent = '← Volver a gestión'; back.onclick = () => requestTicketNavigation(onBack)

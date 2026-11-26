@@ -39,6 +39,9 @@ export const cctvAttachmentUrl = (customerId, attachmentId) => '/api/cctv/attach
 export const cctvRepository = {
   list: () => requestJson('/api/cctv', {}, 'No se pudieron cargar las cuentas de CCTV.'),
   detail: customerId => requestJson('/api/cctv?' + new URLSearchParams({ customerId }), {}, 'No se pudo cargar la ficha de CCTV.'),
+  saveRequirement: command => requestJson('/api/cctv/requirement', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(command)
+  }, 'No se pudo guardar el requerimiento de CCTV.'),
   save: command => {
     const body = JSON.stringify(command)
     if (new TextEncoder().encode(body).byteLength > 4_300_000) throw new Error('El archivo y el contenido juntos son demasiado grandes. Usá un archivo más liviano o simplificá el esquema.')
