@@ -995,6 +995,8 @@ function validateState(state, previousState = null) {
     if (!Array.isArray(state[name])) throw new Error(`La colección ${name} no es válida.`)
   })
 
+  for (const customer of state.customers) require('./api/_lib/cctv-requirement.cjs').validateCctvRequirementDetail(customer)
+
   const ensureUnique = (items, key, label) => {
     const values = new Set()
     items.forEach((item, index) => {
@@ -2117,7 +2119,8 @@ const server = http.createServer((req, res) => {
         if (before !== after) {
           db.prepare('UPDATE customers SET data = ? WHERE account = ?').run(JSON.stringify(after), before.account)
           writeAudit(user, 'Actualizó el requerimiento de CCTV', 'Abonado / Cliente', String(before.customerId),
-            { cctvRequirement: before.cctvRequirement || '' }, { cctvRequirement: after.cctvRequirement })
+            { cctvRequirement: before.cctvRequirement || '', cctvRequirementDetail: before.cctvRequirementDetail || '' },
+            { cctvRequirement: after.cctvRequirement, cctvRequirementDetail: after.cctvRequirementDetail || '' })
           db.prepare('DELETE FROM preferences WHERE key = ?').run(CUSTOMER_IMPORT_BACKUP_KEY)
           db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(currentStateRevision() + 1))
         }

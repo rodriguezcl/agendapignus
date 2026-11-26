@@ -6,5 +6,6 @@ export default function CctvRequirement({ record }) {
   return <aside className="cctv-requirement" aria-label="Requerimiento de CCTV">
     <strong>Requerimiento de CCTV</strong>
     <span>{record.customerCctvRequirement}</span>
+    {record.customerCctvRequirement === 'Otro' && record.customerCctvRequirementDetail && <div className="cctv-requirement-detail">{record.customerCctvRequirementDetail}</div>}
   </aside>
 }

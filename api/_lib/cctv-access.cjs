@@ -30,6 +30,7 @@ function cctvCapabilities(user) {
 }
 function presentCctvCustomer(customer, user) {
   const result = { customerId: customer.customerId, account: customer.account, name: customer.name, cctvService: true, cctvRequirement: customer.cctvRequirement || '', type: customer.type || '', kind: customer.kind || '' }
+  if (result.cctvRequirement === 'Otro' && customer.cctvRequirementDetail) result.cctvRequirementDetail = customer.cctvRequirementDetail
   if (policy.can(user, 'records.contact')) for (const key of ['address', 'street', 'locality', 'province', 'phone', 'email', 'contact', 'contactName', 'contactPhone']) {
     if (typeof customer[key] === 'string') result[key] = customer[key]
   }

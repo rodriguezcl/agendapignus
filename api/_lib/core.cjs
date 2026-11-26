@@ -157,12 +157,15 @@ function visibleTechnicianStateForUser(state, user) {
   const sessionUser = stateSessionUser(state, user)
   const projectionUser = require('./permission-catalog.cjs').isGranular(sessionUser) ? sessionUser : { ...sessionUser, roleCode: 'technician' }
   const visible = projectStateForUser(state, projectionUser, sessionUser)
-  return { ...visible, history: visible.history.map(record => ({
-    ...record,
-    customerCctvRequirement: require('./granular-read-policy.cjs').customerForRecord(record, state)?.cctvService === true
-      ? require('./granular-read-policy.cjs').customerForRecord(record, state).cctvRequirement || ''
-      : ''
-  })), sessionUser }
+  const { customerForRecord } = require('./granular-read-policy.cjs')
+  return { ...visible, history: visible.history.map(record => {
+    const customer = customerForRecord(record, state)
+    const customerCctvRequirement = customer?.cctvService === true ? (customer.cctvRequirement || '') : ''
+    const service = { ...record, customerCctvRequirement }
+    delete service.customerCctvRequirementDetail
+    if (customerCctvRequirement === 'Otro' && customer.cctvRequirementDetail) service.customerCctvRequirementDetail = customer.cctvRequirementDetail
+    return service
+  }), sessionUser }
 }
 
 function projectStateForUser(state, user, ticketUser = user) {
@@ -371,7 +374,10 @@ function normalizeStateForSave(state, current, { allowEarlyCompletion = false } 
   // Legacy accounts without a CCTV flag already mean "not tracked". Adding
   // false here migrates the whole customer catalog during an unrelated service
   // save and generates thousands of audit writes inside the same transaction.
-  for (const customer of state.customers || []) { if (customer.cctvRequirement != null && customer.cctvRequirement !== '' && !cctvRequirements.includes(customer.cctvRequirement)) throw new Error('Requerimiento de CCTV inválido.') }
+  for (const customer of state.customers || []) {
+    if (customer.cctvRequirement != null && customer.cctvRequirement !== '' && !cctvRequirements.includes(customer.cctvRequirement)) throw new Error('Requerimiento de CCTV inválido.')
+    require('./cctv-requirement.cjs').validateCctvRequirementDetail(customer)
+  }
   const customers = (state.customers || []).map(customer => ({ ...customer, kind: customerKind(customer), ...(Object.hasOwn(customer, 'cctvService') ? { cctvService: Boolean(customer.cctvService) } : {}), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }))
   const history = normalizeHistoryCompletionTimes(
     (state.history || []).map(record => ({ ...normalizeScheduledService(record), status: record.status || 'Pendiente' })),

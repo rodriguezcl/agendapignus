@@ -157,8 +157,8 @@ test('CCTV HTTP real: permisos, expediente privado, PDF, CAS y reintentos por cu
     assert.equal((await json(await api('/api/cctv?customerId=a', admin))).dossier.version, 2)
     await t.test('el requerimiento comparte el dato de Abonados y clientes y del técnico, y detecta ediciones cruzadas', async () => {
       const key = 'Requiere llave de ingreso'
-      const save = (cookie, expectedRequirement, cctvRequirement, customerId = 'a') => api('/api/cctv/requirement', cookie, {
-        method: 'POST', body: JSON.stringify({ customerId, expectedRequirement, cctvRequirement })
+      const save = (cookie, expectedRequirement, cctvRequirement, customerId = 'a', detail = {}) => api('/api/cctv/requirement', cookie, {
+        method: 'POST', body: JSON.stringify({ customerId, expectedRequirement, cctvRequirement, ...detail })
       })
       const accountState = () => api('/api/state', admin).then(json)
       const original = await accountState()
@@ -192,7 +192,25 @@ test('CCTV HTTP real: permisos, expediente privado, PDF, CAS y reintentos por cu
       const stale = await save(supervisor, key, '')
       assert.equal(stale.status, 409)
       assert.equal((await stale.json()).code, 'CCTV_REQUIREMENT_CONFLICT')
-      await json(await save(admin, 'Otro', ''))
+      const detail = 'Coordinar el ingreso con portería.'
+      assert.equal((await save(supervisor, 'Otro', 'Otro', 'a', { cctvRequirementDetail: 'x'.repeat(1001) })).status, 400)
+      const withDetail = await json(await save(supervisor, 'Otro', 'Otro', 'a', { cctvRequirementDetail: '  ' + detail + '  ' }))
+      assert.equal(withDetail.customer.cctvRequirementDetail, detail)
+      assert.equal((await accountState()).customers.find(item => item.customerId === 'a').cctvRequirementDetail, detail)
+      const assignedService = async () => (await json(await api('/api/technician/state', tech))).history.find(item => item.id === 'assigned-work')
+      assert.equal((await assignedService()).customerCctvRequirementDetail, detail)
+      assert.equal((await save(supervisor, 'Otro', 'Otro', 'a', { expectedDetail: '', cctvRequirementDetail: 'Cambio desactualizado' })).status, 409)
+      const updatedDetail = 'Avisar a portería al llegar.'
+      await json(await api('/api/state', admin, {
+        method: 'PATCH', body: JSON.stringify({ revision: withDetail.revision, operations: [
+          { path: ['customers', { key: 'customerId', id: 'a' }, 'cctvRequirementDetail'], existed: true, exists: true, before: detail, after: updatedDetail }
+        ] })
+      }))
+      assert.equal((await json(await api('/api/cctv?customerId=a', supervisor))).customer.cctvRequirementDetail, updatedDetail)
+      assert.equal((await assignedService()).customerCctvRequirementDetail, updatedDetail)
+      await json(await save(admin, 'Otro', '', 'a', { expectedDetail: updatedDetail }))
+      assert.equal((await assignedService()).customerCctvRequirementDetail, undefined)
+      assert.equal((await accountState()).customers.find(item => item.customerId === 'a').cctvRequirementDetail, undefined)
       assert.equal((await accountState()).customers.find(item => item.customerId === 'a').cctvRequirement || '', '')
     })
     const tooLarge = await api('/api/cctv', admin, { method: 'POST', body: JSON.stringify({ ...command('Grande', 2), padding: 'x'.repeat(4_300_001) }) })

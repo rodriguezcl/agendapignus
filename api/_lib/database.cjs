@@ -95,7 +95,8 @@ async function readTechnicianState(sql, technicianId, today) {
       coalesce((
         select jsonb_agg(jsonb_build_object(
           'customerId', c.customer_id, 'account', c.account,
-          'cctvService', c.data->'cctvService', 'cctvRequirement', c.data->'cctvRequirement'
+          'cctvService', c.data->'cctvService', 'cctvRequirement', c.data->'cctvRequirement',
+          'cctvRequirementDetail', c.data->'cctvRequirementDetail'
         ))
         from pignus_customers c
         where c.customer_id in (select data->>'customerId' from related_history)

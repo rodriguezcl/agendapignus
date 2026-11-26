@@ -35,7 +35,7 @@ for (const [name, user] of [['legacy', legacy], ['granular', granular]]) {
 }
 test('el campo derivado no genera conflictos ni se persiste desde la proyección técnica', () => {
   const current = { id: 'h1', status: 'Pendiente' }
-  const visible = { ...current, customerCctvRequirement: 'Requiere llave de ingreso' }
+  const visible = { ...current, customerCctvRequirement: 'Otro', customerCctvRequirementDetail: 'Coordinar ingreso' }
   assert.equal(recordBaseMatches(current, visible, granular), true)
   assert.deepEqual(restoreHidden(visible, current, current), current)
 })
@@ -49,5 +49,7 @@ test('el aviso se renderiza destacado y se omite sin requerimiento', () => {
   assert.match(html, /Requerimiento de CCTV/)
   assert.match(html, /Requiere llave de ingreso/)
   assert.match(html, /<aside/)
+  const other = renderToStaticMarkup(React.createElement(component, { record: { customerCctvRequirement: 'Otro', customerCctvRequirementDetail: 'Coordinar ingreso' } }))
+  assert.match(other, /Coordinar ingreso/)
   assert.equal(renderToStaticMarkup(React.createElement(component, { record: {} })), '')
 })

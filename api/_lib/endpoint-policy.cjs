@@ -127,7 +127,7 @@ function recordBaseMatches(current, base, user) {
   const normalize = value => {
     if (Array.isArray(value)) return value.map(normalize)
     if (!value || typeof value !== 'object') return value
-    return Object.fromEntries(Object.keys(value).filter(key => !['supervisorVisible', 'customerCctvRequirement', 'journeyActiveIndexes'].includes(key)).sort().map(key => [key, normalize(value[key])]))
+    return Object.fromEntries(Object.keys(value).filter(key => !['supervisorVisible', 'customerCctvRequirement', 'customerCctvRequirementDetail', 'journeyActiveIndexes'].includes(key)).sort().map(key => [key, normalize(value[key])]))
   }
   if (!catalog.isGranular(user)) return JSON.stringify(normalize(projectLegacyCollectionReceipts(current, user))) === JSON.stringify(normalize(projectLegacyCollectionReceipts(base, user)))
   return JSON.stringify(normalize(read.sanitizeService(current, user))) === JSON.stringify(normalize(base))

@@ -1151,7 +1151,8 @@ async function handleCctvRequirement(req, res, sql, user) {
       prepare: current => {
         const { before, after, state } = applyCctvRequirement(current, input, user)
         const entries = [auditEntry(user, 'Actualizó el requerimiento de CCTV', 'Abonado / Cliente', String(after.customerId),
-          { cctvRequirement: before.cctvRequirement || '' }, { cctvRequirement: after.cctvRequirement || '' })]
+          { cctvRequirement: before.cctvRequirement || '', cctvRequirementDetail: before.cctvRequirementDetail || '' },
+          { cctvRequirement: after.cctvRequirement || '', cctvRequirementDetail: after.cctvRequirementDetail || '' })]
         return { next: state, entries, response: { customer: presentCctvCustomer(after, user), state } }
       },
       persist: async (transaction, current, next, revision, projection) => {

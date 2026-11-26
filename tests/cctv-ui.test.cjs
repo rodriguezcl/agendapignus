@@ -164,6 +164,14 @@ test('Datos generales permite editar el requerimiento guardado y conserva la vis
   const readonly = render('general', fixture(false))
   assert.match(readonly.html, /Requiere llave de ingreso/)
   assert.doesNotMatch(readonly.html, /Guardar requerimiento/)
+  assert.equal(nodes(document, node => node.name === 'textarea').length, 0)
+  const other = fixture()
+  other.customer.cctvRequirement = 'Otro'
+  other.customer.cctvRequirementDetail = 'Coordinar con portería'
+  const renderedOther = render('general', other)
+  assert.match(renderedOther.html, /Detalle del requerimiento.*<textarea[^>]*>Coordinar con portería<\/textarea>/s)
+  other.capabilities.edit = false
+  assert.match(render('general', other).html, /Coordinar con portería/)
 })
 
 test('los nombres accesibles de selectores y observaciones no dependen del contenido guardado', () => {

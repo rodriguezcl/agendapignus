@@ -148,8 +148,10 @@ export function CctvCustomerDetail({ customerId, repository = cctvRepository, pe
       if (!alive.current) return
       setData(result); setConflict(false); setError('')
       const currentRequirement = result.customer.cctvRequirement || ''
-      setRequirementDraft(previous => preserveDraft && previous && previous.value !== currentRequirement
-        ? { value: previous.value, expected: currentRequirement } : null)
+      const currentDetail = result.customer.cctvRequirementDetail || ''
+      setRequirementDraft(previous => preserveDraft && previous &&
+        (previous.value !== currentRequirement || previous.detail.trim() !== currentDetail)
+        ? { ...previous, expected: currentRequirement, expectedDetail: currentDetail } : null)
       if (!preserveDraft) { const next = draftsFor(result.dossier); baseline.current = structuredClone(next); setDrafts(next) }
       else {
         const next = rebaseCctvDrafts({ drafts, baseline: baseline.current, dossier: result.dossier })
@@ -195,7 +197,13 @@ export function CctvCustomerDetail({ customerId, repository = cctvRepository, pe
     if (!canEdit || saveDisabled || busyRef.current || !requirementDraft) return
     busyRef.current = true; setBusy(true); setError(''); setNotice('')
     try {
-      const result = await persistRequirement({ customerId, expectedRequirement: requirementDraft.expected, cctvRequirement: requirementDraft.value })
+      const result = await persistRequirement({
+        customerId,
+        expectedRequirement: requirementDraft.expected,
+        expectedDetail: requirementDraft.expectedDetail,
+        cctvRequirement: requirementDraft.value,
+        cctvRequirementDetail: requirementDraft.detail.trim()
+      })
       if (!alive.current) return
       setData(previous => ({ ...previous, customer: result.customer }))
       setRequirementDraft(null)
@@ -224,8 +232,21 @@ export function CctvCustomerDetail({ customerId, repository = cctvRepository, pe
     else usePlan(item)
   }
   const currentRequirement = customer.cctvRequirement || ''
+  const currentDetail = currentRequirement === 'Otro' ? (customer.cctvRequirementDetail || '') : ''
+  const selectedRequirement = requirementDraft?.value ?? currentRequirement
+  const editRequirement = (value, detail) => {
+    setRequirementDraft(value === currentRequirement && detail === currentDetail ? null : {
+      value, detail,
+      expected: requirementDraft?.expected ?? currentRequirement,
+      expectedDetail: requirementDraft?.expectedDetail ?? currentDetail
+    })
+    setNotice('')
+  }
   const generalFields = [['Cuenta', customer.account], ['Cliente', customer.name], ['Dirección', customer.address], ['Teléfono', customer.phone], ['Correo electrónico', customer.email], ...[['Contacto', customer.contact], ['Nombre del contacto', customer.contactName], ['Teléfono del contacto', customer.contactPhone]].filter(([, value]) => typeof value === 'string' && value.trim())]
-  if (!canEdit) generalFields.push(['Requerimiento de CCTV', currentRequirement || 'Sin especificar'])
+  if (!canEdit) {
+    generalFields.push(['Requerimiento de CCTV', currentRequirement || 'Sin especificar'])
+    if (currentDetail) generalFields.push(['Detalle del requerimiento', currentDetail])
+  }
   const submit = (event, action, payload, section) => { event.preventDefault(); void save(action, payload, section) }
   return <div className="cctv-detail" aria-busy={disabled || undefined}>
     <div className="cctv-detail-toolbar"><div className="cctv-inline-actions">{onBack && <button type="button" className="secondary" disabled={disabled} onClick={onBack}>← Volver a cuentas</button>}{onClose && <button type="button" className="secondary" disabled={disabled} onClick={onClose}><Icon name="close" />Cerrar</button>}</div>{data && <span className="cctv-muted">Última actualización: {cctvTimestamp(dossier.updatedAt)}</span>}</div>
@@ -247,12 +268,10 @@ export function CctvCustomerDetail({ customerId, repository = cctvRepository, pe
           <h3>Datos generales</h3>
           <dl className="cctv-data-grid">{generalFields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || 'Sin registrar'}</dd></div>)}</dl>
           {canEdit && <form className="cctv-form" onSubmit={saveRequirement}>
-            <CctvRequirementSelect value={requirementDraft?.value ?? currentRequirement} disabled={disabled} onChange={event => {
-              const value = event.target.value
-              setRequirementDraft(value === currentRequirement ? null : { value, expected: requirementDraft?.expected ?? currentRequirement })
-              setNotice('')
-            }} />
-            {requirementDraft && <small>Valor guardado en la cuenta: {currentRequirement || 'Sin especificar'}</small>}
+            <CctvRequirementSelect value={selectedRequirement} detail={requirementDraft?.detail ?? currentDetail} disabled={disabled}
+              onChange={event => editRequirement(event.target.value, event.target.value === 'Otro' ? currentDetail : '')}
+              onDetailChange={event => editRequirement(selectedRequirement, event.target.value)} />
+            {requirementDraft && <small>Valor guardado en la cuenta: {[currentRequirement || 'Sin especificar', currentDetail].filter(Boolean).join(' · ')}</small>}
             <button type="submit" className="primary" disabled={saveDisabled || !requirementDraft}><Icon name="check" />Guardar requerimiento</button>
           </form>}
           <h3>Actividad de la cuenta</h3>

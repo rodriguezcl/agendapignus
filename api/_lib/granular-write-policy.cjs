@@ -32,6 +32,8 @@ function restoreHidden(proposed, current, visible) {
   if (!object(current) || !object(proposed)) return proposed
   const result = { ...proposed }
   if (Object.hasOwn(result, 'customerCctvRequirement') && !Object.hasOwn(current, 'customerCctvRequirement')) delete result.customerCctvRequirement
+  if (!Object.hasOwn(current, 'customerCctvRequirementDetail')) delete result.customerCctvRequirementDetail
+  else result.customerCctvRequirementDetail = current.customerCctvRequirementDetail
   if (Object.hasOwn(result, 'supervisorVisible') && !Object.hasOwn(current, 'supervisorVisible')) delete result.supervisorVisible
   if (Object.hasOwn(result, 'hasFollowup') && !Object.hasOwn(current, 'hasFollowup')) delete result.hasFollowup
   if (Object.hasOwn(result, 'assignable') && !Object.hasOwn(current, 'assignable')) delete result.assignable
@@ -302,8 +304,8 @@ function assertCustomerChange(before, after, user, state) {
   if (!after) return requirePermission(user, 'customers.delete')
   if (!before) return requirePermission(user, 'customers.create')
   if (changed(before, after, ['coordinates', 'latitude', 'longitude', 'lat', 'lng', 'locationOverride', 'locationSource', 'geocodedAt'])) requirePermission(user, 'customers.coordinates')
-  if (changed(before, after, ['cctvService', 'cctvRequirement'])) requirePermission(user, 'customers.cctv')
-  const ordinary = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(key => !['customerId', 'coordinates', 'latitude', 'longitude', 'lat', 'lng', 'locationOverride', 'locationSource', 'geocodedAt', 'cctvService', 'cctvRequirement'].includes(key))
+  if (changed(before, after, ['cctvService', 'cctvRequirement', 'cctvRequirementDetail'])) requirePermission(user, 'customers.cctv')
+  const ordinary = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(key => !['customerId', 'coordinates', 'latitude', 'longitude', 'lat', 'lng', 'locationOverride', 'locationSource', 'geocodedAt', 'cctvService', 'cctvRequirement', 'cctvRequirementDetail'].includes(key))
   if (changed(before, after, ordinary)) requirePermission(user, 'customers.edit')
 }
 
