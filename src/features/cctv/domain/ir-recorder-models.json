@@ -192,5 +192,263 @@
     "source": "https://irseguridad.com.ar/producto/nvr-imou-de-18ch-onvif",
     "image": "https://irseguridad.com.ar/img/products/2385/ksbiewpnEcflXHoNq2yzQPLu5maVFGh6v7UBxJOT.webp",
     "caption": "IMOU utiliza la misma vista frontal para los modelos de 10 y 18 canales."
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7204HGHI-M1",
+    "kind": "dvr",
+    "description": "4 canales analógicos, detección de personas y vehículos, audio por coaxial",
+    "source": "https://irseguridad.com.ar/producto/dvr-hikvision-de-4-canales-2-ip-1080p-lite-a-30-fps",
+    "image": "https://irseguridad.com.ar/img/products/KZ1FH3e1bsHhbX4A63SOhequ6sRknt47MGu80qjK.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7208HGHI-M1 C",
+    "kind": "dvr",
+    "description": "8 canales analógicos, detección de movimiento 2.0 y audio por coaxial",
+    "source": "https://irseguridad.com.ar/producto/dvr-hikvision-de-8-canales-h265-720p-1-hd",
+    "image": "https://irseguridad.com.ar/img/products/auwzBKmeB7SLYW3e7QcPhhz4z1Yqqy8XYP1ddhZ3.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7208HGHI-M1/T",
+    "kind": "dvr",
+    "description": "8 canales analógicos, grabación 1080p Lite y audio bidireccional por coaxial",
+    "source": "https://irseguridad.com.ar/producto/dvr-de-8-ch-con-audio-bidi-1080p-lite-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2744/ft5cmGX7VPv0sMBlKOoW9DTar36njFgR1zLQH4eJ.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7216HGHI-M1",
+    "kind": "dvr",
+    "description": "16 canales analógicos, grabación 1080p Lite y audio por coaxial",
+    "source": "https://irseguridad.com.ar/producto/dvr-hikvision-de-16-canales-2-ip-1080p-lite-a-15-fps",
+    "image": "https://irseguridad.com.ar/img/products/cnGUToLzGDm3W5T6ob5W7fv0L1D9ZGyRBNeiQHc5.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7216HGHI-M1/T",
+    "kind": "dvr",
+    "description": "16 canales analógicos, detección de movimiento 2.0 y audio por coaxial",
+    "source": "https://irseguridad.com.ar/producto/dvr-hikvision-16ch-2-ip-1080-lite",
+    "image": "https://irseguridad.com.ar/img/products/2721/A1qCgeXoyYT9xMcIzKDwVrbtplv0uNd8mB54ERSJ.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-E08HGHI-B",
+    "kind": "dvr",
+    "description": "8 canales analógicos, eSSD integrado de 480 GB útiles y grabación 1080p Lite",
+    "source": "https://irseguridad.com.ar/producto/mini-dvr-hikvision-de-8-canales-1-ip-con-480-gb-interno",
+    "image": "https://irseguridad.com.ar/img/products/ibbtY6QAE3AFt43Yx6m3D3ffgZwQWsiBZu97dmOa.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "IDS-7204HQHI-M1-E",
+    "kind": "dvr",
+    "description": "4 canales analógicos, AcuSense y compresión H.265 Pro+",
+    "source": "https://irseguridad.com.ar/producto/dvr-hikvision-turbo-de-4-canales-4-0-acusense-full-hd-1-ip",
+    "image": "https://irseguridad.com.ar/img/products/Y6UMTWvq7gN6coO1H0pLmzgrefTPFwP7r3WrvJ34.png"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "IDS-7208HQHI-M1-E",
+    "kind": "dvr",
+    "description": "8 canales analógicos, AcuSense y protección perimetral",
+    "source": "https://irseguridad.com.ar/producto/dvr-acusense-de-8-canales-1080p-1u-h-265",
+    "image": "https://irseguridad.com.ar/img/products/2495/oaWcpJDG7nUlZk82urHg1fehOwBmQtS9vX5FIEzY.webp",
+    "caption": "IR Seguridad utiliza esta foto para distintas variantes de la serie."
+  },
+  {
+    "brand": "Hikvision",
+    "model": "IDS-7208HQHI-M1/FA",
+    "kind": "dvr",
+    "description": "8 canales analógicos, AcuSense y reconocimiento facial",
+    "source": "https://irseguridad.com.ar/producto/dvr-hikvision-turbo-de-8-canales-1-hdd-1u-4-0-acusense-full-hd-2-ip",
+    "image": "https://irseguridad.com.ar/img/products/MTJtRN0RUHmexMimwuO9ljN9MK8iyTkxtYE26saq.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "IDS-7208HQHI-M1/S",
+    "kind": "dvr",
+    "description": "8 canales analógicos, AcuSense y grabación 3K/5 MP Lite",
+    "source": "https://irseguridad.com.ar/producto/dvr-acusense-de-8-canales-1080p-1u-h-265-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2494/5jsUyo4H6RlLqaPxZATzO1ib7CrmhDBt2feIYQGN.webp",
+    "caption": "IR Seguridad utiliza esta foto para distintas variantes de la serie."
+  },
+  {
+    "brand": "Hikvision",
+    "model": "IDS-7208HQHI-M1/XT",
+    "kind": "dvr",
+    "description": "8 canales analógicos, AcuSense y búsqueda AcuSearch",
+    "source": "https://irseguridad.com.ar/producto/dvr-hikvision-de-8-canales-powerx-alto-rendimiento-1-hdd-1-acusense-full-hd",
+    "image": "https://irseguridad.com.ar/img/products/1975/Xm9pQc5leZufsgMUR7jxwCIWvP8GKykbznF2i0Eh.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "IDS-7208HUHI-M1/FA",
+    "kind": "dvr",
+    "description": "8 canales analógicos, AcuSense y grabación 4K a 7,5 fps",
+    "source": "https://irseguridad.com.ar/producto/dvr-hikvision-de-8-canales-turbo-4-0-full-hd-8-ip",
+    "image": "https://irseguridad.com.ar/img/products/uyzyDdeY6tobQRj1OMTexoXo3N12dHD340e7NlI2.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "IDS-7216HQHI-M1/E",
+    "kind": "dvr",
+    "description": "16 canales analógicos, AcuSense y protección perimetral",
+    "source": "https://irseguridad.com.ar/producto/dvr-de-16-canales-2-ip-turbo-4-0-acusense-full-hd-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/ylj4fosXjQZ6gnE06qE235uyvwb43VIBqgJWu5lH.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "iDS-7216HQHI-M1/FA",
+    "kind": "dvr",
+    "description": "16 canales analógicos, AcuSense y compresión H.265 Pro+",
+    "source": "https://irseguridad.com.ar/producto/dvr-hikvision-turbo-de-16-canales-4-0-acusense-full-hd-2-ip",
+    "image": "https://irseguridad.com.ar/img/products/72LZdfZRPvDlcSCsAh4GOZedE7SnrVoGbiawB8Cj.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "IDS-7216HQHI-M1/FA C",
+    "kind": "dvr",
+    "description": "16 canales analógicos, AcuSense y reconocimiento facial",
+    "source": "https://irseguridad.com.ar/producto/dvr-hikvision-acusense-de-16-canales-1080p-1u-h-265",
+    "image": "https://irseguridad.com.ar/img/products/2431/O7nkGNt5PiR1yuI24DmoMlYXvedjg0TFhq39bL8c.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7104NI-Q1/4P/M",
+    "kind": "nvr",
+    "description": "4 canales IP, 4 puertos PoE y compresión H.265+",
+    "source": "https://irseguridad.com.ar/producto/nvr-hikvision-4ch-ip-1-hdd-hasta-6tb",
+    "image": "https://irseguridad.com.ar/img/products/2776/OQIawc7yk1WCpMRi4v8GmuUN9XBrFgqTjKDEb6lH.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7104NI-Q1/M",
+    "kind": "nvr",
+    "description": "4 canales IP, 40 Mbps de entrada y salidas HDMI y VGA",
+    "source": "https://irseguridad.com.ar/producto/nvr-hikvision-mini-1u-de-4-canales",
+    "image": "https://irseguridad.com.ar/img/products/13Q87Ri1BenWX41lnAhjNvP73SyHBvtJ86O3g0EQ.png"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7108NI-Q1",
+    "kind": "nvr",
+    "description": "8 canales IP, 60 Mbps de entrada y salidas HDMI y VGA",
+    "source": "https://irseguridad.com.ar/producto/mini-nvr-hikvision-1u-de-8-canales",
+    "image": "https://irseguridad.com.ar/img/products/1oDScrCYpDXMc7bO3yBkzCYNWvXzmmEty1XYUIsz.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7108NI-Q1/M",
+    "kind": "nvr",
+    "description": "8 canales IP, grabación hasta 6 MP y compresión H.265+",
+    "source": "https://irseguridad.com.ar/producto/nvr-hikvision-de-8-canales-resolucion-de-6-mpx",
+    "image": "https://irseguridad.com.ar/img/products/Mkn8cq0ZR21XDcw0AgPShy1QkvLWR86ZCrOm6Faa.png"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7608NI-Q1-D",
+    "kind": "nvr",
+    "description": "8 canales IP, 80 Mbps de entrada y compresión H.265+",
+    "source": "https://irseguridad.com.ar/producto/nvr-hikvision-4k-de-8-canales",
+    "image": "https://irseguridad.com.ar/img/products/2139/FEPskpyd3ZzRCHm0Sc2vGA5qBlKxM14uYfhrVi7D.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7608NXI-K1",
+    "kind": "nvr",
+    "description": "8 canales IP, AcuSense y protección perimetral",
+    "source": "https://irseguridad.com.ar/producto/nvr-8-ch-acusense-4k-1u-serie-k-ia-por-dispositivo",
+    "image": "https://irseguridad.com.ar/img/products/2044/gAuh9zPU0CForJi5aftE4wlKebV1dkjIXnS7HGNT.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7608NXI-K2",
+    "kind": "nvr",
+    "description": "8 canales IP, AcuSense y salida 4K",
+    "source": "https://irseguridad.com.ar/producto/nvr-8-ch-acusense-4k-1u-serie-k",
+    "image": "https://irseguridad.com.ar/img/products/2032/dr70mR4Lcvl6WBngN2qQIT1VFuSokJCibH85PysA.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7616NI-Q1",
+    "kind": "nvr",
+    "description": "16 canales IP, 160 Mbps de entrada y compresión H.265+",
+    "source": "https://irseguridad.com.ar/producto/nvr-hikvision-de-16-canales-160-mbps",
+    "image": "https://irseguridad.com.ar/img/products/AnHRUtzGvpKVbdVl0XgRHEh37Lg7BzGqJPnsqpBT.png"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7616NXI-K1(D)",
+    "kind": "nvr",
+    "description": "16 canales IP, AcuSense y salida 4K",
+    "source": "https://irseguridad.com.ar/producto/nvr-hikvision-acusense-16ch-ip-4mp",
+    "image": "https://irseguridad.com.ar/img/products/2077/tPGJImnLEz14uQNOa8KSZqFMxe0ipflRy3oCr6Dv.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7616NXI-K2(D)",
+    "kind": "nvr",
+    "description": "16 canales IP, AcuSense y dos bahías para discos",
+    "source": "https://irseguridad.com.ar/producto/nvr-hikvision-acusense-16ch-ip-8mp-2-hdd-hasta-8tb",
+    "image": "https://irseguridad.com.ar/img/products/2298/6fgKVHbqtWnUR8vsX5e7lCj02JBwcDEF4ydpzSxk.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7632NI-K2",
+    "kind": "nvr",
+    "description": "32 canales IP, salida HDMI 4K y dos bahías SATA",
+    "source": "https://irseguridad.com.ar/producto/nvr-hikvision-16-canales-8mp-bw-160-mbps-h-265-2-sata",
+    "image": "https://irseguridad.com.ar/img/products/S0kdPX0YCNWCPh4SKiHCU7j1CUiiWkNVW1TvHpf0.png"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7632NXI-K2(D)",
+    "kind": "nvr",
+    "description": "32 canales IP, AcuSense y salida 4K",
+    "source": "https://irseguridad.com.ar/producto/nvr-hikvision-acusense-32ch-ip-4k",
+    "image": "https://irseguridad.com.ar/img/products/2117/CLDRBifuwxz58bWHOg4tIGQs6PadVvc0nZor9J2F.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7716NXI-K4(D)",
+    "kind": "nvr",
+    "description": "16 canales IP, AcuSense y 160 Mbps de entrada",
+    "source": "https://irseguridad.com.ar/producto/nvr-acurense-16ch-ip-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2612/ervC5i2cFQbgJZEMxltYTOVyXk4Lj3za0fBhUR8I.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-7732NI-M4/16P",
+    "kind": "nvr",
+    "description": "32 canales IP, 16 puertos PoE y salida 8K",
+    "source": "https://irseguridad.com.ar/producto/nvr-hikvision-32-canales-ip-8k",
+    "image": "https://irseguridad.com.ar/img/products/2008/UjMOSxDECmHaGzdWiqvNP30IYJsAlergQkhb8ou7.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-9632NI-M8",
+    "kind": "nvr",
+    "description": "32 canales IP, salida 8K y 320 Mbps de entrada",
+    "source": "https://irseguridad.com.ar/producto/nvr-hikvision-8k-de-32-canales-y-2u",
+    "image": "https://irseguridad.com.ar/img/products/2604/gQNOZPRvLjSadMrT1XfihsBKw8tE7qcuo9G5Hn0e.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "DS-9664NI-M8",
+    "kind": "nvr",
+    "description": "64 canales IP, salida HDMI 8K y ocho bahías SATA",
+    "source": "https://irseguridad.com.ar/producto/nvr-hikvision-64ch-2hd-4k",
+    "image": "https://irseguridad.com.ar/img/products/2578/DpvCyWJuHGQimO5lSYBLfcXRnUxd240Iksjh3F9z.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "model": "IDS-7216HQHI-M2/FA C",
+    "kind": "xvr",
+    "description": "16 canales analógicos, entradas híbridas, AcuSense y dos bahías para discos",
+    "source": "https://irseguridad.com.ar/producto/xvr-de-16-canales-acusense-8-canales-ip-reconocimiento-facial-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2908/Guc6XgtdZ9zHYCMoNhsKwkab4eFBmDp3O5nJUVxf.webp"
   }
 ]

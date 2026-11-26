@@ -7,31 +7,31 @@ import Icon from '../../../components/ui/Icon.jsx'
 import { sortOptionsAlphabetically } from '../../../domain/shared/catalog-order.mjs'
 import { normalizeSearchText } from '../../../domain/shared/normalization.mjs'
 import { useProductCatalog } from '../application/useProductCatalog.mjs'
+import { productName, productType } from '../domain/product-name.mjs'
 import ProductForm, { editableFields, ReferencePhoto } from './ProductForm.jsx'
 import './products.css'
 
 const { EQUIPMENT_CATEGORIES, EQUIPMENT_KINDS } = schema
 const defaultFilters = { search: '', category: '', brand: '', state: 'active' }
-const kindLabel = product => EQUIPMENT_KINDS[product.category]?.[product.kind] || product.kind
 
 function ProductState({ active }) {
   return <span className={active ? 'products-state products-state-active' : 'products-state'}>{active ? 'Activo' : 'De baja'}</span>
 }
 
 function ProductDetails({ product, onClose }) {
-  return <EditorModal active title={product.model} eyebrow="FICHA DE PRODUCTO" onClose={onClose}>
+  return <EditorModal active title="Ficha de producto" eyebrow="PRODUCTOS" onClose={onClose}>
     <div className="products-details">
       <div>
         <ReferencePhoto large image={product.image} model={product.model} caption={product.caption} />
         {product.caption && <small>{product.caption}</small>}
       </div>
       <dl>
-        <dt>Marca</dt><dd>{product.brand || 'Sin especificar'}</dd>
+        <dt>Código</dt><dd>{product.model}</dd>
+        <dt>Nombre</dt><dd>{productName(product)}</dd>
         <dt>Categoría</dt><dd>{EQUIPMENT_CATEGORIES[product.category]}</dd>
-        <dt>Tipo de equipo</dt><dd>{kindLabel(product)}</dd>
+        <dt>Familia del catálogo</dt><dd>{productType(product)}</dd>
         <dt>Estado</dt><dd><ProductState active={product.active} /></dd>
       </dl>
-      {product.description && <p className="products-detail-description">{product.description}</p>}
       {/^https?:\/\//i.test(product.source || '') && <a href={product.source} target="_blank" rel="noreferrer">Abrir ficha del fabricante o proveedor</a>}
     </div>
   </EditorModal>
@@ -55,7 +55,7 @@ function StatusDialog({ product, onSave, onClose }) {
   }
   return <EditorModal active title={`${action} producto`} eyebrow="PRODUCTOS" onClose={onClose} busy={busy}>
     <div className="products-status-dialog">
-      <p><strong>{product.brand} {product.model}</strong></p>
+      <p><strong>{product.model}</strong><br />{productName(product)}</p>
       <p>{product.active
         ? 'El modelo dejará de ofrecerse para nuevas cargas. Las fichas técnicas y los planos donde ya se utilizó conservan el equipo.'
         : 'El modelo volverá a estar disponible para cargar equipos en las fichas técnicas y los planos.'}</p>
@@ -91,9 +91,11 @@ export default function Products() {
   const [page, setPage] = useState(1), [size, setSize] = useState(20)
   const [dialog, setDialog] = useState(null), [notice, setNotice] = useState('')
   const brands = useMemo(() => sortOptionsAlphabetically([...new Set(products.map(product => product.brand).filter(Boolean))]), [products])
-  const index = useMemo(() => sortOptionsAlphabetically(products, product => `${product.brand} ${product.model}`).map(product => ({
-    product, searchable: normalizeSearchText([product.brand, catalog.searchableModel(product), product.description, EQUIPMENT_CATEGORIES[product.category], kindLabel(product)].join(' ')),
-  })), [products])
+  const index = useMemo(() => sortOptionsAlphabetically(products, product => `${product.brand} ${product.model}`).map(product => {
+    const name = productName(product)
+    const searchable = normalizeSearchText([name, catalog.searchableModel(product), EQUIPMENT_CATEGORIES[product.category], productType(product)].join(' '))
+    return { product, name, searchable }
+  }), [products])
   const matches = useMemo(() => {
     const words = filters.search.trim().split(/\s+/).map(normalizeSearchText).filter(Boolean)
     return index.filter(({ product, searchable }) =>
@@ -131,7 +133,7 @@ export default function Products() {
   return <section className="products-module" aria-label="Catálogo de productos">
     <ModuleIntroduction><p>Catálogo de equipos para la ficha técnica y la planimetría de las cuentas.</p></ModuleIntroduction>
     <div className="products-toolbar">
-      <label>Buscar producto<input type="search" placeholder="Marca, modelo o descripción" value={filters.search}
+      <label>Buscar producto<input type="search" placeholder="Código, nombre o características" value={filters.search}
         onChange={event => filter('search', event.target.value)} /></label>
       <label>Categoría<select aria-label="Categoría" value={filters.category} onChange={event => filter('category', event.target.value)}>
         <option value="">Todas</option>{Object.entries(EQUIPMENT_CATEGORIES).map(([id, name]) => <option value={id} key={id}>{name}</option>)}
@@ -150,15 +152,15 @@ export default function Products() {
       {notice && <p className="products-notice" role="status">{notice}</p>}
       <div className="products-table-wrap" tabIndex={0} role="region" aria-label="Listado de productos">
         <table className="products-table">
-          <thead><tr><th scope="col">Producto</th><th scope="col">Marca</th><th scope="col">Categoría y tipo</th><th scope="col">Estado</th>
+          <thead><tr><th scope="col">Código</th><th scope="col">Nombre</th><th scope="col">Categoría</th><th scope="col">Estado</th>
             {authorized && <th scope="col">Acciones</th>}</tr></thead>
-          <tbody>{visible.map(({ product }) => <tr key={product.id}>
-            <td><button type="button" className="products-row-detail" onClick={() => openDialog('view', product)} aria-label={`Ver ficha de ${product.brand} ${product.model}`}>
+          <tbody>{visible.map(({ product, name }) => <tr key={product.id}>
+            <td className="products-code">{product.model}</td>
+            <td><button type="button" className="products-row-detail" onClick={() => openDialog('view', product)} aria-label={`Ver ficha de ${name} (${product.model})`}>
               <ReferencePhoto image={product.image} model={product.model} caption={product.caption} />
-              <span><strong>{product.model}</strong>{product.description && <small>{product.description}</small>}</span>
+              <strong>{name}</strong>
             </button></td>
-            <td>{product.brand || 'Sin especificar'}</td>
-            <td>{EQUIPMENT_CATEGORIES[product.category]}<small>{kindLabel(product)}</small></td>
+            <td>{EQUIPMENT_CATEGORIES[product.category]}</td>
             <td><ProductState active={product.active} /></td>
             {authorized && <td><div className="row-actions products-row-actions">
               <button type="button" title="Editar producto" aria-label={`Editar ${product.model}`} onClick={() => openDialog('edit', product)}><Icon name="edit" size={16} /></button>

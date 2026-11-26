@@ -20,12 +20,16 @@ test('the illustrated base catalog keeps a distinct identity for every model', (
   assert.equal(original.active, true)
 })
 
-test('los códigos alternativos de IR conservan el grabador, la foto y la identidad original del fabricante', async () => {
+test('los códigos alternativos de IR conservan el equipo, la foto y la identidad original del fabricante', async () => {
   const { searchableModel } = require('../shared/product-catalog.cjs')
   const { equipmentCatalogFor } = await import('../src/features/cctv/domain/equipment-catalog.mjs')
   const catalog = equipmentCatalogFor(baseProducts)
-  for (const [supplierModel, manufacturerModel] of Object.entries(dahuaModelAliases)) {
-    const original = catalog.find({ category: 'cctv', brand: 'Dahua', model: manufacturerModel })
+  const alternateModels = Object.entries(dahuaModelAliases).map(([supplier, official]) => ['Dahua', supplier, official])
+  for (const item of require('../src/features/cctv/domain/ir-camera-models.json')) {
+    for (const alias of item.aliases || []) alternateModels.push([item.brand, alias, item.model])
+  }
+  for (const [brand, supplierModel, manufacturerModel] of alternateModels) {
+    const original = catalog.find({ category: 'cctv', brand, model: manufacturerModel })
     assert.equal(original?.model, manufacturerModel)
     const alias = { ...original, model: supplierModel }
     assert.equal(productKey(alias), productKey(original))
@@ -65,7 +69,7 @@ for (const [family, items] of [
   ['grabadores', require('../src/features/cctv/domain/ir-recorder-models.json')]
 ]) {
   test('se preservan la identidad, la foto y las bajas de ' + family + ' de IR ya administrados', () => {
-    for (const brand of ['Dahua', 'IMOU']) {
+    for (const brand of ['Dahua', 'Hikvision', 'IMOU']) {
       const { model } = items.find(item => item.brand === brand)
       const imported = baseProducts.find(item => item.category === 'cctv' && item.brand === brand && item.model === model)
       const savedModel = brand === 'Dahua' ? 'DHI-' + model.replace(/^dhi?-/i, '') : model

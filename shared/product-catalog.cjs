@@ -7,29 +7,42 @@ const perimeterImages = require('../src/features/cctv/domain/perimeter-product-i
 const irCameras = require('../src/features/cctv/domain/ir-camera-models.json')
 const irRecorders = require('../src/features/cctv/domain/ir-recorder-models.json')
 const dahuaModelAliases = require('../src/features/cctv/domain/ir-dahua-model-aliases.json')
+const characteristics = require('../src/features/cctv/domain/product-characteristics.json')
 
 const normalized = value => String(value || '').normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase()
 const normalizedBrand = value => normalized(value).replace(/^dahua technology$/, 'dahua')
-const isDahuaCctv = ({ category, brand }) => category === 'cctv' && normalizedBrand(brand) === 'dahua'
-const dahuaCode = model => normalized(model).replace(/^dhi?-/, '')
-const equivalentDahuaCodes = new Map()
+const irEquipment = [...irCameras, ...irRecorders]
+const equivalentsByBrand = new Map()
+function cctvCode(brand, model) {
+  const code = normalized(model)
+  return brand === 'dahua' ? code.replace(/^dhi?-/, '') : code
+}
+function registerAlternative(brand, model, supplierCode) {
+  if (!equivalentsByBrand.has(brand)) equivalentsByBrand.set(brand, new Map())
+  const equivalents = equivalentsByBrand.get(brand)
+  const canonical = cctvCode(brand, model), alternative = cctvCode(brand, supplierCode)
+  const codes = equivalents.get(canonical) || [canonical]
+  codes.push(alternative)
+  equivalents.set(canonical, codes)
+  equivalents.set(alternative, codes)
+}
 for (const [supplier, manufacturer] of Object.entries(dahuaModelAliases)) {
-  const canonical = dahuaCode(manufacturer), alias = dahuaCode(supplier)
-  const codes = equivalentDahuaCodes.get(canonical) || [canonical]
-  codes.push(alias)
-  equivalentDahuaCodes.set(canonical, codes)
-  equivalentDahuaCodes.set(alias, codes)
+  registerAlternative('dahua', manufacturer, supplier)
+}
+for (const product of irEquipment) {
+  for (const alias of product.aliases || []) registerAlternative(normalizedBrand(product.brand), product.model, alias)
 }
 function catalogModelKey({ category, brand, model }) {
-  if (!isDahuaCctv({ category, brand })) return normalized(model)
-  const code = dahuaCode(model)
-  return equivalentDahuaCodes.get(code)?.[0] || code
+  if (category !== 'cctv') return normalized(model)
+  const brandKey = normalizedBrand(brand), code = cctvCode(brandKey, model)
+  return equivalentsByBrand.get(brandKey)?.get(code)?.[0] || code
 }
 function searchableModel(product) {
-  if (!isDahuaCctv(product)) return product.model
-  const code = dahuaCode(product.model)
-  const codes = equivalentDahuaCodes.get(code) || [code]
-  return [product.model, ...codes.flatMap(value => ['DH-' + value, 'DHI-' + value])].join(' ')
+  if (product.category !== 'cctv') return product.model
+  const brand = normalizedBrand(product.brand), code = cctvCode(brand, product.model)
+  const codes = equivalentsByBrand.get(brand)?.get(code)
+  if (brand === 'dahua') return [product.model, ...(codes || [code]).flatMap(value => ['DH-' + value, 'DHI-' + value])].join(' ')
+  return codes ? [product.model, ...codes].join(' ') : product.model
 }
 const productKey = product => JSON.stringify([normalized(product.category), normalizedBrand(product.brand), catalogModelKey(product)])
 const createBaseProductId = (category, brand, model) => ['base', normalized(category), normalizedBrand(brand), catalogModelKey({ category, brand, model })].map(encodeURIComponent).join(':')
@@ -43,11 +56,11 @@ function addBase(category, kind, brand, model, reference, description = '') {
   })
 }
 for (const [kind, models] of Object.entries(dahuaModels)) {
-  for (const model of models) addBase('cctv', kind, 'Dahua', model, dahuaImages[model])
+  for (const model of models) addBase('cctv', kind, 'Dahua', model, dahuaImages[model], characteristics.Dahua?.[model])
 }
 for (const [brand, families] of Object.entries(alarmModels)) {
   for (const [kind, models] of Object.entries(families)) {
-    for (const model of models) addBase('alarm', kind, brand, model, alarmImages[brand][model])
+    for (const model of models) addBase('alarm', kind, brand, model, alarmImages[brand][model], characteristics[brand]?.[model])
   }
 }
 for (const [category, families] of Object.entries(perimeterModels)) {
@@ -56,7 +69,7 @@ for (const [category, families] of Object.entries(perimeterModels)) {
   }
 }
 const irCctvIds = new Set(Object.values(dahuaModelAliases).map(model => createBaseProductId('cctv', 'Dahua', model)))
-for (const equipment of [...irCameras, ...irRecorders]) {
+for (const equipment of irEquipment) {
   const id = createBaseProductId('cctv', equipment.brand, equipment.model)
   if (baseProductsById.has(id)) continue
   addBase('cctv', equipment.kind, equipment.brand, equipment.model, equipment, equipment.description)

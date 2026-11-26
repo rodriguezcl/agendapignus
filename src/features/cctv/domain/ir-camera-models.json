@@ -2102,5 +2102,935 @@
     "source": "https://irseguridad.com.ar/producto/camara-ip-wifi-dual-band-2-8-y-5ghz-ir-30-mts-exterior-audio-bidi-full-color-imou-disuacion-poe-aurora-titan",
     "image": "https://irseguridad.com.ar/img/products/2334/KZqiu8TEoGgts6ALJVUnNRFkcdzwx5fab74OPYMv.webp",
     "description": "Titan Pro · 6 MP · Wi-Fi · PoE · audio bidireccional"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2AE4225TI-D E",
+    "description": "Domo PTZ HDTVI · 2 MP · zoom óptico 25× · infrarrojo de 100 m",
+    "source": "https://irseguridad.com.ar/producto/domo-ptz-2-mpx-ir-100-mts-zoom-optico-25x-exterior-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/7A5x06BqjGnbEWYQONmJNaW2xQDE6RbtQDnYlabZ.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE10DF0T-F",
+    "description": "Bullet HDTVI · 2 MP · lente de 2,8 mm · ColorVu · luz blanca de 20 m",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-2-mpx-ir-20-mts-lente-2-8-exterior-metalica-colorvu-turbo-hd-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2A6ah1zX1iFGC4gA7al88J0e39N1gLjUoFXwC27t.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE10DF0T-LFS",
+    "description": "Bullet HDTVI · 2 MP · lente de 2,8 mm · ColorVu · luz híbrida",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-2-mpx-ir-20-mts-lente-2-8-exterior-plastica-colorvu-luz-hibrida-inteligente",
+    "image": "https://irseguridad.com.ar/img/products/1805/mCRyq3l5tYHGLcpaZQkNsoT48xUPSAO2ej0EFJ6W.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE10DF0T-PF",
+    "description": "Bullet HDTVI · 2 MP · lente de 2,8 mm · ColorVu · luz blanca de 20 m",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-2-mpx-ir-20-mts-lente-2-8-exterior-plastica-colorvu-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/aTCTZXJS1U8dgj1wh8tmC138IfG7JMTPMQqEsGgx.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE10KF0T-LFS",
+    "description": "Bullet HDTVI · 3K (5 MP) · ColorVu · luz híbrida · audio",
+    "source": "https://irseguridad.com.ar/producto/camara-bullet-luz-dual-5mp-colorvu-con-audio-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2656/2xNl53FodRqO7Df9VSiXGanbJMPQHsAKj1Tm6Lwy.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE10KF0T-PFS",
+    "description": "Bullet HDTVI · 3K (5 MP) · ColorVu · luz blanca de 20 m · audio",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-5-mpx-ir-20-mts-lente-2-8-exterior-plastica-colorvu-con-audio-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/YZWXtPLuIC4PHq81FSxwzYJAzOTfHthXgXdNafs2.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE12DF0T-LFS",
+    "description": "Bullet HDTVI · 2 MP · lente de 2,8 mm · ColorVu · luz blanca de 40 m",
+    "source": "https://irseguridad.com.ar/producto/camara-tipo-bala-fija-de-2-mp-con-luz-hibrida-inteligente-y-tecnologia-colorvu",
+    "image": "https://irseguridad.com.ar/img/products/2MDTbuzhuXAPXtOm3m0IQmxMTgNmi82BN0gBDSBs.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE12DFT-FC",
+    "description": "Bullet HDTVI · 2 MP · ColorVu · salida 4 en 1 · luz blanca de 40 m",
+    "source": "https://irseguridad.com.ar/producto/camara-bullet-ip-2-mp-hikvision-full-hd-color-vu-30m",
+    "image": "https://irseguridad.com.ar/img/products/2293/fBVKyA7tJQ9P6XrWmNnMg1dGcCijswzZUkvhLH0a.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16C0T-IRF",
+    "description": "Bullet HDTVI · 1 MP · lente de 2,8 mm · infrarrojo de 20 m · IP67",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-1-mpx-ir-20-mts-lente-2-8-exterior-metalica-4-en-1-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/Ps5XYBQ931avjNjkOxVIoe4rol1OUhMykau4g0eO.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16C0T-IT3F",
+    "description": "Bullet HDTVI · 1 MP · lente de 2,8 mm · infrarrojo de 40 m · IP67",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-1-mpx-ir-40-mts-lente-2-8-exterior-metalica-hd-4-en-1-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/ysA3YRt8GIL6Jx0L0zI6rpN6YiXTvuTWE1UxvrI1.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16C0T-IT5F",
+    "description": "Bullet HDTVI · 1 MP · lente de 3,6 mm · infrarrojo de 80 m · IP67",
+    "source": "https://irseguridad.com.ar/producto/camara-bullet-1-mpx-exir-80-mts-lente-3-6-exterior-4-en-1-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/1550/IqmBiSkOrgfxyCRMH8VXpA1EnhYe6oFuslKvNctQ.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16C0T-VFIR3F",
+    "description": "Bullet HDTVI varifocal · 720p · 2,8–12 mm · infrarrojo de 40 m",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-2-mpx-ir-40-mts-lente-2-8-12-mm-exterior-metalica-varifocal-tvi-cvi-ahd-cvbs-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/TO9swzQWyOj7haC5AEKqvKQzJ8yVHUxaaLkOe3h5.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16D0T-EXIF",
+    "description": "Bullet HDTVI · 2 MP · lente de 2,8 mm · infrarrojo de 20 m · carcasa metálica",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-2-mpx-ir-20-mts-lente-2-8-exterior-metalica-full-hd-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/Piqzuk1BuCxI3qFv2Gmg60AmbYnnMhzK0EVi545E.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16D0T-EXIPF",
+    "description": "Bullet HDTVI · 2 MP · lente de 2,8 mm · infrarrojo de 20 m · carcasa plástica",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-2-mpx-ir-20-mts-lente-2-8-exterior-plastica-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/EAYZVexMs2Sq8kov12T47bSlFEJs7rLtMyEKKzhV.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16D0T-IF",
+    "description": "Bullet HDTVI · 2 MP · lente de 3,6 mm · infrarrojo de 20 m · carcasa metálica",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-2-mpx-ir-20-mts-lente-3-6-exterior-metalica-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/wyDFxcnrpwdgeaVCGeCv45LFnb78OhtrvFehYKhd.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16D0T-IT3F",
+    "description": "Bullet HDTVI · 2 MP · lente de 2,8 mm · infrarrojo de 40 m · IP66",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-2-mpx-ir-40-mts-lente-2-8-exterior-plastica-full-hd-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/vBm6AafrHFP3EEj8RWKcriKjfxAU2ZTEvgbOK38S.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16D0T-ITPFS",
+    "description": "Bullet HDTVI · 2 MP · lente de 2,8 mm · infrarrojo de 25 m · audio coaxial",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-2-mpx-ir-25-mts-lente-2-8-exterior-plastica-con-audio-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/574/sWvlFzx7C38tMNLXhd2aj4YHbTqBQiOmcnfkr9E0.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16D0T-LFS",
+    "description": "Bullet HDTVI · 2 MP · lente de 2,8 mm · luz híbrida · audio",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-2-mpx-ir-30-mts-lente-2-8-exterior-metalica-luz-dual-con-audio-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/h252RrI0TWpbVQORPzOPJQhpD5suIMd4yZ4R0X58.png"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16D0T-LPFS",
+    "description": "Bullet HDTVI · 2 MP · lente de 2,8 mm · luz híbrida · micrófono",
+    "source": "https://irseguridad.com.ar/producto/camara-bullet-2-mpx-ir-dual-25-20-mts-lente-2-8-exterior-con-microfono-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/1543/Tpe3lHWBmj0RAGfZYVdNto7CFKDUx5IXJv186yMP.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16D0T-LTS",
+    "description": "Bullet HDTVI · 2 MP · luz híbrida · audio bidireccional · carcasa metálica",
+    "source": "https://irseguridad.com.ar/producto/camara-bullet-hikvision-metalica-c-audiobidireccional-2mp",
+    "image": "https://irseguridad.com.ar/img/products/2600/Yf89nsUvmD7MhxRcEwetJkXaOPC6Q045VurzNpiy.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16D0T-VFIR3F",
+    "description": "Bullet HDTVI varifocal · 2 MP · 2,8–12 mm · infrarrojo de 40 m",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-2-mpx-ir-40-mts-varifocal-exterior-2-8-mm-a-12-mm-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2854/WeRkuwSsyriZHnOB6XcxLvCoU0lPaMzdJQt4ghfV.webp",
+    "aliases": [
+      "DS-2CE16D0T-VFIR3 F"
+    ]
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16H0T-ITF",
+    "description": "Bullet HDTVI · 5 MP · lente de 2,8 mm · infrarrojo de 20 m · IP67",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-5-mpx-ir-20-mts-lente-2-8-exterior-metalica-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/we9ZJkbxNnJ45HLVyhqECmiVI2yVQQBz96TOkxYN.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16H0T-ITPF",
+    "description": "Bullet HDTVI · 5 MP · infrarrojo de 25 m · IP67",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-5-mpx-ir-25-mts-lente-2-4-exterior-plastica-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/JwvuBZfK8kvAyUuFucbECTkTrJrB9RI83ZyO1igi.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16K0T-EXLPF",
+    "description": "Bullet HDTVI · 3K (5 MP) · lente de 2,8 mm · luz híbrida",
+    "source": "https://irseguridad.com.ar/producto/camara-bullet-3k-2-8mm-con-luz-hibrida-inteligente",
+    "image": "https://irseguridad.com.ar/img/products/2427/BC5iPAb08FtL4WGHEUhzK9MdXOQZ6J3Tev7ncu12.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16K0T-LFS",
+    "description": "Bullet HDTVI · 3K (5 MP) · lente de 2,8 mm · luz híbrida · audio",
+    "source": "https://irseguridad.com.ar/producto/camara-hikvision-3k-bullet-luz-dual-c-audio-2-8mm-plastic",
+    "image": "https://irseguridad.com.ar/img/products/2034/Wi5dpFE4mDUNXkoQeKBLj821q9MTHRG7a0JlZvIx.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE16K0T-LPFS-0280",
+    "description": "Bullet HDTVI · 3K (5 MP) · lente de 2,8 mm · luz híbrida · audio",
+    "source": "https://irseguridad.com.ar/producto/bullet-hikvision-con-audio-lente-2-8-luz-hibrida-inteligente-3k",
+    "image": "https://irseguridad.com.ar/img/products/2206/rV3dy1WBxflCSeqwHEa0RDnKg54j2kIbpvXN8PFu.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE17D0T-IT5F C",
+    "description": "Bullet HDTVI · 2 MP · lente de 3,6 mm · infrarrojo de 80 m",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-2-mpx-ir-80-mts-lente-3-6-exterior-plastica-full-hd-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/tFmbzbDLRzmt8QRP5kRgSdwPypvOCTxEvPMPf9Ei.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE17D0T-LFS",
+    "description": "Bullet HDTVI · 2 MP · lente de 2,8 mm · luz híbrida de 40 m · audio",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-2-mpx-ir-40-mts-lente-2-8-exterior-con-audio-luz-dual-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/1843/w7irBS0bfhsNRPZpneD8XaTcgYG3l26jE4VQ5M1k.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE19D0T-VFIT3F",
+    "description": "Bullet HDTVI varifocal · 2 MP · 2,7–13,5 mm · infrarrojo de 40 m",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-2-mpx-ir-40-mts-lente-2-7-13-5-mm-exterior-plastica-varifocal-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/vfAuySS6o5uK05ooFJCgcV0IvVqw3PbbN6YxJAim.png"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE19H0T-AIT3ZF",
+    "description": "Bullet HDTVI varifocal motorizada · 5 MP · 2,7–13,5 mm · infrarrojo de 40 m",
+    "source": "https://irseguridad.com.ar/producto/bullet-hdtvi-5-mpx-ir-40-mts-lente-2-7-13-5-mm-plastica-varifocal-motorizada-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/hV6pmftul2bxn3HbE2BjERbb4IgDPmnMb91uZ3B1.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE56D0T-IF",
+    "description": "Domo HDTVI · 2 MP · lente de 2,8 mm · infrarrojo de 20 m · IP66",
+    "source": "https://irseguridad.com.ar/producto/domo-hdtvi-2-mpx-ir-20-mts-lente-2-8-exterior-plastico-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/B0kssBffaZEPUlv96k4UgTzAMmM2KRUGfZtyScV4.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE70DF0T-LMFS",
+    "description": "Domo HDTVI · 2 MP · ColorVu · luz híbrida",
+    "source": "https://irseguridad.com.ar/producto/camara-domo-2mp-colorvu-con-luz-hibrida-inteligente",
+    "image": "https://irseguridad.com.ar/img/products/2456/pFxOq0HlMjsUfwbPWd3KDvmg7RIS9Vta648EyoQB.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE70DF0T-MF",
+    "description": "Domo HDTVI · 2 MP · lente de 2,8 mm · ColorVu · luz blanca de 20 m",
+    "source": "https://irseguridad.com.ar/producto/domo-hdtvi-2-mpx-ir-20-mts-lente-2-8-exterior-metalico-colorvu-full-hd-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/usaNqvk31G3Apje2EBeJ67oet1Xyb4JPBvMcPpAP.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE70DF0T-PF",
+    "description": "Domo HDTVI para interior · 2 MP · lente de 2,8 mm · ColorVu · luz blanca de 20 m",
+    "source": "https://irseguridad.com.ar/producto/domo-hdtvi-2-mpx-ir-20-mts-lente-2-8-interior-plastica-colorvu-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/hXxMIxw00ZupDBeBH0yUSMdC80kPd4RARhoTin3T.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE70DF3T-MF",
+    "description": "Torreta HDTVI · 2 MP · lente de 2,8 mm · ColorVu · IP67",
+    "source": "https://irseguridad.com.ar/producto/camara-turbohd-turret-1080p-lente-2-8-mm-ip67",
+    "image": "https://irseguridad.com.ar/img/products/2005/rWKz4MGLcXIufdFtDmRqZoO2jQ6eJUi8xCgNbn1p.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE70KF0T-LMFS",
+    "description": "Torreta HDTVI · 3K (5 MP) · ColorVu · luz híbrida · micrófono",
+    "source": "https://irseguridad.com.ar/producto/domo-hdtvi-5-mpx-dual-light-con-microfono-colorvu-metalica-exterior-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2890/nDwcP798IWefZF2thm1EzVUrXG04QTHbdKlsAyOj.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE70KF0T-PFS",
+    "description": "Domo HDTVI · 3K (5 MP) · ColorVu · luz blanca de 20 m · audio",
+    "source": "https://irseguridad.com.ar/producto/domo-hdtvi-5-mpx-ir-20-mts-lente-2-8-exterior-plastico-colorvu-con-audio-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/wy0mCnr9MLocMLSsSifDzmIMfTthhi2ZSvDVMUOb.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE71D0T-PIRL",
+    "description": "Torreta HDTVI · 2 MP · sensor PIR · luz estroboscópica · infrarrojo de 20 m",
+    "source": "https://irseguridad.com.ar/producto/domo-hdtvi-2-mpx-ir-20-mts-lente-2-8-exterior-metalico-full-hd-con-pir-deteccion-y-flash-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/JRXBeqso7pZ7j79JQkPh3Ggk6kSPbVOcs9G2vwZ7.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE76D0T-EXIMF",
+    "description": "Domo HDTVI · 2 MP · lente de 2,8 mm · infrarrojo de 20 m · carcasa metálica",
+    "source": "https://irseguridad.com.ar/producto/domo-hdtvi-2-mpx-ir-20-mts-lente-2-8-exterior-metalico-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/GkNGsSkXf5nNvOzXwrmKgP2Xkw6NBKTM8Xbo0OIi.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE76D0T-EXIPF",
+    "description": "Torreta HDTVI para interior · 2 MP · lente de 2,8 mm · infrarrojo de 20 m",
+    "source": "https://irseguridad.com.ar/producto/domo-hdtvi-2-mpx-ir-20-mts-lente-2-8-interior-plastico-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/LTbz645OTlknYEwykVpKkPyyQB6ywlc5obKkI1sd.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE76D0T-ITMFS",
+    "description": "Domo HDTVI · 2 MP · lente de 2,8 mm · infrarrojo de 30 m · micrófono",
+    "source": "https://irseguridad.com.ar/producto/domo-hdtvi-2-mpx-ir-30-mts-lente-2-8-exterior-metalico-con-audio-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/dqNFPrKV1fhkanmMaPNlztK0BDbT9STctNLolzKb.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE76D0T-ITPFS",
+    "description": "Domo HDTVI · 2 MP · lente de 2,8 mm · infrarrojo de 20 m · audio coaxial",
+    "source": "https://irseguridad.com.ar/producto/domo-hdtvi-2-mpx-ir-20-mts-lente-2-8-plastico-con-audio-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/SbLS8MeB43mUE24guwIKsoRY28glV2Ppg9GfWIPq.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE76D0T-LMFS",
+    "description": "Domo HDTVI · 2 MP · lente de 2,8 mm · luz híbrida · audio",
+    "source": "https://irseguridad.com.ar/producto/domo-hdtvi-2-mpx-ir-30-mts-lente-2-8-exterior-metalico-luz-dual-con-audio-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/pA6pMVZiKJN51LLrrL0ckpX1Grq3dwEkIEepxu3W.jpg",
+    "caption": "IR Seguridad utiliza la misma foto para las variantes LMFS y LPFS."
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE76D0T-LPFS",
+    "description": "Domo HDTVI para interior · 2 MP · lente de 2,8 mm · luz híbrida · audio",
+    "source": "https://irseguridad.com.ar/producto/domo-hdtvi-2-mpx-ir-20-mts-lente-2-8-interior-plastico-luz-dual-con-audio-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/5UojjlVOobQLOhUyvMr7pELQUGI30u8JiTut0zD9.jpg",
+    "caption": "IR Seguridad utiliza la misma foto para las variantes LMFS y LPFS."
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE76K0T-LMFS",
+    "description": "Domo HDTVI · 3K (5 MP) · luz híbrida · audio coaxial",
+    "source": "https://irseguridad.com.ar/producto/camara-domo-luz-dual-c-audio-5mp-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2666/fZSCbgMm7sw06ztGld8jOEahPTiUrKv3kFeHQNq5.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE76K0T-LPFS-0280",
+    "description": "Domo HDTVI para interior · 3K (5 MP) · lente de 2,8 mm · luz híbrida · audio",
+    "source": "https://irseguridad.com.ar/producto/camara-domo-fija-para-interiores-con-audio-luz-hibrida-inteligente-3k",
+    "image": "https://irseguridad.com.ar/img/products/2204/V95jupZbscB4eHydW6RMg8h7xqAQTKzILkFa2tG1.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "analog_camera",
+    "model": "DS-2CE78D0T-LTS-0280",
+    "description": "Domo HDTVI · 2 MP · lente de 2,8 mm · audio bidireccional · luz híbrida",
+    "source": "https://irseguridad.com.ar/producto/camara-domo-2mp-ip67-audio-bi-direccional-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2676/EMlc5PZd4ICxKHnsGYVtWaRmS2hwpUDeugoj1FXv.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "BULLET IP HIKVISION COLORVU 3.0 4MP",
+    "description": "Bullet IP · 4 MP · ColorVu 3.0 · luz híbrida de 40 m · sirena y luz estroboscópica",
+    "source": "https://irseguridad.com.ar/producto/camara-bullet-ip-colorvu-3-0-4mp-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2629/59VaktI8F47PonNvmepCiqAG3DWsdc6uBUOrXSYy.webp",
+    "caption": "IR Seguridad identifica esta cámara con un código comercial propio."
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1021G0-I",
+    "description": "Bullet IP · 2 MP · lente de 2,8 mm · PoE · IP67",
+    "source": "https://irseguridad.com.ar/producto/bullet-ip-2mp-poe-bullet-lente-2-8mm",
+    "image": "https://irseguridad.com.ar/img/products/2013/HuxRGdwYUtlrQMcfWvAjKzXoECnq3ISPs2NLb5BO.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1023G0E-I",
+    "description": "Bullet IP · 2 MP · lente de 2,8 mm · infrarrojo de 30 m · IP67",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-bullet-2-mpx-ir-30-mts-lente-2-8-exterior-full-hd-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/FyEx8P0GZVYvk3moo7RM8w4X3aCHu93imCfUGy1a.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1023G2-I",
+    "description": "Bullet IP · 2 MP · lente de 2,8 mm · infrarrojo de 30 m",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-bullet-2-mpx-ir-30-mts-lente-2-8-exterior-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/qL1g4rjLItxOfvsR2sK1wvNLDNfzI18MYTJ2e02I.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1023G2-IUF",
+    "description": "Bullet IP · 2 MP · lente de 2,8 mm · infrarrojo de 30 m · micrófono",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-bullet-2-mpx-lente-2-8mm-ir-30m-ip67-microfono",
+    "image": "https://irseguridad.com.ar/img/products/1881/zPSAyInkcvFeOJhECUWb2aoRL1d9M4D0K5pZwf8u.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1023G2-LIU",
+    "description": "Bullet IP · 2 MP · luz híbrida · micrófono",
+    "source": "https://irseguridad.com.ar/producto/camara-bullet-ip-hikvision-2mp",
+    "image": "https://irseguridad.com.ar/img/products/2260/arQWEb8VOd3U79BLK1IhgqJ2uF0jyzpnPTtSsxok.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1027G0-L",
+    "description": "Bullet IP · 2 MP · lente de 2,8 mm · ColorVu Lite · IP67",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-bullet-2-mpx-ir-30-mts-lente-2-8-exterior-colorvu-lite-full-hd-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/DEakQw9qGT7vsVxLoRcKCjm32tfpvtKV1AE1o6i2.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1027G2-L",
+    "description": "Bullet IP · 2 MP · lente de 2,8 mm · ColorVu · IP67",
+    "source": "https://irseguridad.com.ar/producto/camara-wifi-bullet-2-mpx-ir-30-mts-lente-2-8-exterior-colorvu-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/ZZMEIG7MFX746pr1Xg8IsnuM8uAvMI5Yz8XagwlE.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1027G2H-LIU",
+    "description": "Bullet IP · 2 MP · ColorVu · luz híbrida · detección de personas y vehículos",
+    "source": "https://irseguridad.com.ar/producto/camara-hikvision-ip-2mp-bullet-smart-hybrid-light",
+    "image": "https://irseguridad.com.ar/img/products/2304/qtjUOYZD2x4kyB0wJT1VeIf8vM3QsHoagLWCFRuc.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1027G3-LIU-0280",
+    "description": "Bullet IP · 2 MP · lente de 2,8 mm · ColorVu 3.0 · luz híbrida",
+    "source": "https://irseguridad.com.ar/producto/camara-hikvision-ip-2mp-bullet-smart-hybrid-light-acusense-ia",
+    "image": "https://irseguridad.com.ar/img/products/2708/FC0YplZUG6cSbQT2WX3Ig4LjhskBy51uKVAqPJaD.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1041G0-I",
+    "description": "Bullet IP · 4 MP · lente de 2,8 mm · PoE · IP67",
+    "source": "https://irseguridad.com.ar/producto/bullet-ip-4mpx-con-ia-hikvision-lente-2-8",
+    "image": "https://irseguridad.com.ar/img/products/2832/D01bwGquVngvJWdy2j7ZFAY85eSiMx6XHaI4cRos.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1043G0-I",
+    "description": "Bullet IP · 4 MP · lente de 2,8 mm · WDR de 120 dB · IP67",
+    "source": "https://irseguridad.com.ar/producto/camara-wifi-bullet-4-mpx-ir-30-mts-lente-2-8-exterior-con-audio-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/dTURA9blRhWmb6HqqLKWp5cdFfwkwdvG1RnCsSgO.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1043G2-I",
+    "description": "Bullet IP · 4 MP · lente de 2,8 mm · detección de personas y vehículos · IP67",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-bullet-4-mpx-ir-30-mts-lente-2-8-exterior-con-audio-admite-sd-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/xjXaEm2prHW4rcFhKhqSDUtQYXc1zXq2iRDLFDLw.png"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1043G2-LIU",
+    "description": "Bullet IP · 4 MP · lente de 2,8 mm · luz híbrida · micrófono",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-poe-bullet-4-mpx-ir-30-mts-lente-2-8-exterior-luz-dual-deteccion-de-personas-microfono-color-vu-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2827/nzft5lJBwmQZ8jC02XE49GVONT13SARKoMvIW6ps.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1043G2-LIUF-0280",
+    "description": "Bullet IP · 4 MP · lente de 2,8 mm · luz híbrida · micrófono",
+    "source": "https://irseguridad.com.ar/producto/camara-hikvision-ip-4mp-bullet-colorvu-luz-hibrida",
+    "image": "https://irseguridad.com.ar/img/products/2042/0HsMuWxTlaD6bjQ9SB7r2gPtikGqNcOzwdVUYJvn.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1043G2-LIUF-SL-0400",
+    "description": "Bullet IP · 4 MP · lente de 4 mm · luz híbrida · detección de personas y vehículos",
+    "source": "https://irseguridad.com.ar/producto/camara-hikvision-ip-de-4mp-luz-hibrida-inteligente",
+    "image": "https://irseguridad.com.ar/img/products/2105/3tuKITRsNp2j6SX4awfxlZkM01YBdE8QqLAGeyJC.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1043G2-LIUF/SL",
+    "description": "Bullet IP · 4 MP · luz híbrida · detección de personas y vehículos",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-bullet-4mp-con-luz-hibrida-inteligente",
+    "image": "https://irseguridad.com.ar/img/products/2432/tk0Z8IDjMQR71nNPrGv4EyabsxmXFBpSiKH9wUuV.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1047G2H-LIU",
+    "description": "Bullet IP · 4 MP · ColorVu · luz híbrida · detección de personas y vehículos",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-bullet-colorvu-de-4-mp-con-luz-hibrida-inteligente",
+    "image": "https://irseguridad.com.ar/img/products/2455/lNZhKiIFs53nu2aCoXqwTOx1ASDekY9cpdy4JHjL.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1047G2H-LIU(F)",
+    "description": "Bullet IP · 4 MP · ColorVu · luz híbrida · opción de microSD",
+    "source": "https://irseguridad.com.ar/producto/camara-bullet-hibrida-inteligente-colorvu-4mp-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2680/9Lw3SCpZNqtIsgjYbFU8zR40x2WKVeTvBHrhmkPM.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1047G3-LIU",
+    "description": "Bullet IP · 4 MP · lente de 2,8 mm · ColorVu 3.0 · luz híbrida",
+    "source": "https://irseguridad.com.ar/producto/camara-bullet-4mp-hikvision-colorvu-3-0-lente-2-8mm",
+    "image": "https://irseguridad.com.ar/img/products/2595/nLOsM1NUuJc0RAFk2ojbvGrK3V5zeQPBwfaE4hid.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1121G0-I",
+    "description": "Domo IP · 2 MP · lente de 2,8 mm · PoE",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-domo-2-mpx-ir-30-mts-lente-2-8-exterior-hikvision-2",
+    "image": "https://irseguridad.com.ar/img/products/1899/k4ItJvzjE3iUsapnhRCTDPZOAMBxKw7f5F8yNeW1.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1123G2-I",
+    "description": "Domo IP · 2 MP · lente de 2,8 mm · IP67 · resistencia a impactos IK10",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-domo-2-mpx-ir-30-mts-lente-2-8-exterior-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/ppBckNWt23BQ3LZUQL400ibKzYCEuyGeHQ7YkYj7.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1127G2H-LIU",
+    "description": "Domo IP · 2 MP · lente de 2,8 mm · luz híbrida · micrófono",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-domo-2-mpx-ir-30-mts-lente-2-8-exterior-con-audio-luz-hibrida-smart-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/1743/hsEjNoUHKOWlVTSmyAYaFnPp0Df9MtQCbw8g1Bq2.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1147G2H-LIU-0280",
+    "description": "Domo IP · 4 MP · lente de 2,8 mm · ColorVu · luz híbrida",
+    "source": "https://irseguridad.com.ar/producto/camara-domo-ip-hibrida-inteligente-colorvu-de-4mp-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2645/npq93OaTDJewjyVC8LHbs0EZUgkGRilfPhSANdYB.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1321G0-I",
+    "description": "Torreta IP · 2 MP · lente de 2,8 mm · PoE · IP67",
+    "source": "https://irseguridad.com.ar/producto/camara-hikvision-ip-2mp-domo-lente-2-8mm",
+    "image": "https://irseguridad.com.ar/img/products/2035/zDTlExFnI5o3r74ca9Rqgih6wuLmWyJepKQPCfOd.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1323G0E-I",
+    "description": "Domo IP · 2 MP · lente de 2,8 mm · infrarrojo de 30 m · DWDR",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-domo-2-mpx-ir-30-mts-lente-2-8-exterior-con-dwdr-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/TlMtuD5F4Q1DNukLCa9FtUdhDDXnvBDWWTIDDgoY.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1323G2-I",
+    "description": "Domo IP · 2 MP · lente de 2,8 mm · WDR de 120 dB",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-domo-2-mpx-ir-30-mts-lente-2-8-exterior-con-audio-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/OhGjZv1cI3ZyiZOH8zMHcAX2NdXjQbr8zBLlpFsy.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1323G2-LIU-0280",
+    "description": "Torreta IP · 2 MP · lente de 2,8 mm · luz híbrida · micrófono",
+    "source": "https://irseguridad.com.ar/producto/domo-ip-2mpx-luz-dual",
+    "image": "https://irseguridad.com.ar/img/products/1924/HRBFs3nr45b27WtuNgiC6dlGxAIy9SVMoXLfv81q.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1327G0-L",
+    "description": "Torreta IP · 2 MP · lente de 2,8 mm · ColorVu · luz blanca de 30 m",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-domo-2-mpx-ir-30-mts-lente-2-8-exterior-colorvu-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/ZwtxqzN2UMFi5R7Zh4L22UFAJcXxmESVFKHdYZev.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1327G2-L",
+    "description": "Torreta IP · 2 MP · lente de 2,8 mm · ColorVu · detección de personas y vehículos",
+    "source": "https://irseguridad.com.ar/producto/camara-hikvision-acusense-colorvu-ip-2mp-domo-lente-2-8",
+    "image": "https://irseguridad.com.ar/img/products/1932/OBgKrnoT54kaCYQcGqHvEfdusWw93PFXeLpl1DRA.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1341G0-I",
+    "description": "Domo IP · 4 MP · PoE · IP67",
+    "source": "https://irseguridad.com.ar/producto/camara-de-red-domo-fija-de-4-mp",
+    "image": "https://irseguridad.com.ar/img/products/2424/eM49z3nNPI6tsmkilbLGR8V1FBQJYdAwWqfXCapy.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1343G2-LIU",
+    "description": "Domo IP · 4 MP · luz híbrida · micrófono",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-domo-4mp-con-luz-hibrida-inteligente",
+    "image": "https://irseguridad.com.ar/img/products/2435/VJig3IYqOHDTzUp6CmXBEhuL8c5SFkMv1Rbt0e2x.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1367G2HP-LIUF/SL",
+    "description": "Torreta IP panorámica de doble lente · 6 MP · ColorVu · luz híbrida",
+    "source": "https://irseguridad.com.ar/producto/camara-domo-panoramica-ip-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2646/6NgkKumTZI7GaeES5XFzJB3YiVODPwpn4H0dc19b.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1643G2-LIZSU",
+    "description": "Bullet IP varifocal motorizada · 4 MP · 2,8–12 mm · luz híbrida",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-4-mp-bullet-varifocal-motorizada-lente-2-8-a-12mm-exir-30-metros-con-slot",
+    "image": "https://irseguridad.com.ar/img/products/2211/ErfZewJpX4C3FudT5HI8YGUqQhW0ADgvxByOoMkj.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD1T67G2HP-LIUF/SL",
+    "description": "Bullet IP panorámica de doble lente · 6 MP · ColorVu · luz híbrida",
+    "source": "https://irseguridad.com.ar/producto/ds-2cd1t67g2hp-liuf-sl",
+    "image": "https://irseguridad.com.ar/img/products/2778/1mdwJI6Cs74MiQpXfLABSTNPVDotgxzKU5ORZnu9.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD2021G1-I",
+    "description": "Bullet IP · 2 MP · lente de 2,8 mm · WDR de 120 dB · IP67",
+    "source": "https://irseguridad.com.ar/producto/bullet-ip-hdtvi-2-mpx-ir-30-mts-lente-2-8-exterior-metalica-con-cruce-de-linea-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/JdGlSaDKKHNDqoe9G4Q4VaaIS5I5vDzjID1JP96j.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD2027G2-LU C",
+    "description": "Bullet IP · 2 MP · lente de 2,8 mm · ColorVu · micrófono",
+    "source": "https://irseguridad.com.ar/producto/camara-hikvision-ip-2mp-bullet-2-8mm-con-microfono",
+    "image": "https://irseguridad.com.ar/img/products/1939/XjhoWVB6e4ME918TU0ayJrZOglDukcInQswqiRvS.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD2043G2-LI2U-0280",
+    "description": "Bullet IP · 4 MP · lente de 2,8 mm · AcuSense · luz híbrida de 40 m",
+    "source": "https://irseguridad.com.ar/producto/camara-bullet-ip-4mp-acurense-smart-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2667/dkFGjilI5tzMRZgorf3Bb24aLO1QDVJhyC7SxvPm.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD2047G3-LI2UY-0280",
+    "description": "Bullet IP · 4 MP · lente de 2,8 mm · ColorVu · doble micrófono · NEMA 4X",
+    "source": "https://irseguridad.com.ar/producto/camara-bullet-ip-colorvu-4mp-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2658/3c2LsoIywdnHl0QPkMxCvJODFN8qjAR67uBUgaei.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD2083G2-LI2U",
+    "description": "Bullet IP · 8 MP · AcuSense · luz híbrida · doble micrófono",
+    "source": "https://irseguridad.com.ar/producto/bullet-ip-8mp-blanca-ia-con-audio-acusense",
+    "image": "https://irseguridad.com.ar/img/products/2837/5fcMpEFoaJh60zOIlR1tjLBrkQdvYmgZ2Hqsi4WD.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD2346G2P-ISU-SL-0280-C",
+    "description": "Torreta IP panorámica · 4 MP · AcuSense · lente de 2,8 mm",
+    "source": "https://irseguridad.com.ar/producto/domo-panoramico-acusense-de-4-mp-acusense",
+    "image": "https://irseguridad.com.ar/img/products/2775/Lh9jHZQKEU5xR6oJAw2maXFWSe1qDIvTGnYCNsVb.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD2347G2P-LSU/SL",
+    "description": "Torreta IP panorámica · 4 MP · ColorVu · H.265+",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-panoramica-domo-4mp-colorvu",
+    "image": "https://irseguridad.com.ar/img/products/2251/bSctkVxFnM4r590ZIwfHQlO1CeTGqmhaE3yKpd8Y.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD2387G2P-LSU/SL",
+    "description": "Torreta IP panorámica · 8 MP · ColorVu · alarma y luz estroboscópica",
+    "source": "https://irseguridad.com.ar/producto/camara-panoramica-ip-8-mpx-colorvu-exterior-luz-estroboscopica-alarma-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2919/qDbf2MRd0aBpnVxmNCvzLlyJjhKITiuUtZH46cwW.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD2642FWD-IZNS",
+    "description": "Bullet IP varifocal · 4 MP · DarkFighter · WDR de 120 dB",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-bullet-varifocal-de-4-mp-con-tecnologia-darkfighter-caja-danada",
+    "image": "https://irseguridad.com.ar/img/products/2504/W8pPQl2qsSFVbOcT1306XkDd7oRwCNnyAaeJItEZ.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD2646G2T-IZS(C)",
+    "description": "Bullet IP varifocal motorizada · 4 MP · 2,8–12 mm · AcuSense · DarkFighter",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-hikvision-acusense-4mp-varifocal-2-8mm-12mm-motorizada",
+    "image": "https://irseguridad.com.ar/img/products/2351/YIAtkdTaSBV3XUjg2LmwE4xK57zPMusreqlRfQZN.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD2647G2-LZS-3690-C",
+    "description": "Bullet IP varifocal motorizada · 4 MP · WDR de 130 dB · imagen a color",
+    "source": "https://irseguridad.com.ar/producto/camara-bullet-ip-4mp-a-color-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2657/k9aJl4wfDgyOBx1ZjMuezH8VsYoA5cvdXqFTiE0G.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD3321G2-LIUF",
+    "description": "Torreta IP · 2 MP · luz híbrida de 30 m · detección de personas y vehículos",
+    "source": "https://irseguridad.com.ar/producto/camara-hikvision-ip-2mp-domo-luz-dual-30mts",
+    "image": "https://irseguridad.com.ar/img/products/2243/N1b3yJVC5elct6BWHdFUosrnGvLw7ZiaPhzYfqk9.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD3666G3T-LIZSUY",
+    "description": "Bullet IP varifocal motorizada · 6 MP · 2,7–13,5 mm · DarkFighter 2.0 · IP67",
+    "source": "https://irseguridad.com.ar/producto/camara-hikvision-ip-acusense-6mp-bullet-2-7-a-13-5mm-varifocal-motorizado-ip67-ik10-poe",
+    "image": "https://irseguridad.com.ar/img/products/2777/c2PHdSGONAeLZfxpYEkCo4DhnTIyiuBXarbgRmV5.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CD6365G1-IVS",
+    "description": "Cámara IP ojo de pez · 6 MP · mapas de calor · micrófono · IP67",
+    "source": "https://irseguridad.com.ar/producto/hikvision-camara-fisheye-ip-6mp-ip-67-c-microfono",
+    "image": "https://irseguridad.com.ar/img/products/2728/dVbkUmxuKyf4gSh9JZRIFXolOGiELwHv31Nez6CY.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CFSP4/4G/LA",
+    "description": "Cámara IP PT solar · 4 MP · 4G · batería de 9000 mAh · audio bidireccional",
+    "source": "https://irseguridad.com.ar/producto/camara-hikvision-pt-solar-4g-4mp-audio-bidireccional",
+    "image": "https://irseguridad.com.ar/img/products/2730/eFVfzO4hoUWMdi8lsmZpLqcv53gBrD0Na7QuAI9n.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CFW02",
+    "description": "Bullet IP · 2 MP · Wi-Fi 6 · audio bidireccional · luz híbrida",
+    "source": "https://irseguridad.com.ar/producto/bullet-ip-wifi-2mpx-wif-6-con-ia",
+    "image": "https://irseguridad.com.ar/img/products/2831/fzZoe0NwPxrQ2bIkJu9pK16lU37THYRBGdqgjXFC.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CFW04/EU",
+    "description": "Bullet IP · 4 MP · Wi-Fi 6 · audio bidireccional · IP66",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-hikvision-wifi-4mp-bullet-lente-2-8mm-ir-y-luz-30m-ip66-audio-bidireccional",
+    "image": "https://irseguridad.com.ar/img/products/2796/sY2Jgl9rOnN806mWBctwiRFhVHGpQZ3aMzuxAyqj.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CV1021G0-IDW1",
+    "description": "Bullet IP · 2 MP · lente de 2,8 mm · Wi-Fi · microSD",
+    "source": "https://irseguridad.com.ar/producto/camara-wifi-bullet-2-mpx-ir-30-mts-lente-2-8-exterior-con-audio-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/YrhWLyCPC48XQJVDRIHm42Db0kbadiCi6zN2wV95.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CV1023G2-LIDWF",
+    "description": "Bullet IP de exterior · 2 MP · Wi-Fi 6 · luz híbrida · audio bidireccional",
+    "source": "https://irseguridad.com.ar/producto/camara-de-red-bullet-con-wi-fi-para-exteriores-2-mp",
+    "image": "https://irseguridad.com.ar/img/products/2434/D9tyQkfKZhHegJ4ER36UdjXm5lqGrVWFabs27AnO.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CV1043G2-LIDWF",
+    "description": "Bullet IP de exterior · 4 MP · Wi-Fi 6 · audio bidireccional · luz híbrida",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-bullet-con-wi-fi-para-exteriores-de-4-mp",
+    "image": "https://irseguridad.com.ar/img/products/2449/ayfu3mS1nBiL4k6MdRJQVsxc9WINbUrEThtvXFzZ.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CV1F23G2-LIDWF",
+    "description": "Domo IP para interior · 2 MP · Wi-Fi 6 · audio bidireccional",
+    "source": "https://irseguridad.com.ar/producto/camara-de-red-fija-tipo-domo-con-wi-fi-para-interiores-de-2-mp",
+    "image": "https://irseguridad.com.ar/img/products/1857/rdJ4icnCgXt8UoVW23svkqzpfL7Hmj61PORyEuwA.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CV1F23G2-LIDWF-0280-B",
+    "description": "Domo IP · 2 MP · lente de 2,8 mm · Wi-Fi 6 · audio bidireccional",
+    "source": "https://irseguridad.com.ar/producto/camara-ip-wifi-domo-2-mpx-ir-30-mts-lente-2-8-exterior-con-audio-luz-hibrida-smart-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/1849/hdS6w7WKtbMPpEmNvxYFkoeV8QajARyqOBL2l1n5.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CV1F43G2-LIDWF",
+    "description": "Torreta IP para interior · 4 MP · lente de 2,8 mm · Wi-Fi 6 · audio bidireccional",
+    "source": "https://irseguridad.com.ar/producto/camara-hikvision-ip-wifi-4mpx-torreta-pt-lente-2-8mm",
+    "image": "https://irseguridad.com.ar/img/products/2784/iZgXKdNtLVA0oz4rOJFY9UWG8xu2B57DfIb6QMHy.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CV2021G2-IDW D",
+    "description": "Bullet IP · 2 MP · lente de 2,8 mm · Wi-Fi · audio bidireccional",
+    "source": "https://irseguridad.com.ar/producto/camara-wifi-bullet-2-mpx-ir-30-mts-lente-2-8-exterior-con-audio-bidireccional-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/vDGzcvJOFJJjpe9vdB4JdkIS2wpFC4w1XsKx6EaV.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2CV2Q21G1-IDW (W)",
+    "description": "Domo IP PT para interior · 2 MP · Wi-Fi · audio bidireccional",
+    "source": "https://irseguridad.com.ar/producto/domo-ip-wifi-2mpx-360-interior-con-audio-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2745/Kco4NWOE2fmUVR9yexh35gt7IsYXD6rQBnSJPGM0.webp",
+    "aliases": [
+      "DS-2CV2Q21G1-IDW((W)",
+      "DS-2CV2Q21G1-IDW(W)"
+    ]
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2DE2C200MWG/W",
+    "description": "Domo IP PT · 2 MP · Wi-Fi 6 · luz híbrida de 25 m · audio bidireccional",
+    "source": "https://irseguridad.com.ar/producto/domo-ip-wifi-2-mpx-doble-luz-25m-audio-bidi-dteccion-de-humanos-y-vehiculos",
+    "image": "https://irseguridad.com.ar/img/products/2758/xzDXGvLFmQcUwr3RHClJV7padnjk0ObZ5SitqKyI.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2DE4225IW-DE T5",
+    "description": "Domo IP PTZ · 2 MP · zoom óptico 25× · DarkFighter · infrarrojo de 100 m",
+    "source": "https://irseguridad.com.ar/producto/ip-domo-ptz-acusense-lente-de-4-a-120mm",
+    "image": "https://irseguridad.com.ar/img/products/7BQPfp5BokmKTw2B4QgTnDzzG9hFQPVVYK0XpZfP.jpg"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2SE3C204MWG-E/12",
+    "description": "Domo IP PTZ de doble lente · 2 + 2 MP · zoom óptico 4× · TandemVu",
+    "source": "https://irseguridad.com.ar/producto/mini-domo-ptz-ip-2-mpx-2-mpx-zoom-optico-x4-lente-2-8-12mm-tandemvu-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2915/D3NZmFdhV4MtK6RjwLXIPxgWpY5BbskiOlqUcfe2.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2SE4C425MWG-E/26(F0)",
+    "description": "Domo IP PTZ de doble lente · panorámica de 6 MP y detalle de 4 MP · TandemVu",
+    "source": "https://irseguridad.com.ar/producto/camara-domo-ip-hikvision-tandenvu-4-6-mp",
+    "image": "https://irseguridad.com.ar/img/products/2718/CfLkPHSWAO4nBsj7T2RMwaGhUmx6XYcuJKr5oFQ9.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2SE7C432MW-AEB-14F1-P3",
+    "description": "Domo IP PTZ de doble lente · 4 + 4 MP · zoom óptico 32× · TandemVu",
+    "source": "https://irseguridad.com.ar/producto/camara-domo-ptz-tandemvu-doble-lente-4-4mpx-x32",
+    "image": "https://irseguridad.com.ar/img/products/2779/glxsPX0Jp2ncmru6UyH1ZMVI5KhNRLaSQWw4vtbT.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-2TD2628-10/QA",
+    "description": "Bullet IP térmica · sensor térmico de 256 × 192 · medición de temperatura",
+    "source": "https://irseguridad.com.ar/producto/camara-hikvision-termica-ip",
+    "image": "https://irseguridad.com.ar/img/products/2585/PNRaDOUvgz6uK1ZxVIMCB7Tq8jm3onpdhSELJ94A.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "ip_camera",
+    "model": "DS-TCG405-ES-12VPOE",
+    "description": "Bullet IP lectora de patentes · 4 MP · lente motorizada de 3,1–6 mm · PoE",
+    "source": "https://irseguridad.com.ar/producto/camara-bullet-poe-anpr-4-mpx-lente-motorizada-3-1-6-mm-exterior-hikvision",
+    "image": "https://irseguridad.com.ar/img/products/2905/fZWkO0NRbwpSP17Jg2qiBzEcrYesmIjLxuvFGdy5.webp"
+  },
+  {
+    "brand": "Hikvision",
+    "kind": "mobile_camera",
+    "model": "AE-DI2032-G40(B)",
+    "description": "Cámara vehicular · 1080p · GPS · Wi-Fi · 4G",
+    "source": "https://irseguridad.com.ar/producto/dashcam-mobile-record",
+    "image": "https://irseguridad.com.ar/img/products/2797/nENyQxqFe7tsJa1S0kpGhXYRicMdjVf9582OlCBH.webp"
   }
 ]

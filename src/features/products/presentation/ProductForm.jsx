@@ -3,6 +3,7 @@ import schema from '../../../../shared/cctv-schema.cjs'
 import EditorModal from '../../../components/ui/EditorModal.jsx'
 import Icon from '../../../components/ui/Icon.jsx'
 import RequiredLabel from '../../../presentation/components/forms/RequiredLabel.jsx'
+import { productName } from '../domain/product-name.mjs'
 
 const { EQUIPMENT_CATEGORIES, EQUIPMENT_KINDS } = schema
 const photoTypes = ['image/jpeg', 'image/png', 'image/webp']
@@ -63,7 +64,7 @@ export default function ProductForm({ initial, isNew, brands, onSave, onClose })
     if (busy || (file && !preview)) return
     setError('')
     if (!form.model.trim() || (!form.brand.trim() && (isNew || initial.brand))) {
-      setError('Completá la marca y el modelo del producto.')
+      setError('Completá la marca y el código del producto.')
       return
     }
     if (form.source.trim() && !/^https?:\/\//i.test(form.source.trim())) {
@@ -102,12 +103,16 @@ export default function ProductForm({ initial, isNew, brands, onSave, onClose })
             onChange={event => change('brand', event.target.value)} />
         </label>
         <datalist id={brandListId}>{brands.map(brand => <option key={brand} value={brand} />)}</datalist>
-        <label><RequiredLabel>Modelo</RequiredLabel>
+        <label><RequiredLabel>Código (modelo o SKU)</RequiredLabel>
           <input value={form.model} maxLength={100} required onChange={event => change('model', event.target.value)} />
         </label>
-        <label className="products-wide">Descripción
+        <label className="products-wide">Características
           <textarea rows="2" maxLength={2000} value={form.description} onChange={event => change('description', event.target.value)} />
         </label>
+        <div className="products-wide products-name-preview">
+          <span>Nombre en el catálogo</span>
+          <output aria-live="off">{productName({ ...form, id: initial.id })}</output>
+        </div>
         <label className="products-wide">Enlace a la ficha del producto
           <input type="url" placeholder="https://" maxLength={2048} value={form.source} onChange={event => change('source', event.target.value)} />
         </label>

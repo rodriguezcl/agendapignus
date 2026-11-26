@@ -70,7 +70,7 @@ test('los equipos CCTV de IR tienen modelo, foto y ficha y se seleccionan en Fic
   const known = new Set(Object.values(dahua).flat().map(model => productKey({ category: 'cctv', brand: 'Dahua', model })))
   for (const [symbol, items] of [['camera', irCameras], ['recorder', irRecorders]]) {
     const kinds = schema.CCTV_SYMBOL_KINDS[symbol]
-    assert.deepEqual(new Set(items.map(item => item.brand)), new Set(['Dahua', 'IMOU']))
+    assert.deepEqual(new Set(items.map(item => item.brand)), new Set(['Dahua', 'Hikvision', 'IMOU']))
     for (const item of items) {
       const key = productKey({ ...item, category: 'cctv' })
       assert.ok(!known.has(key), item.model)
