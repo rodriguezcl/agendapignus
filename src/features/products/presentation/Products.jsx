@@ -3,10 +3,9 @@ import schema from '../../../../shared/cctv-schema.cjs'
 import ModuleIntroduction from '../../../components/ModuleIntroduction.jsx'
 import EditorModal from '../../../components/ui/EditorModal.jsx'
 import Icon from '../../../components/ui/Icon.jsx'
-import { sortOptionsAlphabetically } from '../../../domain/shared/catalog-order.mjs'
 import { useProductCatalog } from '../application/useProductCatalog.mjs'
 import { productName, productType } from '../domain/product-name.mjs'
-import { indexProducts, productSearchWords } from '../domain/product-search.mjs'
+import { indexProducts, productBrands, productSearchWords } from '../domain/product-search.mjs'
 import ProductForm, { editableFields, ReferencePhoto } from './ProductForm.jsx'
 import './products.css'
 
@@ -89,7 +88,7 @@ export default function Products() {
   const [filters, setFilters] = useState(defaultFilters)
   const [page, setPage] = useState(1), [size, setSize] = useState(20)
   const [dialog, setDialog] = useState(null), [notice, setNotice] = useState('')
-  const brands = useMemo(() => sortOptionsAlphabetically([...new Set(products.map(product => product.brand).filter(Boolean))]), [products])
+  const brands = useMemo(() => productBrands(products, filters.category), [products, filters.category])
   const index = useMemo(() => indexProducts(products), [products])
   const matches = useMemo(() => {
     const words = productSearchWords(filters.search)
@@ -100,6 +99,12 @@ export default function Products() {
   const current = Math.min(page, Math.max(1, Math.ceil(matches.length / size)))
   const visible = matches.slice((current - 1) * size, current * size)
   const authorized = canManage && !error
+
+  // A category change or a catalog edit can remove the selected brand.
+  if (filters.brand && !brands.includes(filters.brand)) {
+    setFilters({ ...filters, brand: '' })
+    setPage(1)
+  }
 
   function filter(key, value) {
     setFilters(previous => ({ ...previous, [key]: value }))
@@ -171,7 +176,7 @@ export default function Products() {
     </>}
     {dialog?.action === 'view' && <ProductDetails product={dialog.product} onClose={close} />}
     {canManage && (dialog?.action === 'edit' || dialog?.action === 'create') &&
-      <ProductForm key={dialog.product.id} initial={dialog.product} isNew={dialog.action === 'create'} brands={brands} onClose={close} onSave={save} />}
+      <ProductForm key={dialog.product.id} initial={dialog.product} isNew={dialog.action === 'create'} brands={productBrands(products)} onClose={close} onSave={save} />}
     {canManage && dialog?.action === 'status' && <StatusDialog product={dialog.product} onSave={save} onClose={close} />}
   </section>
 }

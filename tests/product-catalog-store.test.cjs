@@ -3,6 +3,23 @@ const assert = require('node:assert/strict')
 const { baseProducts, baseProductsById, productKey, mergeCatalog } = require('../shared/product-catalog.cjs')
 const dahuaModelAliases = require('../src/features/cctv/domain/ir-dahua-model-aliases.json')
 
+test('el filtro ofrece las marcas de cada categoría y las reúne al seleccionar Todas', async () => {
+  const { productBrands } = await import('../src/features/products/domain/product-search.mjs')
+  const products = [
+    { category: 'fence', brand: 'ALARI' },
+    { category: 'cctv', brand: 'Hikvision' },
+    { category: 'alarm', brand: 'Hikvision' },
+    { category: 'alarm', brand: 'Ajax', active: false },
+    { category: 'alarm', brand: 'Ajax' },
+    { category: 'alarm', brand: '' }
+  ]
+  assert.deepEqual(productBrands(products, 'alarm'), ['Ajax', 'Hikvision'])
+  assert.deepEqual(productBrands(products, 'cctv'), ['Hikvision'])
+  assert.deepEqual(productBrands(products, 'fence'), ['ALARI'])
+  assert.deepEqual(productBrands(products, 'barrier'), [])
+  assert.deepEqual(productBrands(products, ''), ['Ajax', 'ALARI', 'Hikvision'])
+})
+
 test('the illustrated base catalog keeps a distinct identity for every model', () => {
   const models = new Set(baseProducts.map(productKey))
   assert.equal(models.size, baseProducts.length)
