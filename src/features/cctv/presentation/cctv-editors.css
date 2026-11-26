@@ -6,16 +6,22 @@
 .cctv-plan-editor button:disabled, .cctv-equipment-editor button:disabled { opacity: .5; cursor: default; }
 .cctv-plan-editor :is(button, input, select, textarea):focus-visible, .cctv-equipment-editor :is(button, input, select, textarea, summary):focus-visible { outline: 3px solid #2976b8; outline-offset: 2px; }
 .cctv-editor-help { color: var(--cctv-muted); font-size: 13px; line-height: 1.5; margin: 12px 0; }
-.cctv-plan-viewport { border: 1px solid var(--cctv-border); border-radius: 9px; overflow: hidden; background: var(--cctv-canvas, #fff); }
+.cctv-plan-viewport { border: 1px solid var(--cctv-border); border-radius: 9px; overflow: auto; max-height: min(72vh, 780px); background: var(--cctv-canvas, #fff); }
+.cctv-plan-editor > .cctv-editor-toolbar + .cctv-editor-toolbar { margin-top: 8px; }
+.cctv-model-picker { display: grid; align-content: start; gap: 8px; }
+.cctv-model-picker small { color: var(--cctv-muted); }
+.cctv-model-picker summary { cursor: pointer; font-size: 13px; }
+.cctv-model-picker details[open] summary { margin-bottom: 6px; }
 .cctv-plan-canvas { display: block; width: 100%; height: auto; touch-action: none; user-select: none; }
 .cctv-plan-canvas.is-readonly { touch-action: auto; }
+.cctv-plan-canvas.is-panning, .cctv-plan-canvas.is-panning [data-plan-element] { touch-action: pan-x pan-y; cursor: grab; }
 .cctv-plan-canvas text { fill: var(--cctv-ink); font-family: inherit; font-size: 14px; }
 .cctv-plan-symbol { stroke: var(--ap-info, #226a9e); stroke-width: 2.5; fill: none; }
-.cctv-plan-line { stroke: var(--ap-muted, #626c78); stroke-width: 3; }
+.cctv-plan-canvas .cctv-plan-model { font-size: 11px; }
 .cctv-plan-hit { stroke: transparent; stroke-width: 20; fill: transparent; }
 .cctv-plan-canvas [data-plan-element] { cursor: grab; }
 .cctv-plan-canvas.is-readonly [data-plan-element] { cursor: default; }
-.cctv-plan-canvas .is-selected .cctv-plan-symbol, .cctv-plan-canvas .is-selected .cctv-plan-line { stroke: var(--ap-accent, #956600); stroke-width: 4; }
+.cctv-plan-canvas .is-selected .cctv-plan-symbol, .cctv-plan-canvas .is-selected .cctv-plan-geometry { stroke: var(--ap-accent, #956600); }
 .cctv-plan-canvas .is-selected circle.cctv-plan-hit { fill: color-mix(in srgb, var(--ap-accent, #956600) 12%, transparent); stroke-width: 1; stroke: var(--ap-accent, #956600); }
 .cctv-plan-properties { display: grid; gap: 12px; padding: 14px; margin-top: 12px; border: 1px solid var(--cctv-border); border-radius: 8px; background: var(--ap-surface-alt, #f7f9fb); }
 .cctv-editor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }

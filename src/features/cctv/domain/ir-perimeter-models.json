@@ -1,0 +1,487 @@
+{
+  "barrier": {
+    "infrared": [
+      {
+        "model": "ABE-100",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-3-haces-100-mts-para-exterior-alean",
+        "component": "Barrera infrarroja · 3 haces"
+      },
+      {
+        "model": "ABE-150",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-3-haces-150-mts-para-exterior-alean",
+        "component": "Barrera infrarroja · 3 haces"
+      },
+      {
+        "model": "ABE-250",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-3-haces-250-mts-para-exterior-alean",
+        "component": "Barrera infrarroja · 3 haces"
+      },
+      {
+        "model": "ABH-100L",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-4-haces-100-mts-para-exterior-alean",
+        "component": "Barrera infrarroja · 4 haces"
+      },
+      {
+        "model": "ABH-250L",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-para-exterior-250mts-de-4-haces-12-24v",
+        "component": "Barrera infrarroja · 4 haces"
+      },
+      {
+        "model": "ABI 100-1408",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-tipo-barral-para-exterior-100-mts-8-haces-140-cm-alean",
+        "component": "Barral · 8 haces"
+      },
+      {
+        "model": "ABI10-1086",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-tipo-barral-para-exterior-10mts-6-haces-108-cm-alean",
+        "component": "Barral · 6 haces"
+      },
+      {
+        "model": "ABI10-1408",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-tipo-barral-para-exterior-10-mts-8-haces-140-cm-alean",
+        "component": "Barral · 8 haces"
+      },
+      {
+        "model": "ABI10-482",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-tipo-barral-para-exterior-10-mts-2-haces-48-cm-alean",
+        "component": "Barral · 2 haces"
+      },
+      {
+        "model": "ABI10-764",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-tipo-barral-para-exterior-10-mts-4-haces-76-cm-alean",
+        "component": "Barral · 4 haces"
+      },
+      {
+        "model": "ABI100-1086",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-tipo-barral-para-exterior-100-mts-6-haces-108-cm-alean",
+        "component": "Barral · 6 haces"
+      },
+      {
+        "model": "ABI100-17210",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-tipo-barral-para-exterior-100-mts-10-haces-172-cm-alean",
+        "component": "Barral · 10 haces"
+      },
+      {
+        "model": "ABI100-764",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-tipo-barral-para-exterior-100-mts-4-haces-76-cm-alean",
+        "component": "Barral · 4 haces"
+      },
+      {
+        "model": "ABI30-1086",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-tipo-barral-para-exterior-30-mts-6-haces-108-cm-alean",
+        "component": "Barral · 6 haces"
+      },
+      {
+        "model": "ABI30-482",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-tipo-barral-para-exterior-30-mts-2-haces-48-cm-alean",
+        "component": "Barral · 2 haces"
+      },
+      {
+        "model": "ABI30-764",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-tipo-barral-para-exterior-30-mts-4-haces-76-cm-alean",
+        "component": "Barral · 4 haces"
+      },
+      {
+        "model": "ABO-20G/ZBI-20AJ",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-para-exterior-1-haz-20-mts",
+        "component": "Barrera infrarroja · 1 haz"
+      },
+      {
+        "model": "ABO-20IR",
+        "brand": "I-Rapttor",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-1-haz-para-exterior-20-mts-tipo-huevo",
+        "component": "Barrera infrarroja · 1 haz"
+      },
+      {
+        "model": "ABT-30",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-doble-haz-30-mts-exterior-alean",
+        "component": "Barrera infrarroja · 2 haces"
+      },
+      {
+        "model": "ABT-60",
+        "brand": "D-MAX",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-2-haces-60-mts-para-exterior-d-max",
+        "component": "Barrera infrarroja · 2 haces"
+      },
+      {
+        "model": "ALEAN ABT-60",
+        "brand": "Alean",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-2-haces-60-mts-para-exterior-alean",
+        "component": "Barrera infrarroja · 2 haces"
+      },
+      {
+        "model": "B30",
+        "brand": "Dumont",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-2-haces-30-mts-para-exterior-dumont",
+        "component": "Barrera infrarroja · 2 haces"
+      },
+      {
+        "model": "B60",
+        "brand": "Dumont",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-2-haces-60-mts-para-exterior-dumont",
+        "component": "Barrera infrarroja · 2 haces"
+      },
+      {
+        "model": "CY-BIR2-100-SUN",
+        "brand": "CYGNUS",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-2-haces-con-deteccion-a-30-60-80-y-100-mts-cygnus",
+        "component": "Barrera infrarroja · 2 haces"
+      },
+      {
+        "model": "CY-BIR3-250-S2",
+        "brand": "CYGNUS",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-de-3-haces-250-mts-interior-exterior-cygnus",
+        "component": "Barrera infrarroja · 3 haces"
+      },
+      {
+        "model": "IR-BARRAL 460",
+        "brand": "I-Rapttor",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-tipo-barral-para-exterior-60-mts-4-haces-108-cm-i-rapttor",
+        "component": "Barral · 4 haces"
+      },
+      {
+        "model": "IR-BARRAL 6100",
+        "brand": "I-Rapttor",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-tipo-barral-para-exterior-100-mts-6-haces-120-cm-i-rapttor",
+        "component": "Barral · 6 haces"
+      },
+      {
+        "model": "PB-30TK",
+        "brand": "Takex",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-para-exterior-30-mts-interior-60-mts-2-haces-takex",
+        "component": "Barrera infrarroja · 2 haces"
+      },
+      {
+        "model": "PB-60TK",
+        "brand": "Takex",
+        "url": "https://irseguridad.com.ar/producto/barrera-infrarroja-para-exterior-interior-60-mts-120-mts-2-haces-takex",
+        "component": "Barrera infrarroja · 2 haces"
+      },
+      {
+        "model": "PB-IN-100HFA",
+        "brand": "Takex",
+        "url": "https://irseguridad.com.ar/producto/barrera-exterior-100m-4-haces-takex",
+        "component": "Barrera infrarroja · 4 haces"
+      }
+    ]
+  },
+  "fence": {
+    "energizer": [
+      {
+        "model": "70ALARI J005",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/electrificador-0-5-joule-alari-con-control",
+        "component": "Electrificador"
+      },
+      {
+        "model": "70ALARI J005WIFI",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/electrificador-wifi-0-5-joule-alari-con-control",
+        "component": "Electrificador"
+      },
+      {
+        "model": "70ALARI3 J01",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/electrificador-para-cerco-electrico-energia-1-joules-2000-mts-lineales-j01",
+        "component": "Electrificador"
+      },
+      {
+        "model": "70ALARI3 J02",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/electrificador-para-cerco-electrico-energia-2-joules-4000-mts-lineales-j02",
+        "component": "Electrificador"
+      },
+      {
+        "model": "ECR 10",
+        "brand": "JFL",
+        "url": "https://irseguridad.com.ar/producto/electrificador-para-cerco-electrico-10kv-energia-0-5-joules-ecr-10-jfl",
+        "component": "Electrificador"
+      },
+      {
+        "model": "ECR 10 W",
+        "brand": "JFL",
+        "url": "https://irseguridad.com.ar/producto/electrificador-para-cerco-electrico-10kv-energia-0-5-joules-conexion-wifi-ecr-10w-jfl",
+        "component": "Electrificador"
+      },
+      {
+        "model": "ECR-18 PLUS",
+        "brand": "JFL",
+        "url": "https://irseguridad.com.ar/producto/electrificador-jfl-para-cerco-electrico-tension-regulable-entre-12-y-18-kv-energia-0-5-jouls-ecr-18-plus",
+        "component": "Electrificador"
+      },
+      {
+        "model": "ECR-18I PLUS",
+        "brand": "JFL",
+        "url": "https://irseguridad.com.ar/producto/electrificador-jfl-para-cerco-electrico-tension-regulable-entre-12-y-18-kv-energia-4-jouls-ecr-18i-plus",
+        "component": "Electrificador"
+      },
+      {
+        "model": "ELC5112",
+        "brand": "Intelbras",
+        "url": "https://irseguridad.com.ar/producto/central-de-cerco-electrico-elc-5112-12-000v-intelbras",
+        "component": "Electrificador"
+      },
+      {
+        "model": "ELC6012",
+        "brand": "Intelbras",
+        "url": "https://irseguridad.com.ar/producto/electrificador-para-cerco-electrico-de-8-zonas-7-inalambricas-1-cableada-viene-con-un-llavero-intelbras",
+        "component": "Electrificador"
+      },
+      {
+        "model": "ELC6012 NET",
+        "brand": "Intelbras",
+        "url": "https://irseguridad.com.ar/producto/electrificador-intelbras-para-cerco-electrico-wifi-viene-con-un-llavero",
+        "component": "Electrificador"
+      }
+    ],
+    "fence": [
+      {
+        "model": "70CM107",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/cable-de-aluminio-de-1-5-mm-500-mts-alari",
+        "component": "Alambre de aluminio"
+      },
+      {
+        "model": "ALAMBRE DE ALUMINIO X 400",
+        "brand": "JFL",
+        "url": "https://irseguridad.com.ar/producto/alambre-de-aluminio-x-400-mts-para-cerco-electrico",
+        "component": "Alambre de aluminio"
+      },
+      {
+        "model": "CABLE DE ACERO 1.2MM X 500 MET",
+        "url": "https://irseguridad.com.ar/producto/cable-de-acero-1-2-mm-para-cerco-electrico-bobina-x-500-metros",
+        "component": "Alambre de acero"
+      },
+      {
+        "model": "CABLE DE ACERO 1.5MM X 200M",
+        "brand": "I-Rapttor",
+        "url": "https://irseguridad.com.ar/producto/cable-de-acero-1-5mm-para-cerco-electrico-bobina-x-200-metros",
+        "component": "Alambre de acero"
+      },
+      {
+        "model": "CABLE DE ACERO 1.5MM X 500M",
+        "brand": "JFL",
+        "url": "https://irseguridad.com.ar/producto/cable-de-acero-1-5-mm-para-cerco-electrico-bobina-x-500-metros",
+        "component": "Alambre de acero"
+      },
+      {
+        "model": "POSTE - T - 6 HILOS",
+        "url": "https://irseguridad.com.ar/producto/poste-t-varilla-c-6-hilos-para-cerco-electrico",
+        "component": "Poste"
+      },
+      {
+        "model": "POSTE INCIO TERM 1.20CM CERCO",
+        "url": "https://irseguridad.com.ar/producto/poste-varilla-inicio-terminacion-1-20cm-para-cerco-electrico",
+        "component": "Poste"
+      },
+      {
+        "model": "POSTE INTERMEDIO 1.2MTS",
+        "url": "https://irseguridad.com.ar/producto/poste-varilla-intermedio-de-1-2-mts-6-hilos-para-cerco-electrico",
+        "component": "Poste"
+      },
+      {
+        "model": "POSTE T INLCINADO 6H",
+        "url": "https://irseguridad.com.ar/producto/poste-t-para-cerco-electrico-de-6-hilos-inclinado-450",
+        "component": "Poste"
+      }
+    ],
+    "accessory": [
+      {
+        "model": "3061000100",
+        "url": "https://irseguridad.com.ar/producto/kit-porton-corredizo-para-cerco-electrico",
+        "component": "Kit para portón"
+      },
+      {
+        "model": "3066001007",
+        "url": "https://irseguridad.com.ar/producto/resorte-de-comprecion-para-cerco-electrico",
+        "component": "Resorte"
+      },
+      {
+        "model": "706PA40",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/llave-corte-retractil-cerco-electrico",
+        "component": "Llave de corte"
+      },
+      {
+        "model": "70A9005/2",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/aislador-para-cerco-regulable-a-rosca",
+        "component": "Aislador"
+      },
+      {
+        "model": "70A9008",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/aislador-simple-pin-lock-perno-reforzado-alari",
+        "component": "Aislador"
+      },
+      {
+        "model": "70A9009/2",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/aislador-doble-perno-reforzado-alari",
+        "component": "Aislador"
+      },
+      {
+        "model": "70A9010",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/aislador-rienda-reforzado-para-cerco-electrico-alari",
+        "component": "Aislador"
+      },
+      {
+        "model": "70AVS50/18",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/cable-alta-tension-subterraneo-o-aereo-doble-vaina-x-50mts",
+        "component": "Cable de alta tensión"
+      },
+      {
+        "model": "70AVSFLEX",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/cable-de-alta-tension-para-cerco-electrico-rollo-50-mts-multi-filamento",
+        "component": "Cable de alta tensión"
+      },
+      {
+        "model": "70EMPALME",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/tubito-de-aluminio-alari-x-200-unidades",
+        "component": "Empalme"
+      },
+      {
+        "model": "70S010",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/cartel-alari-cerco-electrico",
+        "component": "Cartel de advertencia"
+      },
+      {
+        "model": "70SR4",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/resorte-zincado-residencial",
+        "component": "Resorte"
+      },
+      {
+        "model": "AISLADOR 1",
+        "brand": "JFL",
+        "url": "https://irseguridad.com.ar/producto/aislador-para-cerco-electrico-tipo-rienda",
+        "component": "Aislador"
+      },
+      {
+        "model": "AISLADOR RIENDA SIN AGUJEROS",
+        "brand": "Genérica",
+        "url": "https://irseguridad.com.ar/producto/aislador-para-cerco-electrico-rienda-sin-perforacion",
+        "component": "Aislador"
+      },
+      {
+        "model": "ARC-ALT-050",
+        "brand": "JFL",
+        "url": "https://irseguridad.com.ar/producto/cable-de-alta-tension-para-cerco-electrico-rollo-50-mts-1-conductor-estanado",
+        "component": "Cable de alta tensión"
+      },
+      {
+        "model": "CACE JFL",
+        "brand": "JFL",
+        "url": "https://irseguridad.com.ar/producto/cartel-de-advertencia-peligro-cerca-electrica-jfl-para-cerco-electrico",
+        "component": "Cartel de advertencia"
+      },
+      {
+        "model": "DOBLE PIN LOCK",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/aislador-para-cerco-doble-pin-lock",
+        "component": "Aislador"
+      },
+      {
+        "model": "IR-CACE CERCO",
+        "url": "https://irseguridad.com.ar/producto/cartel-de-advertencia-peligro-cerca-electrica-para-cerco-electrico-sin-marca",
+        "component": "Cartel de advertencia"
+      },
+      {
+        "model": "JABALINA PUESTA A TIERRA 1 M",
+        "url": "https://irseguridad.com.ar/producto/jabalina-1-m-mts-para-cerco-electrico",
+        "component": "Jabalina"
+      },
+      {
+        "model": "ME-05 WB",
+        "brand": "JFL",
+        "url": "https://irseguridad.com.ar/producto/comunicador-wifi-jfl-para-cerco-electrico",
+        "component": "Comunicador Wi-Fi"
+      },
+      {
+        "model": "RESORTE GANCHO",
+        "url": "https://irseguridad.com.ar/producto/resorte-para-cerco-electrico",
+        "component": "Resorte"
+      },
+      {
+        "model": "RESORTE GANCHO REDONDO",
+        "url": "https://irseguridad.com.ar/producto/resorte-para-cerco-electrico-con-gancho-redondo",
+        "component": "Resorte"
+      },
+      {
+        "model": "SENSOR DE FLEXION",
+        "brand": "Genérica",
+        "url": "https://irseguridad.com.ar/producto/sensor-de-flexion-para-alertas-de-manipulacion-para-cercos-electricos",
+        "component": "Sensor de flexión"
+      },
+      {
+        "model": "SIMPLE PIN LOCK",
+        "url": "https://irseguridad.com.ar/producto/aislador-para-cerco-pin-lock-con-clavija",
+        "component": "Aislador"
+      },
+      {
+        "model": "TUBITO ABIERTO",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/tubo-pequeno-de-aluminio-para-empalmes-con-terminal-abierto-para-cerco-electrico-x-unidad",
+        "component": "Empalme"
+      },
+      {
+        "model": "TUBITO DE ALUMINIO X 100",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/tubo-pequeno-de-aluminio-para-empalmes-para-cerco-electrico-x-100-unidades",
+        "component": "Empalme"
+      },
+      {
+        "model": "TX4R",
+        "brand": "JFL",
+        "url": "https://irseguridad.com.ar/producto/control-remoto-jfl-para-cerco-electrico-tx4r",
+        "component": "Control remoto"
+      },
+      {
+        "model": "VOLTIMETRO CERCO ELEC",
+        "brand": "ALARI",
+        "url": "https://irseguridad.com.ar/producto/voltimetro-digital-lcd",
+        "component": "Voltímetro"
+      },
+      {
+        "model": "XAC4000 SMART",
+        "brand": "Intelbras",
+        "url": "https://irseguridad.com.ar/producto/control-remoto-intelbras",
+        "component": "Control remoto"
+      },
+      {
+        "model": "XAC4003",
+        "brand": "Intelbras",
+        "url": "https://irseguridad.com.ar/producto/control-remoto-inalambrico-xac-4003-smart-3-botones-para-alarmas-y-cercos-electricos-intelbras",
+        "component": "Control remoto"
+      },
+      {
+        "model": "XAC8000",
+        "brand": "Intelbras",
+        "url": "https://irseguridad.com.ar/producto/control-remoto-serie-8000-intelbras",
+        "component": "Control remoto"
+      }
+    ]
+  }
+}

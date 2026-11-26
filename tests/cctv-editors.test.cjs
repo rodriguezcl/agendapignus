@@ -16,6 +16,37 @@ test('schema admite categorías técnicas y barreras exclusivamente infrarrojas 
   assert.throws(() => schema.validateEquipmentItems([{ ...items[0], details: { password: 'private' } }]), /no está permitido/)
 })
 
+test('el catálogo de alarmas identifica marca y familia y los componentes se pueden registrar por conexión', () => {
+  const models = require('../src/features/cctv/domain/alarm-models.json')
+  assert.deepEqual(Object.keys(models), ['Ajax', 'DSC', 'Garnet', 'Hikvision', 'Netio'])
+  assert.ok(models.Netio.communicator.includes('NT-Link 4G'))
+  assert.ok(models.DSC.panel.includes('HS2032'))
+  assert.ok(models.Garnet.expander.includes('EXP-8Z'))
+  assert.ok(models.Ajax.sensor.includes('Superior MotionProtect Fibra'))
+  assert.ok(models.Hikvision.receiver.includes('DS-PM1-RT-HWB'))
+  for (const groups of Object.values(models)) for (const [kind, entries] of Object.entries(groups)) {
+    assert.ok(Object.hasOwn(schema.EQUIPMENT_KINDS.alarm, kind))
+    assert.equal(new Set(entries).size, entries.length)
+    assert.ok(entries.length && entries.every(entry => entry.trim() && entry.length <= 100))
+  }
+  const item = { ...recorder(), category: 'alarm', kind: 'keypad', brand: 'DSC', model: 'HS2LCD', details: { alarmConnection: 'Cableada' } }
+  assert.deepEqual(schema.validateEquipmentItems([item]), [item])
+  assert.throws(() => schema.validateEquipmentItems([{ ...item, category: 'other', kind: 'other' }]), { code: 'CCTV_VALIDATION' })
+})
+
+test('el catálogo de IR Seguridad agrupa barreras y cercos con SKU únicos y fichas del proveedor', () => {
+  const { barrier, fence } = require('../src/features/cctv/domain/ir-perimeter-models.json')
+  const products = [...barrier.infrared, ...Object.values(fence).flat()]
+  assert.equal(new Set(products.map(product => product.model)).size, products.length)
+  assert.ok(products.every(product => product.url.startsWith('https://irseguridad.com.ar/producto/')))
+  assert.equal(barrier.infrared.find(product => product.model === 'B60').brand, 'Dumont')
+  assert.ok(barrier.infrared.some(product => product.model === 'IR-BARRAL 460'))
+  assert.ok(!barrier.infrared.some(product => product.model === 'PROBG3030R'))
+  assert.equal(fence.energizer.find(product => product.model === 'ELC6012 NET').brand, 'Intelbras')
+  assert.ok(fence.accessory.some(product => product.model === 'ME-05 WB'))
+  assert.ok(fence.fence.some(product => product.model === '70CM107'))
+})
+
 test('schema rechaza límites, duplicados, números no finitos, objetos inesperados e inyección de estructura', () => {
   assert.deepEqual(schema.validateDrawing(null), schema.defaultDrawing())
   assert.deepEqual(schema.validateEquipmentItems(null), [])
@@ -55,6 +86,28 @@ test('SVG se construye con geometría validada y escapa etiquetas maliciosas', a
   assert.throws(() => drawingSvg({ ...schema.defaultDrawing(), elements: [{ ...camera(), x: '0" onload="x' }] }), { code: 'CCTV_VALIDATION' })
 })
 
+test('el plano conserva las herramientas nuevas y el modelo al validar, mover y exportar', async () => {
+  const { drawingSvg, moveDrawingElement } = await drawingModule()
+  const types = ['wall', 'door', 'window', 'cable', 'area']
+  const architecture = types.map(type => ({ id: type, type, x: 50, y: 60, x2: 250, y2: 210, label: type }))
+  const model = 'IPC-HFW3449T1-AS-PV-PRO'
+  const alarm = { id: 'alarm', type: 'alarm', x: 70, y: 90, label: 'Panel central', brand: 'DSC', model: 'HS2032' }
+  const barrier = { id: 'barrier', type: 'barrier', x: 150, y: 140, label: 'Ingreso', brand: 'Dumont', model: 'B60' }
+  const fence = { id: 'fence', type: 'fence', x: 220, y: 140, label: 'Perímetro', brand: 'Intelbras', model: 'ELC6012 NET' }
+  const drawing = { ...schema.defaultDrawing(), elements: [{ ...camera(), model }, alarm, barrier, fence, ...architecture] }
+  assert.deepEqual(schema.validateDrawing(drawing), drawing)
+  assert.throws(() => schema.validateDrawing({ ...drawing, elements: [{ ...architecture[0], model }] }), { code: 'CCTV_VALIDATION' })
+  const moved = moveDrawingElement(drawing, 'area', 999, 900)
+  assert.deepEqual(moved.elements.at(-1), { ...architecture.at(-1), x: 800, y: 500, x2: 1000, y2: 650 })
+  const exported = drawingSvg(moved)
+  assert.match(exported, /stroke-dasharray="9 6"/)
+  assert.match(exported, /<rect x="800" y="500" width="200" height="150"/)
+  assert.ok(exported.includes(model))
+  assert.ok(exported.includes('DSC HS2032'))
+  assert.ok(exported.includes('Dumont B60'))
+  assert.ok(exported.includes('Intelbras ELC6012 NET'))
+})
+
 test('cambiar tipo conserva campos comunes y reordenar o quitar usa identificadores sin perder otros equipos', async () => {
   const { changeEquipmentKind, reorderEquipment, removeEquipment, newEquipmentItem } = await equipmentModule()
   const first = recorder(), second = { ...recorder(), id: 'second', model: 'Modelo 2' }, items = [first, second]
@@ -88,6 +141,23 @@ test('editores renderizan consulta sin acciones de edición, texto escapado y co
   const editable = renderToStaticMarkup(React.createElement(PlanimetryEditor, { value: drawing, onChange() {} }))
   assert.match(editable, /Elemento seleccionado/)
   assert.match(editable, /role="group" aria-label="Herramientas del plano"/)
+  assert.match(editable, /Duplicar elemento|Ajustar a cuadrícula/)
+  const dahua = renderToStaticMarkup(React.createElement(EquipmentEditor, { value: [{ ...recorder(), brand: 'Dahua', model: 'NVR5208-EI' }] }))
+  assert.match(dahua, /Buscar en el catálogo/)
+  assert.match(dahua, /NVR5208-EI/)
+  assert.match(dahua, /Ingresar modelo manualmente/)
+  const netio = renderToStaticMarkup(React.createElement(EquipmentEditor, {
+    value: [{ ...recorder(), category: 'alarm', kind: 'communicator', brand: 'Netio', model: 'NT-Link 4G', details: { alarmConnection: 'Híbrida' } }]
+  }))
+  assert.match(netio, /Modelo Netio/)
+  assert.match(netio, /Tipo de conexión/)
+  assert.match(netio, /NT-Com 3 4G/)
+  const irEquipment = renderToStaticMarkup(React.createElement(EquipmentEditor, {
+    value: [{ ...recorder(), category: 'fence', kind: 'energizer', brand: '', model: 'ELC6012 NET', details: {} }]
+  }))
+  assert.match(irEquipment, /Modelo \/ SKU de IR Seguridad/)
+  assert.match(irEquipment, /ELC6012 NET · Intelbras/)
+  assert.match(irEquipment, /Ver ficha en IR Seguridad/)
   const disabled = renderToStaticMarkup(React.createElement(EquipmentEditor, { value: [recorder()], disabled: true }))
   assert.match(disabled, /<input disabled=""/)
 })

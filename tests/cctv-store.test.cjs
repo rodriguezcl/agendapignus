@@ -98,9 +98,13 @@ for (const engine of ['sqlite', 'postgres']) {
       assert.equal(result.dossier.activity[1].details.before.observation, 'Limpieza de lentes')
       assert.equal(result.dossier.activity[1].details.after.observation, 'Limpieza y revisión')
       assert.equal(result.dossier.maintenance.author.id, supervisor.id)
-      const drawing = { width: 1000, height: 650, elements: [{ id: 'camera', type: 'camera', x: 20, y: 40, label: 'Ingreso' }] }
+      const drawing = { width: 1000, height: 650, elements: [
+        { id: 'camera', type: 'camera', x: 20, y: 40, label: 'Ingreso', model: 'IPC-HFW3449T1-AS-PV-PRO' },
+        { id: 'wall', type: 'wall', x: 20, y: 60, x2: 175, y2: 60, label: 'Frente' }
+      ] }
       result = await env.store.run(admin, state, command('addPlan', { title: 'Plano inicial', notes: 'Ingreso', drawing }, 2))
       const oldPlan = structuredClone(result.dossier.plans[0])
+      assert.deepEqual(oldPlan.drawing, drawing)
       result = await env.store.run(admin, state, command('addPlan', { title: 'Plano actualizado', file: fileFor() }, 3))
       assert.deepEqual(result.dossier.plans[0], oldPlan)
       assert.equal(result.dossier.plans[1].version, 2)

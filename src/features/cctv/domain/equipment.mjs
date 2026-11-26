@@ -3,7 +3,7 @@ export function newEquipmentItem(category = 'cctv', id = `equipment-${globalThis
   return { id, category, kind: Object.keys(schema.EQUIPMENT_KINDS[category])[0], label: '', brand: '', model: '', quantity: 1, location: '', details: {}, notes: '' }
 }
 export function changeEquipmentKind(item, category, kind = Object.keys(schema.EQUIPMENT_KINDS[category])[0]) {
-  const allowed = schema.DETAILS_BY_KIND[kind] || []
+  const allowed = schema.equipmentFields(category, kind)
   return { ...item, category, kind, details: Object.fromEntries(Object.entries(item.details || {}).filter(([key]) => allowed.includes(key))) }
 }
 export function reorderEquipment(items, id, direction) {
