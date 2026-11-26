@@ -5,9 +5,10 @@ const MAX_EQUIPMENT_ITEMS = 100
 const DRAWING_TYPES = Object.freeze({ camera: 'Cámara', recorder: 'Grabador', alarm: 'Alarma', barrier: 'Barrera infrarroja', fence: 'Cerco eléctrico', equipment: 'Otro equipo', line: 'Línea', text: 'Texto', wall: 'Pared', door: 'Puerta', window: 'Ventana', cable: 'Cableado', area: 'Área' })
 const DRAWING_SEGMENTS = Object.freeze(['line', 'wall', 'door', 'window', 'cable', 'area'])
 const EQUIPMENT_SYMBOLS = ['camera', 'recorder', 'alarm', 'barrier', 'fence', 'equipment']
+const CCTV_SYMBOL_KINDS = Object.freeze({ camera: ['analog_camera', 'ip_camera', 'mobile_camera'], recorder: ['dvr', 'xvr', 'nvr'] })
 const EQUIPMENT_CATEGORIES = Object.freeze({ cctv: 'Cámaras / CCTV', alarm: 'Alarma', barrier: 'Barrera infrarroja', fence: 'Cerco eléctrico', other: 'Otro equipo' })
 const EQUIPMENT_KINDS = Object.freeze({
-  cctv: { dvr: 'Grabador DVR', xvr: 'Grabador XVR', nvr: 'Grabador NVR', analog_camera: 'Cámara analógica', ip_camera: 'Cámara IP', switch: 'Switch', other: 'Otro equipo de CCTV' },
+  cctv: { dvr: 'Grabador DVR', xvr: 'Grabador XVR', nvr: 'Grabador NVR', analog_camera: 'Cámara analógica', ip_camera: 'Cámara IP', mobile_camera: 'Cámara móvil / vehicular', switch: 'Switch', other: 'Otro equipo de CCTV' },
   alarm: { panel: 'Central / placa', communicator: 'Comunicador', sensor: 'Sensor / detector', siren: 'Sirena', keypad: 'Teclado / lector', remote: 'Control remoto / pulsador', receiver: 'Receptor / transceptor', repeater: 'Repetidor', expander: 'Expansor / módulo de integración', relay: 'Relé / módulo de salida', power: 'Fuente / alimentación', kit: 'Kit de alarma', accessory: 'Accesorio de alarma', other: 'Otro equipo de alarma' },
   barrier: { infrared: 'Barrera infrarroja' }, fence: { energizer: 'Electrificador / energizador', fence: 'Tendido de cerco', accessory: 'Accesorio de cerco' }, other: { other: 'Otro equipo' },
 })
@@ -30,7 +31,7 @@ const FIELD_DEFINITIONS = Object.freeze({
 })
 const DETAILS_BY_KIND = Object.freeze({
   dvr: ['channels', 'diskCount', 'diskCapacityTb', 'technology'], xvr: ['channels', 'diskCount', 'diskCapacityTb', 'technology'], nvr: ['channels', 'diskCount', 'diskCapacityTb'],
-  analog_camera: ['resolution'], ip_camera: ['resolution'], switch: ['channels'],
+  analog_camera: ['resolution'], ip_camera: ['resolution'], mobile_camera: ['resolution'], switch: ['channels'],
   panel: ['zones', 'communication', 'battery'], communicator: ['communication', 'battery'], sensor: ['zone', 'battery'], siren: ['battery'],
   keypad: ['communication'], remote: ['battery'], receiver: ['communication', 'zones'], repeater: ['communication', 'battery'],
   expander: ['zones', 'communication'], relay: ['communication'], power: ['battery'], kit: ['zones', 'communication'], accessory: [],
@@ -39,8 +40,8 @@ const DETAILS_BY_KIND = Object.freeze({
 const defaultDrawing = () => ({ width: DRAWING_WIDTH, height: DRAWING_HEIGHT, elements: [] })
 function drawingTypeForEquipment({ category, kind }) {
   if (category === 'cctv') {
-    if (['analog_camera', 'ip_camera'].includes(kind)) return 'camera'
-    if (['dvr', 'xvr', 'nvr'].includes(kind)) return 'recorder'
+    if (CCTV_SYMBOL_KINDS.camera.includes(kind)) return 'camera'
+    if (CCTV_SYMBOL_KINDS.recorder.includes(kind)) return 'recorder'
   }
   return ['alarm', 'barrier', 'fence'].includes(category) ? category : 'equipment'
 }
@@ -127,4 +128,4 @@ function validateEquipmentItems(value) {
   })
   unique(items, 'Ficha técnica'); return items
 }
-module.exports = { DRAWING_WIDTH, DRAWING_HEIGHT, MAX_DRAWING_ELEMENTS, MAX_EQUIPMENT_ITEMS, DRAWING_TYPES, DRAWING_SEGMENTS, EQUIPMENT_CATEGORIES, EQUIPMENT_KINDS, FIELD_DEFINITIONS, DETAILS_BY_KIND, equipmentFields, defaultDrawing, drawingTypeForEquipment, equipmentSymbolFields, validateDrawing, validateEquipmentItems }
+module.exports = { DRAWING_WIDTH, DRAWING_HEIGHT, MAX_DRAWING_ELEMENTS, MAX_EQUIPMENT_ITEMS, DRAWING_TYPES, DRAWING_SEGMENTS, CCTV_SYMBOL_KINDS, EQUIPMENT_CATEGORIES, EQUIPMENT_KINDS, FIELD_DEFINITIONS, DETAILS_BY_KIND, equipmentFields, defaultDrawing, drawingTypeForEquipment, equipmentSymbolFields, validateDrawing, validateEquipmentItems }

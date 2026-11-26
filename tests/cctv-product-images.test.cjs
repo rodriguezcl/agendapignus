@@ -10,6 +10,7 @@ const perimeter = require('../src/features/cctv/domain/ir-perimeter-models.json'
 const dahuaImages = require('../src/features/cctv/domain/dahua-product-images.json')
 const alarmImages = require('../src/features/cctv/domain/alarm-product-images.json')
 const perimeterImages = require('../src/features/cctv/domain/perimeter-product-images.json')
+const irCameras = require('../src/features/cctv/domain/ir-camera-models.json')
 
 test('cada referencia visual pertenece al catálogo y tiene una fuente HTTPS y una imagen local válida o un origen permitido', async () => {
   const { findProductImage } = await import('../src/features/cctv/domain/product-images.mjs')
@@ -48,6 +49,8 @@ test('la búsqueda de fotos conserva la distinción entre variantes, proveedores
   const { findProductImage } = await import('../src/features/cctv/domain/product-images.mjs')
   const camera = { category: 'cctv', brand: '  Dahua Technology ', model: Object.keys(dahuaImages)[0] }
   assert.ok(findProductImage(camera))
+  assert.deepEqual(findProductImage({ ...camera, model: 'DH-' + camera.model }), findProductImage(camera))
+  assert.deepEqual(findProductImage({ ...camera, model: 'DHI-' + camera.model }), findProductImage(camera))
   assert.equal(findProductImage({ ...camera, brand: 'Otra marca' }), null)
   assert.equal(findProductImage({ ...camera, model: camera.model + '-OTRO' }), null)
   assert.equal(findProductImage({ ...camera, model: '__proto__' }), null)
@@ -58,10 +61,35 @@ test('la búsqueda de fotos conserva la distinción entre variantes, proveedores
   assert.equal(findProductImage({ category: 'other', model: 'B60' }), null)
 })
 
+test('las cámaras de IR Seguridad tienen modelo, foto y ficha y se seleccionan en Ficha técnica y Planimetría', async () => {
+  const { baseProducts, productKey } = require('../shared/product-catalog.cjs')
+  const schema = require('../shared/cctv-schema.cjs')
+  const { equipmentCatalogFor } = await import('../src/features/cctv/domain/equipment-catalog.mjs')
+  const catalog = equipmentCatalogFor(baseProducts)
+  const kinds = schema.CCTV_SYMBOL_KINDS.camera
+  assert.deepEqual(new Set(irCameras.map(item => item.brand)), new Set(['Dahua', 'IMOU']))
+  const known = new Set(Object.values(dahua).flat().map(model => productKey({ category: 'cctv', brand: 'Dahua', model })))
+  for (const camera of irCameras) {
+    const key = productKey({ ...camera, category: 'cctv' })
+    assert.ok(!known.has(key), camera.model)
+    known.add(key)
+    assert.ok(camera.model.trim() && camera.model.length <= 100 && camera.description.trim())
+    assert.ok(kinds.includes(camera.kind), camera.kind)
+    assert.match(camera.source, /^https:\/\/irseguridad\.com\.ar\/producto\//)
+    assert.ok(camera.image.startsWith('/cctv-product-photos/') || origins.includes(new URL(camera.image).origin))
+    const product = catalog.find({ ...camera, category: 'cctv' })
+    assert.equal(product?.image, camera.image)
+    assert.equal(product?.source, camera.source)
+    assert.ok(catalog.choices('cctv', [camera.kind], camera.brand).includes(product))
+    assert.equal(schema.drawingTypeForEquipment(product), 'camera')
+    assert.ok(catalog.choices('cctv', kinds, camera.brand).includes(product))
+  }
+})
+
 test('se distinguen las fotos compartidas por el proveedor en más de una ficha', async () => {
   const { isSharedProductImage } = await import('../src/features/cctv/domain/product-images.mjs')
   const counts = new Map()
-  for (const catalog of [dahuaImages, perimeterImages, ...Object.values(alarmImages)]) {
+  for (const catalog of [dahuaImages, perimeterImages, irCameras, ...Object.values(alarmImages)]) {
     for (const { image } of Object.values(catalog)) counts.set(image, (counts.get(image) || 0) + 1)
   }
   for (const [image, count] of counts) assert.equal(isSharedProductImage(image), count > 1)

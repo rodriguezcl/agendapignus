@@ -46,7 +46,7 @@ export function PlanimetryEditor({ value, equipment = [], onChange, readOnly = f
   const placementItem = equipment.find(item => item.id === placementId)
   const linkedItem = selected?.equipmentId && equipment.find(item => item.id === selected.equipmentId)
   const canDuplicate = selected && drawing.elements.length < schema.MAX_DRAWING_ELEMENTS && (!selected.equipmentId || availableUnits(linkedItem) > 0)
-  const modelKinds = { camera: ['analog_camera', 'ip_camera'], recorder: ['dvr', 'xvr', 'nvr'] }[selected?.type]
+  const modelKinds = schema.CCTV_SYMBOL_KINDS[selected?.type]
   const category = modelKinds ? 'cctv' : selected?.type
   const perimeter = isPerimeter(category)
   // Camera and recorder symbols from earlier plans saved only the Dahua model.

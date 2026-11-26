@@ -1,5 +1,6 @@
+import productCatalog from '../../../../shared/product-catalog.cjs'
+const { normalizedBrand: normalizeBrand, catalogModelKey } = productCatalog
 const cached = new WeakMap()
-const normalizeBrand = value => String(value || '').trim().toLowerCase().replace(/^dahua technology$/, 'dahua')
 export const isPerimeter = category => category === 'barrier' || category === 'fence'
 export const isIrSource = url => /^https?:\/\/(?:www\.)?irseguridad\.com\.ar\//i.test(url || '')
 
@@ -7,8 +8,9 @@ export function equipmentCatalogFor(products) {
   if (cached.has(products)) return cached.get(products)
   const activeByCategory = new Map(), byModel = new Map(), images = new Set(), sharedImages = new Set()
   for (const item of products) {
-    if (!byModel.has(item.model)) byModel.set(item.model, [])
-    byModel.get(item.model).push(item)
+    const modelKey = catalogModelKey(item)
+    if (!byModel.has(modelKey)) byModel.set(modelKey, [])
+    byModel.get(modelKey).push(item)
     if (item.active) {
       if (!activeByCategory.has(item.category)) activeByCategory.set(item.category, [])
       activeByCategory.get(item.category).push(item)
@@ -28,7 +30,7 @@ export function equipmentCatalogFor(products) {
       return [...new Set(this.choices(category, kinds).map(item => item.brand).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'))
     },
     find({ category, kind, brand, model }) {
-      const candidates = (byModel.get(model?.trim()) || []).filter(item => item.category === category)
+      const candidates = (byModel.get(catalogModelKey({ category, brand, model })) || []).filter(item => item.category === category)
       const key = normalizeBrand(brand)
       const branded = candidates.filter(item => normalizeBrand(item.brand) === key)
       // Historical perimeter equipment sometimes saved only the supplier's SKU.

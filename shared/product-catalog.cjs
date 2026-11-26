@@ -4,10 +4,16 @@ const alarmModels = require('../src/features/cctv/domain/alarm-models.json')
 const alarmImages = require('../src/features/cctv/domain/alarm-product-images.json')
 const perimeterModels = require('../src/features/cctv/domain/ir-perimeter-models.json')
 const perimeterImages = require('../src/features/cctv/domain/perimeter-product-images.json')
+const irCameras = require('../src/features/cctv/domain/ir-camera-models.json')
 
 const normalized = value => String(value || '').normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase()
-const productKey = ({ category, brand, model }) => JSON.stringify([category, brand, model].map(normalized))
-const createBaseProductId = (category, brand, model) => ['base', category, brand, model].map(value => encodeURIComponent(normalized(value))).join(':')
+const normalizedBrand = value => normalized(value).replace(/^dahua technology$/, 'dahua')
+function catalogModelKey({ category, brand, model }) {
+  const value = normalized(model)
+  return category === 'cctv' && normalizedBrand(brand) === 'dahua' ? value.replace(/^dhi?-/, '') : value
+}
+const productKey = product => JSON.stringify([normalized(product.category), normalizedBrand(product.brand), catalogModelKey(product)])
+const createBaseProductId = (category, brand, model) => ['base', normalized(category), normalizedBrand(brand), catalogModelKey({ category, brand, model })].map(encodeURIComponent).join(':')
 
 const baseProductsById = new Map()
 function addBase(category, kind, brand, model, reference, description = '') {
@@ -30,12 +36,25 @@ for (const [category, families] of Object.entries(perimeterModels)) {
     for (const item of items) addBase(category, kind, item.brand || '', item.model, perimeterImages[item.model], item.component)
   }
 }
+const irCameraIdsByKey = new Map()
+for (const camera of irCameras) {
+  const id = createBaseProductId('cctv', camera.brand, camera.model)
+  if (baseProductsById.has(id)) continue
+  addBase('cctv', camera.kind, camera.brand, camera.model, camera, camera.description)
+  irCameraIdsByKey.set(productKey({ ...camera, category: 'cctv' }), id)
+}
 const baseProducts = Array.from(baseProductsById.values())
 function mergeCatalog(overrides = []) {
   if (!overrides.length) return baseProducts
   const combined = new Map(baseProductsById)
+  // An administrator may already have added (or retired) this supplier model
+  // under a custom ID before it became part of the bundled catalog.
+  for (const product of overrides) {
+    const supplierId = irCameraIdsByKey.get(productKey(product))
+    if (supplierId && supplierId !== product.id) combined.delete(supplierId)
+  }
   for (const product of overrides) combined.set(product.id, product)
   return Array.from(combined.values())
 }
 
-module.exports = { baseProducts, baseProductsById, productKey, createBaseProductId, mergeCatalog }
+module.exports = { baseProducts, baseProductsById, productKey, catalogModelKey, normalizedBrand, createBaseProductId, mergeCatalog }
