@@ -45,6 +45,20 @@ test('PostgreSQL subscriptions: silent enrollment, due dates, ownership, retries
     state.history=[record,{...record,id:'other-owner',createdBy:{id:'other'}},{...record,id:'unknown-owner',createdBy:null},{...record,id:'future',date:'2099-01-01'},{...record,id:'canceled',status:'Cancelado'}]
     const notices=await push.notificationsFor(sql,state,user,new Date('2026-10-24T12:00:00Z'))
     assert.deepEqual(notices.filter(n=>n.target.type==='collection').map(n=>n.id),['collection:service'])
+    const reviewNotices = async at => {
+      const history = state.history.map(service => ({ ...service, collectionReview: { at } }))
+      return (await push.notificationsFor(sql, { ...state, history }, user, new Date('2026-10-24T12:00:00Z')))
+        .filter(notice => notice.target.type === 'collection')
+    }
+    const reviewed = await reviewNotices('2026-10-24T09:00:00Z')
+    const reviewedAgain = await reviewNotices('2026-10-24T10:00:00Z')
+    assert.deepEqual(reviewed.map(notice => notice.id), ['collection:service'])
+    const seenPending = push.snapshotKeys(notices)
+    const seenReview = push.snapshotKeys(reviewed)
+    assert.deepEqual(push.newNotices(reviewed, seenPending), reviewed)
+    assert.deepEqual(push.newNotices(reviewed, seenReview), [])
+    assert.deepEqual(push.newNotices(notices, seenReview), [])
+    assert.deepEqual(push.newNotices(reviewedAgain, seenReview), reviewedAgain)
     const denied={...user,permissions:{__catalogV2:true}}
     assert.deepEqual(await push.notificationsFor(sql,state,denied),[])
     const reservationState={...state,history:[{id:'reservation',date:'2026-10-24',status:'Pendiente',subscriberReservation:true,form:'Completo',formEmail:'qa@example.test'}]}

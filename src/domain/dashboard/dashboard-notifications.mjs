@@ -1,4 +1,4 @@
-import { collectionRecords, collectionConfirmed, collectionVoided, collectionNeedsReview, collectionMoney, collectionService } from '../collections/collections.mjs'
+import { collectionRecords, collectionConfirmed, collectionVoided, collectionMoney, collectionServiceResolver } from '../collections/collections.mjs'
 import { dashboardPendingGroups } from './dashboard-metrics.mjs'
 import { isAdvanceRequestActive } from '../agenda/advance-request-active.mjs'
 import { reservationFormReady } from '../agenda/reservation-form-ready.mjs'
@@ -94,16 +94,30 @@ export function selectDashboardNotifications({ history = [], weekly = {}, vehicl
       detail: `${record.client} · Domicilio actual: ${record.address}. Domicilio nuevo: ${record.newAddress}.${verification.status === 'planned' ? ' Prepará el cambio para cuando se complete el traslado.' : verification.address ? ` Última dirección importada: ${verification.address}. Actualizá SoftGuard y volvé a sincronizar.` : ' La próxima sincronización verificará el domicilio nuevo.'}`,
       target: { type: 'history', recordId: String(record.id) }
     })) : []
-  const collectionDate = record => collectionService(record, history)?.date
   // The service creator owns collection follow-up, including for administrators.
   // Missing authors must not turn legacy records into broadcast notifications.
   const ownsCollection = record => subject?.id != null && String(subject.id) !== ''
     && record.createdBy?.id != null && String(record.createdBy.id) === String(subject.id)
-  const notices = receives('collections') ? collectionRecords(history).filter(ownsCollection).filter(record => (!collectionConfirmed(record) || collectionNeedsReview(record)) && !collectionVoided(record) && collectionDate(record) && collectionDate(record) <= today).map(record => ({
-    id: `collection:${record.id}`, title: collectionNeedsReview(record) ? 'Revisar importe: quedaron trabajos pendientes' : 'Cobranza pendiente de pago', tone: 'warning',
-    detail: `${record.client || 'Servicio'} · ${dateLabel(collectionDate(record))} · ${collectionMoney(record.amount)} · ${record.paymentMethod}.`,
-    target: { type: 'collection', recordId: String(record.id) }
-  })) : []
+  const notices = []
+  if (receives('collections')) {
+    const resolveService = collectionServiceResolver(history)
+    for (const record of collectionRecords(history, resolveService).filter(ownsCollection)) {
+      const date = resolveService(record)?.date
+      const review = record.collectionReview
+      if (!(date && date <= today) || collectionVoided(record) || (collectionConfirmed(record) && !review)) continue
+      const id = `collection:${record.id}`
+      const detail = `${record.client || 'Servicio'} · ${dateLabel(date)} · ${collectionMoney(record.amount)} · ${record.paymentMethod}.`
+      notices.push({
+        id,
+        // Keep the payment key seen while a new review alerts the same responsible user.
+        soundKeys: review ? [id, `${id}:review:${review.at || 'legacy'}`] : [id],
+        title: review ? 'Revisar importe de la cobranza' : 'Cobranza pendiente de pago',
+        tone: 'warning',
+        detail: review?.reason ? `${detail} ${review.reason}` : detail,
+        target: { type: 'collection', recordId: String(record.id) }
+      })
+    }
+  }
   if (receives('rescheduling') && can('history.view')) {
     for (const record of history.filter(r => r.workCompletion?.items.some(item => item.status === 'pending') && (!r.followup || r.followup.status === 'Resuelto') && !r.workCompletion.management)) notices.push({ id: 'pending-work:' + record.id, title: 'Trabajos pendientes de coordinación', detail: record.client + ' · ' + record.workCompletion.items.filter(item => item.status === 'pending').map(item => item.name).join(', '), tone: 'warning', target: { type: 'history', recordId: String(record.id) } })
   }

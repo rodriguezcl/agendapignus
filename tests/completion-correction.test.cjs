@@ -40,13 +40,19 @@ test('conserva zonas ya confirmadas en SoftGuard y evita repetir una corrección
   assert.deepEqual(result.after.alarmZones, before.alarmZones)
   assert.throws(() => correct(result.state, input(before), admin, at), { statusCode: 409 })
 })
-test('recupera anulación automática para revisión; nunca confirma pago ni deshace anulación manual', () => {
+test('recupera anulación automática para revisión; nunca confirma pago ni deshace anulación manual', async () => {
   const cancel = { automatic: true, original: { amount: '100', paymentMethod: 'Efectivo' } }
-  const before = fixture({ amount: '0', paymentMethod: 'No aplica', collectionCancellation: cancel })
+  const owner = { id: 'owner', permissions: { collections: true } }
+  const before = fixture({ amount: '0', paymentMethod: 'No aplica', collectionCancellation: cancel, createdBy: { id: owner.id } })
   const result = correct(state(before), input(before), admin, at)
   assert.equal(result.after.amount, '100'); assert.ok(result.after.collectionReview); assert.equal(result.after.collectionCancellation, undefined)
   assert.equal(result.after.collection, undefined)
   assert.deepEqual(result.after.workCompletion.corrections[0].previousCancellation, cancel)
+  const { selectDashboardNotifications } = await import('../src/domain/dashboard/dashboard-notifications.mjs')
+  const notices = selectDashboardNotifications({ history: result.state.history, today: before.date, user: owner })
+  const review = notices.find(notice => notice.id === 'collection:work')
+  assert.equal(review?.title, 'Revisar importe de la cobranza')
+  assert.ok(review.detail.includes(result.after.collectionReview.reason))
   const manual = fixture({ collectionCancellation: { ...cancel, automatic: false }, amount: '0' })
   assert.deepEqual(correct(state(manual), input(manual), admin, at).after.collectionCancellation, manual.collectionCancellation)
 })

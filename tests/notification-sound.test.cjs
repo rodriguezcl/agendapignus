@@ -36,6 +36,35 @@ test('un nuevo integrante de un grupo genera aviso aunque se conserve el total',
   assert.equal(next(group(['c'])), false)
 })
 
+test('el responsable oye cada nueva revisión de importe una sola vez', async () => {
+  const { selectDashboardNotifications } = await import('../src/domain/dashboard/dashboard-notifications.mjs')
+  const { createNotificationSoundTracker } = await import('../src/domain/dashboard/notification-sound.mjs')
+  const user = { id: 'responsable', roleCode: 'administrator' }
+  const record = { id: 'servicio', createdBy: { id: user.id }, date: '2026-10-26', status: 'Completado', client: 'Cliente', amount: '100', paymentMethod: 'Efectivo' }
+  const forReview = collectionReview => selectDashboardNotifications({
+    user, history: [{ ...record, collectionReview }], today: record.date
+  }).filter(item => item.target.type === 'collection')
+
+  const pending = forReview(undefined)
+  const first = forReview({ at: '2026-10-26T15:00:00Z' })
+  const second = forReview({ at: '2026-10-26T16:00:00Z' })
+  assert.deepEqual(pending.map(item => item.id), ['collection:servicio'])
+  assert.deepEqual(first.map(item => item.id), ['collection:servicio'])
+  const next = createNotificationSoundTracker()
+  assert.equal(next(pending), false)
+  assert.equal(next(first), true)
+  assert.equal(next(first), false)
+  assert.equal(next(second), true)
+  assert.equal(next(second), false)
+
+  const openDuringReview = createNotificationSoundTracker()
+  assert.equal(openDuringReview(first), false)
+  assert.equal(openDuringReview(pending), false)
+  const undated = forReview({ reason: 'Pendiente de revisión' })
+  assert.equal(openDuringReview(undated), true)
+  assert.equal(openDuringReview(forReview({ reason: 'Observación actualizada' })), false)
+})
+
 test('no confunde reactivación de una fuente o nueva sesión con avisos nuevos', async () => {
   const { createNotificationSoundTracker } = await import('../src/domain/dashboard/notification-sound.mjs')
   const next = createNotificationSoundTracker()

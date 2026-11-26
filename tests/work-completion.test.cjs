@@ -19,7 +19,7 @@ test('cada trabajo exige resultado explícito; acepta todos realizados sin alter
 })
 
 test('alarma sin cargo terminada y cámaras pendientes: no genera deuda y conserva antecedentes', async () => {
-  const record = fixture({ serviceCharges: [{ id: 4, amount: '0' }, { id: 5, amount: '83160' }] }), snapshot = structuredClone(record)
+  const record = fixture({ createdBy: { id: admin.id }, serviceCharges: [{ id: 4, amount: '0' }, { id: 5, amount: '83160' }] }), snapshot = structuredClone(record)
   const next = report(record)
   assert.deepEqual(record, snapshot); assert.equal(next.amount, '0'); assert.equal(next.paymentMethod, 'No aplica')
   assert.equal(next.status, 'Completado'); assert.deepEqual(next.serviceTypes, [types[0]])
@@ -72,11 +72,14 @@ test('anulación conserva traza, sincroniza todas las jornadas y no admite pagos
 })
 
 test('pago recibido se conserva aun cuando requiere revisión; varias jornadas retienen planificación y cobranza única', async () => {
-  const paid = fixture({ collection: { status: 'confirmed', confirmedAt: at, events: [] }, serviceCharges: [{ id: 4, amount: '0' }, { id: 5, amount: '83160' }] })
+  const paid = fixture({ createdBy: { id: admin.id }, collection: { status: 'confirmed', confirmedAt: at, events: [] }, serviceCharges: [{ id: 4, amount: '0' }, { id: 5, amount: '83160' }] })
   const next = report(paid)
   assert.deepEqual(next.collection, paid.collection); assert.equal(next.amount, '83160'); assert.ok(next.collectionReview); assert.equal(next.collectionCancellation, undefined)
   const { collectionSegments } = await import('../src/domain/collections/collection-segments.mjs')
   assert.equal(collectionSegments([next], { today: '2026-10-26' })[0].confirmed.total, 83160)
+  const { selectDashboardNotifications } = await import('../src/domain/dashboard/dashboard-notifications.mjs')
+  const notices = selectDashboardNotifications({ history: [next], today: next.date, user: admin })
+  assert.match(notices.find(notice => notice.target.type === 'collection')?.title, /^Revisar importe/)
   const root = fixture({ serviceJourney: { id: 'work', index: 1 } }), second = { ...root, id: 'second', serviceJourney: { id: 'work', index: 2 } }
   const partial = report(second)
   assert.equal(partial.status, 'Requiere revisión'); assert.deepEqual(partial.serviceTypes, types)
@@ -128,13 +131,34 @@ test('cambiar el desglose se detecta aunque no cambie el total; descartar recupe
 
 test('avisos distinguen importe en revisión y pendiente de coordinación; gestionar no cambia resultados', async () => {
   const { selectDashboardNotifications } = await import('../src/domain/dashboard/dashboard-notifications.mjs')
-  const record = report(fixture()), args = { history: [record], today: '2026-10-26', user: admin }
-  const notices = selectDashboardNotifications(args)
-  assert.ok(notices.some(n => n.id === 'collection:work' && n.title.startsWith('Revisar importe')))
-  assert.ok(notices.some(n => n.id === 'pending-work:work'))
+  const { manageCollection, collectionBase } = await import('../src/domain/collections/collections.mjs')
+  const owner = { id: 'creator', name: 'Responsable', permissions: { collections: true } }
+  const record = report(fixture({ createdBy: { id: owner.id, name: owner.name } }))
+  const noticesFor = (history, user) => selectDashboardNotifications({ history, today: '2026-10-26', user })
+  const collectionNotice = (history, user) => noticesFor(history, user).find(notice => notice.target.type === 'collection')
+
+  const review = collectionNotice([record], owner)
+  assert.match(review.title, /^Revisar importe/)
+  assert.deepEqual(review.target, { type: 'collection', recordId: 'work' })
+  assert.equal(collectionNotice([record], admin), undefined)
+  assert.equal(collectionNotice([report(fixture())], owner), undefined)
+  assert.ok(noticesFor([record], admin).some(notice => notice.id === 'pending-work:work'))
+
   const managed = manageWorkCompletion({ history: [record], customers: [] }, { recordId: 'work', reportedAt: at, note: 'Visita coordinada mediante ticket' }, admin, at)
-  assert.equal(selectDashboardNotifications({ ...args, history: managed.state.history }).some(n => n.id === 'pending-work:work'), false)
+  assert.equal(noticesFor(managed.state.history, admin).some(notice => notice.id === 'pending-work:work'), false)
+  assert.equal(collectionNotice(managed.state.history, owner).title, review.title)
   assert.deepEqual(managed.after.workCompletion.items, record.workCompletion.items)
+
+  const corrected = manageCollection(managed.state, {
+    recordId: record.id, base: collectionBase(managed.after), action: 'correct',
+    amount: '2000', paymentMethod: 'Efectivo', note: 'Se cobra la reparación realizada'
+  }, owner, at)
+  assert.equal(collectionNotice(corrected.state.history, owner).title, 'Cobranza pendiente de pago')
+  const confirmed = manageCollection(corrected.state, {
+    recordId: record.id, base: collectionBase(corrected.after), action: 'confirm', amount: '2000', paymentMethod: 'Efectivo'
+  }, owner, at)
+  assert.equal(collectionNotice(confirmed.state.history, owner), undefined)
+
   const hidden = require('../api/_lib/granular-read-policy.cjs').sanitizeService(managed.after, { permissions: { __catalogV2: true, 'records.read': true, 'history.edit': true, 'history.view': true } })
   assert.equal(hidden.workCompletion.originalAmount, undefined); assert.equal(hidden.workCompletion.originalCharges, undefined)
 })
