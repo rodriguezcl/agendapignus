@@ -1,24 +1,45 @@
-import alarmModels from './alarm-models.json'
-import dahuaModels from './dahua-models.json'
-import perimeterModels from './ir-perimeter-models.json'
+const cached = new WeakMap()
+const normalizeBrand = value => String(value || '').trim().toLowerCase().replace(/^dahua technology$/, 'dahua')
+export const isPerimeter = category => category === 'barrier' || category === 'fence'
+export const isIrSource = url => /^https?:\/\/(?:www\.)?irseguridad\.com\.ar\//i.test(url || '')
 
-export const alarmBrands = Object.keys(alarmModels)
-export const alarmGroups = brand => alarmModels[alarmBrands.find(name => name.toLowerCase() === String(brand || '').trim().toLowerCase())] || {}
-export const dahuaGroups = kinds => Object.fromEntries(kinds.filter(kind => dahuaModels[kind]?.length).map(kind => [kind, dahuaModels[kind]]))
-export const hasPerimeterCatalog = category => Object.hasOwn(perimeterModels, category)
-
-export function perimeterCatalog(category, kind) {
-  const families = hasPerimeterCatalog(category) ? perimeterModels[category] : {}
-  const entries = kind ? (families[kind] ? [[kind, families[kind]]] : []) : Object.entries(families)
-  return {
-    groups: Object.fromEntries(entries.map(([family, products]) => [family, products.map(product => product.model)])),
-    products: Object.fromEntries(entries.flatMap(([, products]) => products.map(product => [product.model, product])))
+export function equipmentCatalogFor(products) {
+  if (cached.has(products)) return cached.get(products)
+  const activeByCategory = new Map(), byModel = new Map(), images = new Set(), sharedImages = new Set()
+  for (const item of products) {
+    if (!byModel.has(item.model)) byModel.set(item.model, [])
+    byModel.get(item.model).push(item)
+    if (item.active) {
+      if (!activeByCategory.has(item.category)) activeByCategory.set(item.category, [])
+      activeByCategory.get(item.category).push(item)
+    }
+    if (item.image) {
+      if (images.has(item.image)) sharedImages.add(item.image)
+      images.add(item.image)
+    }
   }
-}
-
-export function equipmentModelGroups(category, kind, brand) {
-  const catalog = category === 'alarm' ? alarmGroups(brand)
-    : category === 'cctv' && /^(?:dahua|dahua technology)$/i.test(brand?.trim() || '') ? dahuaGroups([kind]) : {}
-  if (category === 'alarm' && kind === 'other') return catalog
-  return catalog[kind]?.length ? { [kind]: catalog[kind] } : {}
+  for (const entries of activeByCategory.values()) entries.sort((a, b) => a.model.localeCompare(b.model, 'es') || a.brand.localeCompare(b.brand, 'es'))
+  const catalog = {
+    choices(category, kinds, brand = '') {
+      const key = normalizeBrand(brand)
+      return (activeByCategory.get(category) || []).filter(item => (!kinds || kinds.includes(item.kind)) && (!key || normalizeBrand(item.brand) === key))
+    },
+    brands(category, kinds) {
+      return [...new Set(this.choices(category, kinds).map(item => item.brand).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'))
+    },
+    find({ category, kind, brand, model }) {
+      const candidates = (byModel.get(model?.trim()) || []).filter(item => item.category === category)
+      const key = normalizeBrand(brand)
+      const branded = candidates.filter(item => normalizeBrand(item.brand) === key)
+      // Historical perimeter equipment sometimes saved only the supplier's SKU.
+      const useSupplierSku = isPerimeter(category) && !branded.length && (!key || (candidates.length === 1 && !candidates[0].brand))
+      const matching = useSupplierSku ? candidates : branded
+      const byKind = matching.filter(item => item.kind === kind)
+      if (byKind.length === 1) return byKind[0]
+      return matching.length === 1 ? matching[0] : null
+    },
+    isSharedProductImage(image) { return sharedImages.has(image) }
+  }
+  cached.set(products, catalog)
+  return catalog
 }

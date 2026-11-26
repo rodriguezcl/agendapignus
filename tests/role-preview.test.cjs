@@ -78,7 +78,9 @@ test('role names never impersonate the administrator and administrative previews
   assert.equal(renamed.notifications.find(item => item.id === 'administrator.advanceRequests').enabled, false)
   const administrator = buildRolePreview({ ...custom({}), code: 'administrator', name: 'Dirección' })
   assert.equal(administrator.enabledNotifications.length, policy.NOTIFICATION_IDS.length + 1)
-  assert.equal(administrator.modules.filter(module => module.visible).length, policy.MODULES.length - 1, 'The virtual planning screen is included; technical work still depends on employee eligibility')
+  assert.deepEqual(new Set(administrator.visibleModules.map(module => module.id)), new Set([
+    ...policy.MODULES.map(([id]) => id).filter(id => !['technical', 'followups'].includes(id)), 'operationalPlanning', 'products'
+  ]))
   assert.equal(administrator.readOnly, false)
   assert.equal(administrator.helpVisible, true)
   assert.equal(administrator.notifications.find(item => item.id === 'administrator.advanceRequests').enabled, true)

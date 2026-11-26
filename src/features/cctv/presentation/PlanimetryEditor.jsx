@@ -3,7 +3,8 @@ import schema from '../../../../shared/cctv-schema.cjs'
 import { defaultDrawing, drawingLayers, drawingPoint, drawingSvg, isSegment, moveDrawingElement, removeDrawingElement, segmentBounds, segmentStyles, symbolPath } from '../domain/planimetry.mjs'
 import EquipmentModelInput from './EquipmentModelInput.jsx'
 import ProductPhotos from './ProductPhotos.jsx'
-import { alarmBrands, alarmGroups, dahuaGroups, hasPerimeterCatalog, perimeterCatalog } from '../domain/equipment-catalog.mjs'
+import { equipmentCatalogFor, isPerimeter } from '../domain/equipment-catalog.mjs'
+import { useProductCatalog } from '../../products/application/useProductCatalog.mjs'
 import './cctv-editors.css'
 
 const makeId = () => `plan-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`
@@ -19,6 +20,8 @@ function placementHelp(tool, item) {
 export function PlanimetryEditor({ value, equipment = [], onChange, readOnly = false, disabled = false, allowDownload = true }) {
   const locked = readOnly || disabled
   const descriptionId = useId()
+  const { products, loading, error } = useProductCatalog()
+  const catalog = equipmentCatalogFor(products)
   const parsed = useMemo(() => { try { return { drawing: schema.validateDrawing(value) } } catch (error) { return { drawing: defaultDrawing(), error: error.message } } }, [value])
   const drawing = parsed.drawing
   const [tool, setTool] = useState('select'), [selectedId, setSelectedId] = useState(''), [lineStart, setLineStart] = useState(null)
@@ -43,8 +46,14 @@ export function PlanimetryEditor({ value, equipment = [], onChange, readOnly = f
   const placementItem = equipment.find(item => item.id === placementId)
   const linkedItem = selected?.equipmentId && equipment.find(item => item.id === selected.equipmentId)
   const canDuplicate = selected && drawing.elements.length < schema.MAX_DRAWING_ELEMENTS && (!selected.equipmentId || availableUnits(linkedItem) > 0)
-  const perimeter = hasPerimeterCatalog(selected?.type) ? perimeterCatalog(selected.type) : null
-  const modelKinds = selected?.type === 'camera' ? ['analog_camera', 'ip_camera'] : ['dvr', 'xvr', 'nvr']
+  const modelKinds = { camera: ['analog_camera', 'ip_camera'], recorder: ['dvr', 'xvr', 'nvr'] }[selected?.type]
+  const category = modelKinds ? 'cctv' : selected?.type
+  const perimeter = isPerimeter(category)
+  // Camera and recorder symbols from earlier plans saved only the Dahua model.
+  const legacyDahua = modelKinds && !selected.brand && selected.model && catalog.find({ category, brand: 'Dahua', model: selected.model })
+  const brand = selected?.brand || (legacyDahua ? 'Dahua' : '')
+  const brands = category && !perimeter && !selected?.equipmentId ? catalog.brands(category, modelKinds) : []
+  const options = category && !selected?.equipmentId ? catalog.choices(category, modelKinds, perimeter ? '' : brand) : []
   const snapPoint = point => snap ? { x: Math.round(point.x / 25) * 25, y: Math.round(point.y / 25) * 25 } : point
   function commit(next) {
     if (locked || typeof onChange !== 'function') return
@@ -143,7 +152,8 @@ export function PlanimetryEditor({ value, equipment = [], onChange, readOnly = f
         })}
       </select>
     </label>}
-    {!readOnly && equipment.length > 0 && <ProductPhotos selected={placementItem} choices={equipment}
+    {!readOnly && error && <p role="status">No se pudo actualizar el catálogo de productos. Los equipos de la ficha técnica siguen disponibles.</p>}
+    {!readOnly && equipment.length > 0 && <ProductPhotos catalog={catalog} selected={placementItem} choices={equipment}
       photoChoice={item => ({ ...item, detail: [equipmentName(item), item.location, `${availableUnits(item)} por ubicar`].filter(Boolean).join(' · '), disabled: !availableUnits(item) })}
       disabled={disabled || drawing.elements.length >= schema.MAX_DRAWING_ELEMENTS} onChoose={id => changeTool('inventory', id)} />}
     {!readOnly && <div className="cctv-editor-toolbar" role="group" aria-label="Herramientas del plano">
@@ -205,18 +215,16 @@ export function PlanimetryEditor({ value, equipment = [], onChange, readOnly = f
         {selected.equipmentId ? <><p className="cctv-plan-source">
           <strong>Vinculado a la ficha técnica</strong>
           {[linkedItem && equipmentName(linkedItem), selected.brand, selected.model].filter(Boolean).join(' · ')}
-        </p>{linkedItem && <ProductPhotos selected={linkedItem} />}</> : <>
-          {['camera', 'recorder'].includes(selected.type) && <EquipmentModelInput key={selected.type} disabled={disabled} category="cctv" brand={selected.brand || 'Dahua'} groups={dahuaGroups(modelKinds)} kindLabels={schema.EQUIPMENT_KINDS.cctv} label="Modelo Dahua" value={originalSelected?.model} onChange={model => updateSelected({ model })} />}
-          {selected.type === 'alarm' && <>
-            <label>Marca de la alarma<select disabled={disabled} value={selected.brand || ''} onChange={event => updateSelected({ brand: event.target.value, model: '' })}>
-              <option value="">Sin especificar</option>
-              {alarmBrands.map(brand => <option key={brand} value={brand}>{brand}</option>)}
-            </select></label>
-            {selected.brand && <EquipmentModelInput key={selected.brand} disabled={disabled} category="alarm" brand={selected.brand} groups={alarmGroups(selected.brand)} kindLabels={schema.EQUIPMENT_KINDS.alarm} label={`Modelo ${selected.brand}`} value={originalSelected?.model} onChange={model => updateSelected({ model })} />}
-          </>}
-          {perimeter && <EquipmentModelInput key={selected.type} disabled={disabled} category={selected.type} brand={selected.brand} groups={perimeter.groups} products={perimeter.products}
-            kindLabels={schema.EQUIPMENT_KINDS[selected.type]} label="Modelo / SKU de IR Seguridad" value={originalSelected?.model}
-            onChange={model => updateSelected({ model, brand: perimeter.products[model]?.brand || '' })} />}
+        </p>{linkedItem && <ProductPhotos catalog={catalog} selected={linkedItem} />}</> : (modelKinds || category === 'alarm' || perimeter) && <>
+          {!perimeter && <label>{category === 'alarm' ? 'Marca de la alarma' : 'Marca del equipo'}<select disabled={disabled || loading || Boolean(error)} value={brand} onChange={event => updateSelected({ brand: event.target.value, model: '' })}>
+            <option value="">Todas las marcas</option>
+            {brand && !brands.includes(brand) && <option value={brand}>{brand}</option>}
+            {brands.map(name => <option key={name}>{name}</option>)}
+          </select></label>}
+          <EquipmentModelInput key={`${selected.type}:${perimeter ? '' : brand}`} disabled={disabled} catalogUnavailable={Boolean(loading || error)}
+            category={category} brand={brand} options={options} catalog={catalog} kindLabels={schema.EQUIPMENT_KINDS[category]}
+            label={perimeter ? 'Modelo / SKU' : `Modelo ${brand}`.trim()} value={originalSelected?.model}
+            onChange={(model, productBrand) => updateSelected({ model, brand: productBrand ?? brand })} />
         </>}
         <div className="cctv-editor-grid">
           {['x', 'y', ...(isSegment(selected.type) ? ['x2', 'y2'] : [])].map(coordinate => <label key={coordinate}>{({ x: 'Posición X', y: 'Posición Y', x2: 'Final X', y2: 'Final Y' })[coordinate]}<input type="number" min="0" max={coordinate.startsWith('x') ? 1000 : 650} disabled={disabled} value={selected[coordinate]} onChange={event => { if (event.target.value !== '' && event.target.validity.valid) updateSelected({ [coordinate]: Number(event.target.value) }) }} /></label>)}

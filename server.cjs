@@ -2135,6 +2135,20 @@ const server = http.createServer((req, res) => {
       return send(res, failure.status, failure.body)
     })
   }
+  if (url.pathname === '/api/products' || url.pathname === '/api/products/photo') {
+    const user = requireSession(req, res)
+    if (!user) return
+    const { productRequest, productError, photoHeaders } = require('./api/_lib/product-http.cjs')
+    const body = req.method === 'POST' ? readJson(req, 4_300_000).catch(error => {
+      if (error.message === 'Solicitud demasiado grande.') error.statusCode = 413
+      else if (error.message === 'Datos inválidos.') error.statusCode = 400
+      throw error
+    }) : Promise.resolve(undefined)
+    return body.then(input => productRequest({ connection: db, kind: 'db', method: req.method, route: url.pathname.slice(4), user, query: Object.fromEntries(url.searchParams), input })).then(result => {
+      if (result.file) { res.writeHead(200, photoHeaders(result.file)); return res.end(result.file.data) }
+      return send(res, 200, result.body)
+    }).catch(error => { const failure = productError(error); return send(res, failure.status, failure.body) })
+  }
   if (url.pathname === '/api/cctv' || url.pathname === '/api/cctv/attachments') {
     const user = requireSession(req, res)
     if (!user) return

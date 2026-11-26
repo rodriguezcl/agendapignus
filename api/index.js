@@ -1398,6 +1398,19 @@ module.exports = async function handler(req, res) {
     if (isOperator(session.user) && !operatorRouteAllowed(req.method, route)) return send(res, 403, { error: 'Operador sólo puede consultar la Agenda semanal.' })
     if(route === '/sales/bookings')return handleNativeRegistration(req,res,sql,session.user,true)
     if(route === '/registration/forms')return handleNativeRegistration(req,res,sql,session.user)
+    if (route === '/products' || route === '/products/photo') {
+      const { productRequest, productError, photoHeaders } = require('./_lib/product-http.cjs')
+      try {
+        const result = await productRequest({ connection: sql, kind: 'sql', method: req.method, route, user: session.user,
+          query: Object.fromEntries(new URL(req.url, 'http://localhost').searchParams), input: req.method === 'POST' ? requestBody(req) : undefined })
+        if (result.file) {
+          securityHeaders(res)
+          for (const [key, value] of Object.entries(photoHeaders(result.file))) res.setHeader(key, value)
+          return res.status(200).send(result.file.data)
+        }
+        return send(res, 200, result.body)
+      } catch (error) { const failure = productError(error); return send(res, failure.status, failure.body) }
+    }
     await require('./_lib/tickets-http.cjs').storeFor(sql, 'sql').ensure()
     const receiptRoute = /^\/collections\/([^/]+)\/receipts\/([^/]+)$/.exec(route)
     if (receiptRoute) {

@@ -47,6 +47,21 @@ test('el catálogo de IR Seguridad agrupa barreras y cercos con SKU únicos y fi
   assert.ok(fence.fence.some(product => product.model === '70CM107'))
 })
 
+test('ficha y plano ofrecen los modelos activos y conservan las referencias retiradas del inventario', async () => {
+  const { equipmentCatalogFor } = await import('../src/features/cctv/domain/equipment-catalog.mjs')
+  const retired = { id: 'a', category: 'barrier', kind: 'infrared', brand: 'Marca A', model: 'B10', image: '/anterior.webp', active: false }
+  const replacement = { ...retired, id: 'b', brand: 'Marca B', image: '/actual.webp', active: true }
+  const custom = { ...replacement, id: 'c', category: 'other', kind: 'other', model: 'Equipo nuevo' }
+  const catalog = equipmentCatalogFor([retired, replacement, custom])
+  assert.deepEqual(catalog.choices('barrier', ['infrared']), [replacement])
+  assert.deepEqual(catalog.brands('barrier'), ['Marca B'])
+  assert.deepEqual(catalog.choices('other', ['other'], 'marca b'), [custom])
+  assert.equal(catalog.find(retired).image, '/anterior.webp')
+  assert.equal(catalog.find(replacement).image, '/actual.webp')
+  assert.equal(catalog.find({ ...retired, brand: '' }), null)
+  assert.equal(catalog.find({ ...retired, model: 'B11' }), null)
+})
+
 test('schema rechaza límites, duplicados, números no finitos, objetos inesperados e inyección de estructura', () => {
   assert.deepEqual(schema.validateDrawing(null), schema.defaultDrawing())
   assert.deepEqual(schema.validateEquipmentItems(null), [])

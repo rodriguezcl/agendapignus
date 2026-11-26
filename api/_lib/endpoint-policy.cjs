@@ -19,6 +19,11 @@ function assertEndpointPermission(user, method, route) {
   if (route === '/tickets/config' || route === '/tickets/mail') return require('tickets.configure')
   if (route === '/tickets' || route.startsWith('/tickets/')) return write.requireAny(user, ['tickets.view', 'tickets.configure'])
   if (route === '/cctv/attachments') return require('cctv.download')
+  if (route === '/products' || route === '/products/photo') {
+    if (catalog.roleCode(user) === 'administrator') return
+    if (method === 'GET') return require('cctv.view')
+    return write.fail('administrator')
+  }
   if (route === '/cctv') return require(method === 'GET' ? 'cctv.view' : 'cctv.edit')
   if (route === '/followups') return write.requireAny(user, ['followups.view', 'tickets.view'])
   if (route === '/technician/state') return require('technical.view')

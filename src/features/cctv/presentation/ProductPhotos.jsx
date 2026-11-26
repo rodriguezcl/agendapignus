@@ -10,37 +10,28 @@ function ProductThumbnail({ image, model, caption, enlarge = false }) {
   return enlarge ? <a href={image} target="_blank" rel="noreferrer" aria-label={`Ampliar imagen de ${model}`}>{thumbnail}</a> : thumbnail
 }
 
-export default function ProductPhotos({ selected, choices = [], photoChoice, onChoose, disabled, filterKey = '', sourceProvided = false }) {
-  const [catalog, setCatalog] = useState(null)
+export default function ProductPhotos({ catalog, selected, choices = [], photoChoice, onChoose, disabled, filterKey = '', sourceProvided = false }) {
   const [open, setOpen] = useState(false), [page, setPage] = useState(0)
   const galleryId = useId(), toggle = useRef(null)
   const active = Boolean(selected?.model || choices.length)
-  useEffect(() => {
-    if (!active) return
-    let current = true
-    import('../domain/product-images.mjs').then(module => { if (current) setCatalog(module) })
-      .catch(() => { if (current) setCatalog(false) })
-    return () => { current = false }
-  }, [active])
   useEffect(() => setPage(0), [filterKey])
-  if (!active || catalog === null) return null
-  if (!catalog) return <small>Las imágenes de referencia no están disponibles en este momento.</small>
+  if (!active) return null
 
-  const reference = selected?.model && catalog.findProductImage(selected)
+  const reference = selected?.model && catalog.find(selected)
   const illustrated = open ? choices.flatMap(value => {
     const choice = photoChoice(value)
-    const photo = catalog.findProductImage(choice)
-    return photo ? [{ choice, photo }] : []
+    const photo = catalog.find(choice)
+    return photo?.image ? [{ choice, photo }] : []
   }) : []
   const lastPage = Math.max(0, Math.ceil(illustrated.length / PAGE_SIZE) - 1)
   const currentPage = Math.min(page, lastPage), start = currentPage * PAGE_SIZE
   return <div className="cctv-product-photos">
-    {reference ? <div className="cctv-photo-preview">
+    {reference?.image ? <div className="cctv-photo-preview">
       <ProductThumbnail image={reference.image} model={selected.model} caption={reference.caption} enlarge />
       <div><strong>{selected.model}</strong>
         {reference.caption && <small>{reference.caption}</small>}
         {catalog.isSharedProductImage(reference.image) && <small>Esta imagen corresponde a varios modelos. Verificá el código del equipo.</small>}
-        {!sourceProvided && <a href={reference.source} target="_blank" rel="noreferrer">Ver ficha del producto</a>}
+        {!sourceProvided && reference.source && <a href={reference.source} target="_blank" rel="noreferrer">Ver ficha del producto</a>}
       </div>
     </div> : selected?.model && <small>Sin imagen de referencia para este modelo.</small>}
     {onChoose && <button ref={toggle} type="button" className="secondary" aria-expanded={open} aria-controls={galleryId}

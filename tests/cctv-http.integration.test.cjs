@@ -92,6 +92,13 @@ test('CCTV HTTP real: permisos, expediente privado, PDF, CAS y reintentos por cu
     }
     const [admin, supervisor, tech] = await Promise.all(['admin', 'supervisor', 'tech'].map(login))
     const json = async response => { assert.equal(response.status, 200, await response.clone().text()); return response.json() }
+    assert.equal((await api('/api/products')).status, 401)
+    assert.equal((await json(await api('/api/products', tech))).canManage, false)
+    const seed = require('../shared/product-catalog.cjs').baseProducts[0]
+    const editProduct = { method: 'POST', body: JSON.stringify({ id: seed.id, expectedVersion: 0, product: { ...seed, active: false } }) }
+    assert.equal((await api('/api/products', supervisor, editProduct)).status, 403)
+    assert.equal((await json(await api('/api/products', admin, editProduct))).product.active, false)
+    assert.equal((await json(await api('/api/products', tech))).overrides[0].id, seed.id)
     const post = (cookie, input) => api('/api/cctv', cookie, { method: 'POST', body: JSON.stringify(input) })
     const command = (title, expectedVersion = 0) => ({ customerId: 'a', expectedVersion, commandId: crypto.randomUUID(), action: 'addNews', payload: { title, body: 'Observación sintética' } })
     assert.equal((await api('/api/cctv')).status, 401)

@@ -27,13 +27,14 @@ export const NAVIGATION_ITEMS = [
   ['vehicles', 'vehicle', 'resources'],
   [OPERATIONAL_PLANNING_ID, 'calendar', 'resources'],
   ['services', 'tools', 'resources'],
+  ['products', 'package', 'resources'],
   ['settings', 'settings', 'administration'],
   ['audit', 'audit', 'administration'],
   ['help', 'help']
 ].map(([id, icon, section]) => ({
   id,
   icon,
-  label: id === 'myServices' ? 'Mis servicios' : id === 'help' ? 'Centro de ayuda' : id === OPERATIONAL_PLANNING_ID ? OPERATIONAL_PLANNING_LABEL : MODULES.find(([moduleId]) => moduleId === id)[1],
+  label: id === 'products' ? 'Productos' : id === 'myServices' ? 'Mis servicios' : id === 'help' ? 'Centro de ayuda' : id === OPERATIONAL_PLANNING_ID ? OPERATIONAL_PLANNING_LABEL : MODULES.find(([moduleId]) => moduleId === id)[1],
   ...sections[section]
 }))
 

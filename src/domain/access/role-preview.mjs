@@ -53,6 +53,7 @@ export function buildRolePreview(role, { technicalEnabled = false } = {}) {
     })
     return { id, label, description, visible, reason, capabilities }
   })
+  if (code === 'administrator') modules.push({ id: 'products', label: 'Productos', description: 'Administrar el catálogo de equipos.', visible: true, reason: '', capabilities: [] })
   const visibleModules = modules.filter(module => module.visible)
   const hiddenModules = modules.filter(module => !module.visible)
   const portalOnly = technicalConfigured && eligible && visibleModules.every(module => ['technical', 'tickets', 'followups', 'cctv'].includes(module.id))
