@@ -40,6 +40,21 @@ test('la ficha muestra la solapa de tickets, el requerimiento y una trazabilidad
   assert.equal(new Set(entries.map(node => node.attribs.style)).size, 2)
 })
 
+test('cada solapa describe su contenido al seleccionarla, también en una ficha de consulta', () => {
+  const topics = {
+    general: /dirección.*contacto/, news: /informes en PDF/, maintenance: /poda y mantenimiento/,
+    plans: /croquis/, improvements: /prioridad/, equipment: /marca, el modelo/, tickets: /reclamos y solicitudes/
+  }
+  for (const [tab, topic] of Object.entries(topics)) {
+    const { document } = render(tab, fixture(false, true))
+    const [panel] = nodes(document, node => node.attribs?.role === 'tabpanel')
+    const descriptions = nodes(document, node => node.attribs?.class === 'cctv-tab-description')
+    assert.equal(descriptions.length, 1, tab)
+    assert.equal(panel.attribs['aria-describedby'], descriptions[0].attribs.id, tab)
+    assert.match(descriptions[0].children[0].data, topic, tab)
+  }
+})
+
 test('la consulta de novedades permite descargar sin mostrar opciones de edición', () => {
   const { html, document } = render('news', fixture(false, true))
   assert.equal(nodes(document, node => node.name === 'form').length, 0)

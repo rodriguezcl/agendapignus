@@ -67,7 +67,9 @@
 .cctv-customer-heading h2 { font-size: 22px; overflow-wrap: anywhere; }
 .cctv-customer-heading p:not(.eyebrow) { color: var(--ap-muted, #65758a); font-size: 13px; }
 .cctv-readonly { display: flex; align-items: center; gap: 7px; color: var(--ap-muted, #65758a); font-size: 13px; }
-.cctv-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--ap-border, #d6dde5); }
+.cctv-tab-navigation { display: grid; gap: 10px; min-width: 0; padding-bottom: 12px; border-bottom: 1px solid var(--ap-border, #d6dde5); }
+.cctv-tabs { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.cctv-tab-description { color: var(--ap-muted, #65758a); font-size: 14px; line-height: 1.5; }
 .cctv-tabs > button { min-height: 42px; padding: 10px 14px; border: 1px solid var(--ap-border, #d6dde5); border-radius: 7px; background: var(--ap-surface, #fff); color: var(--ap-text, #233447); cursor: pointer; }
 .cctv-tabs > button.active { border-color: var(--ap-accent, #976d00); background: var(--ap-accent, #976d00); color: var(--ap-accent-ink, #fff); }
 .cctv-panel { display: grid; gap: 20px; padding: 24px; border: 1px solid var(--ap-border, #d6dde5); border-radius: 9px; background: var(--ap-surface, #fff); min-width: 0; }
@@ -117,7 +119,7 @@
   .cctv-table td:last-child > button { width: 100%; justify-content: center; }
   .cctv-table td:first-child { padding-top: 17px; }
   .cctv-table td:last-child { padding-bottom: 17px; }
-  .cctv-tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 10px; }
+  .cctv-tabs { flex-wrap: nowrap; overflow-x: auto; }
   .cctv-tabs > button { flex: 0 0 auto; }
   .cctv-list-toolbar > button { flex: 1 1 100%; }
   .cctv-customer-heading h2 { font-size: 20px; }
