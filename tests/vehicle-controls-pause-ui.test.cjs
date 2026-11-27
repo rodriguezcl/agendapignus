@@ -11,7 +11,7 @@ const team = { teamId:'team', label:'Equipo 1', memberIds:['tech'], members:['T�
 const user = { id:'admin', name:'Administración', roleCode:'administrator' }
 test.before(async () => {
  const root = path.resolve(__dirname,'..')
- const built = await require('esbuild').build({ stdin:{ contents:`export { PermissionsProvider } from './src/presentation/contexts/permissions-context.jsx'; export { WeeklyPlanner } from './src/features/agenda/presentation/WeeklyPlanner.jsx'; export { AgendaWorkspaceForm } from './src/features/agenda/presentation/DailyAgenda.jsx'; export { default as HistoryRescheduleModal } from './src/components/HistoryRescheduleModal.jsx';`, loader:'jsx', resolveDir:root }, bundle:true, write:false, format:'cjs', platform:'node', external:['react','react-dom'], loader:{'.css':'empty'}, logLevel:'silent', plugins:[{name:'calendar-fixture', setup(build) { build.onLoad({filter:/useNationalHolidays\.js$/}, () => ({contents:'export const useNationalHolidays = () => ({ records:[], loading:false, error:"" })',loader:'js'})) }}] })
+ const built = await require('esbuild').build({ stdin:{ contents:`export { PermissionsProvider } from './src/presentation/contexts/permissions-context.jsx'; export { WeeklyPlanner } from './src/features/agenda/presentation/WeeklyPlanner.jsx'; export { AgendaWorkspaceForm } from './src/features/agenda/presentation/DailyAgenda.jsx'; export { History } from './src/features/history/presentation/History.jsx'; export { default as HistoryRescheduleModal } from './src/components/HistoryRescheduleModal.jsx';`, loader:'jsx', resolveDir:root }, bundle:true, write:false, format:'cjs', platform:'node', external:['react','react-dom'], loader:{'.css':'empty'}, logLevel:'silent', plugins:[{name:'calendar-fixture', setup(build) { build.onLoad({filter:/useNationalHolidays\.js$/}, () => ({contents:'export const useNationalHolidays = () => ({ records:[], loading:false, error:"" })',loader:'js'})) }}] })
  const compiled = new Module(path.join(root,'test-control-pause-ui.cjs'),module); compiled.paths=module.paths; compiled._compile(built.outputFiles[0].text,compiled.id); components=compiled.exports
 })
 function walk(node, predicate) { if(predicate(node)) return node; for(const child of node.children || []) { const found=walk(child,predicate); if(found) return found } }
@@ -66,3 +66,37 @@ test('Historial explains pause and cannot select a reschedule time',()=>{
  assert.equal(walk(document,node=>node.attribs?.class==='reschedule-slots'),undefined)
  assert.ok(walk(document,node=>node.name==='input'&&node.attribs.type==='date').attribs.disabled!==undefined)
 })
+
+const historyReader = { id: 'reader', roleCode: 'custom', permissions: { __catalogV2: true, 'history.view': true, 'records.read': true, 'scope.services.read.all': true } }
+for (const [view, authUser, canManage] of [['gestión', user, true], ['solo lectura', historyReader, false]]) {
+  test('Historial de ' + view + ' aplica la pausa de Flota a la tabla, el contador y los avisos', () => {
+    const history = [
+      { ...control, id: 'scheduled', date: day, client: 'Control programado' },
+      { ...control, vehicleControl: undefined, serviceId: 'vehicle-weekly-control', id: 'legacy', date: day, client: 'Control anterior' },
+      { ...control, id: 'reported', date: day, client: 'Control con informe', status: 'Completado', technicalReportedAt: day + 'T18:00:00Z' },
+      { ...work, id: 'service', date: day, client: 'Servicio ordinario' }
+    ]
+    const original = structuredClone(history)
+    function renderHistory(paused, initialFilter = null) {
+      const props = { history, authUser, canManage, customers: [], employees: [], services: [], initialFilter,
+        historyScheduling: { weekly: { _vehicleControls: { paused } } } }
+      return renderToStaticMarkup(React.createElement(components.PermissionsProvider, { user: authUser },
+        React.createElement(components.History, props)))
+    }
+    for (const paused of [false, true, false]) {
+      const html = renderHistory(paused)
+      assert.equal(html.includes('history-table history-bulk'), canManage)
+      assert.equal(html.includes('Control programado'), !paused)
+      assert.equal(html.includes('Control anterior'), !paused)
+      assert.ok(html.includes('Control con informe'))
+      assert.ok(html.includes('Servicio ordinario'))
+      assert.ok(html.includes('<b>' + (paused ? 2 : 4) + '</b> trabajos registrados'))
+    }
+    const pending = renderHistory(true, { pendingGroup: 'today', date: day })
+    assert.ok(pending.includes('Servicio ordinario'))
+    assert.ok(pending.includes('<b>1</b> trabajos registrados'))
+    const direct = renderHistory(true, { recordId: 'scheduled' })
+    assert.ok(direct.includes('<b>0</b> trabajos registrados'))
+    assert.deepEqual(history, original)
+  })
+}

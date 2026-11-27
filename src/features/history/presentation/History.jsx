@@ -4,6 +4,7 @@ import { canCompleteHistoryRecord, historyStatusPermission } from '../applicatio
 import '../../../history-layout.css'
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { historyReminderRecords, historyStatusLabel } from "../../../domain/dashboard/dashboard-metrics.mjs";
+import controlPause from "../../../../api/_lib/vehicle-controls-pause.cjs";
 import { normalizeRoleName, readScope } from "../../../domain/access/permissions.mjs";
 import { createHistorySearchIndex, filterHistoryRecords } from "../../../domain/history/history-query.mjs";
 import { sortHistoryByDateAndTime, stampServiceRecord } from "../../agenda/application/agenda-model.mjs";
@@ -18,12 +19,18 @@ import { serviceRecordFingerprint } from "../../../domain/history/service-concur
 import { serviceColorClass } from "../../services/application/service-fields.mjs";
 import { HistoryManagementDetail } from "./HistoryManagementDetail.jsx";
 
-export function History({ history, setHistory, customers, services, employees, authUser, canManage = false, persistHistoryContact, persistHistoryRecord, persistHistoryRecordRemoval, historyScheduling, initialFilter = null }) {
+export function History({ history: allHistory, setHistory, customers, services, employees, authUser, canManage = false, persistHistoryContact, persistHistoryRecord, persistHistoryRecordRemoval, historyScheduling, initialFilter = null }) {
   const { can, granular } = useActionPermissions()
   canManage = granular ? ['history.edit', 'history.complete', 'history.reopen', 'history.cancel', 'history.delete', 'history.category', 'planning.notes', 'planning.checklist', 'planning.linkAccount', 'planning.reservation.link', 'planning.confirm', 'planning.reschedule'].some(key => can(key)) : canManage
   const [reminderFilter, setReminderFilter] = useState(initialFilter)
   useEffect(() => { setReminderFilter(initialFilter) }, [initialFilter])
-  history = useMemo(() => historyReminderRecords(history, reminderFilter), [history, reminderFilter])
+  const weekly = historyScheduling?.weekly
+  const history = useMemo(() => {
+    const visible = controlPause.vehicleControlsPaused(weekly)
+      ? allHistory.filter(record => !controlPause.pausedVehicleControl(record, weekly))
+      : allHistory
+    return historyReminderRecords(visible, reminderFilter)
+  }, [allHistory, weekly, reminderFilter])
   const supervisorView = granular ? readScope(authUser, 'services') === 'cctv' : (authUser?.roleCode === 'supervisor' || normalizeRoleName(authUser?.role) === 'supervisor')
   const clearReminderFilter = () => setReminderFilter(null)
   return <>{canManage
@@ -46,6 +53,9 @@ export function HistoryReadOnly({ history, customers = [], supervisorView = fals
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [detail, setDetail] = useState(null)
+  useEffect(() => {
+    if (detail && !history.some(record => record.id === detail.id)) setDetail(null)
+  }, [detail, history])
   const searchIndex = useMemo(() => createHistorySearchIndex(history), [history])
   const records = useMemo(() => filterHistoryRecords(searchIndex, { search, compare: supervisorView ? sortHistoryByDateAndTime : sortOperationalHistory }), [searchIndex, search, supervisorView])
   const pageCount = Math.max(1, Math.ceil(records.length / 50))
