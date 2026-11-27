@@ -20,6 +20,71 @@ test('el filtro ofrece las marcas de cada categoría y las reúne al seleccionar
   assert.deepEqual(productBrands(products, ''), ['Ajax', 'ALARI', 'Hikvision'])
 })
 
+test('las opciones de cada filtro tienen productos que coinciden con los otros dos filtros', async () => {
+  const { productFilterOptions } = await import('../src/features/products/domain/product-search.mjs')
+  const products = [
+    { category: 'cctv', brand: 'Hikvision', active: false },
+    { category: 'alarm', brand: 'Hikvision', active: true },
+    { category: 'cctv', brand: 'Dahua', active: true },
+    { category: 'other', brand: '', active: true },
+    { category: 'fence', brand: 'ALARI', active: false },
+  ]
+  const options = filters => productFilterOptions(products, filters)
+
+  const inactive = options({ category: 'cctv', brand: 'Hikvision', state: 'inactive' })
+  assert.deepEqual(inactive.categories, new Set(['cctv']))
+  assert.deepEqual(inactive.brands, ['Hikvision'])
+  assert.deepEqual(inactive.states, new Set(['inactive']))
+
+  const allStates = options({ category: 'cctv', brand: 'Hikvision', state: 'all' })
+  assert.deepEqual(allStates.categories, new Set(['cctv', 'alarm']))
+  assert.deepEqual(allStates.brands, ['Dahua', 'Hikvision'])
+  assert.deepEqual(allStates.states, new Set(['inactive']))
+
+  const active = options({ category: '', brand: '', state: 'active' })
+  assert.deepEqual(active.categories, new Set(['cctv', 'alarm', 'other']))
+  assert.deepEqual(active.brands, ['Dahua', 'Hikvision'])
+  assert.deepEqual(options({ category: 'other', brand: '', state: 'active' }).brands, [])
+})
+
+test('al dar de baja la última cámara de una marca, editarla y reactivarla se actualizan las opciones', async () => {
+  const { productFilterOptions } = await import('../src/features/products/domain/product-search.mjs')
+  const camera = { category: 'cctv', brand: 'Hikvision', active: true }
+  const otherCamera = { category: 'cctv', brand: 'Dahua', active: true }
+  const alarm = { category: 'alarm', brand: 'Hikvision', active: true }
+  const selected = { category: 'cctv', brand: 'Hikvision', state: 'active' }
+  const archived = { ...camera, active: false }
+  const options = products => productFilterOptions(products, selected)
+
+  const afterArchive = options([archived, otherCamera, alarm])
+  assert.equal(afterArchive.state, 'active')
+  assert.equal(afterArchive.category, 'cctv')
+  assert.equal(afterArchive.brand, '')
+  assert.deepEqual(afterArchive.brands, ['Dahua'])
+  assert.deepEqual(afterArchive.states, new Set(['active', 'inactive']))
+
+  const afterReactivate = options([{ ...archived, active: true }, otherCamera, alarm])
+  assert.deepEqual(afterReactivate.brands, ['Dahua', 'Hikvision'])
+  assert.equal(afterReactivate.brand, 'Hikvision')
+  const afterCategoryEdit = options([{ ...camera, category: 'alarm' }, alarm])
+  assert.equal(afterCategoryEdit.category, '')
+  assert.equal(afterCategoryEdit.state, 'active')
+  assert.deepEqual(afterCategoryEdit.categories, new Set(['alarm']))
+})
+
+test('si desaparece el último producto del estado elegido se puede consultar el catálogo restante', async () => {
+  const { productFilterOptions } = await import('../src/features/products/domain/product-search.mjs')
+  const selected = { category: 'alarm', brand: 'Ajax', state: 'active' }
+  const onlyInactive = productFilterOptions([{ category: 'alarm', brand: 'Ajax', active: false }], selected)
+  assert.equal(onlyInactive.state, 'all')
+  assert.equal(onlyInactive.category, 'alarm')
+  assert.equal(onlyInactive.brand, 'Ajax')
+  assert.deepEqual(onlyInactive.states, new Set(['inactive']))
+  assert.deepEqual(productFilterOptions([], selected), {
+    state: 'all', category: '', brand: '', categories: new Set(), brands: [], states: new Set(),
+  })
+})
+
 test('the illustrated base catalog keeps a distinct identity for every model', () => {
   const models = new Set(baseProducts.map(productKey))
   assert.equal(models.size, baseProducts.length)

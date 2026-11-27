@@ -5,7 +5,7 @@ import EditorModal from '../../../components/ui/EditorModal.jsx'
 import Icon from '../../../components/ui/Icon.jsx'
 import { useProductCatalog } from '../application/useProductCatalog.mjs'
 import { productName, productType } from '../domain/product-name.mjs'
-import { indexProducts, productBrands, productSearchWords } from '../domain/product-search.mjs'
+import { indexProducts, productBrands, productFilterOptions, productSearchWords } from '../domain/product-search.mjs'
 import ProductForm, { ReferencePhoto } from './ProductForm.jsx'
 import './products.css'
 
@@ -92,7 +92,8 @@ export default function Products() {
   const [page, setPage] = useState(1), [size, setSize] = useState(20)
   const [dialog, setDialog] = useState(null), [notice, setNotice] = useState(null)
   const [selectedIds, setSelectedIds] = useState(() => new Set())
-  const brands = useMemo(() => productBrands(products, filters.category), [products, filters.category])
+  const { state, category, brand } = filters
+  const options = useMemo(() => productFilterOptions(products, { state, category, brand }), [products, state, category, brand])
   const index = useMemo(() => indexProducts(products), [products])
   const matches = useMemo(() => {
     const words = productSearchWords(filters.search)
@@ -108,9 +109,8 @@ export default function Products() {
   const toReactivate = selected.filter(product => !product.active)
   const pageSelected = visible.filter(({ product }) => selectedIds.has(product.id)).length
 
-  // A category change or a catalog edit can remove the selected brand.
-  if (filters.brand && !brands.includes(filters.brand)) {
-    setFilters({ ...filters, brand: '' })
+  if (!loading && !error && (state !== options.state || category !== options.category || brand !== options.brand)) {
+    setFilters({ ...filters, state: options.state, category: options.category, brand: options.brand })
     setPage(1)
   }
 
@@ -174,14 +174,16 @@ export default function Products() {
     <div className="products-toolbar">
       <label>Buscar producto<input type="search" placeholder="Código, nombre o características" value={filters.search}
         onChange={event => filter('search', event.target.value)} /></label>
-      <label>Categoría<select aria-label="Categoría" value={filters.category} onChange={event => filter('category', event.target.value)}>
-        <option value="">Todas</option>{Object.entries(EQUIPMENT_CATEGORIES).map(([id, name]) => <option value={id} key={id}>{name}</option>)}
+      <label>Categoría<select aria-label="Categoría" disabled={loading} value={filters.category} onChange={event => filter('category', event.target.value)}>
+        <option value="">Todas</option>{Object.entries(EQUIPMENT_CATEGORIES).filter(([id]) => options.categories.has(id)).map(([id, name]) => <option value={id} key={id}>{name}</option>)}
       </select></label>
-      <label>Marca<select aria-label="Marca" value={filters.brand} onChange={event => filter('brand', event.target.value)}>
-        <option value="">Todas</option>{brands.map(brand => <option value={brand} key={brand}>{brand}</option>)}
+      <label>Marca<select aria-label="Marca" disabled={loading} value={filters.brand} onChange={event => filter('brand', event.target.value)}>
+        <option value="">Todas</option>{options.brands.map(brand => <option value={brand} key={brand}>{brand}</option>)}
       </select></label>
-      <label>Estado<select aria-label="Estado" value={filters.state} onChange={event => filter('state', event.target.value)}>
-        <option value="active">Activos</option><option value="inactive">De baja</option><option value="all">Todos</option>
+      <label>Estado<select aria-label="Estado" disabled={loading} value={filters.state} onChange={event => filter('state', event.target.value)}>
+        {options.states.has('active') && <option value="active">Activos</option>}
+        {options.states.has('inactive') && <option value="inactive">De baja</option>}
+        <option value="all">Todos</option>
       </select></label>
       {authorized && <button type="button" className="primary" disabled={loading} onClick={newProduct}><Icon name="plus" size={16} />Nuevo producto</button>}
     </div>

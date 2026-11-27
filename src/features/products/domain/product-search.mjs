@@ -12,6 +12,31 @@ export function productBrands(products, category = '') {
   return sortOptionsAlphabetically([...brands])
 }
 
+export function productFilterOptions(products, { state, category, brand }) {
+  // A catalog update can invalidate the selection. Keep the chosen status
+  // and category whenever they still have products.
+  let inState = state === 'all' ? products : products.filter(product => product.active === (state === 'active'))
+  if (!inState.length) {
+    state = 'all'
+    inState = products
+  }
+  if (category && !inState.some(product => product.category === category)) category = ''
+  const brands = productBrands(inState, category)
+  if (brand && !brands.includes(brand)) brand = ''
+
+  const categories = new Set()
+  for (const product of inState) {
+    if (!brand || product.brand === brand) categories.add(product.category)
+  }
+  const states = new Set()
+  for (const product of products) {
+    if ((!category || product.category === category) && (!brand || product.brand === brand)) {
+      states.add(product.active ? 'active' : 'inactive')
+    }
+  }
+  return { state, category, brand, categories, brands, states }
+}
+
 export function indexProducts(products) {
   return sortOptionsAlphabetically(products, product => `${product.brand} ${product.model}`).map(product => {
     const name = productName(product)
