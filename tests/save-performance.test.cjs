@@ -38,6 +38,23 @@ test('compact response reconstructs exact state with stable identities, addition
   assert.ok(JSON.stringify(compact).length < JSON.stringify(edited).length / 100)
 })
 
+test('history deltas transmit explicit order only when applying changes would reorder records', async () => {
+  const { stateDelta, applyStateDelta } = await import('../src/domain/shared/state-delta.mjs')
+  const before = { revision: 1, history: [{ id: 1 }, { id: '2' }, { id: '3' }] }
+  for (const [ids, needsOrder] of [
+    [[1, '2', '3', 4], false],
+    [['1', '3', 4], false],
+    [[4, '1', '2', '3'], true],
+    [[1, '2', 4, '3'], true],
+    [['3', '2', 1], true]
+  ]) {
+    const after = { revision: 2, history: ids.map(id => ({ id })) }
+    const delta = stateDelta(before, after)
+    assert.equal(Object.hasOwn(delta.changes.history, 'order'), needsOrder)
+    assert.deepEqual(applyStateDelta(before, delta), after)
+  }
+})
+
 test('client coordinates by service rather than a global busy flag', async () => {
   const { createSaveActivity, operationScopes } = await import('../src/features/state/application/save-activity.mjs')
   const activity = createSaveActivity()

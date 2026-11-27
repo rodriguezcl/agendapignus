@@ -9,7 +9,7 @@ const { isOperator, operatorState } = require('./operator-access.cjs')
 const { validateChangedAgendaSchedules } = require('./scheduling-validation.cjs')
 const { migrateLegacyEstimatedMinutes } = require('./legacy-estimated-minutes.cjs')
 const { ensureVehicleControlService } = require('./vehicle-control-service.cjs')
-const { synchronizeVehicleControlAssignments } = require('./vehicle-control-assignment.cjs')
+const { applyVehicleControlAssignments } = require('./vehicle-control-assignment.cjs')
 const { assertNoPastWeeklyServiceAdditions } = require('./past-agenda.cjs')
 const { projectLegacyCollectionReceipts, restoreLegacyCollectionReceipts } = require('./legacy-collection-receipts.cjs')
 const { sanitizeTechnicianFollowup } = require('./technician-followup-access.cjs')
@@ -335,9 +335,11 @@ function normalizeStateForSave(state, current, { allowEarlyCompletion = false } 
   state = { ...state, services: require('./address-change.cjs').ensureAddressChangeService(state.services) }
   state = require('./inactive-employee-assignments.cjs').removeInactiveAssignments(state)
   state = require('./onboard-technicians.cjs').reconcileNewTechnicians(state, current)
+  // persistentStateInput detaches the full proposal, including agenda and history.
+  // Both synchronizers can update that private copy during this save.
   state = persistentStateInput(state)
   require('./multi-service.cjs').validateServiceTypes(state)
-  state = require('./service-schedule-sync.cjs').synchronizeServiceSchedules(state, current)
+  state = require('./service-schedule-sync.cjs').applyServiceSchedules(state, current)
   state = require('./team-service-assignments.cjs').synchronizeTeamServiceAssignments(state, current)
   state = require('./friday-solo-teams.cjs').unifyFridaySoloTeams(state, current)
   current ||= { roles: [], employees: [], services: [], vehicles: [], customers: [], history: [], reviews: [], agenda: {} }
@@ -395,7 +397,8 @@ function normalizeStateForSave(state, current, { allowEarlyCompletion = false } 
     ? [key, Object.fromEntries(Object.entries(value || {}).map(([month, config]) => [month, { ...config, teams: normalizeTeams(config?.teams) }]))]
     : [key, key.startsWith('_') ? value : { ...value, teams: normalizeTeams(value?.teams) }]))
   const agenda = { ...incomingAgenda, teams: normalizeTeams(incomingAgenda.teams), weekly }
-  return normalizeRetirementCustomers(synchronizeVehicleControlAssignments({ ...state, roles, employees, services, vehicles, customers, history, agenda, reviews: state.reviews || current.reviews || [] }, current), current).state
+  const reviews = state.reviews || structuredClone(current.reviews || [])
+  return normalizeRetirementCustomers(applyVehicleControlAssignments({ ...state, roles, employees, services, vehicles, customers, history, agenda, reviews }, current), current).state
 }
 
 function deduplicateScheduledTasks(teams = []) {

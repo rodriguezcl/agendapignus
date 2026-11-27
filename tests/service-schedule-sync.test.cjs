@@ -33,6 +33,30 @@ test('unrelated save preserves legacy discrepancy', () => {
   assert.deepEqual(sync(old, old), old)
 })
 
+test('normalizing a service changes only its private working copy, including on a conflict', () => {
+  const { normalizeStateForSave } = require('../api/_lib/core.cjs')
+  const { fixture: planningState, day } = require('./helpers/planning-click-fixture.cjs')
+  const previous = planningState()
+  previous.reviews = [{ id: 'review', note: 'Original' }]
+  const original = structuredClone(previous)
+  const proposed = { ...previous, history: [{ ...previous.history[0], time: '10:00' }] }
+  delete proposed.reviews // Older clients may omit this collection.
+  const submitted = structuredClone(proposed)
+  const next = normalizeStateForSave(proposed, previous)
+  assert.equal(next.agenda.weekly[day].teams[0].tasks[0].time, '10:00')
+  assert.deepEqual(next.reviews, previous.reviews)
+  assert.notEqual(next.reviews[0], previous.reviews[0])
+  assert.deepEqual(previous, original)
+  assert.deepEqual(proposed, submitted)
+
+  const conflicting = structuredClone(proposed)
+  conflicting.agenda.weekly[day].teams[0].tasks[0].time = '11:00'
+  const failedAttempt = structuredClone(conflicting)
+  assert.throws(() => normalizeStateForSave(conflicting, previous), { code: 'SERVICE_SCHEDULE_CONFLICT' })
+  assert.deepEqual(previous, original)
+  assert.deepEqual(conflicting, failedAttempt)
+})
+
 test('five-hour Antigua Estancia visit never creates morning availability', async () => {
   const { serviceGaps } = await import('../src/domain/agenda/service-gaps.mjs')
   const gaps = serviceGaps([

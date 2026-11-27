@@ -63,7 +63,12 @@ function validateServiceJourneys(state, previous = null) {
 function stripJourneyProjection(value) {
   if (Array.isArray(value)) return value.map(stripJourneyProjection)
   if (!value || typeof value !== 'object') return value
-  return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'journeyActiveIndexes').map(([key, item]) => [key, stripJourneyProjection(item)]))
+  const copy = { ...value }
+  delete copy.journeyActiveIndexes
+  for (const key of Object.keys(copy)) {
+    if (copy[key] && typeof copy[key] === 'object') copy[key] = stripJourneyProjection(copy[key])
+  }
+  return copy
 }
 
 module.exports = { ADVANCE, activeJourneyIndexes, isIntermediate, assertJourneyReport, validateServiceJourneys, stripJourneyProjection }

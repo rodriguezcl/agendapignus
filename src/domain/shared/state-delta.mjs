@@ -1,4 +1,4 @@
-const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+const equal = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b)
 const collections = { roles: 'id', employees: 'id', services: 'id', vehicles: 'id', customers: 'customerId', history: 'id', reviews: 'id' }
 
 // A delta is only applicable to the exact snapshot named by baseRevision.
@@ -13,8 +13,15 @@ export function stateDelta(before, after) {
       const previous = new Map(old.map(row => [String(row[id]), row]))
       const order = next.map(row => String(row[id]))
       const ids = new Set(order)
-      changes[key] = { id, upsert: next.filter(row => !equal(previous.get(String(row[id])), row)), removed: old.filter(row => !ids.has(String(row[id]))).map(row => String(row[id])) }
-      if (!equal(old.map(row => String(row[id])), order)) changes[key].order = order
+      const upsert = next.filter(row => !equal(previous.get(String(row[id])), row))
+      const removed = old.filter(row => !ids.has(String(row[id]))).map(row => String(row[id]))
+      changes[key] = { id, upsert, removed }
+      // The receiver keeps surviving rows in order and appends new ones.
+      // Only send every ID when that implicit ordering would differ.
+      for (const removedId of removed) previous.delete(removedId)
+      for (const row of upsert) previous.set(String(row[id]), row)
+      const implicitOrder = previous.keys()
+      if (order.some(rowId => rowId !== implicitOrder.next().value)) changes[key].order = order
     } else if (key === 'agenda' && old && next) {
       const { weekly: oldWeekly = {}, ...oldDaily } = old
       const { weekly: nextWeekly = {}, ...nextDaily } = next

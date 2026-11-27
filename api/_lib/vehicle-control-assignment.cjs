@@ -2,8 +2,7 @@ const same = (a, b) => String(a || '') === String(b || '')
 const closed = record => ['Completado', 'Cancelado', 'Reprogramado', 'Avance registrado'].includes(record.status) || Boolean(record.technicalStatus || record.startedAt || record.completedAt)
 
 // Synchronize only existing pending controls; never create deleted controls here.
-function synchronizeVehicleControlAssignments(state, previous = {}) {
-  const next = structuredClone(state)
+function applyVehicleControlAssignments(next, previous = {}) {
   const weekly = next.agenda?.weekly || {}
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
   // A day-specific staffing edit moves the control with its responsible
@@ -104,4 +103,7 @@ function synchronizeVehicleControlAssignments(state, previous = {}) {
   }
   return next
 }
-module.exports = { synchronizeVehicleControlAssignments }
+function synchronizeVehicleControlAssignments(state, previous) {
+  return applyVehicleControlAssignments(structuredClone(state), previous)
+}
+module.exports = { applyVehicleControlAssignments, synchronizeVehicleControlAssignments }

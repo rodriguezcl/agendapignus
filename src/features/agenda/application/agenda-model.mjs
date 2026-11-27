@@ -227,25 +227,39 @@ export const taskIdentityAliases = task => {
 // when different aliases on a service point to different historical records.
 export function createTaskHistoryIndex(records) {
   const aliases = new Map()
-  const occurrences = new Map()
+  const byDate = new Map()
+  const legacyByDate = new Map()
   records.forEach((record, index) => {
     const id = record?.id && `history:${record.id}`
     if (id && !aliases.has(id)) aliases.set(id, index)
     if (!taskHasContent(record)) return
-    for (const alias of taskIdentityAliases(record)) {
-      if (alias.startsWith('occurrence:')) {
-        const key = `${record.date || ''}/${alias}`
-        if (!occurrences.has(key)) occurrences.set(key, record)
-      } else if (!aliases.has(alias)) aliases.set(alias, index)
+    for (const alias of directTaskAliases(record)) {
+      if (!aliases.has(alias)) aliases.set(alias, index)
     }
+    const day = String(record.date || '')
+    if (!byDate.has(day)) byDate.set(day, [])
+    byDate.get(day).push(record)
   })
   return {
     recordForTask(task, date) {
       let earliest = Infinity
       for (const alias of directTaskAliases(task)) earliest = Math.min(earliest, aliases.get(alias) ?? Infinity)
       if (earliest !== Infinity) return records[earliest]
+      // Most cards identify their history directly. Build the account/service/time
+      // fallback only for days where an older card actually needs it.
+      const day = String(date || '')
+      if (!byDate.has(day)) return null
       const occurrence = taskOccurrenceIdentity(task)
-      return occurrences.get(`${date || ''}/${occurrence}`) || null
+      if (!occurrence) return null
+      if (!legacyByDate.has(day)) {
+        const occurrences = new Map()
+        for (const record of byDate.get(day)) {
+          const key = taskOccurrenceIdentity(record)
+          if (key && !occurrences.has(key)) occurrences.set(key, record)
+        }
+        legacyByDate.set(day, occurrences)
+      }
+      return legacyByDate.get(day).get(occurrence) || null
     }
   }
 }

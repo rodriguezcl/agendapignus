@@ -12,8 +12,7 @@ function validateFrozenMonths(state, previous) {
       return type.code === 'alarm-installation' || service?.code === 'alarm-installation' || normalize(type.name || service?.name) === 'instalacion de alarma'
     })
     const fields = ['monthlyFee', 'freezeMonthlyFee', 'frozenMonths', 'installationZone', 'serviceId', 'service', 'serviceTypes']
-    const changed = !prior || fields.some(key => JSON.stringify(record[key]) !== JSON.stringify(prior[key]))
-    if (residential && changed) {
+    if (residential && (!prior || fields.some(key => JSON.stringify(record[key]) !== JSON.stringify(prior[key])))) {
       const raw = String(record.monthlyFee ?? '').trim()
       const amount = raw.includes(',') ? raw.replace(/\./g, '').replace(',', '.') : raw
       if (!/^\d+(\.\d{1,2})?$/.test(amount) || !(Number(amount) > 0)) throw new Error('Ingresá un abono mensual válido mayor a cero para la instalación residencial con monitoreo.')

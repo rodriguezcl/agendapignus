@@ -176,8 +176,7 @@ async function vacateTransferredJobTaskIds(sql, previousOwnerIds) {
   await queryRows(sql, `update normalized_shadow.jobs set source_task_id = null where id in (${placeholders})`, previousOwnerIds)
 }
 
-async function bulkUpsertRows(sql, table, keys, rows) {
-  if (!rows.length) return 0
+function* upsertBatches(table, keys, rows) {
   const groups = new Map()
   for (const row of rows) {
     const columns = Object.keys(row)
@@ -193,14 +192,48 @@ async function bulkUpsertRows(sql, table, keys, rows) {
       : `${column} = excluded.${column}`)
     const batchSize = Math.max(1, Math.floor(MAX_BATCH_PARAMETERS / columns.length))
     for (let offset = 0; offset < groupRows.length; offset += batchSize) {
-      const batch = groupRows.slice(offset, offset + batchSize)
-      const parameters = batch.flatMap(row => columns.map(column => row[column]))
-      let parameterIndex = 0
-      const values = batch.map(() => `(${columns.map(() => `$${++parameterIndex}`).join(',')})`).join(',')
-      await queryRows(sql, `insert into normalized_shadow.${table} (${columns.join(',')}) values ${values} on conflict (${keys.join(',')}) do ${assignments.length ? `update set ${assignments.join(',')}` : 'nothing'}`, parameters)
+      yield { table, keys, columns, assignments, rows: groupRows.slice(offset, offset + batchSize) }
     }
   }
+}
+
+function upsertStatement({ table, keys, columns, assignments, rows }, parameters) {
+  const values = rows.map(row => `(${columns.map(column => `$${parameters.push(row[column])}`).join(',')})`).join(',')
+  return `insert into normalized_shadow.${table} (${columns.join(',')}) values ${values} on conflict (${keys.join(',')}) do ${assignments.length ? `update set ${assignments.join(',')}` : 'nothing'}`
+}
+
+async function bulkUpsertRows(sql, table, keys, rows) {
+  for (const batch of upsertBatches(table, keys, rows)) {
+    const parameters = []
+    const statement = upsertStatement(batch, parameters)
+    await queryRows(sql, statement, parameters)
+  }
   return rows.length
+}
+
+const SERVICE_TABLES = new Set([
+  'daily_teams', 'team_members', 'jobs', 'service_assignments', 'job_checklist_items', 'job_events', 'job_reservations',
+  'planned_days', 'planned_teams', 'planned_team_members', 'planned_slots', 'history_evidence', 'agenda_plan_evidence', 'agenda_evidence'
+])
+
+function serviceCreationUpsert(changes) {
+  const statements = [], parameters = []
+  let rowCount = 0
+  for (const { table, keys, changed, removed, transferredOwnerIds } of changes) {
+    if (!changed.length && !removed.length) continue
+    if (!SERVICE_TABLES.has(table) || transferredOwnerIds.length) return null
+    for (const batch of upsertBatches(table, keys, changed)) {
+      // Keep large/mixed-shape writes on the original bounded batches. A
+      // data-modifying WITH must never address the same table twice here.
+      if (parameters.length + batch.rows.length * batch.columns.length > MAX_BATCH_PARAMETERS || batch.rows.length !== changed.length) return null
+      statements.push(`write_${table} as (${upsertStatement(batch, parameters)})`)
+      rowCount += changed.length
+    }
+  }
+  if (statements.length < 2) return null
+  // Each upsert supplies its values from the prepared projection. Foreign
+  // keys see the finished statement, including new parent rows in this WITH.
+  return { statement: `with ${statements.join(', ')} select 1`, parameters, rowCount }
 }
 
 async function bulkDeleteRows(sql, table, keys, rows) {
@@ -241,6 +274,7 @@ async function synchronizeCredentials(sql, employees) {
 function prepareTableChanges(previous, next) {
   return Object.entries(TABLE_KEYS).map(([table, keys]) => {
     const beforeRows = previous.tables[table] || [], nextRows = next.tables[table] || []
+    if (beforeRows === nextRows) return { table, keys, changed: [], removed: [], positionBuckets: [], transferredOwnerIds: [] }
     const positions = preparePositionChanges(table, beforeRows, nextRows, keys)
     const positionBucketKeys = POSITIONAL_UNIQUE_BUCKETS[table]
     const before = new Map(beforeRows.map(row => [rowKey(row, keys), row])), after = new Set()
@@ -268,7 +302,9 @@ function prepareNormalizedStateWrite(previousState, nextState, previousCandidate
   const reusePrevious = previousCandidate && previousCandidate.analysis.revision === previousState.revision &&
     previousCandidate.analysis.sourceFingerprint === require('./normalization-analysis.cjs').stateFingerprint(previousState)
   const previous = reusePrevious ? previousCandidate : buildShadowCandidate(previousState)
-  const next = buildShadowCandidate(nextState)
+  const referencesUnchanged = ['roles', 'employees', 'customers', 'services', 'vehicles', 'reviews']
+    .every(name => isDeepStrictEqual(previousState[name], nextState[name]))
+  const next = buildShadowCandidate(nextState, referencesUnchanged ? previous.tables : undefined)
   // Compute dependency-ordered differences before the caller acquires the
   // revision lock. Fingerprints and the database conflict checks remain exact.
   return { previous, next, changes: prepareTableChanges(previous, next) }
@@ -292,12 +328,17 @@ async function synchronizeNormalizedStateInTransaction(sql, previousState, nextS
     throw error
   }
   let changedRows = 0
-  // Parents are inserted before children and existing children are moved to
-  // their new parents before obsolete parent rows are removed.
+  const creation = nextState.history?.length === previousState.history?.length + 1 && serviceCreationUpsert(changes)
+  // Release any occupied unique positions before inserting their new owners.
+  // Other mutations retain their original dependency-ordered batches.
   for (const { table, keys, changed, positionBuckets, transferredOwnerIds } of changes) {
     await vacateChangedPositions(sql, table, positionBuckets)
     if (table === 'jobs') await vacateTransferredJobTaskIds(sql, transferredOwnerIds)
-    changedRows += await bulkUpsertRows(sql, table, keys, changed)
+    if (!creation) changedRows += await bulkUpsertRows(sql, table, keys, changed)
+  }
+  if (creation) {
+    await queryRows(sql, creation.statement, creation.parameters)
+    changedRows += creation.rowCount
   }
   // Credentials reference employees. New parent rows must exist before their
   // password hashes are inserted; credentials for removed employees must be

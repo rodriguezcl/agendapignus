@@ -39,6 +39,34 @@ test('one record copied to another day remains one job and produces stable revie
   assert.equal(candidate.tables.jobs[0].needs_review, true)
   assert.equal(candidate.analysis.summary.requiresReconciliation, true)
 })
+
+test('saving a weekly job reuses identical reference tables and keeps the full projection and fingerprint', () => {
+  const { prepareNormalizedStateWrite } = require('../api/_lib/normalized-state-repository.cjs')
+  const current = fixture(), cached = buildShadowCandidate(current)
+  const next = structuredClone(current)
+  next.revision++
+  next.history.push({ ...next.history[0], id: 'job-2', sourceTaskId: 'task-2', time: '11:00' })
+  next.agenda.weekly['2026-08-25'].teams[0].tasks.push({ ...next.history[1], taskId: 'task-2', historyId: 'job-2' })
+  const saved = prepareNormalizedStateWrite(current, next, cached)
+  assert.deepEqual(saved.next, buildShadowCandidate(next))
+  assert.equal(saved.next.tables.source_record_evidence, cached.tables.source_record_evidence)
+  assert.ok(saved.changes.find(change => change.table === 'jobs').changed.some(row => row.id === 'job-2'))
+
+  for (const changeCatalog of [
+    state => { state.roles[0].description = 'Actualizado' },
+    state => { state.employees[0].name = 'Otro técnico' },
+    state => { state.customers[0].fields = { zone: 'Norte' } },
+    state => { state.services[0].estimatedMinutes = 90 },
+    state => { state.vehicles[0].mileage = 5000 },
+    state => { state.reviews.push({ id: 'review-1', rating: 5 }) }
+  ]) {
+    const modified = structuredClone(next)
+    changeCatalog(modified)
+    const prepared = prepareNormalizedStateWrite(current, modified, cached)
+    assert.deepEqual(prepared.next, buildShadowCandidate(modified))
+    assert.ok(prepared.changes.find(change => change.table === 'source_record_evidence').changed.length)
+  }
+})
 test('unlinked real services, vehicle templates and empty slots are not silently imported as jobs', () => {
   const state = fixture()
   state.agenda.weekly['2026-08-25'].teams[0].tasks.push(

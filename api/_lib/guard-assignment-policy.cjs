@@ -34,12 +34,15 @@ function assertCrew(ids, names, date, state) {
 }
 
 function assertGuardServiceAssignment(record, previous, state = {}, today = todayInArgentina(), protectedAssignments = serviceAssignmentProtection(state)) {
-  if (!record || !isCalendarDate(record.date) || record.date < today || protectedAssignments.record(record) || vehicleControl(record)) return
+  if (!record || record.date < today || vehicleControl(record)) return
   const day = weekday(record.date)
+  if ((day !== 5 && day !== 6) || protectedAssignments.record(record)) return
+  if (day === 6) return assertCrew(record.technicianIds, record.technicians, record.date, state)
   const teams = [...(state.agenda?.weekly?.[record.date]?.teams || []), ...(state.agenda?.date === record.date ? state.agenda.teams || [] : [])]
   const team = teams.find(value => String(value.teamId) === String(record.teamId))
-  const friday = day === 5 && (isGuardTeam(record.date, team) || isGuardTeam(record.date, { teamId: record.teamId, label: record.team, memberIds: record.technicianIds, tasks: [record], guard: record.guard, guardAdvance: record.guardAdvance, advancedGuard: record.advancedGuard }))
-  if (day === 6 || friday) assertCrew(record.technicianIds, record.technicians, record.date, state)
+  if (isGuardTeam(record.date, team) || isGuardTeam(record.date, { teamId: record.teamId, label: record.team, memberIds: record.technicianIds, tasks: [record], guard: record.guard, guardAdvance: record.guardAdvance, advancedGuard: record.advancedGuard })) {
+    assertCrew(record.technicianIds, record.technicians, record.date, state)
+  }
 }
 
 function validateGuardAssignments(state, previous, today = todayInArgentina()) {

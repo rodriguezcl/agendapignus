@@ -250,17 +250,42 @@ test('normalized writes create and remove one job without changing its siblings'
   const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
   try {
     await pg.exec(fs.readFileSync(path.join(__dirname, '../supabase/proposals/normalized-shadow-v1.sql'), 'utf8'))
-    const previous = fixture(), withSecondJob = structuredClone(previous)
+    const previous = fixture(), original = previous.history[0]
+    const slot = record => ({ taskId: record.sourceTaskId, historyId: record.id, time: record.time, serviceId: record.serviceId })
+    previous.agenda.weekly[original.date].teams = [{ teamId: original.teamId, memberIds: ['e'], tasks: [slot(original)] }]
     await insertShadowCandidate(pg, buildShadowCandidate(previous))
+    const withSecondJob = structuredClone(previous)
     withSecondJob.revision = 2
-    withSecondJob.history.push({ ...structuredClone(previous.history[0]), id: 'h2', sourceTaskId: 't2', time: '11:00', scheduledTime: '11:00', detail: 'Segundo' })
-    await synchronizeNormalizedState(pg, previous, withSecondJob)
+    withSecondJob.history.push({ ...structuredClone(original), id: 'h2', sourceTaskId: 't2', time: '08:00', scheduledTime: '08:00', detail: 'Segundo' })
+    const record = withSecondJob.history[1]
+    withSecondJob.agenda.weekly[record.date].teams[0].tasks.unshift(slot(record))
+    const statements = []
+    const traced = { exec: command => pg.exec(command), query: (command, params) => {
+      statements.push(command)
+      return pg.query(command, params)
+    } }
+    await pg.exec("alter table normalized_shadow.history_evidence add constraint reject_new_history check (job_id <> 'h2')")
+    await assert.rejects(synchronizeNormalizedState(traced, previous, withSecondJob), { code: '23514' })
+    const rolledBack = await readNormalizedState(pg)
+    assert.equal(rolledBack.revision, previous.revision)
+    assert.deepEqual(rolledBack.agenda, previous.agenda)
+    assert.equal((await pg.query("select count(*)::int as n from normalized_shadow.jobs where id='h2'")).rows[0].n, 0)
+    await pg.exec('alter table normalized_shadow.history_evidence drop constraint reject_new_history')
+    statements.length = 0
+    await synchronizeNormalizedState(traced, previous, withSecondJob)
+    const serviceWrites = statements.filter(command => /insert into normalized_shadow\.(jobs|service_assignments|planned_slots|history_evidence)\b/.test(command))
+    assert.equal(serviceWrites.length, 1)
+    for (const table of ['jobs', 'service_assignments', 'planned_slots', 'history_evidence']) {
+      assert.ok(serviceWrites[0].includes(`insert into normalized_shadow.${table} `), table)
+    }
+    assert.deepEqual((await readNormalizedState(pg)).agenda, withSecondJob.agenda)
     assert.deepEqual((await readNormalizedState(pg)).history.map(item => item.id), ['h', 'h2'])
     assert.equal((await pg.query("select count(*)::int as count from normalized_shadow.service_assignments where job_id = 'h2'")).rows[0].count, 1)
 
     const removedAgain = structuredClone(withSecondJob)
     removedAgain.revision = 3
     removedAgain.history = removedAgain.history.filter(item => item.id !== 'h2')
+    removedAgain.agenda.weekly[record.date].teams[0].tasks.shift()
     await synchronizeNormalizedState(pg, withSecondJob, removedAgain)
     assert.deepEqual((await readNormalizedState(pg)).history.map(item => item.id), ['h'])
     assert.equal((await pg.query("select count(*)::int as count from normalized_shadow.jobs where id = 'h2'")).rows[0].count, 0)

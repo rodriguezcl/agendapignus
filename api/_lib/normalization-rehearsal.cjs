@@ -3,7 +3,36 @@ const path = require('node:path')
 const { analyzeNormalization, fingerprint, sortedIds } = require('./normalization-analysis.cjs')
 const { readNormalizedState } = require('./normalized-state-repository.cjs')
 
-function buildShadowCandidate(state) {
+// Only the six reference collections contribute to these tables.
+function buildReferenceTables({ roles, employees, customers, services, vehicles, reviews }) {
+  const safeEmployees = employees.map(({ password, passwordHash, ...employee }) => employee)
+  return {
+    roles: roles.map(role => ({ id: String(role.id), code: role.code || null, name: role.name || '', description: role.description || null })),
+    role_permissions: roles.flatMap(role => Object.entries(role.permissions || {}).map(([permission, allowed]) => ({ role_id: String(role.id), permission, allowed: Boolean(allowed) }))),
+    employees: employees.map(employee => ({ id: String(employee.id), role_id: String(employee.roleId), first_name: employee.firstName || null, last_name: employee.lastName || null,
+      name: employee.name || '', email: employee.email || null, phone: employee.phone || null, status: employee.status || null })),
+    customers: customers.map(customer => ({ id: String(customer.customerId), account: customer.account, name: customer.name || '', kind: customer.kind || null, customer_type: customer.type || null,
+      address: customer.address || null, street: customer.street || null, locality: customer.locality || null, province: customer.province || null, phone: customer.phone || null,
+      converted_from_account: customer.convertedFromAccount || null, subscription_ended_at: customer.subscriptionEndedAt || null, cctv_service: Boolean(customer.cctvService) })),
+    customer_import_fields: customers.flatMap(customer => Object.entries(customer.fields || {}).map(([field_name, field_value]) => ({ customer_id: String(customer.customerId), field_name, field_value: field_value == null ? null : String(field_value) }))),
+    service_types: services.map(service => ({ id: String(service.id), code: service.code, name: service.name, description: service.description || null, category: service.category || null,
+      status: service.status || null, system_managed: Boolean(service.system), estimated_minutes: Number(service.estimatedMinutes) })),
+    vehicles: vehicles.map(vehicle => ({ id: String(vehicle.id), plate: vehicle.plate, brand: vehicle.brand || null, model: vehicle.model || null, model_year: vehicle.year == null ? null : Number(vehicle.year),
+      mileage: vehicle.mileage == null ? null : Number(vehicle.mileage), mileage_updated_at: vehicle.mileageUpdatedAt || null, mileage_updated_by_id: vehicle.mileageUpdatedById == null ? null : String(vehicle.mileageUpdatedById),
+      mileage_updated_by_name: vehicle.mileageUpdatedByName || null, insurance_expires_on: vehicle.insuranceExpiresOn || null, insurance_file_name: vehicle.insuranceFileName || null,
+      insurance_uploaded_at: vehicle.insuranceUploadedAt || null, insurance_document_url: vehicle.insuranceDocumentUrl || null })),
+    source_record_evidence: [
+      ...roles.map((record, source_position) => ({ collection: 'roles', record_id: String(record.id), source_position, original_payload: structuredClone(record) })),
+      ...safeEmployees.map((record, source_position) => ({ collection: 'employees_without_credentials', record_id: String(record.id), source_position, original_payload: structuredClone(record) })),
+      ...customers.map((record, source_position) => ({ collection: 'customers', record_id: String(record.customerId), source_position, original_payload: structuredClone(record) })),
+      ...services.map((record, source_position) => ({ collection: 'service_types', record_id: String(record.id), source_position, original_payload: structuredClone(record) })),
+      ...vehicles.map((record, source_position) => ({ collection: 'vehicles', record_id: String(record.id), source_position, original_payload: structuredClone(record) })),
+      ...reviews.map((record, source_position) => ({ collection: 'reviews', record_id: String(record.id ?? source_position), source_position, original_payload: structuredClone(record) }))
+    ]
+  }
+}
+
+function buildShadowCandidate(state, referenceTables) {
   const analysis = analyzeNormalization(state)
   if (analysis.summary.bySeverity.error) {
     const error = new Error('Hay errores de integridad que impiden construir el modelo de ensayo.')
@@ -30,7 +59,6 @@ function buildShadowCandidate(state) {
   if (state.agenda?.date) plans.push({ scope: 'daily', date: state.agenda.date, plan: state.agenda })
   const occurrenceBySlot = new Map(analysis.occurrences.map(item => [item.id, item]))
   const planRows = plans.flatMap(({ scope, date, plan }) => (plan.teams || []).map((team, teamIndex) => ({ scope, date, team, teamIndex })))
-  const safeEmployees = state.employees.map(({ password, passwordHash, ...employee }) => employee)
   const slotRows = planRows.flatMap(({ scope, date, team, teamIndex }) => (team.tasks || []).map((task, taskIndex) => {
     const id = fingerprint({ scope, date, teamIndex, taskIndex }), occurrence = occurrenceBySlot.get(id)
     const hasContent = Boolean(task.serviceId || task.service || task.client)
@@ -38,21 +66,10 @@ function buildShadowCandidate(state) {
       slot_kind: occurrence?.recordId ? 'linked_job' : !hasContent ? 'availability' : task.vehicleControl ? 'unlinked_vehicle_control' : 'unlinked_service',
       scheduled_time: task.time || null, status_snapshot: task.status || null }
   }))
+  const { roles, role_permissions, employees, customers, customer_import_fields, service_types, vehicles, source_record_evidence } =
+    referenceTables || buildReferenceTables(state)
   const tables = {
-    roles: state.roles.map(role => ({ id: String(role.id), code: role.code || null, name: role.name || '', description: role.description || null })),
-    role_permissions: state.roles.flatMap(role => Object.entries(role.permissions || {}).map(([permission, allowed]) => ({ role_id: String(role.id), permission, allowed: Boolean(allowed) }))),
-    employees: state.employees.map(employee => ({ id: String(employee.id), role_id: String(employee.roleId), first_name: employee.firstName || null, last_name: employee.lastName || null,
-      name: employee.name || '', email: employee.email || null, phone: employee.phone || null, status: employee.status || null })),
-    customers: state.customers.map(customer => ({ id: String(customer.customerId), account: customer.account, name: customer.name || '', kind: customer.kind || null, customer_type: customer.type || null,
-      address: customer.address || null, street: customer.street || null, locality: customer.locality || null, province: customer.province || null, phone: customer.phone || null,
-      converted_from_account: customer.convertedFromAccount || null, subscription_ended_at: customer.subscriptionEndedAt || null, cctv_service: Boolean(customer.cctvService) })),
-    customer_import_fields: state.customers.flatMap(customer => Object.entries(customer.fields || {}).map(([field_name, field_value]) => ({ customer_id: String(customer.customerId), field_name, field_value: field_value == null ? null : String(field_value) }))),
-    service_types: state.services.map(service => ({ id: String(service.id), code: service.code, name: service.name, description: service.description || null, category: service.category || null,
-      status: service.status || null, system_managed: Boolean(service.system), estimated_minutes: Number(service.estimatedMinutes) })),
-    vehicles: state.vehicles.map(vehicle => ({ id: String(vehicle.id), plate: vehicle.plate, brand: vehicle.brand || null, model: vehicle.model || null, model_year: vehicle.year == null ? null : Number(vehicle.year),
-      mileage: vehicle.mileage == null ? null : Number(vehicle.mileage), mileage_updated_at: vehicle.mileageUpdatedAt || null, mileage_updated_by_id: vehicle.mileageUpdatedById == null ? null : String(vehicle.mileageUpdatedById),
-      mileage_updated_by_name: vehicle.mileageUpdatedByName || null, insurance_expires_on: vehicle.insuranceExpiresOn || null, insurance_file_name: vehicle.insuranceFileName || null,
-      insurance_uploaded_at: vehicle.insuranceUploadedAt || null, insurance_document_url: vehicle.insuranceDocumentUrl || null })),
+    roles, role_permissions, employees, customers, customer_import_fields, service_types, vehicles,
     daily_teams: [...groups.values()].map(group => ({ work_date: group.date, team_key: group.id, membership_resolved: group.alternatives.size === 1 })),
     team_members: [...groups.values()].flatMap(group => group.alternatives.size === 1 ? [...group.alternatives.values()][0].map(id => ({ work_date: group.date, team_key: group.id, employee_id: id })) : []),
     jobs: jobs.map(job => ({ id: String(job.id), source_task_id: job.sourceTaskId ? String(job.sourceTaskId) : null, legacy_task_id: job.taskId ? String(job.taskId) : null, legacy_history_id: job.historyId ? String(job.historyId) : null,
@@ -98,14 +115,7 @@ function buildShadowCandidate(state) {
     holiday_overrides: Object.entries(holidays).filter(([date]) => /^\d{4}-\d{2}-\d{2}$/.test(date)).map(([date, item]) => ({ work_date: date, status: item.status,
       holiday_name: item.holidayName || null, decided_at: item.decidedAt || null, decided_by_id: item.decidedById == null ? null : String(item.decidedById), decided_by_name: item.decidedByName || null })),
     app_preferences: [{ preference_key: 'theme', preference_value: state.preferences?.theme || 'light' }],
-    source_record_evidence: [
-      ...state.roles.map((record, source_position) => ({ collection: 'roles', record_id: String(record.id), source_position, original_payload: structuredClone(record) })),
-      ...safeEmployees.map((record, source_position) => ({ collection: 'employees_without_credentials', record_id: String(record.id), source_position, original_payload: structuredClone(record) })),
-      ...state.customers.map((record, source_position) => ({ collection: 'customers', record_id: String(record.customerId), source_position, original_payload: structuredClone(record) })),
-      ...state.services.map((record, source_position) => ({ collection: 'service_types', record_id: String(record.id), source_position, original_payload: structuredClone(record) })),
-      ...state.vehicles.map((record, source_position) => ({ collection: 'vehicles', record_id: String(record.id), source_position, original_payload: structuredClone(record) })),
-      ...state.reviews.map((record, source_position) => ({ collection: 'reviews', record_id: String(record.id ?? source_position), source_position, original_payload: structuredClone(record) }))
-    ],
+    source_record_evidence,
     history_evidence: jobs.map((job, source_position) => ({ job_id: String(job.id), source_position, original_payload: structuredClone(job) })),
     agenda_plan_evidence: plans.map(({ scope, date, plan }) => {
       if (scope === 'weekly') return { scope, work_date: date, original_payload: structuredClone(plan) }

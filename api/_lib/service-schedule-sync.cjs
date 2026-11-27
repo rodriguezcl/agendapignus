@@ -14,8 +14,7 @@ function tasksByDay(agenda) {
 
 // Synchronize only explicitly changed schedules. Unrelated saves must not choose
 // between conflicting legacy copies. Conflicting edits fail atomically.
-function synchronizeServiceSchedules(state, previous = {}) {
-  const next = structuredClone(state)
+function applyServiceSchedules(next, previous = {}) {
   const previousById = new Map()
   for (const item of previous.history || []) {
     const id = String(item.id)
@@ -43,4 +42,7 @@ function synchronizeServiceSchedules(state, previous = {}) {
   }
   return next
 }
-module.exports = { synchronizeServiceSchedules }
+function synchronizeServiceSchedules(state, previous) {
+  return applyServiceSchedules(structuredClone(state), previous)
+}
+module.exports = { applyServiceSchedules, synchronizeServiceSchedules }
