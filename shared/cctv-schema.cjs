@@ -6,11 +6,17 @@ const DRAWING_TYPES = Object.freeze({ camera: 'Cámara', recorder: 'Grabador', a
 const DRAWING_SEGMENTS = Object.freeze(['line', 'wall', 'door', 'window', 'cable', 'area'])
 const EQUIPMENT_SYMBOLS = ['camera', 'recorder', 'alarm', 'barrier', 'fence', 'equipment']
 const CCTV_SYMBOL_KINDS = Object.freeze({ camera: ['analog_camera', 'ip_camera', 'mobile_camera'], recorder: ['dvr', 'xvr', 'nvr'] })
-const EQUIPMENT_CATEGORIES = Object.freeze({ cctv: 'Cámaras / CCTV', alarm: 'Alarma', barrier: 'Barrera infrarroja', fence: 'Cerco eléctrico', other: 'Otro equipo' })
+const EQUIPMENT_CATEGORIES = Object.freeze({ cctv: 'Cámaras / CCTV', alarm: 'Alarma', barrier: 'Barrera infrarroja', fence: 'Cerco eléctrico', supplies: 'Insumos de instalación', other: 'Otro equipo' })
 const EQUIPMENT_KINDS = Object.freeze({
   cctv: { dvr: 'Grabador DVR', xvr: 'Grabador XVR', nvr: 'Grabador NVR', analog_camera: 'Cámara analógica', ip_camera: 'Cámara IP', mobile_camera: 'Cámara móvil / vehicular', switch: 'Switch', other: 'Otro equipo de CCTV' },
   alarm: { panel: 'Central / placa', communicator: 'Comunicador', sensor: 'Sensor / detector', siren: 'Sirena', keypad: 'Teclado / lector', remote: 'Control remoto / pulsador', receiver: 'Receptor / transceptor', repeater: 'Repetidor', expander: 'Expansor / módulo de integración', relay: 'Relé / módulo de salida', power: 'Fuente / alimentación', kit: 'Kit de alarma', accessory: 'Accesorio de alarma', other: 'Otro equipo de alarma' },
-  barrier: { infrared: 'Barrera infrarroja' }, fence: { energizer: 'Electrificador / energizador', fence: 'Tendido de cerco', accessory: 'Accesorio de cerco' }, other: { other: 'Otro equipo' },
+  barrier: { infrared: 'Barrera infrarroja' }, fence: { energizer: 'Electrificador / energizador', fence: 'Tendido de cerco', accessory: 'Accesorio de cerco' },
+  supplies: {
+    connector: 'Conector', power_supply: 'Fuente de alimentación', power_splitter: 'Distribuidor de alimentación', electrical: 'Accesorio eléctrico',
+    box: 'Caja estanca', fixing: 'Fijación', tool: 'Herramienta', tape: 'Cinta aisladora', battery_cell: 'Pila / batería', cable: 'Cable',
+    adhesive: 'Adhesivo', storage: 'Almacenamiento', mount: 'Soporte / protección de cámara', balun: 'Balún de video',
+  },
+  other: { other: 'Otro equipo' },
 })
 const FIELD_DEFINITIONS = Object.freeze({
   channels: { label: 'Canales', type: 'number', min: 1, max: 1024, integer: true },

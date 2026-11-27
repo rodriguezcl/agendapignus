@@ -1,0 +1,353 @@
+[
+  {
+    "category": "supplies",
+    "kind": "connector",
+    "brand": "I-Rapttor",
+    "model": "IR-RJ45 PLUG",
+    "description": "Conector RJ45 · Cat 5e, bolsa de 100 unidades",
+    "source": "https://irseguridad.com.ar/producto/plug-rj45-cat-5e-bolsa-x-100-unidades-i-rapttor-calidad",
+    "image": "https://irseguridad.com.ar/img/products/1829/d70RPkT2tJqE1miaGswzFjrSUevVD45IpCBfXZoQ.webp"
+  },
+  {
+    "category": "supplies",
+    "kind": "connector",
+    "brand": "Genérica",
+    "model": "JACK HEMBRA BORNERA",
+    "description": "Conector de alimentación · DC hembra con bornera a tornillo",
+    "source": "https://irseguridad.com.ar/producto/jack-plug-conector-para-alimentacion-hembra",
+    "image": "https://irseguridad.com.ar/img/products/1MtcYjuyYGnoCaCqLaHvAOLXS7c9cmhRMc6dYycF.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "connector",
+    "brand": "Genérica",
+    "model": "JACK MACHO BORNERA",
+    "description": "Conector de alimentación · DC macho con bornera bipolar",
+    "source": "https://irseguridad.com.ar/producto/jack-plug-conector-para-alimentacion-macho",
+    "image": "https://irseguridad.com.ar/img/products/0ULUZ2Tc9ZcBv6DoEyn5qQfvNt5wquT7AwtnCLRs.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "balun",
+    "brand": "I-Rapttor",
+    "model": "IR-BALUN 2",
+    "description": "Balún de video · Conexión a presión, 1080p",
+    "source": "https://irseguridad.com.ar/producto/balun-a-presion-1080-premium",
+    "image": "https://irseguridad.com.ar/img/products/2639/GhDz4VyXcC3Q0WKNBoefFYx1LTEql5gHM2PRIOnp.webp"
+  },
+  {
+    "category": "supplies",
+    "kind": "power_supply",
+    "brand": "Genérica",
+    "model": "F2A",
+    "description": "Fuente de alimentación · 12 V DC, 2 A, 24 W",
+    "source": "https://irseguridad.com.ar/producto/fuente-de-alimentacion-12v-2a",
+    "image": "https://irseguridad.com.ar/img/products/50/53nftQLIACFSXYUNwD078ky246roKPR1zqulGjap.webp"
+  },
+  {
+    "category": "supplies",
+    "kind": "power_supply",
+    "brand": "Nitto / Liteon",
+    "model": "F4A NITTO / LITEON",
+    "description": "Fuente de alimentación · 12 V DC, 4 A",
+    "source": "https://irseguridad.com.ar/producto/fuente-de-alimentacion-12-v4-amper",
+    "image": "https://irseguridad.com.ar/img/products/4QIke1lNaTDTtm13E5RWicChrTBKn8p4WpngrJKO.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "power_supply",
+    "brand": "Pronext",
+    "model": "F5A MICROPERFORADA",
+    "description": "Fuente de alimentación · Microperforada, 12 V DC, 5 A",
+    "source": "https://irseguridad.com.ar/producto/fuente-12v-5-amper-microperforada-pronext",
+    "image": "https://irseguridad.com.ar/img/products/cAB8q2fdOlmVWySxtzgh792erjyBkBpEOQhPRb5z.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "power_splitter",
+    "brand": "Genérica",
+    "model": "SPLITER 1X4",
+    "description": "Distribuidor de alimentación · 1 entrada y 4 salidas para cámaras",
+    "source": "https://irseguridad.com.ar/producto/spliter-de-alimentacion-1-x-4-pulpito",
+    "image": "https://irseguridad.com.ar/img/products/VgV4T0NeF24xJrJTQL7da2Gzxj6LwjhPeA2mH8ro.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "power_splitter",
+    "brand": "Genérica",
+    "model": "SPLITER 1X8",
+    "description": "Distribuidor de alimentación · 1 entrada y 8 salidas para cámaras",
+    "source": "https://irseguridad.com.ar/producto/spliter-de-alimentacion-1-x-8-pulpito",
+    "image": "https://irseguridad.com.ar/img/products/TBL2NPAHOekCHLSttvlWk5RS5AgzNjUm3ofQrqEL.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "electrical",
+    "brand": "Genérica",
+    "model": "120 TOMA HEMBRA",
+    "description": "Ficha eléctrica · Bipolar hembra, 220 V",
+    "source": "https://irseguridad.com.ar/producto/toma-hembra",
+    "image": "https://irseguridad.com.ar/img/products/M1PTB5dMoIrtA7CyNMSolORqN4ByAM0ASSo8fqsc.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "electrical",
+    "brand": "TAAD",
+    "model": "113 TOMA",
+    "description": "Ficha eléctrica · Bipolar macho, 220 V",
+    "source": "https://irseguridad.com.ar/producto/toma-macho-220-v-taad",
+    "image": "https://irseguridad.com.ar/img/products/Q3qaltoLDhmcxJN8mSVVLW06kRSCIT3Eta8xLY7S.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "box",
+    "brand": "TAAD",
+    "model": "CP3100",
+    "description": "Caja estanca · PVC, 115 × 115 × 50 mm, IP65",
+    "source": "https://irseguridad.com.ar/producto/caja-estanco-11x11x5-mm-alto-ancho-prof-115x115x50-mm-taad",
+    "image": "https://irseguridad.com.ar/img/products/PQ3Iow8WuqRL8yvKZCY7Swyf6Ct0sOzmUFsbomk0.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "fixing",
+    "brand": "Tolsen",
+    "model": "50106032 TORNILLO MEDIANO N6",
+    "description": "Tornillo · N.º 6 mediano, punta aguja, negro, bolsa de 100 unidades",
+    "source": "https://irseguridad.com.ar/producto/tornillo-n6-mediano-punta-aguja-negro-x-100-unidades",
+    "image": "https://irseguridad.com.ar/img/products/Ml2Al1p8Ss10tzxD5crBeKqIpxpMH9JA3XIn1uiR.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "fixing",
+    "brand": "Tolsen",
+    "model": "50108032",
+    "description": "Tornillo · N.º 8 mediano, punta aguja, negro, bolsa de 100 unidades",
+    "source": "https://irseguridad.com.ar/producto/tornillo-n8-mediano-punta-aguja-negro-x-100-unidades",
+    "image": "https://irseguridad.com.ar/img/products/1631/cA4bKH6adhF0L1owm93jgkq8GNBUTezCpsxWXilv.webp"
+  },
+  {
+    "category": "supplies",
+    "kind": "fixing",
+    "brand": "Fijaciones PY",
+    "model": "PY 3320",
+    "description": "Tarugo · N.º 6 con tope, bolsa de 100 unidades",
+    "source": "https://irseguridad.com.ar/producto/tarugo-n06-con-tope-x-100-unidades",
+    "image": "https://irseguridad.com.ar/img/products/KkTT6GKH8odiukuTShnMlER5Im0hB8D8KcnE3s9d.png"
+  },
+  {
+    "category": "supplies",
+    "kind": "fixing",
+    "brand": "Fijaciones PY",
+    "model": "PY 3321",
+    "description": "Tarugo · N.º 8 con tope, bolsa de 100 unidades",
+    "source": "https://irseguridad.com.ar/producto/tarugo-n08-con-tope-x-100-unidades",
+    "image": "https://irseguridad.com.ar/img/products/Cc9POg3Y4gYsYjqFb5yzGwCr0LgAeuKaIljqfkdq.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "tool",
+    "brand": "Irwin",
+    "model": "IW884",
+    "description": "Mecha para pared · 6 mm de diámetro, 90 mm de largo",
+    "source": "https://irseguridad.com.ar/producto/mecha-irwin-comun-pared-n6-9cm",
+    "image": "https://irseguridad.com.ar/img/products/2497/DWI3hGeKqbjBoHyPz6nFXMi5Auwr9slUpCtZ2f18.webp"
+  },
+  {
+    "category": "supplies",
+    "kind": "tool",
+    "brand": "Irwin",
+    "model": "IW887",
+    "description": "Mecha para pared · 8 mm de diámetro, 120 mm de largo",
+    "source": "https://irseguridad.com.ar/producto/mecha-corta-8-x-120-mm-irwin",
+    "image": "https://irseguridad.com.ar/img/products/1542/EJAkOvMyB2NRn0jxi5V6Wh8PIpbqmD7ozt3rsU4e.webp"
+  },
+  {
+    "category": "supplies",
+    "kind": "tool",
+    "brand": "Tolsen",
+    "model": "TOL75860",
+    "description": "Juego de sierras copa · 6 copas bimetálicas de 22 a 64 mm y 2 mandriles",
+    "source": "https://irseguridad.com.ar/producto/juego-de-sierras-copa-de-corazon-bimetalicas",
+    "image": "https://irseguridad.com.ar/img/products/2195/jSNVzFchQAy4HwIMfRE0LJKP6ngor7WevUxuZbTs.webp"
+  },
+  {
+    "category": "supplies",
+    "kind": "tool",
+    "brand": "Tolsen",
+    "model": "TOL76132",
+    "description": "Disco de corte · Recto para metal, 115 × 1 × 22,2 mm",
+    "source": "https://irseguridad.com.ar/producto/disco-de-corte-recto-115-x-1-0-x-22-2-mm-tolsen",
+    "image": "https://irseguridad.com.ar/img/products/Bu6L5EvLyoVxFUkNVbTOU3ItOlQop9bawN5mofmF.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "tape",
+    "brand": "Tolsen",
+    "model": "TOL38023",
+    "description": "Cinta aisladora · PVC negro, rollo de 9 m",
+    "source": "https://irseguridad.com.ar/producto/cinta-aisladora-x-9-mts-color-negro-tolsen-alta-calidad",
+    "image": "https://irseguridad.com.ar/img/products/1916/ILSsDPWERG705QCBFzH8lixJ9dce4UmAOjganMKk.webp"
+  },
+  {
+    "category": "supplies",
+    "kind": "tool",
+    "brand": "Tolsen",
+    "model": "TOL20313",
+    "description": "Puntas Phillips · PH2, 50 mm, juego de 2 unidades",
+    "source": "https://irseguridad.com.ar/producto/puntas-philips-2-unidades-ph2-x-50mm-tolsen",
+    "image": "https://irseguridad.com.ar/img/products/QtZf1Xhlq8DjeA2Rid4HVOk4e6HlaIb4eX2uWQMA.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "storage",
+    "brand": "IMOU",
+    "model": "ST2-64-S1",
+    "description": "Tarjeta de memoria microSD · 64 GB · clase 10 U3 · lectura de hasta 95 MB/s",
+    "source": "https://irseguridad.com.ar/producto/tarjeta-memoria-micro-sd-64gb-imou",
+    "image": "https://irseguridad.com.ar/img/products/wJIZOX0yxZHYQqdck0GzOtRiTkRBvmpuhRkLh0KR.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "mount",
+    "brand": "Genérica",
+    "model": "JL 1515 NEGRA",
+    "description": "Jaula protectora para cámara · Negra · serie JL 1515",
+    "source": "https://irseguridad.com.ar/producto/protector-de-camara-tipo-jaula-de-150-x-150-x-150-cm",
+    "image": "https://irseguridad.com.ar/img/products/FGRsQHcslW2o5KgOu063bgxMFEmg0A1jO0hJWxkM.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "mount",
+    "brand": "IR Seguridad",
+    "model": "JAULA 20X20 NEGRA",
+    "description": "Jaula protectora para cámara · Negra · modelo 20 × 20",
+    "source": "https://irseguridad.com.ar/producto/jaula-para-camaras-de-20x20",
+    "image": "https://irseguridad.com.ar/img/products/2075/WaKMResfNIytLDpXFPG9h4lS0zZnobYT3i8kOr2Q.webp"
+  },
+  {
+    "category": "alarm",
+    "kind": "sensor",
+    "brand": "Takex",
+    "model": "TX-114SR",
+    "description": "Detector PIR inalámbrico · Exterior · cabezal rotativo · 90° · alcance de 12 m · sin transmisor",
+    "source": "https://irseguridad.com.ar/producto/pir-inalambrico-exterior-900-de-1-cabezal-takex",
+    "image": "https://irseguridad.com.ar/img/products/0CUS5xbBkusK1pz1cBKnnK0uFpVbkJqwZVksFKDp.jpg"
+  },
+  {
+    "category": "alarm",
+    "kind": "sensor",
+    "brand": "Takex",
+    "model": "TX-114FR",
+    "description": "Detector PIR inalámbrico · Exterior · dos cabezales · 180° · sin transmisor",
+    "source": "https://irseguridad.com.ar/producto/pir-inalambrico-exterior-180o-de-2-cabezales-takex",
+    "image": "https://irseguridad.com.ar/img/products/zwEgU5FDy1XXRUwwkA34H4yYkTzsC8t3eD9S8aZB.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "mount",
+    "brand": "IR Seguridad",
+    "model": "BRAZO RECTO 60 CM",
+    "description": "Soporte de cámara · Brazo recto metálico · largo de 60 cm",
+    "source": "https://irseguridad.com.ar/producto/soporte-para-cctv-tipo-brazo-recto-de-60-cm",
+    "image": "https://irseguridad.com.ar/img/products/1806/f3tDOdXvomj82Cys9NShPu10ZMA4TeKQlaHig7kI.webp"
+  },
+  {
+    "category": "supplies",
+    "kind": "battery_cell",
+    "brand": "Energizer",
+    "model": "BATERIA 9V ENERGIZER /PHILCO",
+    "description": "Batería alcalina · 9 V · el proveedor también entrega Philco según disponibilidad",
+    "source": "https://irseguridad.com.ar/producto/bateria-9v-energizer-philco",
+    "image": "https://irseguridad.com.ar/img/products/zm5gdCFS6hzZMrDeLk9AYki6r3gw2x5HqbW5Byms.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "battery_cell",
+    "brand": "Energizer",
+    "model": "CR2 LITIO",
+    "description": "Pila de litio · CR2 · 3 V · 1 unidad",
+    "source": "https://irseguridad.com.ar/producto/pila-cr2-energizer-litio",
+    "image": "https://irseguridad.com.ar/img/products/LBBpo4dZiHuje7acQVKK0LO41FIsEq9FuT8wWS4e.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "adhesive",
+    "brand": "Genérica",
+    "model": "SILICONA X 1KG PREMIUN",
+    "description": "Barras de silicona · Blancas · paquete de 1 kg",
+    "source": "https://irseguridad.com.ar/producto/barra-de-silicona-color-blanca-x-1-kg",
+    "image": "https://irseguridad.com.ar/img/products/8shMHpKK0eQtOF92ljFu5lmOykEnOiuTWFZGGGwi.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "fixing",
+    "brand": "Tolsen",
+    "model": "TOR AUTOP N6 M",
+    "description": "Tornillo autoperforante · N.º 6 · punta mecha · cabeza fresada · 1¼″ · 100 unidades",
+    "source": "https://irseguridad.com.ar/producto/tornillo-n6-mediano-autoperforante-fresado-x-100-unidades",
+    "image": "https://irseguridad.com.ar/img/products/kJ3kHwU7ZqRwu4QJAX3Wnl4E9SO6RmPVl7Ij0Fz3.png"
+  },
+  {
+    "category": "supplies",
+    "kind": "cable",
+    "brand": "TAAD",
+    "model": "CP2 X 0.75 X 100MTS",
+    "description": "Cable paralelo bipolar · 2 × 0,75 mm² · rollo de 100 m",
+    "source": "https://irseguridad.com.ar/producto/cable-paralelo-bipolar-2x-0-75-x-100-mts-taad",
+    "image": "https://irseguridad.com.ar/img/products/1japNnzqLRyiFV1O8TxoIO90IOuRHxlQnO3UhmA2.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "cable",
+    "brand": "Signotel",
+    "model": "CABLE PORTERO 2 PARES X 200 MT",
+    "description": "Cable de portero · 2 pares · cobre · rollo de 200 m",
+    "source": "https://irseguridad.com.ar/producto/cable-portero-2-pares-x-200-mt",
+    "image": "https://irseguridad.com.ar/img/products/AtAAfnCsINEOTfNq95koSkOSnnCJgG2LnO5uIUfW.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "cable",
+    "brand": "Signotel",
+    "model": "CABLE PORTERO 4 PARES X 200 MT",
+    "description": "Cable de portero · 4 pares · cobre · rollo de 200 m",
+    "source": "https://irseguridad.com.ar/producto/cable-portero-4-pares-x-200-mt",
+    "image": "https://irseguridad.com.ar/img/products/QPvEH7cP4sbS3Deew6dgt0CajKG22A8nT1OsPb1N.jpg"
+  },
+  {
+    "category": "supplies",
+    "kind": "cable",
+    "brand": "I-Rapttor",
+    "model": "UTP 305-EXTERIOR-IR",
+    "description": "Cable de red UTP · Cat 5e · exterior e interior · 100 % cobre · rollo de 305 m",
+    "source": "https://irseguridad.com.ar/producto/cable-utp-cat-5e-exterior-interior-100-cobre-x-305-mts-i-rapttor",
+    "image": "https://irseguridad.com.ar/img/products/471/xS3oXumk8NipUsc5O0RM7wDBPIQnHF2A6TZdlKgy.webp"
+  },
+  {
+    "category": "supplies",
+    "kind": "cable",
+    "brand": "I-Rapttor",
+    "model": "UTP 305-INTERIOR-IR",
+    "description": "Cable de red UTP · Interior · vaina blanca · 100 % cobre · rollo de 305 m",
+    "source": "https://irseguridad.com.ar/producto/cable-utp-100-cobre-vaina-blanca-x-305mts-i-rapttor",
+    "image": "https://irseguridad.com.ar/img/products/2254/Dk3d2lVSEXpKWbsTm0NctLgi6AOUFuhejHqafGQy.webp"
+  },
+  {
+    "category": "supplies",
+    "kind": "fixing",
+    "brand": "Pronext",
+    "model": "PRE 300X4.8",
+    "description": "Precintos de sujeción · Negros · 300 × 4,8 mm · bolsa de 100 unidades",
+    "source": "https://irseguridad.com.ar/producto/precintos-negro-300-x-4-8-mm",
+    "image": "https://irseguridad.com.ar/img/products/3gdAfeP7dvcKMQyDctz03pLHPRh2OqGSyRjKAPZA.png"
+  },
+  {
+    "category": "supplies",
+    "kind": "electrical",
+    "brand": "Genérica",
+    "model": "511K",
+    "description": "Zapatilla eléctrica tripolar · Serie industrial · 5 tomas",
+    "source": "https://irseguridad.com.ar/producto/zapatilla-tripolar-serie-industrial-de-5-tomas",
+    "image": "https://irseguridad.com.ar/img/products/GFCe8TGdUCf8FzlUz50cWcyX2GHKPxaHO6taRtDO.jpg"
+  }
+]

@@ -6,6 +6,7 @@ const perimeterModels = require('../src/features/cctv/domain/ir-perimeter-models
 const perimeterImages = require('../src/features/cctv/domain/perimeter-product-images.json')
 const irCameras = require('../src/features/cctv/domain/ir-camera-models.json')
 const irRecorders = require('../src/features/cctv/domain/ir-recorder-models.json')
+const irSupplies = require('../src/features/cctv/domain/ir-installation-supplies.json')
 const dahuaModelAliases = require('../src/features/cctv/domain/ir-dahua-model-aliases.json')
 const characteristics = require('../src/features/cctv/domain/product-characteristics.json')
 
@@ -75,17 +76,37 @@ for (const equipment of irEquipment) {
   addBase('cctv', equipment.kind, equipment.brand, equipment.model, equipment, equipment.description)
   irCctvIds.add(id)
 }
+const supplyIdsBySource = new Map()
+const supplyIdsByBrandSku = new Map()
+const supplyBrandSku = ({ brand, model }) => JSON.stringify([normalizedBrand(brand), normalized(model)])
+const irProductPath = source => /^https?:\/\/(?:www\.)?irseguridad\.com\.ar(\/producto\/[^/?#]+)\/?(?:[?#].*)?$/i.exec(source)?.[1]
+for (const supply of irSupplies) {
+  const { category, kind, brand, model, description } = supply
+  const id = createBaseProductId(category, brand, model)
+  if (!baseProductsById.has(id)) addBase(category, kind, brand, model, supply, description)
+  const sourcePath = irProductPath(supply.source)
+  if (sourcePath) supplyIdsBySource.set(sourcePath, id)
+  supplyIdsByBrandSku.set(supplyBrandSku(supply), id)
+}
 const baseProducts = Array.from(baseProductsById.values())
 function mergeCatalog(overrides = []) {
   if (!overrides.length) return baseProducts
   const combined = new Map(baseProductsById)
+  const replacedSupplies = new Set()
   // An administrator may already have added (or retired) this supplier model
   // under a custom ID before it became part of the bundled catalog.
   for (const product of overrides) {
     const supplierId = createBaseProductId(product.category, product.brand, product.model)
     if (irCctvIds.has(supplierId) && supplierId !== product.id) combined.delete(supplierId)
+    // Supplies could previously be filed under CCTV, alarms or other equipment.
+    // Match the supplier's product page, or its exact SKU together with the brand.
+    if (product.id.startsWith('custom:')) {
+      const supplyId = supplyIdsBySource.get(irProductPath(product.source)) || supplyIdsByBrandSku.get(supplyBrandSku(product))
+      if (supplyId) replacedSupplies.add(supplyId)
+    }
   }
   for (const product of overrides) combined.set(product.id, product)
+  for (const id of replacedSupplies) combined.delete(id)
   return Array.from(combined.values())
 }
 
