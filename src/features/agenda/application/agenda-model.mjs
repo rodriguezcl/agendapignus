@@ -240,22 +240,49 @@ export const taskIdentityAliases = task => {
   const time = normalizedTaskValue(task?.time || task?.scheduledTime)
   if (!taskHasContent(task)) return [`blank:${time}`]
   return [
-    task?.historyId && `history:${task.historyId}`,
-    task?.sourceHistoryId && `history:${task.sourceHistoryId}`,
-    task?.taskId && `task:${task.taskId}`,
-    task?.sourceTaskId && `task:${task.sourceTaskId}`,
+    ...directTaskAliases(task),
     taskOccurrenceIdentity(task)
   ].filter(Boolean)
 }
 
+// One index per loaded history. Keep the first record in history order even
+// when different aliases on a service point to different historical records.
+export function createTaskHistoryIndex(records) {
+  const aliases = new Map()
+  const occurrences = new Map()
+  records.forEach((record, index) => {
+    const id = record?.id && `history:${record.id}`
+    if (id && !aliases.has(id)) aliases.set(id, index)
+    if (!taskHasContent(record)) return
+    for (const alias of taskIdentityAliases(record)) {
+      if (alias.startsWith('occurrence:')) {
+        const key = `${record.date || ''}/${alias}`
+        if (!occurrences.has(key)) occurrences.set(key, record)
+      } else if (!aliases.has(alias)) aliases.set(alias, index)
+    }
+  })
+  return {
+    recordForTask(task, date) {
+      let earliest = Infinity
+      for (const alias of directTaskAliases(task)) earliest = Math.min(earliest, aliases.get(alias) ?? Infinity)
+      if (earliest !== Infinity) return records[earliest]
+      const occurrence = taskOccurrenceIdentity(task)
+      return occurrences.get(`${date || ''}/${occurrence}`) || null
+    }
+  }
+}
+
+const directTaskAliases = task => [
+  task?.historyId && `history:${task.historyId}`,
+  task?.sourceHistoryId && `history:${task.sourceHistoryId}`,
+  task?.taskId && `task:${task.taskId}`,
+  task?.sourceTaskId && `task:${task.sourceTaskId}`
+].filter(Boolean)
+
 export const historyRecordForTask = (task, date, history = globalThis.__pignusHistory || []) => {
   if (!taskHasContent(task)) return null
-  const directAliases = new Set([
-    task?.historyId && `history:${task.historyId}`,
-    task?.sourceHistoryId && `history:${task.sourceHistoryId}`,
-    task?.taskId && `task:${task.taskId}`,
-    task?.sourceTaskId && `task:${task.sourceTaskId}`
-  ].filter(Boolean))
+  if (history.recordForTask) return history.recordForTask(task, date)
+  const directAliases = new Set(directTaskAliases(task))
   const directMatch = history.find(record => (
     (task?.historyId && String(record?.id || '') === String(task.historyId)) ||
     (task?.sourceHistoryId && String(record?.id || '') === String(task.sourceHistoryId)) ||

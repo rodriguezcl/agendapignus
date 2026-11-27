@@ -7,54 +7,75 @@ const isMonthlyMeeting = (task, serviceMap) => normalizedName(task.service || se
 const minimumReservation = () => 15
 const allowedMeetingControlOverlap = (first, second, serviceMap) => independentVehicleControls(first, second) || (isMonthlyMeeting(first, serviceMap) && second.vehicleControl) || (first.vehicleControl && isMonthlyMeeting(second, serviceMap))
 
-const argentinaToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+const argentinaToday = (now = new Date()) => now.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
 const nextArgentinaQuarterMinute = (now = new Date()) => {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(now).filter(part => part.type !== 'literal').map(part => [part.type, part.value]))
   const elapsed = Number(parts.hour) * 60 + Number(parts.minute) + (Number(parts.second) > 0 ? 1 : 0)
   return Math.ceil(elapsed / 15) * 15
 }
 
-const historyRecordForAgendaTask = (task, date, history = []) => {
+function indexScheduleHistory(records) {
+  const byId = new Map()
+  const byTask = new Map()
+  const byDate = new Map()
+  const add = (map, key, value) => {
+    const values = map.get(key)
+    if (values) values.push(value)
+    else map.set(key, [value])
+  }
+  records.forEach((record, index) => {
+    if (record?.id) add(byId, String(record.id), index)
+    if (record?.taskId) add(byTask, String(record.taskId), index)
+    if (record?.sourceTaskId && record.sourceTaskId !== record.taskId) add(byTask, String(record.sourceTaskId), index)
+    add(byDate, String(record?.date || ''), record)
+  })
+  return { records, byId, byTask, byDate }
+}
+
+const historyRecordForAgendaTask = (task, date, history = [], accept = () => true) => {
   const taskHistoryIds = [task?.historyId, task?.sourceHistoryId].filter(Boolean).map(String)
   const taskSourceIds = [task?.taskId, task?.sourceTaskId].filter(Boolean).map(String)
-  const directMatch = (history || []).find(record => (
-    taskHistoryIds.includes(String(record?.id || '')) ||
-    [record?.taskId, record?.sourceTaskId].filter(Boolean).map(String).some(id => taskSourceIds.includes(id))
-  ))
-  if (directMatch) return directMatch
+  let dateRecords
+  if (history?.byId) {
+    // Older cards can match several history aliases. The first matching record
+    // in storage order has precedence, even when it matches via a task ID.
+    let first = Infinity
+    const consider = indices => {
+      for (const index of indices || []) {
+        if (index >= first) break
+        if (accept(history.records[index])) {
+          first = index
+          break
+        }
+      }
+    }
+    for (const id of taskHistoryIds) consider(history.byId.get(id))
+    for (const id of taskSourceIds) consider(history.byTask.get(id))
+    if (first !== Infinity) return history.records[first]
+    dateRecords = history.byDate.get(String(date || '')) || []
+  } else {
+    dateRecords = history || []
+    const directMatch = dateRecords.find(record => (
+      taskHistoryIds.includes(String(record?.id || '')) ||
+      [record?.taskId, record?.sourceTaskId].filter(Boolean).some(id => taskSourceIds.includes(String(id)))
+    ) && accept(record))
+    if (directMatch) return directMatch
+  }
   const customer = normalizedName(task?.customerId || task?.clientAccount || task?.account || task?.client)
   const service = normalizedName(task?.serviceId || task?.service)
   const time = normalizedName(task?.time || task?.scheduledTime)
   if (!customer || !service || !time) return null
-  return (history || []).find(record => (
+  return dateRecords.find(record => (
     String(record?.date || '') === String(date || '') &&
     normalizedName(record?.customerId || record?.clientAccount || record?.account || record?.client) === customer &&
     normalizedName(record?.serviceId || record?.service) === service &&
-    normalizedName(record?.time || record?.scheduledTime) === time
+    normalizedName(record?.time || record?.scheduledTime) === time && accept(record)
   )) || null
 }
 
-const agendaTaskIsResolvedForPlanning = (task, date, history = [], today = argentinaToday()) => {
+const agendaTaskIsResolvedForPlanning = (task, date, history = []) => {
   const resolvedStatus = record => ['Completado', 'Avance registrado'].includes(record?.status) || ['Completado', 'Avance registrado'].includes(record?.technicalStatus) || serviceSlotReleased(record, date)
-  if (resolvedStatus(task)) return true
-  const resolved = (history || []).filter(resolvedStatus)
-  const taskHistoryIds = [task?.historyId, task?.sourceHistoryId].filter(Boolean).map(String)
-  const taskSourceIds = [task?.taskId, task?.sourceTaskId].filter(Boolean).map(String)
-  const directMatch = resolved.some(record => (
-    taskHistoryIds.includes(String(record?.id || '')) ||
-    [record?.taskId, record?.sourceTaskId].filter(Boolean).map(String).some(id => taskSourceIds.includes(id))
-  ))
-  if (directMatch) return true
-  const customer = normalizedName(task?.customerId || task?.clientAccount || task?.account || task?.client)
-  const service = normalizedName(task?.serviceId || task?.service)
-  const time = normalizedName(task?.time || task?.scheduledTime)
-  if (!customer || !service || !time) return false
-  return resolved.some(record => (
-    String(record?.date || '') === String(date || '') &&
-    normalizedName(record?.customerId || record?.clientAccount || record?.account || record?.client) === customer &&
-    normalizedName(record?.serviceId || record?.service) === service &&
-    normalizedName(record?.time || record?.scheduledTime) === time
-  ))
+  return resolvedStatus(task) || Boolean(historyRecordForAgendaTask(task, date, history, resolvedStatus))
 }
 
 const agendaTaskForScheduleOccupancy = (task, date, history = [], today = argentinaToday()) => {
@@ -86,15 +107,15 @@ const rawEstimatedMinutesFor = (task, serviceMap) => {
   return task?.estimatedMinutes == null ? service?.estimatedMinutes : task.estimatedMinutes
 }
 
-const scheduleSignature = (teams, serviceMap, date, history) => JSON.stringify((teams || []).map(team => ({
+const teamSchedule = (team, serviceMap, date, history, today) => ({
   teamId: String(team.teamId || ''),
   memberIds: team.memberIds || [], members: team.members || [],
-  tasks: (team.tasks || []).map((task, taskIndex) => ({ task: agendaTaskForScheduleOccupancy(task, date, history), taskIndex })).filter(({ task }) => task && (task.serviceId || task.service)).map(({ task, taskIndex }) => ({
+  tasks: (team.tasks || []).map((task, taskIndex) => ({ task: agendaTaskForScheduleOccupancy(task, date, history, today), taskIndex })).filter(({ task }) => task && (task.serviceId || task.service)).map(({ task, taskIndex }) => ({
     id: String(task.taskId || task.historyId || task.id || taskIndex), time: String(task.time || task.scheduledTime || ''),
     serviceId: String(task.serviceId || task.service || ''), estimatedMinutes: String(rawEstimatedMinutesFor(task, serviceMap) ?? ''),
     status: String(task.status || task.technicalStatus || ''), completedAt: String(task.completedAt || task.technicalReportedAt || ''), technicianIds: task.technicianIds || [], technicians: task.technicians || []
   }))
-})))
+})
 
 const agendaPlans = agenda => {
   const plans = new Map()
@@ -147,14 +168,24 @@ const agendaTaskWasAlreadyScheduled = (task, date, previousPlan, previousHistory
 }
 
 function validateChangedAgendaSchedules(state, previousState = null) {
-  require('./guard-assignment-policy.cjs').validateGuardAssignments(state, previousState)
+  const now = new Date()
+  const today = argentinaToday(now)
+  require('./guard-assignment-policy.cjs').validateGuardAssignments(state, previousState, today)
   require('./vehicle-control-schedule-policy.cjs').validateVehicleControlSchedules(state, previousState)
+  const indexes = new Map()
+  const indexedHistory = records => {
+    if (!records) return []
+    if (!indexes.has(records)) indexes.set(records, indexScheduleHistory(records))
+    return indexes.get(records)
+  }
   const withoutPausedOccupancy = source => {
     const { vehicleControlsPaused, pausedVehicleControl } = require('./vehicle-controls-pause.cjs')
     if (!source || !vehicleControlsPaused(source.agenda?.weekly)) return source
     const weekly = source.agenda.weekly
-    const cleanTeams = (teams, date) => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !pausedVehicleControl({ ...task, ...historyRecordForAgendaTask(task, date, source.history) }, weekly)) }))
-    return { ...source, history: (source.history || []).filter(record => !pausedVehicleControl(record, weekly)), agenda: { ...source.agenda, teams: cleanTeams(source.agenda.teams, source.agenda.date), weekly: Object.fromEntries(Object.entries(weekly).map(([day, plan]) => [day, day.startsWith('_') ? plan : { ...plan, teams: cleanTeams(plan?.teams, day) }])) } }
+    const history = indexedHistory(source.history)
+    const cleanTeams = (teams, date) => (teams || []).map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !pausedVehicleControl({ ...task, ...historyRecordForAgendaTask(task, date, history) }, weekly)) }))
+    const retained = (source.history || []).filter(record => !pausedVehicleControl(record, weekly))
+    return { ...source, history: retained.length === source.history?.length ? source.history : retained, agenda: { ...source.agenda, teams: cleanTeams(source.agenda.teams, source.agenda.date), weekly: Object.fromEntries(Object.entries(weekly).map(([day, plan]) => [day, day.startsWith('_') ? plan : { ...plan, teams: cleanTeams(plan?.teams, day) }])) } }
   }
   state = withoutPausedOccupancy(state)
   if (previousState) {
@@ -170,17 +201,28 @@ function validateChangedAgendaSchedules(state, previousState = null) {
     }
   }
   const previousOccupancy = withoutPausedOccupancy(previousState)
+  const nextHistory = indexedHistory(state.history)
+  const previousHistory = indexedHistory(previousOccupancy?.history)
   const serviceMap = serviceMapFor(state?.services)
+  const previousServiceMap = serviceMapFor(previousState?.services)
   const nextPlans = agendaPlans(state?.agenda)
   const previousPlans = agendaPlans(previousOccupancy?.agenda)
   const recordedPlans = previousOccupancy === previousState ? previousPlans : agendaPlans(previousState?.agenda)
   nextPlans.forEach((plan, key) => {
     const previous = previousPlans.get(key)
+    const before = (previous?.teams || []).map(team => teamSchedule(team, previousServiceMap, plan.date, previousHistory, today))
+    const after = (plan.teams || []).map(team => teamSchedule(team, serviceMap, plan.date, nextHistory, today))
+    const changedTeams = new Set((plan.teams || []).flatMap((team, index) => {
+      const oldIndex = team.teamId
+        ? previous?.teams?.findIndex(item => String(item.teamId) === String(team.teamId))
+        : index
+      const unchanged = before[oldIndex] && JSON.stringify(before[oldIndex]) === JSON.stringify(after[index])
+      return unchanged ? [] : [index]
+    }))
+    if (!changedTeams.size) return
     // Removing unchanged scheduled tasks cannot introduce a new overlap.
     // Compare a multiset so duplicate tasks cannot hide an added occurrence.
     if (previous) {
-      const before = JSON.parse(scheduleSignature(previous.teams, serviceMapFor(previousState?.services), previous.date, previousOccupancy?.history))
-      const after = JSON.parse(scheduleSignature(plan.teams, serviceMap, plan.date, state?.history))
       const rows = teams => teams.flatMap(({ tasks, ...team }) => tasks.map(task => JSON.stringify({ team, task })))
       const remaining = rows(before)
       const nextRows = rows(after)
@@ -191,19 +233,10 @@ function validateChangedAgendaSchedules(state, previousState = null) {
         return true
       })) return
     }
-    const previousServiceMap = serviceMapFor(previousState?.services)
-    const changedTeams = new Set((plan.teams || []).flatMap((team, index) => {
-      const oldTeam = team.teamId
-        ? previous?.teams?.find(item => String(item.teamId) === String(team.teamId))
-        : previous?.teams?.[index]
-      const unchanged = oldTeam && scheduleSignature([oldTeam], previousServiceMap, plan.date, previousOccupancy?.history) === scheduleSignature([team], serviceMap, plan.date, state?.history)
-      return unchanged ? [] : [index]
-    }))
-    if (!changedTeams.size) return
     ;(plan.teams || []).forEach((team, teamIndex) => {
       if (!changedTeams.has(teamIndex)) return
-      const activeTasks = (team.tasks || []).map((task, taskIndex) => ({ task, taskIndex })).filter(({ task }) => (task.serviceId || task.service) && !agendaTaskIsResolvedForPlanning(task, plan.date, state?.history))
-      const occupancyTasks = (team.tasks || []).map((task, taskIndex) => ({ task: agendaTaskForScheduleOccupancy(task, plan.date, state?.history), taskIndex })).filter(({ task }) => task && (task.serviceId || task.service))
+      const activeTasks = (team.tasks || []).map((task, taskIndex) => ({ task, taskIndex })).filter(({ task }) => (task.serviceId || task.service) && !agendaTaskIsResolvedForPlanning(task, plan.date, nextHistory))
+      const occupancyTasks = (team.tasks || []).map((task, taskIndex) => ({ task: agendaTaskForScheduleOccupancy(task, plan.date, nextHistory, today), taskIndex })).filter(({ task }) => task && (task.serviceId || task.service))
       activeTasks.forEach(({ task, taskIndex }) => {
         const estimatedMinutes = Number(rawEstimatedMinutesFor(task, serviceMap))
         if (!Number.isInteger(estimatedMinutes) || estimatedMinutes < 15 || estimatedMinutes > 720) {
@@ -211,7 +244,7 @@ function validateChangedAgendaSchedules(state, previousState = null) {
         }
         const startMatch = String(task.time || '').match(/^(\d{1,2}):(\d{2})$/)
         const start = startMatch ? Number(startMatch[1]) * 60 + Number(startMatch[2]) : null
-        if (plan.date === argentinaToday() && start !== null && !agendaTaskWasAlreadyScheduled(task, plan.date, recordedPlans.get(key), previousState?.history) && start < nextArgentinaQuarterMinute()) {
+        if (plan.date === today && start !== null && !agendaTaskWasAlreadyScheduled(task, plan.date, recordedPlans.get(key), indexedHistory(previousState?.history)) && start < nextArgentinaQuarterMinute(now)) {
           throw new Error(`${teamDescription(team, teamIndex)} del ${longDate(plan.date)} no puede agregar el ${taskDescription(task, taskIndex)} a las ${task.time} porque ese horario ya pasó. Elegí un horario futuro desde el próximo cuarto de hora disponible.`)
         }
       })
@@ -233,7 +266,7 @@ function validateChangedAgendaSchedules(state, previousState = null) {
     const assignmentsByTechnician = new Map()
     ;(plan.teams || []).forEach((team, teamIndex) => {
       ;(team.tasks || []).forEach((candidate, taskIndex) => {
-        const task = agendaTaskForScheduleOccupancy(candidate, plan.date, state?.history)
+        const task = agendaTaskForScheduleOccupancy(candidate, plan.date, nextHistory, today)
         const match = String(task?.time || task?.scheduledTime || '').match(/^(\d{1,2}):(\d{2})$/)
         if (!task || !(task.serviceId || task.service) || !match) return
         const start = Number(match[1]) * 60 + Number(match[2])

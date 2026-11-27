@@ -83,7 +83,7 @@ import "./ui-polish.css";
 import "./constitution-ui.css";
 import { TechnicianPortalErrorBoundary } from "./presentation/components/TechnicianPortalErrorBoundary.jsx";
 import { createTaskId, createTeamId, createCustomerId } from "./infrastructure/browser/identity.mjs";
-import { normalizeInternalChecklist, resolveServiceForTask, taskWithServiceEstimate } from "./features/services/application/service-fields.mjs";
+import { resolveServiceForTask, taskWithServiceEstimate } from "./features/services/application/service-fields.mjs";
 import { sortTasksByTime, sortPlanTasksByTime, isSaturday, isSunday, default2026GuardRotationFor, assignGuardToEmptySaturday, advancedGuardForSaturdayDate, removeUnavailableDefaultSlots, taskForScheduleOccupancy, serviceTrace, stampServiceRecord, normalizeSaturdayTeams, applyRemovedWeeklySlots, applyRemovedWeeklyTasks, applyRemovedWeeklyTeams, renumberVisibleWeeklyTeams, dailyPlanWithMonthlyTeams, moveRecordInWeeklyAgenda, prettyReportDateTime } from "./features/agenda/application/agenda-model.mjs";
 import { customerKind } from "./features/customers/application/customer-model.mjs";
 import { Confirm } from "./presentation/components/Confirm.jsx";
@@ -441,7 +441,7 @@ export default function App() {
       }
     }
     const confirmFromEnter = event => {
-      if (document.querySelector('dialog[open]')) return
+      if (event.key !== 'Enter' || event.defaultPrevented || document.querySelector('dialog[open]')) return
       const layers = modalLayers()
       submitModalFromEnter(event, layers.length ? dialogFor(layers.at(-1)) : null)
     }
@@ -682,185 +682,6 @@ export default function App() {
     })
   }, [weekly])
   useEffect(() => {
-    const removeWeeklyService = event => {
-      const { day, teamId, teamIndex, taskIndex, taskId, historyId } = event.detail || {}
-      if (!day || (!taskId && !historyId && !Number.isInteger(taskIndex))) return
-      const matches = task => (taskId && String(task.taskId || '') === String(taskId)) || (historyId && String(task.historyId || '') === String(historyId))
-      if (day === date) setTeams(previous => previous.map((team, currentTeamIndex) => {
-        const sameTeam = teamId ? String(team.teamId || '') === String(teamId) : currentTeamIndex === teamIndex
-        if (!sameTeam) return team
-        return { ...team, tasks: (team.tasks || []).filter((task, currentTaskIndex) => taskId || historyId ? !matches(task) : currentTaskIndex !== taskIndex) }
-      }))
-      if (historyId) setHistory(previous => previous.filter(record => String(record.id) !== String(historyId)))
-    }
-    window.addEventListener('pignus:remove-weekly-task', removeWeeklyService)
-    return () => window.removeEventListener('pignus:remove-weekly-task', removeWeeklyService)
-  }, [date])
-  useEffect(() => {
-    // Una agenda diaria ya abierta/guardada comparte los mismos taskId que la
-    // planificación semanal. Toda corrección semanal debe reflejarse también
-    // en esa copia y en su registro pendiente del Historial.
-    const syncWeeklyTask = event => {
-      const { day, teamId, teamIndex, taskIndex, taskId, draft, teamSnapshot } = event.detail || {}
-      if (!day || !draft) return
-      if (day === date) setTeams(previous => {
-        const next = [...previous]
-        let destinationIndex = next.findIndex(team => taskId && (team.tasks || []).some(task => String(task.taskId || '') === String(taskId)))
-        if (destinationIndex < 0 && teamId) destinationIndex = next.findIndex(team => String(team.teamId || '') === String(teamId))
-        if (destinationIndex < 0 && next[teamIndex]) destinationIndex = teamIndex
-        if (destinationIndex < 0) {
-          next.push({
-            teamId: teamId || teamSnapshot?.teamId || createTeamId(),
-            label: teamSnapshot?.label || `Equipo ${teamIndex + 1}`,
-            memberIds: teamSnapshot?.memberIds || [],
-            members: teamSnapshot?.members || [],
-            tasks: [draft]
-          })
-          return next
-        }
-        const destination = next[destinationIndex]
-        const existingTaskIndex = (destination.tasks || []).findIndex((task, index) => (taskId && String(task.taskId || '') === String(taskId)) || (!taskId && index === taskIndex))
-        const tasks = existingTaskIndex >= 0
-          ? destination.tasks.map((task, index) => index === existingTaskIndex ? { ...task, ...draft } : task)
-          : [...(destination.tasks || []), draft]
-        next[destinationIndex] = {
-          ...destination,
-          label: teamSnapshot?.label || destination.label,
-          memberIds: teamSnapshot?.memberIds || destination.memberIds || [],
-          members: teamSnapshot?.members || destination.members || [],
-          tasks: sortTasksByTime(tasks)
-        }
-        return next
-      })
-      setHistory(previous => {
-        const sameRecord = record => record.date === day && (
-          (draft.historyId && String(record.id) === String(draft.historyId)) ||
-          (taskId && String(record.sourceTaskId || '') === String(taskId))
-        )
-        if (previous.some(sameRecord)) return previous.map(record => sameRecord(record) ? {
-          ...record,
-          time: draft.time,
-          scheduledTime: draft.time,
-          estimatedMinutes: draft.estimatedMinutes,
-          estimatedMinutesCustomized: Boolean(draft.estimatedMinutesCustomized),
-          serviceTypes: draft.serviceTypes,
-          serviceId: draft.serviceId,
-          service: draft.service,
-          customerId: draft.customerId,
-          client: draft.client,
-          clientAccount: draft.clientAccount,
-          clientNameAtService: draft.clientNameAtService,
-          address: draft.address,
-          newAddress: draft.newAddress || '',
-           phone: draft.phone,
-           detail: draft.detail,
-           internalNote: draft.internalNote || '',
-           internalChecklist: normalizeInternalChecklist(draft.internalChecklist),
-           paymentMethod: draft.paymentMethod || '',
-           amount: draft.amount || '',
-           monthlyFee: draft.monthlyFee || '', freezeMonthlyFee: draft.freezeMonthlyFee ?? null, frozenMonths: Number(draft.frozenMonths || 0),
-           awaitingConfirmation: draft.awaitingConfirmation === true, form: draft.form || '', formEmail: draft.formEmail || '',
-           installationZone: draft.installationZone || '',
-          ...serviceTrace(draft)
-        } : record)
-
-        // Si el día ya fue registrado, un servicio agregado luego desde la
-        // agenda semanal también debe quedar documentado como pendiente. Para
-        // días futuros se mantiene como planificación hasta abrir/guardar el día.
-        if (!previous.some(record => record.date === day)) return previous
-        const sourceTaskId = draft.taskId || taskId || createTaskId()
-        return [{
-          id: draft.historyId || `work-${sourceTaskId}`,
-          sourceTaskId,
-          date: day,
-          time: draft.time,
-          scheduledTime: draft.time,
-          estimatedMinutes: draft.estimatedMinutes,
-          estimatedMinutesCustomized: Boolean(draft.estimatedMinutesCustomized),
-          team: teamSnapshot?.label || `Equipo ${teamIndex + 1}`,
-          teamId: teamId || teamSnapshot?.teamId || '',
-          technicianIds: teamSnapshot?.memberIds || [],
-          technicians: teamSnapshot?.members || [],
-          serviceTypes: draft.serviceTypes,
-          serviceId: draft.serviceId || '',
-          service: draft.service || '',
-          customerId: draft.customerId || '',
-          client: draft.client || '',
-          clientAccount: draft.clientAccount || '',
-          clientNameAtService: draft.clientNameAtService || String(draft.client || '').replace(/^[^\s]+\s+/, ''),
-          address: draft.address || '',
-          newAddress: draft.newAddress || '',
-           phone: draft.phone || '',
-           detail: draft.detail || '',
-           internalNote: draft.internalNote || '',
-           internalChecklist: normalizeInternalChecklist(draft.internalChecklist),
-           paymentMethod: draft.paymentMethod || '',
-           amount: draft.amount || '',
-           monthlyFee: draft.monthlyFee || '', freezeMonthlyFee: draft.freezeMonthlyFee ?? null, frozenMonths: Number(draft.frozenMonths || 0),
-           awaitingConfirmation: draft.awaitingConfirmation === true, form: draft.form || '', formEmail: draft.formEmail || '',
-           installationZone: draft.installationZone || '',
-          ...serviceTrace(draft),
-          status: 'Pendiente'
-        }, ...previous]
-      })
-    }
-    window.addEventListener('pignus:sync-weekly-task', syncWeeklyTask)
-    return () => window.removeEventListener('pignus:sync-weekly-task', syncWeeklyTask)
-  }, [date])
-  useEffect(() => {
-    const moveWeeklyTask = event => {
-      const { day, taskId, historyId, destinationTeamId, destinationTeamIndex, destinationTeam } = event.detail || {}
-      if (!day || (!taskId && !historyId) || !destinationTeam) return
-      const matchesTask = task => (taskId && String(task.taskId || '') === String(taskId)) || (historyId && String(task.historyId || '') === String(historyId))
-      if (day === date) setTeams(previous => {
-        let movedTask = null
-        previous.some(team => (team.tasks || []).some(task => {
-          if (!matchesTask(task)) return false
-          movedTask = task
-          return true
-        }))
-        if (!movedTask) return previous
-        const next = previous.map(team => ({ ...team, tasks: (team.tasks || []).filter(task => !matchesTask(task)) }))
-        let targetIndex = next.findIndex(team => destinationTeamId && String(team.teamId || '') === String(destinationTeamId))
-        if (targetIndex < 0 && next[destinationTeamIndex]) targetIndex = destinationTeamIndex
-        if (targetIndex < 0) {
-          next.push({ ...destinationTeam, tasks: [movedTask] })
-          return next
-        }
-        const target = next[targetIndex]
-        const withoutMatchingEmptySlot = (target.tasks || []).filter(task => !(
-          task.time === movedTask.time &&
-          !String(task.client || '').trim() &&
-          !String(task.service || '').trim()
-        ))
-        next[targetIndex] = {
-          ...target,
-          teamId: destinationTeamId || target.teamId,
-          label: destinationTeam.label || target.label,
-          memberIds: destinationTeam.memberIds || [],
-          members: destinationTeam.members || [],
-          tasks: sortTasksByTime([...withoutMatchingEmptySlot, movedTask])
-        }
-        return next
-      })
-      setHistory(previous => previous.map(record => {
-        const sameRecord = record.date === day && (
-          (historyId && String(record.id || '') === String(historyId)) ||
-          (taskId && String(record.sourceTaskId || '') === String(taskId))
-        )
-        return sameRecord ? {
-          ...record,
-          team: destinationTeam.label || `Equipo ${Number(destinationTeamIndex) + 1}`,
-          teamId: destinationTeamId || destinationTeam.teamId || '',
-          technicianIds: destinationTeam.memberIds || [],
-          technicians: destinationTeam.members || []
-        } : record
-      }))
-    }
-    window.addEventListener('pignus:move-weekly-task', moveWeeklyTask)
-    return () => window.removeEventListener('pignus:move-weekly-task', moveWeeklyTask)
-  }, [date])
-  useEffect(() => {
     // Compatibilidad con equipos históricos cuyos teamId semanal y diario no
     // coinciden: el taskId es la identidad canónica del servicio.
     // While the daily editor is mounted it owns its draft and projects changes
@@ -909,19 +730,23 @@ export default function App() {
     const loaded_date = persistedAgendaDate
     const loaded_weekly = data.agenda?.weekly && typeof data.agenda.weekly === 'object' ? data.agenda.weekly : {}
     const remoteSnapshot = { roles: loadedRoles, employees: loaded_employees, services: loaded_services, vehicles: loaded_vehicles, history: loaded_history, customers: loaded_customers, agenda: { date: loaded_date, teams: loaded_teams, weekly: loaded_weekly } }
-    const local = currentSnapshotRef.current ? JSON.parse(currentSnapshotRef.current) : remoteSnapshot
-    const preserved = preserveFrom ? preserveLocalDraft(preserveFrom, local, remoteSnapshot) : { state: remoteSnapshot, conflict: false }
+    const preserved = preserveFrom && currentSnapshotRef.current
+      ? preserveLocalDraft(preserveFrom, JSON.parse(currentSnapshotRef.current), remoteSnapshot)
+      : { state: remoteSnapshot, conflict: false }
     // Both refreshes and save acknowledgements may return storage order. Sort
     // after merging drafts too, using their latest times rather than positions.
-    const display = { ...preserved.state, agenda: { ...preserved.state.agenda, teams: sortPlanTasksByTime(preserved.state.agenda).teams } }
-    const hasDraft = JSON.stringify(display) !== JSON.stringify(remoteSnapshot)
-    hydrationBaselineRef.current = hasDraft ? JSON.stringify(remoteSnapshot) : null
-    lastPersistedSnapshotRef.current = JSON.stringify(remoteSnapshot)
-    currentSnapshotRef.current = JSON.stringify(display)
+    const display = preserved.state === remoteSnapshot ? remoteSnapshot
+      : { ...preserved.state, agenda: { ...preserved.state.agenda, teams: sortPlanTasksByTime(preserved.state.agenda).teams } }
+    const remoteSerialized = JSON.stringify(remoteSnapshot)
+    const displayedSerialized = display === remoteSnapshot ? remoteSerialized : JSON.stringify(display)
+    hydrationBaselineRef.current = displayedSerialized === remoteSerialized ? null : remoteSerialized
+    lastPersistedSnapshotRef.current = remoteSerialized
+    currentSnapshotRef.current = displayedSerialized
     if (preserved.conflict) {
       saveDraftConflictRef.current = true
       setNotice('Se guardó la operación, pero hay una edición posterior que requiere revisión. Se conservó tu borrador; revisalo antes de guardar nuevamente.')
     }
+    currentDisplaySnapshotRef.current = display
     setRoles(display.roles); setEmployees(display.employees); setServices(display.services)
     setVehicles(display.vehicles); setHistory(display.history); setCustomers(display.customers)
     setTeams(display.agenda.teams); setDate(display.agenda.date); setWeekly(display.agenda.weekly)
@@ -933,7 +758,7 @@ export default function App() {
   const persistStateCommand = async (buildOperations, { combinePendingState = false, rebaseOnRecordConflict = false, isolatedMove = false, alignDisplayBaselines = false, independentService = false, quickAction = false } = {}) => {
     const saveEpoch = saveSessionEpochRef.current
     let release = !combinePendingState || isolatedMove ? saveActivityRef.current.acquire() : null
-    if (!pendingConfirmedSavesRef.current) saveBatchRef.current = { baseline: quickAction ? currentDisplaySnapshotRef.current : JSON.parse(currentSnapshotRef.current), latest: null }
+    if (!pendingConfirmedSavesRef.current) saveBatchRef.current = { baseline: quickAction ? currentDisplaySnapshotRef.current : JSON.parse(currentSnapshotRef.current), baselineSerialized: currentSnapshotRef.current, latest: null }
     pendingConfirmedSavesRef.current += 1
     const acceptResponse = payload => {
       if (saveEpoch !== saveSessionEpochRef.current) return
@@ -954,13 +779,19 @@ export default function App() {
       if (saveEpoch !== saveSessionEpochRef.current) throw new Error('La sesión cambió antes del guardado.')
       const serialized = currentSnapshotRef.current
       const local = quickAction ? currentDisplaySnapshotRef.current : JSON.parse(serialized)
-      if (pendingConfirmedSavesRef.current === 1 && !saveBatchRef.current.latest) saveBatchRef.current.baseline = local
+      if (pendingConfirmedSavesRef.current === 1 && !saveBatchRef.current.latest) {
+        saveBatchRef.current.baseline = local
+        saveBatchRef.current.baselineSerialized = serialized
+      }
       if (quickAction && quickCommandBaseRef.current.serialized !== lastPersistedSnapshotRef.current) {
         quickCommandBaseRef.current = { serialized: lastPersistedSnapshotRef.current, value: JSON.parse(lastPersistedSnapshotRef.current || 'null') }
       }
       const base = quickAction ? quickCommandBaseRef.current.value : JSON.parse(lastPersistedSnapshotRef.current || 'null')
       if (!base) throw new Error('Esperá a que termine de cargar la agenda.')
-      if (independentService && !saveBatchRef.current.latest) saveBatchRef.current.baseline = base
+      if (independentService && !saveBatchRef.current.latest) {
+        saveBatchRef.current.baseline = base
+        saveBatchRef.current.baselineSerialized = lastPersistedSnapshotRef.current
+      }
       if (isolatedMove) {
         if (serialized !== lastPersistedSnapshotRef.current) throw new Error('Guardá los cambios pendientes de la agenda antes de reasignar el servicio.')
         const serverSnapshot = moveSnapshot
@@ -1013,7 +844,9 @@ export default function App() {
         saveBatchRef.current = null
         if (batch?.latest) {
           saveDraftConflictRef.current = false
-          applyRemoteState(batch.latest, { preserveFrom: batch.baseline })
+          // Only reconcile drafts when the visible data changed relative to the
+          // batch baseline. Most confirmed actions only edited a modal.
+          applyRemoteState(batch.latest, { preserveFrom: batch.baselineSerialized === currentSnapshotRef.current ? null : batch.baseline })
         }
       }
       }
@@ -1039,7 +872,7 @@ export default function App() {
         : !command.baseRecord && !command.baseTask && !command.sourceDay
           ? weeklyServiceCreationOperations(lastServerSnapshotRef.current, stateRevisionRef.current, command)
           : weeklyServiceOperations(snapshot, command)
-  ), { combinePendingState: true, alignDisplayBaselines: true, independentService: !command.sourceDay && (!command.operation || ['service-preparation', 'team-members'].includes(command.operation)), quickAction: ['service-preparation', 'team-members'].includes(command.operation), isolatedMove: Boolean(command.sourceDay && (command.task?.vehicleControl || command.advanceToFriday)) })
+  ), { combinePendingState: true, alignDisplayBaselines: true, independentService: !command.sourceDay && (!command.operation || ['service-preparation', 'team-members'].includes(command.operation)), quickAction: true, isolatedMove: Boolean(command.sourceDay && (command.task?.vehicleControl || command.advanceToFriday)) })
   const persistWeeklyConfiguration = buildNext => persistStateCommand(snapshot => stateOperations(snapshot, buildNext(snapshot)), { combinePendingState: true, rebaseOnRecordConflict: true })
   const roleBaseline = id => structuredClone(lastServerSnapshotRef.current?.roles?.find(role => String(role.id) === String(id)))
   const persistRole = (before, after) => persistStateCommand(() => [{ path: ['roles', { key: 'id', id: String(after.id) }], before: before || null, after, existed: Boolean(before), exists: true }], { combinePendingState: true, independentService: true })
@@ -1399,10 +1232,11 @@ export default function App() {
     window.addEventListener('open-ticket', open)
     return () => window.removeEventListener('open-ticket', open)
   }, [permissionUser])
-  const notifications = useMemo(() => [...combineRegistrationNotifications(selectDashboardNotifications({
+  const operationalNotifications = useMemo(() => selectDashboardNotifications({
     history, weekly, vehicles, customers, passwordResetRequests: passwordResetState.requests,
     today: currentLocalDate(), now: notificationNow, isAdministrator, user: permissionUser
-  }).filter(item => item.target?.type !== 'followup'), ticketNotificationState.items, registrationNotificationState.items), ...experienceNotificationState.items], [history, weekly, vehicles, customers, passwordResetState.requests, notificationNow, isAdministrator, permissionUser, ticketNotificationState.items, experienceNotificationState.items, registrationNotificationState.items])
+  }).filter(item => item.target?.type !== 'followup'), [history, weekly, vehicles, customers, passwordResetState.requests, notificationNow, isAdministrator, permissionUser])
+  const notifications = useMemo(() => [...combineRegistrationNotifications(operationalNotifications, ticketNotificationState.items, registrationNotificationState.items), ...experienceNotificationState.items], [operationalNotifications, ticketNotificationState.items, registrationNotificationState.items, experienceNotificationState.items])
   const notificationSnapshotRef = useRef(notifications)
   notificationSnapshotRef.current = notifications
   const notificationCustomers = useMemo(() => visibleNotificationCustomers(customers, history, permissionUser), [customers, history, permissionUser])
@@ -1555,7 +1389,7 @@ export default function App() {
           for (const visit of visits) if (weekly._holidayOverrides?.[visit.date]?.status === 'closed' || (calendar.holidays || []).some(holiday => holiday.date === visit.date) && weekly._holidayOverrides?.[visit.date]?.status !== 'working') throw new Error('La fecha ' + visit.date + ' es feriado y no está habilitada.')
         }
         await persistWeeklyService({ operation: 'service-journeys', base, visits })
-      }}}><div className={`app-shell ${desktopSidebar && sidebarCollapsed ? 'sidebar-collapsed' : ''}`} data-theme={theme}>{confirmedSaving && <div className="confirmed-save-status" role="status" aria-live="polite"><p>Guardando cambios… Podés seguir consultando la agenda.</p></div>}<aside id="main-navigation" aria-label="Menú principal" className={`sidebar ${menuOpen && !desktopSidebar ? 'open' : ''} ${desktopSidebar && sidebarCollapsed ? 'sidebar-compact' : ''}`}><div className="brand" role="button" tabIndex={0} aria-label="Ir al inicio" onClick={() => requestNavigation(() => setModule(nav[0]?.id || 'dashboard'))} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); requestNavigation(() => setModule(nav[0]?.id || 'dashboard')) } }}><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><SidebarNavigation key={String(authUser.id || authUser.email)} items={nav} activeId={module} userKey={String(authUser.id || authUser.email)} compact={desktopSidebar && sidebarCollapsed} onExpand={() => setSidebarCollapsed(false)} onNavigate={id => { if (id !== module) requestNavigation(() => { setModule(id); setMenuOpen(false) }); else setMenuOpen(false) }} /><div className="sidebar-session"><strong>{authUser.name}</strong><small>{authUser.email}</small><small>{authUser.role}</small></div><div className="sidebar-bottom">v2.0 · Agenda técnica</div></aside>{menuOpen && !desktopSidebar && <button title="Cerrá el menú lateral para volver al contenido." className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main ><header className="topbar"><button type="button" className="sidebar-toggle topbar-icon-button" aria-controls="main-navigation" aria-expanded={desktopSidebar ? !sidebarCollapsed : menuOpen} aria-label={desktopSidebar ? (sidebarCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral') : (menuOpen ? 'Cerrar menú lateral' : 'Abrir menú lateral')} title={desktopSidebar ? (sidebarCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral') : 'Abrir o cerrar menú lateral'} onClick={() => desktopSidebar ? setSidebarCollapsed(value => !value) : setMenuOpen(value => !value)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><h1>{title}</h1><div id="module-description-slot" /></div><div className="profile">{notificationsEnabled && <NotificationCenter key={authUser?.id || authUser?.email} userKey={authUser?.id || authUser?.email} notifications={notifications} readySources={{ operational: databaseReady, tickets: ticketNotificationState.ready, password: passwordResetState.ready, experience: experienceNotificationState.ready, registration: registrationNotificationState.ready }} onSelect={openNotification} />}<FullscreenToggle /><button title={theme === 'light' ? 'Cambiá a colores oscuros para reducir el brillo de la pantalla.' : 'Cambiá a colores claros para visualizar la plataforma.'} className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><div className="profile-menu"><button title="Abrí la información de tu perfil y tu sesión." className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span></button>{profileOpen && <div className="profile-popover"><b>{authUser.name}</b><span>{authUser.email}</span><small>{authUser.role}</small></div>}</div><RefreshButton /><button className="logout-button" disabled={confirmedSaving} onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrá tu sesión; necesitarás tus credenciales para volver a ingresar."><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content"><Suspense fallback={<SystemState type="loading" title="Cargando módulo…" detail="Estamos preparando esta pantalla." />}>{notice && <div className="notice" data-tone={noticeLevel} role={noticeLevel === 'error' || noticeLevel === 'offline' ? 'alert' : 'status'} aria-live={noticeLevel === 'error' || noticeLevel === 'offline' ? 'assertive' : 'polite'}><span><Icon name={noticeLevel === 'success' ? 'check' : 'alert'} size={16} />{notice}</span><button title="Ocultá este aviso; esta acción no modifica los datos." onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'help' && <HelpCenter onNavigate={id => requestNavigation(() => setModule(id))} isAdministrator={isAdministrator} allowedModules={nav.map(({ id }) => id)} />}{module === 'audit' && (granularAccess ? allowed('audit.view') : isAdministrator) && <AuditPage user={authUser} onBack={() => setModule('dashboard')} onOpenMenu={() => setMenuOpen(true)} logout={requestLogout} />}{module === 'dashboard' && <Dashboard onOpenCollections={allowed('collections.view') && allowed('records.financial') ? filters => requestNavigation(() => { setCollectionOpenRequest(filters); setModule('collections') }) : undefined} isAdministrator={isAdministrator} passwordResetState={passwordResetState} onOpenReservation={modulePermissions.weekly ? record => requestNavigation(() => { setWeeklyOpenRequest({ id: record.id }); setModule('weekly') }) : undefined} history={history} services={services} customers={customers} onEditVehicle={(granularAccess ? allowed('vehicles.edit') : isAdministrator && modulePermissions.vehicles) ? id => requestNavigation(() => { setVehicleEditRequest(id); setModule('vehicles') }) : undefined} />}{module === 'operationalPlanning' && modulePermissions.operationalPlanning && <OperationalPlanning {...{ weekly, activeTechs, vehicles, history, persistWeeklyConfiguration, setWeekly, setNotice }} authUser={permissionUser} permissions={modulePermissions} initialPeriod={planningPeriod} onReturnToAgenda={returnToWeekly} navigationGuardRef={weeklyNavigationGuard} />}{module === 'forms' && allowed('forms.view') && <FormsInbox openRequest={formsOpenRequest} onOpenRequestHandled={() => setFormsOpenRequest(null)} onOpenTicket={allowed('tickets.view') ? ticketId => requestNavigation(() => { setTicketOpenRequest({ticketId}); setModule('tickets') }) : undefined} onOpenService={allowed('weekly.view') ? id => requestNavigation(() => { setWeeklyOpenRequest({ id }); setModule('weekly') }) : undefined} />}{module === 'sales' && <SalesBooking onSaved={refreshRemoteState} navigationGuardRef={weeklyNavigationGuard} />}{module === 'weekly' && <WeeklyPlanner onOpenPlanning={openOperationalPlanning} initialAnchor={weeklyAnchor} onAnchorChange={setWeeklyAnchor} confirmedRevision={stateRevision} openRequest={weeklyOpenRequest} onOpenRequestHandled={() => setWeeklyOpenRequest(null)} navigationGuardRef={weeklyNavigationGuard} {...{ persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, authUser: permissionUser, vehicles }} permissions={modulePermissions} openDaily={(nextDate, nextTeams) => { if (nextDate < currentLocalDate()) setHistoricalDate(nextDate); else { setHistoricalDate(null); setDate(nextDate); setTeams(nextTeams) } setModule('agenda') }} />}{module === 'agenda' && <Agenda navigationGuardRef={weeklyNavigationGuard} {...{ persistWeeklyService, persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady, authUser: permissionUser }} date={historicalDate || date} setDate={nextDate => { if (nextDate < currentLocalDate()) setHistoricalDate(nextDate); else { setHistoricalDate(null); setDate(nextDate) } }} />}{module === 'tickets' && allowed('tickets.view') && <Tickets openRequest={ticketOpenRequest} onOpenRequestHandled={() => setTicketOpenRequest(null)} onCoordinateService={modulePermissions.weekly && allowed('planning.create') && allowed('tickets.linkService') ? ticket => requestNavigation(() => { setWeeklyOpenRequest({ ticket }); setModule('weekly') }) : undefined} />}{module === 'history' && <History persistHistoryContact={persistHistoryContact} initialFilter={historyEntryFilter} history={history} setHistory={setHistory} customers={customers} services={services} employees={activeTechs} authUser={permissionUser} canManage={isAdministrator || modulePermissions.historyManage} persistHistoryRecord={persistHistoryRecord} persistHistoryRecordRemoval={persistHistoryRecordRemoval} historyScheduling={historyScheduling} />}{module === 'map' && (isAdministrator || modulePermissions.map) && <><SubscriberMap customers={customers} onOpenCustomer={isAdministrator || modulePermissions.accounts ? setMapCustomer : undefined} />{mapCustomer && (isAdministrator || modulePermissions.accounts) && <CustomerDetail customer={customers.find(item => item.customerId === mapCustomer.customerId) || mapCustomer} history={history} services={services} close={() => setMapCustomer(null)} />}</>}{module === 'collections' && (isAdministrator || modulePermissions.collections) && <Collections employees={employees} history={history} customers={customers} canManage={isAdministrator || modulePermissions.collectionsManage} onSave={persistCollection} openRequest={collectionOpenRequest} onOpenRequestHandled={() => setCollectionOpenRequest(null)} setNotice={setNotice} />}{module === 'accounts' && <Accounts {...{ persistSubscriptionCorrection, services, customers, setCustomers, setNotice, ask, history, teams, weekly, stateRevision, refreshRemoteState, applyCustomerImportState }} permissions={modulePermissions} isAdministrator={isAdministrator} />}{module === 'cctv' && allowed('cctv.view') && <CctvServices navigationGuardRef={weeklyNavigationGuard} persistRequirement={persistCctvRequirement} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask, history, teams, weekly, persistEmployee, employeeBaseline }} canEnableTechnical={granularAccess ? allowed('employees.technical') : isAdministrator} />}{module === 'products' && isAdministrator && <Products />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask, history, teams, weekly }} />}{module === 'vehicles' && <Vehicles {...{ history, weekly, persistWeeklyConfiguration, vehicles, setVehicles, setNotice, ask, isAdministrator, stateRevision, refreshRemoteState }} editRequest={vehicleEditRequest} onEditRequestHandled={() => setVehicleEditRequest(null)} />}{module === 'settings' && <Configuration {...{ roles, setRoles, setNotice, ask, employees, weekly, persistWeeklyConfiguration, persistRole, roleBaseline }} onNavigate={requestNavigation} canConfigureFrozenMonths={granularAccess ? allowed('settings.frozenMonths') : isAdministrator} canConfigureWorkday={granularAccess ? allowed('settings.workday.read') : isAdministrator || Boolean(modulePermissions.weeklyHours)} />}</Suspense></section></main>{activeNotification && <NotificationActionDialog key={activeNotification.id} notification={activeNotification} history={history} customers={notificationCustomers} passwordResetState={passwordResetState} close={() => setActiveNotificationId(null)} />}{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div></ServiceJourneysContext.Provider></FrozenMonthsContext.Provider></PermissionsProvider>
+      }}}><div className={`app-shell ${desktopSidebar && sidebarCollapsed ? 'sidebar-collapsed' : ''}`} data-theme={theme}>{confirmedSaving && <div className="confirmed-save-status" role="status" aria-live="polite"><p>Guardando cambios… Podés seguir consultando la agenda.</p></div>}<aside id="main-navigation" aria-label="Menú principal" className={`sidebar ${menuOpen && !desktopSidebar ? 'open' : ''} ${desktopSidebar && sidebarCollapsed ? 'sidebar-compact' : ''}`}><div className="brand" role="button" tabIndex={0} aria-label="Ir al inicio" onClick={() => requestNavigation(() => setModule(nav[0]?.id || 'dashboard'))} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); requestNavigation(() => setModule(nav[0]?.id || 'dashboard')) } }}><span className="brand-mark">◢</span><div><strong>PIGNUS</strong><small>GUARDIANES POR NATURALEZA</small></div></div><SidebarNavigation key={String(authUser.id || authUser.email)} items={nav} activeId={module} userKey={String(authUser.id || authUser.email)} compact={desktopSidebar && sidebarCollapsed} onExpand={() => setSidebarCollapsed(false)} onNavigate={id => { if (id !== module) requestNavigation(() => { setModule(id); setMenuOpen(false) }); else setMenuOpen(false) }} /><div className="sidebar-session"><strong>{authUser.name}</strong><small>{authUser.email}</small><small>{authUser.role}</small></div><div className="sidebar-bottom">v2.0 · Agenda técnica</div></aside>{menuOpen && !desktopSidebar && <button title="Cerrá el menú lateral para volver al contenido." className="backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}<main ><header className="topbar"><button type="button" className="sidebar-toggle topbar-icon-button" aria-controls="main-navigation" aria-expanded={desktopSidebar ? !sidebarCollapsed : menuOpen} aria-label={desktopSidebar ? (sidebarCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral') : (menuOpen ? 'Cerrar menú lateral' : 'Abrir menú lateral')} title={desktopSidebar ? (sidebarCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral') : 'Abrir o cerrar menú lateral'} onClick={() => desktopSidebar ? setSidebarCollapsed(value => !value) : setMenuOpen(value => !value)}><Icon name="menu" /></button><div className="page-heading"><span>PIGNUS</span><i></i><h1>{title}</h1><div id="module-description-slot" /></div><div className="profile">{notificationsEnabled && <NotificationCenter key={authUser?.id || authUser?.email} userKey={authUser?.id || authUser?.email} notifications={notifications} readySources={{ operational: databaseReady, tickets: ticketNotificationState.ready, password: passwordResetState.ready, experience: experienceNotificationState.ready, registration: registrationNotificationState.ready }} onSelect={openNotification} />}<FullscreenToggle /><button title={theme === 'light' ? 'Cambiá a colores oscuros para reducir el brillo de la pantalla.' : 'Cambiá a colores claros para visualizar la plataforma.'} className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}><Icon name={theme === 'light' ? 'moon' : 'sun'} /></button><div className="profile-menu"><button title="Abrí la información de tu perfil y tu sesión." className="profile-trigger" onClick={() => setProfileOpen(open => !open)} aria-expanded={profileOpen}><span className="profile-avatar">{initials(authUser.name)}</span><span>{authUser.name}</span></button>{profileOpen && <div className="profile-popover"><b>{authUser.name}</b><span>{authUser.email}</span><small>{authUser.role}</small></div>}</div><RefreshButton /><button className="logout-button" disabled={confirmedSaving} onClick={() => setConfirmation({ title: 'Cerrar sesión', detail: '¿Querés cerrar sesión? Tendrás que volver a ingresar con tus credenciales para acceder al sistema.', action: logout, confirmLabel: 'Sí, cerrar sesión' })} title="Cerrá tu sesión; necesitarás tus credenciales para volver a ingresar."><Icon name="logout" size={17} /><span>Cerrar sesión</span></button></div></header><section className="content"><Suspense fallback={<SystemState type="loading" title="Cargando módulo…" detail="Estamos preparando esta pantalla." />}>{notice && <div className="notice" data-tone={noticeLevel} role={noticeLevel === 'error' || noticeLevel === 'offline' ? 'alert' : 'status'} aria-live={noticeLevel === 'error' || noticeLevel === 'offline' ? 'assertive' : 'polite'}><span><Icon name={noticeLevel === 'success' ? 'check' : 'alert'} size={16} />{notice}</span><button title="Ocultá este aviso; esta acción no modifica los datos." onClick={() => setNotice('')}><Icon name="close" size={16} /></button></div>}{module === 'help' && <HelpCenter onNavigate={id => requestNavigation(() => setModule(id))} isAdministrator={isAdministrator} allowedModules={nav.map(({ id }) => id)} />}{module === 'audit' && (granularAccess ? allowed('audit.view') : isAdministrator) && <AuditPage user={authUser} onBack={() => setModule('dashboard')} onOpenMenu={() => setMenuOpen(true)} logout={requestLogout} />}{module === 'dashboard' && <Dashboard onOpenCollections={allowed('collections.view') && allowed('records.financial') ? filters => requestNavigation(() => { setCollectionOpenRequest(filters); setModule('collections') }) : undefined} isAdministrator={isAdministrator} passwordResetState={passwordResetState} onOpenReservation={modulePermissions.weekly ? record => requestNavigation(() => { setWeeklyOpenRequest({ id: record.id }); setModule('weekly') }) : undefined} history={history} services={services} customers={customers} onEditVehicle={(granularAccess ? allowed('vehicles.edit') : isAdministrator && modulePermissions.vehicles) ? id => requestNavigation(() => { setVehicleEditRequest(id); setModule('vehicles') }) : undefined} />}{module === 'operationalPlanning' && modulePermissions.operationalPlanning && <OperationalPlanning {...{ weekly, activeTechs, vehicles, history, persistWeeklyConfiguration, setWeekly, setNotice }} authUser={permissionUser} permissions={modulePermissions} initialPeriod={planningPeriod} onReturnToAgenda={returnToWeekly} navigationGuardRef={weeklyNavigationGuard} />}{module === 'forms' && allowed('forms.view') && <FormsInbox openRequest={formsOpenRequest} onOpenRequestHandled={() => setFormsOpenRequest(null)} onOpenTicket={allowed('tickets.view') ? ticketId => requestNavigation(() => { setTicketOpenRequest({ticketId}); setModule('tickets') }) : undefined} onOpenService={allowed('weekly.view') ? id => requestNavigation(() => { setWeeklyOpenRequest({ id }); setModule('weekly') }) : undefined} />}{module === 'sales' && <SalesBooking onSaved={refreshRemoteState} navigationGuardRef={weeklyNavigationGuard} />}{module === 'weekly' && <WeeklyPlanner onOpenPlanning={openOperationalPlanning} initialAnchor={weeklyAnchor} onAnchorChange={setWeeklyAnchor} confirmedRevision={stateRevision} openRequest={weeklyOpenRequest} onOpenRequestHandled={() => setWeeklyOpenRequest(null)} navigationGuardRef={weeklyNavigationGuard} {...{ persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, authUser: permissionUser, vehicles }} permissions={modulePermissions} />}{module === 'agenda' && <Agenda navigationGuardRef={weeklyNavigationGuard} {...{ persistWeeklyService, persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady, authUser: permissionUser }} date={historicalDate || date} setDate={nextDate => { if (nextDate < currentLocalDate()) setHistoricalDate(nextDate); else { setHistoricalDate(null); setDate(nextDate) } }} />}{module === 'tickets' && allowed('tickets.view') && <Tickets openRequest={ticketOpenRequest} onOpenRequestHandled={() => setTicketOpenRequest(null)} onCoordinateService={modulePermissions.weekly && allowed('planning.create') && allowed('tickets.linkService') ? ticket => requestNavigation(() => { setWeeklyOpenRequest({ ticket }); setModule('weekly') }) : undefined} />}{module === 'history' && <History persistHistoryContact={persistHistoryContact} initialFilter={historyEntryFilter} history={history} setHistory={setHistory} customers={customers} services={services} employees={activeTechs} authUser={permissionUser} canManage={isAdministrator || modulePermissions.historyManage} persistHistoryRecord={persistHistoryRecord} persistHistoryRecordRemoval={persistHistoryRecordRemoval} historyScheduling={historyScheduling} />}{module === 'map' && (isAdministrator || modulePermissions.map) && <><SubscriberMap customers={customers} onOpenCustomer={isAdministrator || modulePermissions.accounts ? setMapCustomer : undefined} />{mapCustomer && (isAdministrator || modulePermissions.accounts) && <CustomerDetail customer={customers.find(item => item.customerId === mapCustomer.customerId) || mapCustomer} history={history} services={services} close={() => setMapCustomer(null)} />}</>}{module === 'collections' && (isAdministrator || modulePermissions.collections) && <Collections employees={employees} history={history} customers={customers} canManage={isAdministrator || modulePermissions.collectionsManage} onSave={persistCollection} openRequest={collectionOpenRequest} onOpenRequestHandled={() => setCollectionOpenRequest(null)} setNotice={setNotice} />}{module === 'accounts' && <Accounts {...{ persistSubscriptionCorrection, services, customers, setCustomers, setNotice, ask, history, teams, weekly, stateRevision, refreshRemoteState, applyCustomerImportState }} permissions={modulePermissions} isAdministrator={isAdministrator} />}{module === 'cctv' && allowed('cctv.view') && <CctvServices navigationGuardRef={weeklyNavigationGuard} persistRequirement={persistCctvRequirement} />}{module === 'employees' && <Employees {...{ employees, setEmployees, roles, setNotice, ask, history, teams, weekly, persistEmployee, employeeBaseline }} canEnableTechnical={granularAccess ? allowed('employees.technical') : isAdministrator} />}{module === 'products' && isAdministrator && <Products />}{module === 'services' && <ServiceTypes {...{ services, setServices, setNotice, ask, history, teams, weekly }} />}{module === 'vehicles' && <Vehicles {...{ history, weekly, persistWeeklyConfiguration, vehicles, setVehicles, setNotice, ask, isAdministrator, stateRevision, refreshRemoteState }} editRequest={vehicleEditRequest} onEditRequestHandled={() => setVehicleEditRequest(null)} />}{module === 'settings' && <Configuration {...{ roles, setRoles, setNotice, ask, employees, weekly, persistWeeklyConfiguration, persistRole, roleBaseline }} onNavigate={requestNavigation} canConfigureFrozenMonths={granularAccess ? allowed('settings.frozenMonths') : isAdministrator} canConfigureWorkday={granularAccess ? allowed('settings.workday.read') : isAdministrator || Boolean(modulePermissions.weeklyHours)} />}</Suspense></section></main>{activeNotification && <NotificationActionDialog key={activeNotification.id} notification={activeNotification} history={history} customers={notificationCustomers} passwordResetState={passwordResetState} close={() => setActiveNotificationId(null)} />}{confirmation && <Confirm {...confirmation} close={() => setConfirmation(null)} />}</div></ServiceJourneysContext.Provider></FrozenMonthsContext.Provider></PermissionsProvider>
 
 }
 

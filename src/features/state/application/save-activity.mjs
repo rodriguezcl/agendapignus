@@ -65,7 +65,7 @@ export function createSaveActivity() {
 // Keep newer local edits while a save is in flight. Arrays of services merge by
 // identity, never by position; the remote snapshot remains the save baseline.
 export function preserveLocalDraft(base, local, remote) {
-  const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+  const equal = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b)
   const object = v => v && typeof v === 'object' && !Array.isArray(v)
   let conflict = false
   function merge(before, current, incoming, field = '') {

@@ -17,6 +17,24 @@ test('el alcance de escritura intersecta consulta, asignación y seguimiento CCT
   assert.equal(canWriteRecord(record, { roleCode: 'supervisor' }), true, 'el alcance legacy se conserva en sus flujos actuales')
 })
 
+test('el filtro por lotes conserva el alcance CCTV con referencias antiguas y cuentas repetidas', async () => {
+  const { canReadRecord, createRecordReadFilter } = await import('../src/domain/access/record-scope.mjs')
+  const customers = [
+    { customerId: 'privado', account: 'PIG-1', cctvService: false },
+    { customerId: 'visible', account: 'pig-1', cctvService: true },
+    { customerId: 'visible', account: 'CLI-2', cctvService: false }
+  ]
+  const records = [
+    { customerId: 'privado', supervisorVisible: true }, { customerId: 'visible' },
+    { customerId: 'antiguo', client: 'pIg-1 Cliente', supervisorVisible: true },
+    { customerId: 'antiguo', clientAccount: ' cli-2 ' }, { client: 'Otro', supervisorVisible: true },
+    { technicianIds: ['user'] }, {}, null
+  ]
+  for (const user of [permissions('scope.services.read.cctv'), permissions('scope.services.read.assigned'), permissions(), { roleCode: 'supervisor' }]) {
+    assert.deepEqual(records.filter(createRecordReadFilter(user, customers)), records.filter(record => canReadRecord(record, user, customers)))
+  }
+})
+
 test('finalización anticipada requiere permiso separado y conserva controles/confirmación', async () => {
   const { canCompleteHistoryRecord } = await import('../src/features/history/application/history-action-permissions.mjs')
   const record = { date: '2026-10-20', time: '10:00' }

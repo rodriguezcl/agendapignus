@@ -103,12 +103,26 @@ export function weeklyServiceOperations(snapshot, { day, team, task, record, bas
     record = { ...record, ...fields }
     task = { ...task, ...fields }
   }
-  const next = structuredClone(snapshot)
-  next.history ||= []
-  const index = next.history.findIndex(item => String(item.id) === String(record.id))
-  if (index < 0) next.history.push(record)
-  else next.history[index] = record
-  if (customer && !next.customers.some(item => item.customerId === customer.customerId)) next.customers.push(customer)
+  // Compare only the plans this command can change. Keep absent containers
+  // absent in the baseline so the first service still creates them atomically.
+  const agenda = snapshot.agenda || {}
+  const scopedAgenda = {}
+  for (const section of Object.keys(agenda)) {
+    if (section === 'teams' && (agenda.date === day || (sourceDay && agenda.date === sourceDay))) scopedAgenda.teams = agenda.teams
+    if (section === 'weekly' && agenda.weekly == null) scopedAgenda.weekly = agenda.weekly
+    else if (section === 'weekly') {
+      const days = Object.keys(agenda.weekly).filter(key => key === day || key === sourceDay)
+      scopedAgenda.weekly = Object.fromEntries(days.map(key => [key, agenda.weekly[key]]))
+    }
+  }
+  const base = { agenda: snapshot.agenda == null ? snapshot.agenda : scopedAgenda }
+  const next = structuredClone(base)
+  next.agenda ||= {}
+  next.agenda.weekly ||= {}
+  if (customer && !snapshot.customers.some(item => item.customerId === customer.customerId)) {
+    base.customers = snapshot.customers
+    next.customers = [...snapshot.customers, customer]
+  }
   const updateTeams = teams => {
     const found = teams.find(item => String(item.teamId) === String(team.teamId))
     if (!found) return [...teams, { ...team, tasks: [task] }]
@@ -128,26 +142,29 @@ export function weeklyServiceOperations(snapshot, { day, team, task, record, bas
       return sourceTeamId && String(item.teamId || '') !== String(sourceTeamId)
     })
   }))
-  next.agenda ||= {}
-  next.agenda.weekly ||= {}
   if (sourceDay) {
     const sourcePlan = next.agenda.weekly[sourceDay] || {}
     next.agenda.weekly[sourceDay] = { ...sourcePlan, teams: removeFromTeams(sourcePlan.teams || []) }
-    if (next.agenda.date === sourceDay) next.agenda.teams = removeFromTeams(next.agenda.teams || [])
+    if (agenda.date === sourceDay) next.agenda.teams = removeFromTeams(next.agenda.teams || [])
   }
   const plan = next.agenda.weekly[day] || {}
   next.agenda.weekly[day] = { ...plan, teams: updateTeams(plan.teams || []) }
-  if (next.agenda.date === day) next.agenda.teams = updateTeams(next.agenda.teams || [])
-  const operations = stateOperations(snapshot, next)
+  if (agenda.date === day) next.agenda.teams = updateTeams(next.agenda.teams || [])
+  const operations = stateOperations(base, next)
   // Always check the record, including a retry whose local view already matches.
+  const historyIds = new Set()
+  for (const item of snapshot.history || []) {
+    if (item?.id == null || historyIds.has(String(item.id))) throw new Error('Hay registros sin identificador único. No se enviaron cambios del historial.')
+    historyIds.add(String(item.id))
+  }
+  if (record.id == null) throw new Error('El servicio no tiene un identificador de historial.')
   const historyPath = ['history', { key: 'id', id: String(record.id) }]
-  const filtered = operations.filter(operation => operation.path[0] !== 'history')
-  filtered.push({ path: historyPath, before: baseRecord || null, after: record, existed: Boolean(baseRecord), exists: true })
-  for (const operation of filtered) {
+  operations.push({ path: historyPath, before: baseRecord || null, after: record, existed: Boolean(baseRecord), exists: true })
+  for (const operation of operations) {
     if (operation.path[1] === 'weekly' && operation.path.at(-1)?.key === 'taskId' && operation.path.at(-1).id === String(task.taskId) && baseTask && operation.existed) {
       operation.before = baseTask
       operation.existed = true
     }
   }
-  return filtered
+  return operations
 }

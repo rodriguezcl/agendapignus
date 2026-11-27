@@ -1,20 +1,24 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
+const neverHidden = () => false
 
-export default function WeeklyServiceSearch({ anchor, weekly, history, getPlan, navigate, boardRef, openService, isTaskHidden = () => false }) {
+export default function WeeklyServiceSearch({ anchor, weekly, history, getPlan, navigate, boardRef, openService, isTaskHidden = neverHidden }) {
   const root = useRef(null)
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const [ready, setReady] = useState(false)
-  const matches = useMemo(() => {
-    const needle = normalize(query)
-    if (!needle) return []
-    const dates = [...new Set([...Object.keys(weekly || {}), ...(history || []).map(record => record.date)])].filter(day => /^\d{4}-\d{2}-\d{2}$/.test(day)).sort()
+  const needle = normalize(query)
+  const searching = Boolean(needle)
+  const entries = useMemo(() => {
+    if (!searching) return []
+    // Days without a saved plan only contain empty planning slots.
+    const dates = Object.keys(weekly || {}).filter(day => /^\d{4}-\d{2}-\d{2}$/.test(day)).sort()
     return dates.flatMap(day => (getPlan(day).teams || []).flatMap((team, teamIndex) => (team.tasks || []).flatMap((task, taskIndex) =>
-      !isTaskHidden(task, day) && task.client && normalize([task.client, task.clientAccount, task.clientNameAtService].join(' ')).includes(needle)
-        ? [{ day, teamIndex, taskIndex, key: `${day}/${teamIndex}/${taskIndex}` }] : [])))
-  }, [query, weekly, history])
+      task.client && !isTaskHidden(task, day)
+        ? [{ day, teamIndex, taskIndex, key: `${day}/${teamIndex}/${taskIndex}`, text: normalize([task.client, task.clientAccount, task.clientNameAtService].join(' ')) }] : [])))
+  }, [searching, weekly, getPlan, isTaskHidden])
+  const matches = useMemo(() => entries.filter(entry => entry.text.includes(needle)), [entries, needle])
   const selectedIndex = Math.min(index, Math.max(0, matches.length - 1))
   const selected = matches[selectedIndex]
   useEffect(() => {

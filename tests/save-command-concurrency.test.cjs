@@ -135,3 +135,19 @@ test('quick commands reuse the immutable display and parsed baseline without sub
   requests[2].resolve({ state: { ...snapshot, revision: 4 } })
   await third
 })
+
+test('un guardado concilia solo los borradores editados durante la espera', async () => {
+  for (const editWhileSaving of [false, true]) {
+    const { run, requests, applied, context, snapshot } = await harness()
+    const pending = run(command('a'), { combinePendingState: true, quickAction: true })
+    await tick()
+    if (editWhileSaving) {
+      const edited = { ...snapshot, history: [snapshot.history[0], { ...snapshot.history[1], detail: 'nuevo borrador' }] }
+      context.currentSnapshotRef.current = JSON.stringify(edited)
+      context.currentDisplaySnapshotRef.current = edited
+    }
+    requests[0].resolve({ state: { ...snapshot, revision: 2 } })
+    await pending
+    assert.equal(applied[0].options.preserveFrom, editWhileSaving ? snapshot : null)
+  }
+})

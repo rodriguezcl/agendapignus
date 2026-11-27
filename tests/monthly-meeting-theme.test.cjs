@@ -4,18 +4,19 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const { validateChangedAgendaSchedules } = require('../api/_lib/scheduling-validation.cjs')
 
-test('server resolves meeting names from catalogue IDs and keeps the ordinary minimum reservation', () => {
+test('server resolves meeting names from catalogue IDs and checks the scheduled duration of ordinary services', () => {
   const state = { services: [{ id: 'meeting', name: 'Reunión Mensual' }, { id: 'ordinary', name: 'Service de alarma' }], history: [], agenda: { date: '2099-01-02', teams: [
     { teamId: 'a', tasks: [
-      { serviceId: 'meeting', time: '15:15', estimatedMinutes: 15 },
-      { serviceId: 'ordinary', time: '15:30', estimatedMinutes: 15 }
+      { serviceId: 'meeting', time: '15:30', estimatedMinutes: 15 },
+      { serviceId: 'ordinary', time: '15:45', estimatedMinutes: 15 }
     ] }
   ] } }
   assert.doesNotThrow(() => validateChangedAgendaSchedules(state))
   state.agenda.teams[0].tasks[0].serviceId = 'ordinary'
+  assert.doesNotThrow(() => validateChangedAgendaSchedules(state))
+  state.agenda.teams[0].tasks[0].estimatedMinutes = 30
   assert.throws(() => validateChangedAgendaSchedules(state), /conflicto de horarios/)
   state.agenda.teams[0].tasks[0].serviceId = 'meeting'
-  state.agenda.teams[0].tasks[0].estimatedMinutes = 30
   state.agenda.teams[0].tasks[1].vehicleControl = true
   assert.doesNotThrow(() => validateChangedAgendaSchedules(state))
 })
@@ -24,11 +25,11 @@ test('monthly meeting uses duration; vehicle controls and ordinary services reta
   const { taskReservationMinutes } = await import('../src/domain/agenda/service-scheduling.mjs')
   assert.equal(taskReservationMinutes({ service: 'Reunión Mensual', estimatedMinutes: 15 }), 15)
   assert.equal(taskReservationMinutes({ service: ' REUNION  MENSUAL ', estimatedMinutes: 30 }), 30)
-  assert.equal(taskReservationMinutes({ service: 'Service de alarma', estimatedMinutes: 15 }), 60)
+  assert.equal(taskReservationMinutes({ service: 'Service de alarma', estimatedMinutes: 15 }), 15)
   assert.equal(taskReservationMinutes({ vehicleControl: true, estimatedMinutes: 15 }), 15)
   const state = { services: [], history: [], agenda: { date: '2096-09-21', teams: [
-    { teamId: 'a', memberIds: ['t'], members: ['Técnico'], tasks: [{ service: 'Reunión Mensual', time: '15:15', estimatedMinutes: 15 }] },
-    { teamId: 'b', memberIds: ['t'], members: ['Técnico'], tasks: [{ service: 'Control', vehicleControl: true, time: '15:30', estimatedMinutes: 15 }] }
+    { teamId: 'a', memberIds: ['t'], members: ['Técnico'], tasks: [{ service: 'Reunión Mensual', time: '15:30', estimatedMinutes: 15 }] },
+    { teamId: 'b', memberIds: ['t'], members: ['Técnico'], tasks: [{ service: 'Control', vehicleControl: true, time: '15:45', estimatedMinutes: 15 }] }
   ] } }
   assert.doesNotThrow(() => validateChangedAgendaSchedules(state, {}))
   state.agenda.teams[0].tasks[0].estimatedMinutes = 30

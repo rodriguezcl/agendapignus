@@ -16,8 +16,9 @@ test('la cobranza rectificada espera la nueva fecha tras reprogramar y conserva 
   const { historyRescheduleOperations } = await import('../src/features/state/application/history-reschedule.mjs')
   const { selectDashboardNotifications } = await import('../src/domain/dashboard/dashboard-notifications.mjs')
   const state = fixture()
-  Object.assign(state.history[0], { amount: '10000', paymentMethod: 'Transferencia', collection: { status: 'pending', events: [{ action: 'correct' }] } })
-  const notices = (history, today) => selectDashboardNotifications({ history, today, permissions: { collections: true } })
+  const user = { id: 'responsable', permissions: { __catalogV2: true, 'collections.view': true, 'records.financial': true, 'collections.confirm': true, 'notifications.collections': true } }
+  Object.assign(state.history[0], { createdBy: { id: user.id }, amount: '10000', paymentMethod: 'Transferencia', collection: { status: 'pending', events: [{ action: 'correct' }] } })
+  const notices = (history, today) => selectDashboardNotifications({ history, today, user })
   assert.equal(notices(state.history, sourceDay).length, 1)
   const next = applyStateOperations(state, historyRescheduleOperations(state, command(state)))
   assert.equal(notices(next.history, sourceDay).length, 0)
@@ -72,7 +73,7 @@ test('reprogramar no queda bloqueado por un conflicto previo de otro equipo inde
   const { historyRescheduleOperations } = await import('../src/features/state/application/history-reschedule.mjs')
   const state = fixture()
   const unrelated = { teamId: 'leonardo', members: ['Leonardo'], memberIds: ['leo'], tasks: [
-    { taskId: 'leo-1', service: 'Alarma', time: '11:00', estimatedMinutes: 15 },
+    { taskId: 'leo-1', service: 'Alarma', time: '11:00', estimatedMinutes: 60 },
     { taskId: 'leo-2', service: 'Alarma', time: '11:21', estimatedMinutes: 15 }
   ] }
   state.agenda.weekly[day].teams.push(unrelated)

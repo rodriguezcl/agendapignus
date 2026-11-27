@@ -247,7 +247,6 @@
   font-size: 0.68rem;
 }
 
-.week-task > label,
 .week-task-top > label,
 .weekly-extra-fields > label {
   gap: 5px;
@@ -565,7 +564,6 @@ body.dark .week-task-summary.available-slot .week-task-client {
   background: #294335;
 }
 
-.week-task > label,
 .week-task-top > label,
 .weekly-extra-fields > label {
   display: grid;
@@ -579,8 +577,6 @@ body.dark .week-task-summary.available-slot .week-task-client {
   color: #c7443f;
 }
 
-.week-task > label input,
-.week-task > label textarea,
 .week-task-top label input,
 .week-task-top label select,
 .weekly-extra-fields label input,
@@ -595,7 +591,6 @@ body.dark .week-task-summary.available-slot .week-task-client {
   gap: 6px;
 }
 
-body.dark .week-task > label,
 body.dark .week-task-top > label,
 body.dark .weekly-extra-fields > label {
   color: #c6dccd;
@@ -646,10 +641,6 @@ body.dark .weekly-add-task {
   box-shadow: 0 5px 14px rgba(38, 68, 46, .12);
   transform: translateY(-1px);
   outline: none;
-}
-
-.week-task-summary > :not(.week-task-title):not(.week-task-client):not(.week-task-locality):not(.agenda-task-status):not(.agenda-report-disclosure):not(.service-confirmation-label):not(.journey-plan-button):not(.journey-label) {
-  display: none;
 }
 
 .week-task-summary > .weekly-agenda-task-status {

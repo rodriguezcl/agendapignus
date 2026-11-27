@@ -39,7 +39,7 @@ test('los refrescos y confirmaciones de guardado conservan el orden sin modifica
 
 test('cada edición del mismo campo horario vuelve a ordenar sin perder identidad ni datos', () => {
   const start = source.indexOf('  const updateTask = (team, task, patch) => {')
-  const handler = source.slice(start, source.indexOf('\n  const isAdministrator', start))
+  const handler = source.slice(start, source.indexOf('\n  }', start) + '\n  }'.length)
   let teams = [{ tasks: [
     { taskId: 'a', time: '11:30', detail: 'A' },
     { taskId: 'b', time: '15:15', status: 'Completado' },

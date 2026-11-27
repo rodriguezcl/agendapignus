@@ -607,7 +607,6 @@ body.dark .week-task-summary.available-slot .week-task-client {
 .app-shell[data-theme='dark'] .weekly-tech-popover .tech-list label:hover {
   background: #3c3c3c !important;
 }
-body.dark .week-task > label,
 body.dark .week-task-top > label,
 body.dark .weekly-extra-fields > label {
   color: #d6d6d6 !important;

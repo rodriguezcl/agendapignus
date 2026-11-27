@@ -3,6 +3,22 @@ const assert = require('node:assert/strict')
 const { assertServiceCanBeCompleted, normalizeHistoryCompletionTimes, normalizeStateForSave, validateState } = require('../api/_lib/core.cjs')
 const { agendaTaskIsResolvedForPlanning, agendaTaskWasAlreadyScheduled, completedReleaseMinute } = require('../api/_lib/scheduling-validation.cjs')
 
+test('la validación conserva el orden de los vínculos antiguos y la coincidencia por cuenta, servicio, fecha y hora', () => {
+  const { validateChangedAgendaSchedules } = require('../api/_lib/scheduling-validation.cjs')
+  const date = '2099-09-24'
+  const first = { historyId: 'new', sourceTaskId: 'old-task', client: 'Gómez', service: 'Alarma', time: '09:00', estimatedMinutes: 60 }
+  const other = { taskId: 'other', service: 'Alarma', time: '09:15', estimatedMinutes: 30 }
+  const weekly = { [date]: { teams: [{ tasks: [first, other] }] } }
+  const check = history => validateChangedAgendaSchedules({ agenda: { weekly }, services: [], history })
+  const cancelledAlias = { id: 'old', sourceTaskId: 'old-task', status: 'Cancelado' }
+  const pendingId = { id: 'new', status: 'Pendiente' }
+  assert.doesNotThrow(() => check([cancelledAlias, pendingId]))
+  assert.throws(() => check([pendingId, cancelledAlias]), /conflicto de horarios/)
+  const legacy = { date, client: 'GOMEZ', service: 'alarma', time: '09:00', status: 'Cancelado' }
+  assert.doesNotThrow(() => check([legacy]))
+  assert.throws(() => check([{ ...legacy, date: '2099-09-23' }]), /conflicto de horarios/)
+})
+
 test('el portal técnico acepta el reloj numérico usado para habilitar servicios', async () => {
   const { serviceHasStarted } = await import('../src/service-start.mjs')
   const clock = new Date('2026-08-30T15:00:00.000Z').getTime()

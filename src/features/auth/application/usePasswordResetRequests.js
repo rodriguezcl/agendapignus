@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchWithTimeout } from '../../../infrastructure/http/fetch-timeout.mjs'
 
+const EMPTY_REQUESTS = Object.freeze([])
+
 // One authorized subscription feeds the notification bell and its action dialog.
 export function usePasswordResetRequests({ enabled, accountKey }) {
   const [state, setState] = useState({ accountKey: null, requests: [] })
@@ -60,5 +62,5 @@ export function usePasswordResetRequests({ enabled, accountKey }) {
     }
   }, [enabled])
 
-  return { ready: Boolean(enabled && state.accountKey === accountKey && state.ready), requests: enabled && state.accountKey === accountKey ? state.requests : [], error: enabled ? error : '', resolve, refresh: () => refreshRef.current() }
+  return { ready: Boolean(enabled && state.accountKey === accountKey && state.ready), requests: enabled && state.accountKey === accountKey && state.requests.length ? state.requests : EMPTY_REQUESTS, error: enabled ? error : '', resolve, refresh: () => refreshRef.current() }
 }

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const source = frontendSource()
+const observationHistory = fs.readFileSync(path.join(__dirname, '../src/components/ServiceObservationHistory.jsx'), 'utf8')
 
 test('weekly completed service opens the read-only detail before the editing path', () => {
   const start = source.indexOf('const openTaskEditor =')
@@ -25,8 +26,8 @@ test('daily completed badge offers a collapsed technical disclosure', () => {
 
 test('shared read-only detail separates agenda notes from the technician report', () => {
   const detail = source.slice(source.indexOf('function HistoryDetail('), source.indexOf('function Accounts('))
-  for (const field of ['record.detail', 'record.technicalObservation', 'technicalReporter(record)', 'record.technicalReportedAt']) assert.ok(detail.includes(field), field)
-  assert.ok(detail.includes('Servicio informado sin observaciones adicionales.'))
+  for (const field of ['record.detail', 'record.technicalObservation', 'record.technicalReportedAt', '<ServiceObservationHistory record={record}']) assert.ok(detail.includes(field), field)
+  for (const field of ['serviceObservations(record)', 'report.byName', 'report.body', 'report.at']) assert.ok(observationHistory.includes(field), field)
   assert.doesNotMatch(detail, /Guardar cambios|persistHistoryRecord/)
 })
 
@@ -40,15 +41,15 @@ test('technical notes remain in modals and inside the expandable card section', 
   const badge = source.slice(source.indexOf('function TaskStatusBadge('), source.indexOf('const serviceActor ='))
   assert.match(badge, /<AgendaTechnicalNote record=\{record \|\| task\} \/><\/details>/)
   assert.match(source, /<AgendaTechnicalNote record=\{historyRecordForTask\(task, day, operationalHistory\) \|\| taskEditor.baseRecord\}/)
-  assert.match(source, /detail-notes customer-history-technical technician-report-detail agenda-technical-note/)
+  assert.match(observationHistory, /detail-notes technician-report-detail agenda-technical-note/)
 })
 
 test('disclosure includes administration context and weekly cards do not hide it', () => {
   const badge = source.slice(source.indexOf('function TaskStatusBadge('), source.indexOf('const serviceActor ='))
   assert.match(badge, /Observación de agenda \/ Administración/)
   assert.ok(badge.indexOf('agenda-admin-note') < badge.indexOf('<AgendaTechnicalNote'))
-  const css = fs.readFileSync(path.join(__dirname, '../src/weekly-enhancements.css'), 'utf8')
-  assert.match(css, /:not\(\.agenda-report-disclosure\)/)
+  const css = fs.readFileSync(path.join(__dirname, '../src/daily-completed.css'), 'utf8')
+  assert.match(css, /\.week-task-summary > \.agenda-report-disclosure\s*\{\s*display: block/)
   const modal = source.slice(source.indexOf('{taskEditor && (() => {'), source.indexOf('<div className="weekly-scroll-top"'))
   assert.ok(modal.indexOf('value={task.detail}') < modal.indexOf('<AgendaTechnicalNote'))
 })

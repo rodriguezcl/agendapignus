@@ -10,7 +10,7 @@ test('la interfaz permite adjuntar desde archivo o cámara y muestra la foto en 
   assert.match(attachments, /Agregar archivos/)
   assert.match(attachments, /multiple accept=/)
   assert.match(attachments, /capture="environment"/)
-  assert.match(source, /weekly-service-photo/)
+  assert.match(source, /className="modal weekly-task-modal"[\s\S]*?<ServicePhotoField record=\{\{ \.\.\.task, \.\.\.taskEditor\.baseRecord \}\}/)
   assert.match(source, /daily-service-photo|ServicePhotoManager/)
   assert.match(source, /technician-service-photo/)
   assert.match(source, /history-service-photo/)

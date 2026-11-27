@@ -25,7 +25,7 @@ test('past services open saved payment information without opening an editor', (
   let viewed
   const open = vm.runInNewContext(code + '\nopenTaskEditor', {
     can: () => true, canReadRecord: () => true, canWriteTask: () => true, scopedTask: task => task, authUser: null, customers: [], serviceCopyRecord: record => ({ ...record }),
-    readOnly: false,
+    readOnly: false, pausedControl: () => false,
     setTaskEditorError: () => {},
     setWeeklyServiceSource: () => {},
     setTaskEditor: () => assert.fail('Past services must not open the editor'),

@@ -17,13 +17,13 @@ function harness(saturday = false) {
     afterInteractionPaint: () => new Promise(resolve => timers.push(resolve)),
     memberSelectionsRef: { current: selections },
     setMemberSelections: update => { selections = update(selections); context.memberSelectionsRef.current = selections },
-    advancedGuardForDay: () => null, isSaturday: () => saturday,
+    advancedGuardForDay: () => null, isSaturday: () => saturday, guardAssignmentRestriction: () => '',
     activeTechs: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }],
     dayPlan: () => ({ teams: [team, otherTeam] }), weekly: { [day]: { teams: [team, otherTeam] } },
     setNotice: value => notices.push(value),
     persistWeeklyService: command => { requests.push(command); return new Promise((resolve, reject) => deferred.push({ resolve, reject })) },
   }
-  const code = source.slice(source.indexOf('  const persistMemberSelection ='), source.indexOf('  const updateTask =', source.indexOf('  const toggleWeeklyTech =')))
+  const code = source.slice(source.indexOf('  const persistMemberSelection ='), source.indexOf('  const addTeam =', source.indexOf('  const toggleWeeklyTech =')))
   const handlers = vm.runInNewContext(code + '\n({toggleWeeklyTech, persistMemberSelection})', context)
   context.persistMemberSelection = handlers.persistMemberSelection
   const effectStart = source.indexOf('    for (const [key, preview] of Object.entries(memberSelections))')

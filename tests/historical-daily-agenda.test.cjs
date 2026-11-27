@@ -67,16 +67,18 @@ test('el banner abre una vista previa de cualquier día sin cambiar la agenda ni
   assert.equal(trigger.attributes.some(attribute => attribute.name?.name === 'disabled'), false, 'Historical dates must still have a usable preview')
   const callback = trigger.attributes.find(attribute => attribute.name?.name === 'onClick').value.expression
   for (const day of ['2026-09-17', '2026-10-13']) {
-    const plan = { teams: [{ teamId: 'a', tasks: [{ taskId: 't', detail: 'borrador' }] }] }
+    const plan = { teams: [{ teamId: 'a', tasks: [{ taskId: 't', detail: 'borrador' }, { taskId: 'vehicle', vehicleControl: true }] }] }
     const before = JSON.stringify(plan)
     let preview
     const onClick = vm.runInNewContext(planner.slice(callback.start, callback.end), {
       can: () => true, serviceCopyRecord: record => ({ ...record }),
-      day, services: [], operationalHistory: [], dayPlan: () => plan,
+      day, services: [], operationalHistory: [], historyRecords: [], dayPlan: () => plan,
+      pausedControl: task => task.vehicleControl === true,
       historyRecordForTask: () => ({ detail: 'guardado', status: 'Completado' }),
       setDayPreview: value => { preview = value },
       dayAgendaPreview: (date, teams) => {
         assert.equal(date, day)
+        assert.equal(teams[0].tasks.length, 1)
         assert.equal(teams[0].tasks[0].detail, 'guardado')
         assert.equal(teams[0].tasks[0].status, 'Completado')
         return 'Vista previa de prueba'

@@ -65,3 +65,29 @@ test('reservas y clientes nuevos se crean atómicamente junto con el servicio', 
   assert.throws(() => f.create(f.server, 2, command), /actualizarse/)
   assert.throws(() => f.create(f.server, 1, { ...command, baseRecord: f.record }), /servicios nuevos/)
 })
+
+test('agendar un servicio no lee fichas, informes ni planes de otras fechas', async () => {
+  const { server, create, day, team, command } = await fixture()
+  const unexpectedRead = () => assert.fail('Se leyó información ajena al servicio')
+  server.agenda.weekly[day] = { teams: [team] }
+  Object.defineProperty(server.agenda.weekly, '2026-10-22', { enumerable: true, get: unexpectedRead })
+  Object.defineProperty(server, 'customers', { enumerable: true, get: unexpectedRead })
+  server.history.push({ id: 'previo', get technicalObservation() { return unexpectedRead() } })
+  const operations = create(server, 1, command)
+  assert.equal(operations.filter(op => op.path[0] === 'history').length, 1)
+  assert.ok(operations.some(op => op.path[2] === day && op.after === command.task))
+  assert.deepEqual(team.tasks, [])
+  server.history.push({ id: 'previo' })
+  assert.throws(() => create(server, 1, command), /identificador único/)
+})
+
+test('el primer servicio puede crear el contenedor de agenda en una base vacía', async () => {
+  for (const initial of [null, undefined]) {
+    const { server, create, day, command } = await fixture()
+    if (initial === null) server.agenda = null
+    else delete server.agenda
+    const saved = applyStateOperations(server, create(server, 1, command))
+    assert.equal(saved.agenda.weekly[day].teams[0].tasks[0].taskId, command.task.taskId)
+    assert.deepEqual(saved.history, [command.record])
+  }
+})

@@ -6,7 +6,7 @@ import { compareReservationReminders } from '../agenda/reservation-reminder-orde
 import { reservationLocality } from '../agenda/service-locality.mjs'
 import { softguardVerificationCases } from '../customers/softguard-verification.mjs'
 import { pendingSoftguardRetirements } from '../customers/softguard-retirement.mjs'
-import { canReadRecord } from '../access/record-scope.mjs'
+import { createRecordReadFilter } from '../access/record-scope.mjs'
 import policy from '../../../api/_lib/permission-catalog.cjs'
 import alarmZones from '../../../api/_lib/alarm-zones.cjs'
 import addressChange from '../../../api/_lib/address-change.cjs'
@@ -78,10 +78,18 @@ export function selectDashboardNotifications({ history = [], weekly = {}, vehicl
   const access = dashboardNotificationAccess(subject)
   const can = key => access[key] === true
   const receives = category => administrator || can(`notifications.${category}`)
-  history = history.filter(record => !controlPause.pausedVehicleControl(record, weekly) && (administrator || canReadRecord(record, subject, customers)))
+  const categories = { today: 'pendingToday', confirmation: 'confirmation', rescheduling: 'rescheduling', overdue: 'overdue' }
+  const includePending = Object.values(categories).some(receives)
+  const needsHistory = includePending || ['softguard', 'reservations', 'collections', 'followups'].some(receives)
+  if (needsHistory) {
+    const readable = createRecordReadFilter(subject, customers)
+    history = history.filter(record => !controlPause.pausedVehicleControl(record, weekly) && (administrator || readable(record)))
+  } else {
+    history = []
+  }
   // Old in-memory commercial/contact fields must not outlive their permission.
   if (!can('records.financial') || !can('records.contact')) history = history.map(record => ({ ...record, form: undefined, formEmail: undefined }))
-  const visibleCustomers = visibleNotificationCustomers(customers, history, subject)
+  const visibleCustomers = receives('softguard') || receives('reservations') ? visibleNotificationCustomers(customers, history, subject) : []
   const addressNotices = receives('softguard') && can('history.view') && can('records.contact')
     ? addressChange.pendingAddressChanges(history, visibleCustomers).map(({ record, verification }) => ({
       id: `address-change:${record.serviceJourney?.id || record.id}`,
@@ -174,8 +182,7 @@ export function selectDashboardNotifications({ history = [], weekly = {}, vehicl
     })
   }
 
-  const pending = dashboardPendingGroups(history, today)
-  const categories = { today: 'pendingToday', confirmation: 'confirmation', rescheduling: 'rescheduling', overdue: 'overdue' }
+  const pending = includePending ? dashboardPendingGroups(history, today) : {}
   for (const group of DASHBOARD_PENDING_NOTICES) {
     if (!receives(categories[group.key]) || !pending[group.key].length) continue
     notices.push({
