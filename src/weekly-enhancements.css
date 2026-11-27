@@ -473,6 +473,7 @@ body.dark .week-task-summary.available-slot .week-task-client {
 
 .weekly-tech-popover {
   top: calc(100% + 8px);
+  left: auto;
   right: 0;
   z-index: 40;
   width: min(270px, calc(100vw - 42px)) !important;

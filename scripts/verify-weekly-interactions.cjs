@@ -148,6 +148,10 @@ async function settle(page, revision) {
       const checkbox = (index, name) => teams.nth(index).locator(`.tech-list label[title="${name}"] input`)
       await page.evaluate(() => { window.__delays = [1500, 1000] })
       await teams.nth(0).locator('.weekly-add-tech-button').click()
+      const nameFits = await teams.nth(0).locator('.tech-list label > span').first().evaluate(name =>
+        name.scrollWidth <= name.clientWidth + 1 && name.scrollHeight <= name.clientHeight + 1 &&
+        getComputedStyle(name).fontSize === getComputedStyle(name.parentElement).fontSize)
+      assert(nameFits, 'The full technician name must fit beside its checkbox at the normal label size')
       await measureFeedback(checkbox(0, 'Mariano Ejemplo'), `unassign-${width}`, 'checked', false)
       assert.equal(await checkbox(0, 'Mariano Ejemplo').isDisabled(), false)
       await measureFeedback(checkbox(0, 'Pascual Ejemplo'), `queued-assign-${width}`, 'checked', true)
