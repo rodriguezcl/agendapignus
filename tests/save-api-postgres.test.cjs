@@ -51,10 +51,11 @@ test('production PATCH handler commits compact responses, idempotent retries and
       agenda: { date: '2099-01-05', teams: [], weekly: {} } }
     state.services = [{ id: 's', code: 'other-service', name: 'Otro servicio', status: 'Activo', estimatedMinutes: 60 }]
     for (const record of state.history) { record.serviceId = 's'; record.service = 'Otro servicio' }
-    const initial = { ...normalizeStateForSave(state, state), revision: 1 }
-    validateState(initial, initial)
-    await replaceCollections(sql, initial)
+    const seed = { ...normalizeStateForSave(state, state), revision: 1 }
+    validateState(seed, seed)
+    await replaceCollections(sql, seed)
     await pg.query("insert into pignus_preferences (key,value) values ('state_revision','1') on conflict (key) do update set value='1'")
+    const initial = await readState(sql)
     const analysis = require('../api/_lib/normalization-analysis.cjs').analyzeNormalization(initial)
     assert.equal(analysis.summary.bySeverity.error || 0, 0, JSON.stringify(analysis.issues.filter(issue => issue.severity === 'error')))
     const candidate = buildShadowCandidate(initial)
@@ -69,10 +70,10 @@ test('production PATCH handler commits compact responses, idempotent retries and
     const before = visibleStateForUser(initial, user)
     const next = structuredClone(before); next.history[0].detail = 'saved'
     const operations = stateOperations(before, next)
-    const save = async body => {
+    const save = async (body, actor = user) => {
       const result = { headers: {} }
       const res = { setHeader: (key, value) => { result.headers[key] = value }, status(code) { result.status = code; return this }, json(value) { result.body = value; return value } }
-      await compiled.exports.testSave({ method: 'PATCH', body }, res, sql, user)
+      await compiled.exports.testSave({ method: 'PATCH', body }, res, sql, actor)
       return result
     }
     const saved = await save({ revision: 1, operations, responseMode: 'delta-v1' })
@@ -97,5 +98,44 @@ test('production PATCH handler commits compact responses, idempotent retries and
     assert.equal(independent.status, 200, JSON.stringify(independent.body))
     assert.equal(independent.body.state.history[0].detail, 'saved')
     assert.equal(independent.body.state.history[1].detail, 'independent')
+    const { weeklyServiceCreationOperations } = await import('../src/features/state/application/weekly-service-create.mjs')
+    const scheduler = independent.body.state
+    const day = '2099-01-07', team = { teamId: 'crew', label: 'Equipo 1', memberIds: [], members: [], tasks: [] }
+    const task = { taskId: 'new-task', historyId: 'new-work', time: '11:00', status: 'Pendiente', serviceId: 's', service: 'Otro servicio', estimatedMinutes: 60 }
+    const record = { ...task, id: task.historyId, sourceTaskId: task.taskId, date: day, teamId: team.teamId, team: team.label }
+    const create = { revision: scheduler.revision, operations: weeklyServiceCreationOperations(scheduler, scheduler.revision, { day, team, task, record, baseRecord: null }), responseMode: 'delta-v1' }
+    const wrongSession = await save({ ...create, expectedActorId: 'different-user' })
+    assert.equal(wrongSession.status, 403)
+    const firstCreation = await save(create)
+    assert.equal(firstCreation.status, 200, JSON.stringify(firstCreation.body))
+    const committed = await readState(sql)
+    assert.equal(committed.history.filter(item => item.id === record.id).length, 1)
+    assert.notDeepEqual(committed.history.find(item => item.id === record.id), record, 'the server normalizes the new service before writing')
+    const auditCount = async () => Number((await pg.query('select count(*) as n from pignus_audit_log')).rows[0].n)
+    const initialAuditCount = await auditCount()
+    // A stale client can repeat the same request after the original server exited.
+    compiled._compile(fs.readFileSync(filename, 'utf8') + '\nmodule.exports.testSave = handleSaveState;', filename)
+    const redelivered = await save(create)
+    assert.equal(redelivered.status, 200, JSON.stringify(redelivered.body))
+    assert.equal(redelivered.body.revision, committed.revision)
+    assert.deepEqual(redelivered.body.state, visibleStateForUser(committed, user))
+    assert.equal(await auditCount(), initialAuditCount)
+    const altered = structuredClone(create)
+    altered.operations.find(op => op.path[0] === 'history').after.detail = 'A different request'
+    assert.equal((await save(altered)).status, 409)
+    assert.equal((await save(create, { ...user, id: 'another-admin' })).status, 409)
+    assert.deepEqual(await readNormalizedState(pg), committed)
+    // Generated history with a deterministic id may legitimately be removed and regenerated.
+    const generated = { id: 'generated-work', sourceTaskId: 'generated-task', serviceId: 's', service: 'Otro servicio', date: '2099-01-08', time: '11:00', status: 'Pendiente' }
+    const historyOps = (before, after) => stateOperations({ history: before }, { history: after })
+    const generatedWrite = await save({ operations: historyOps([], [generated]) })
+    assert.equal(generatedWrite.status, 200, JSON.stringify(generatedWrite.body))
+    const savedGenerated = generatedWrite.body.state.history.find(item => item.id === generated.id)
+    const removed = await save({ operations: historyOps([savedGenerated], []) })
+    assert.equal(removed.status, 200, JSON.stringify(removed.body))
+    const regenerated = await save({ operations: historyOps([], [{ ...generated, detail: 'Updated generation' }]) })
+    assert.equal(regenerated.status, 200, JSON.stringify(regenerated.body))
+    assert.equal(regenerated.body.state.history.find(item => item.id === generated.id).detail, 'Updated generation')
+    assert.equal((await pg.query("select count(*)::int as n from pignus_preferences where key like 'service_creation:%'")).rows[0].n, 1)
   } finally { await pg.close() }
 })

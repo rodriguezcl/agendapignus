@@ -70,7 +70,10 @@ test('quitar la tercera jornada libera su horario, renumera la cuarta y permite 
   }
   const task = { ...replacement, taskId: replacement.sourceTaskId, historyId: replacement.id }
   const command = { day: replacement.date, team: released.agenda.weekly[replacement.date].teams[0], task, record: replacement }
-  const saved = applyStateOperations(released, weeklyServiceCreationOperations(released, released.revision, command))
+  const operations = weeklyServiceCreationOperations(released, released.revision, command)
+  const saved = require('../api/_lib/weekly-service-creation-mirror.cjs').mirrorWeeklyServiceCreations(
+    applyStateOperations(released, operations), released, operations
+  )
   synchronizeJourneyIdentity(saved, released)
   assert.doesNotThrow(() => validateServiceJourneys(saved, released))
   assert.doesNotThrow(() => validateChangedAgendaSchedules(saved, released))

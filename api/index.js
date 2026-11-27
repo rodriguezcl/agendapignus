@@ -42,6 +42,7 @@ const { database, readTechnicianState, replaceCollections } = require('./_lib/da
 const { readApplicationRevision: readRevision, readApplicationState: readState, readApplicationTechnicianState } = require('./_lib/storage-router.cjs')
 const { coordinateStateWrite } = require('./_lib/state-write-coordinator.cjs')
 const saveSnapshots = require('./_lib/save-snapshot-cache.cjs').createSaveSnapshotCache()
+let recentNormalizedProjection = null
 const { appendOperationalAudit: appendAudit, deleteServicePhoto, setAuxiliaryPreference, upsertServicePhoto, upsertVehicleControlPhoto, upsertVehicleInsuranceDocument } = require('./_lib/operational-storage.cjs')
 const { fetchNationalHolidays, validHolidayYear } = require('./_lib/holidays.cjs')
 const { vehicleControlIsOpen, vehicleControlWindowLabel } = require('./_lib/vehicle-control-window.cjs')
@@ -473,6 +474,9 @@ async function handleSaveState(req, res, sql, user) {
   const incoming = requestBody(req)
   try {
     const { retryPreparedWrite, assertPreparedRevision } = require('./_lib/prepared-state-write.cjs')
+    const { assertSaveActor, serviceCreationReceipt, assertCreationReplay } = require('./_lib/service-creation-receipt.cjs')
+    assertSaveActor(incoming, user)
+    const receipt = req.method === 'PATCH' && serviceCreationReceipt(incoming.operations, user)
     const result = await retryPreparedWrite(() => sql.begin(async transaction => {
       // Agenda writes update the legacy and normalized models atomically. A
       // short wait incorrectly reported normal serialization as a busy DB.
@@ -494,6 +498,14 @@ async function handleSaveState(req, res, sql, user) {
         timing.mark('lock_wait')
         assertPreparedRevision(currentRevision, Number(revisionRows[0]?.value || 0))
       }
+      if (receipt) {
+        const [stored] = await transaction`select value from pignus_preferences where key = ${receipt.key}`
+        if (stored) {
+          await verifyRevision()
+          assertCreationReplay(receipt, stored.value, current.history)
+          return { revision: currentRevision, state: current, previous: current, merged: false, normalized: require('./_lib/storage-router.cjs').preparedSnapshots.has(current) }
+        }
+      }
       const individual = req.method === 'PATCH'
       const employeeCommand = individual && employeeOnly(incoming.operations)
       const planningClick = individual && !employeeCommand && require('./_lib/planning-click-operation.cjs').preparePlanningClick(current, incoming.operations, user)
@@ -508,6 +520,7 @@ async function handleSaveState(req, res, sql, user) {
         throw error
       }
       if (!employeeCommand && !planningClick) {
+        if (individual) next = require('./_lib/weekly-service-creation-mirror.cjs').mirrorWeeklyServiceCreations(next, current, incoming.operations)
         const delivery = require('./_lib/service-materials.cjs').prepareServiceMaterials(next, current)
         next = delivery.apply(delivery.needsCatalog ? await require('./_lib/product-store.cjs').postgresProductOverrides(transaction) : [])
         next = normalizeStateForSave(next, current, { allowEarlyCompletion: isGranular(user) ? canPermission(user, 'history.completeEarly') : user.roleCode === 'administrator' })
@@ -534,23 +547,26 @@ async function handleSaveState(req, res, sql, user) {
         ] : []),
         ...auditChanges(changedHistory ? changedHistory.map(change => change.before) : current.history, changedHistory ? changedHistory.map(change => change.after) : next.history, 'id', 'Servicio / historial', user),
       ]
-      if (JSON.stringify(current.agenda) !== JSON.stringify(next.agenda)) entries.push(auditEntry(user, 'Modificó', 'Agenda técnica', 'agenda-actual', current.agenda, next.agenda))
+      const agendaChanged = planningClick ? current.agenda !== next.agenda : JSON.stringify(current.agenda) !== JSON.stringify(next.agenda)
+      if (agendaChanged) entries.push(auditEntry(user, 'Modificó', 'Agenda técnica', 'agenda-actual', current.agenda, next.agenda))
       const nextRevision = currentRevision + 1
       timing.mark('prepare_audit')
       let prepared
       if (require('./_lib/storage-router.cjs').preparedSnapshots.has(current) || await require('./_lib/operational-storage.cjs').normalizedShadowIsPrepared(transaction)) {
         require('./_lib/journey-identity.cjs').synchronizeJourneyIdentity(next, current)
         require('./_lib/service-journeys.cjs').validateServiceJourneys(next, current)
-        prepared = require('./_lib/normalized-state-repository.cjs').prepareNormalizedStateWrite(current, { ...next, revision: nextRevision })
+        prepared = require('./_lib/normalized-state-repository.cjs').prepareNormalizedStateWrite(current, { ...next, revision: nextRevision }, recentNormalizedProjection)
+        recentNormalizedProjection = prepared.next
       }
       timing.mark('prepare_projection')
       await verifyRevision()
-      await persistStateCollections(transaction, current, next, nextRevision, prepared, { ticketActor: user })
+      const persisted = await persistStateCollections(transaction, current, next, nextRevision, prepared, { ticketActor: user })
+      if (receipt) await setAuxiliaryPreference(transaction, receipt.key, receipt.digest, { shadowPrepared: persisted.shadowWritten })
       timing.mark('persist')
       if (current.customers !== next.customers && JSON.stringify(current.customers) !== JSON.stringify(next.customers)) await setAuxiliaryPreference(transaction, CUSTOMER_IMPORT_BACKUP_KEY, null)
       await appendAudit(transaction, entries, { shadowPrepared: Boolean(prepared) })
       timing.mark('audit')
-      return { revision: nextRevision, state: { ...next, revision: nextRevision }, previous: current, merged, normalized: require('./_lib/storage-router.cjs').preparedSnapshots.has(current) }
+      return { revision: nextRevision, state: { ...next, revision: nextRevision }, previous: current, merged, deltaInputs: planningClick?.deltaInputs, normalized: require('./_lib/storage-router.cjs').preparedSnapshots.has(current) }
     }))
     if (result.merged) logStateConcurrencyEvent('state_write_merged', {
       actorRole: user.roleCode,
@@ -559,12 +575,13 @@ async function handleSaveState(req, res, sql, user) {
     })
     timing.mark('commit')
     if (result.normalized) saveSnapshots.remember(result.state)
-    const response = { ok: true, revision: result.revision, merged: result.merged, state: visibleStateForUser(result.state, user) }
+    const response = { ok: true, revision: result.revision, merged: result.merged }
     if (incoming.responseMode === 'delta-v1' && Number(incoming.revision) === Number(result.previous.revision)) {
       const { stateDelta } = await import('../src/domain/shared/state-delta.mjs')
-      response.delta = stateDelta(visibleStateForUser(result.previous, user), response.state)
-      delete response.state
-    }
+      if (result.state === result.previous) response.delta = { baseRevision: result.revision, revision: result.revision, changes: {} }
+      else if (result.deltaInputs) response.delta = stateDelta(...result.deltaInputs(result.revision))
+      else response.delta = stateDelta(visibleStateForUser(result.previous, user), visibleStateForUser(result.state, user))
+    } else response.state = visibleStateForUser(result.state, user)
     timing.mark('response_projection')
     timing.finish(res, 'success')
     return send(res, 200, response)

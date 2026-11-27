@@ -22,7 +22,7 @@ export async function requestJson(url, options = {}, fallbackMessage = 'No se pu
         return {}
       })
       if (!response.ok) {
-        const error = new Error(payload.error || fallbackMessage)
+        const error = new Error(payload?.error || fallbackMessage)
         error.status = response.status
         error.payload = payload
         throw error
@@ -30,7 +30,11 @@ export async function requestJson(url, options = {}, fallbackMessage = 'No se pu
       return payload
     })(), timeout])
   } catch (error) {
-    if (timedOut || error?.name === 'AbortError') throw new Error('La conexión demoró demasiado. Volvé a intentarlo.')
+    if (timedOut) {
+      const timeoutError = new Error('La conexión demoró demasiado. Volvé a intentarlo.', { cause: error })
+      timeoutError.code = 'REQUEST_TIMEOUT'
+      throw timeoutError
+    }
     throw error
   } finally {
     clearTimeout(timer)

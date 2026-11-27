@@ -16,16 +16,28 @@ function migrateLegacyServiceRecord(record, forceLegacyDuration = false) {
   }
 }
 
-function migrateTeams(teams = [], forceLegacyDuration = false) {
+function mapRecords(records, transform) {
+  const source = records || []
+  let result = source
+  source.forEach((record, index) => {
+    const next = transform(record)
+    if (next === record) return
+    if (result === source) result = source.slice()
+    result[index] = next
+  })
+  return result
+}
+
+function migrateTeams(teams, forceLegacyDuration = false) {
   let changed = 0
-  const records = (teams || []).map(team => ({
-    ...team,
-    tasks: (team?.tasks || []).map(task => {
+  const records = mapRecords(teams, team => {
+    const tasks = mapRecords(team?.tasks, task => {
       const migrated = migrateLegacyServiceRecord(task, forceLegacyDuration)
       if (migrated.changed) changed += 1
       return migrated.record
     })
-  }))
+    return tasks === team?.tasks ? team : { ...team, tasks }
+  })
   return { records, changed }
 }
 
@@ -59,7 +71,7 @@ function migrateLegacyEstimatedMinutes(state = {}, { repairUnidentifiedAgenda = 
   }
 
   let historyChanged = 0
-  const history = (state.history || []).map(record => {
+  const history = mapRecords(state.history, record => {
     if (protectedDateSet.has(String(record?.date || ''))) return record
     // A dated service with a valid duration is authoritative. An orphaned
     // agenda (including a matching legacy copy) must not reset it on hydration.
@@ -72,16 +84,23 @@ function migrateLegacyEstimatedMinutes(state = {}, { repairUnidentifiedAgenda = 
     ? { records: agenda.teams || [], changed: 0 }
     : migrateTeams(agenda.teams, unidentifiedDailyAgenda)
   let agendaChanged = daily.changed
+  let weeklyChanged = !agenda.weekly || typeof agenda.weekly !== 'object' || Array.isArray(agenda.weekly)
   const weekly = Object.fromEntries(Object.entries(agenda.weekly || {}).map(([key, plan]) => {
     if (key.startsWith('_') || !plan || typeof plan !== 'object') return [key, plan]
     if (protectedDateSet.has(key)) return [key, plan]
     const migrated = migrateTeams(plan.teams, unidentifiedWeeklyDates.has(key))
     agendaChanged += migrated.changed
+    if (migrated.records === plan.teams) return [key, plan]
+    weeklyChanged = true
     return [key, { ...plan, teams: migrated.records }]
   }))
 
   return {
-    state: { ...state, history, agenda: { ...agenda, teams: daily.records, weekly } },
+    state: {
+      ...state,
+      history,
+      agenda: { ...agenda, teams: daily.records, weekly: weeklyChanged ? weekly : agenda.weekly }
+    },
     historyChanged,
     agendaChanged,
     totalChanged: historyChanged + agendaChanged

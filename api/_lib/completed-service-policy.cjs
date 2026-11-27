@@ -1,20 +1,23 @@
+const { isDeepStrictEqual } = require('node:util')
+const { assertSharedCollection, assertCollectionChange } = require('./collection-policy.cjs')
+const { assertFollowupChange } = require('./followups.cjs')
 const isCompleted = record => record?.status === 'Completado' || record?.technicalStatus === 'Completado'
+const referenceFields = ['customerId', 'client', 'clientAccount', 'clientNameAtService']
 const fields = ['customerId', 'client', 'clientAccount', 'clientNameAtService', 'address', 'phone', 'serviceTypes', 'serviceId', 'service', 'date', 'time', 'scheduledTime', 'teamId', 'technicianIds', 'detail', 'internalNote', 'internalChecklist', 'estimatedMinutes', 'installationZone', 'paymentMethod', 'amount', 'serviceCharges', 'monthlyFee', 'freezeMonthlyFee', 'frozenMonths', 'form', 'formEmail']
-const same = (a, b) => JSON.stringify(a ?? '') === JSON.stringify(b ?? '')
+const same = (a, b) => a === b || JSON.stringify(a ?? '') === JSON.stringify(b ?? '')
 function assertCompletedServiceChange(before, after, { referenceRepair = false, subscriptionCorrection = false, collectionCorrection = false, categoryCorrection = false, followupChange = false, alarmZonesChange = false, workCompletionChange = false } = {}) {
-  if (!workCompletionChange && !require('node:util').isDeepStrictEqual(before?.workCompletion, after?.workCompletion)) throw Object.assign(new Error('El resultado por trabajo sólo se registra desde el informe técnico.'), { statusCode: 409 })
-  if (!alarmZonesChange && !require('node:util').isDeepStrictEqual(before?.alarmZones, after?.alarmZones)) throw Object.assign(new Error('Las zonas sólo se modifican desde el informe técnico o la confirmación de carga en SoftGuard.'), { statusCode: 409 })
-  require('./followups.cjs').assertFollowupChange(before, after, followupChange)
-  require('./collection-policy.cjs').assertCollectionChange(before, after, collectionCorrection || workCompletionChange)
-  if (before && !categoryCorrection && !require('node:util').isDeepStrictEqual(before.categoryCorrections, after?.categoryCorrections)) throw Object.assign(new Error('La trazabilidad de categorías sólo se modifica desde Corregir categoría.'), { statusCode: 409 })
+  if (!workCompletionChange && !isDeepStrictEqual(before?.workCompletion, after?.workCompletion)) throw Object.assign(new Error('El resultado por trabajo sólo se registra desde el informe técnico.'), { statusCode: 409 })
+  if (!alarmZonesChange && !isDeepStrictEqual(before?.alarmZones, after?.alarmZones)) throw Object.assign(new Error('Las zonas sólo se modifican desde el informe técnico o la confirmación de carga en SoftGuard.'), { statusCode: 409 })
+  assertFollowupChange(before, after, followupChange)
+  assertCollectionChange(before, after, collectionCorrection || workCompletionChange)
+  if (before && !categoryCorrection && !isDeepStrictEqual(before.categoryCorrections, after?.categoryCorrections)) throw Object.assign(new Error('La trazabilidad de categorías sólo se modifica desde Corregir categoría.'), { statusCode: 409 })
   if (!workCompletionChange && before && !isCompleted(before) && isCompleted(after) && require('./work-completion.cjs').typesFor(before).length > 1) throw Object.assign(new Error('Este servicio incluye varios trabajos. El técnico debe informar el resultado de cada uno desde Cerrar servicio.'), { statusCode: 409 })
   if (!isCompleted(before) || !after) return
-  if (after.materials !== undefined && !require('node:util').isDeepStrictEqual(before.materials ?? [], after.materials)) {
+  if (after.materials !== undefined && !isDeepStrictEqual(before.materials ?? [], after.materials)) {
     throw Object.assign(new Error('Este servicio ya fue completado. Los productos entregados deben conservarse en el historial.'), { statusCode: 409, code: 'COMPLETED_SERVICE_LOCKED' })
   }
   // A reservation may acquire its definitive identity without losing its report.
   const linking = before.subscriberReservation === true && after.subscriberReservation === false && after.customerId && /^PIG-/i.test(after.clientAccount || '') && after.reservationOriginal && after.reservationLinkedAt
-  const referenceFields = ['customerId', 'client', 'clientAccount', 'clientNameAtService']
   const value = (record, key) => key === 'freezeMonthlyFee' ? Boolean(record[key]) : key === 'frozenMonths' ? Number(record[key] || 0) : record[key]
   const subscriptionFields = ['monthlyFee', 'monthlyFeeEffectiveFrom', 'freezeMonthlyFee', 'frozenMonths', 'subscriptionCorrectedAt', 'subscriptionCorrectedBy']
   if ([...fields, ...subscriptionFields].some(key => !(categoryCorrection && ['serviceId', 'service', 'serviceTypes'].includes(key)) && !(collectionCorrection && ['amount', 'paymentMethod', 'serviceCharges'].includes(key)) && !(subscriptionCorrection && subscriptionFields.includes(key)) && !((linking || referenceRepair) && referenceFields.includes(key)) && !same(value(before, key), value(after, key)))) {
@@ -34,11 +37,16 @@ function assertCompletedServices(state, previous, { subscriptionCorrectionId = n
   for (const record of state?.history || []) {
     const before = records.get(String(record.id))
     const root = nextRecords.get(String(record.serviceJourney?.id))
-    require('./collection-policy.cjs').assertSharedCollection(root, record)
-    const customer = state.customers?.find(item => String(item.customerId) === String(record.customerId))
-    const oldCustomer = previous?.customers?.find(item => String(item.customerId) === String(before?.customerId))
-    const sameCustomerConversion = before && String(before.customerId) === String(record.customerId) && customer && oldCustomer && customer.account !== oldCustomer.account && (customer.convertedFromAccount === oldCustomer.account || oldCustomer.convertedFromAccount === customer.account) && record.clientAccount === customer.account && record.client === `${customer.account} ${customer.name}`
-    const referenceRepair = sameCustomerConversion || (before && require('./journey-identity.cjs').restoredRetirementReference(before, record, state, previous, String(record.id) === String(categoryCorrectionId)))
+    assertSharedCollection(root, record)
+    let referenceRepair = false
+    // An account conversion is an exception for changes to a completed visit's
+    // account fields. An ordinary save needs no customer lookups for other rows.
+    if (isCompleted(before) && referenceFields.some(key => !same(before[key], record[key]))) {
+      const customer = state.customers?.find(item => String(item.customerId) === String(record.customerId))
+      const oldCustomer = previous?.customers?.find(item => String(item.customerId) === String(before.customerId))
+      const sameCustomerConversion = String(before.customerId) === String(record.customerId) && customer && oldCustomer && customer.account !== oldCustomer.account && (customer.convertedFromAccount === oldCustomer.account || oldCustomer.convertedFromAccount === customer.account) && record.clientAccount === customer.account && record.client === `${customer.account} ${customer.name}`
+      referenceRepair = sameCustomerConversion || require('./journey-identity.cjs').restoredRetirementReference(before, record, state, previous, String(record.id) === String(categoryCorrectionId))
+    }
     assertCompletedServiceChange(before, record, { referenceRepair, workCompletionChange: String(record.id) === String(workCompletionWriteId), alarmZonesChange: alarmZonesWriteId != null && String(record.id) === String(alarmZonesWriteId), followupChange: followupRecordId != null && String(record.id) === String(followupRecordId), categoryCorrection: categoryCorrectionId != null && String(record.id) === String(categoryCorrectionId), collectionCorrection: collectionIds.has(String(record.id)), subscriptionCorrection: subscriptionCorrectionId != null && String(record.id) === String(subscriptionCorrectionId) })
   }
 }

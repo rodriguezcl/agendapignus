@@ -7,13 +7,29 @@ function createExperienceStore({sql,db}) {
   const query = (text,params=[]) => sql ? sql.unsafe(sqlParameters(text),params) : Promise.resolve(/^(SELECT|UPDATE[\s\S]+RETURNING)/i.test(text) ? db.prepare(text).all(...params) : (db.prepare(text).run(...params),[]))
   const parse = row => row ? {...row,payload:JSON.parse(row.payload),history:JSON.parse(row.history),last_error:row.last_error ? JSON.parse(row.last_error):null} : null
   async function ensure() {
-    await query(SCHEMA)
-    await query(`CREATE INDEX IF NOT EXISTS installation_experience_pending ON ${TABLE} (status,next_attempt_at)`)
-    if(sql) {
-      await query(`ALTER TABLE ${TABLE} ENABLE ROW LEVEL SECURITY`)
-      await query(`REVOKE ALL ON TABLE ${TABLE} FROM PUBLIC`)
-      await query(`DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN REVOKE ALL ON TABLE ${TABLE} FROM anon; END IF; IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN REVOKE ALL ON TABLE ${TABLE} FROM authenticated; END IF; END $$`)
+    const index = `CREATE INDEX IF NOT EXISTS installation_experience_pending ON ${TABLE} (status,next_attempt_at)`
+    if (!sql) {
+      await query(SCHEMA)
+      await query(index)
+      return
     }
+    // Check the committed schema on every connection. Established queues do
+    // not need an exclusive DDL lock every time a service is scheduled.
+    await query(`DO $$ BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_class t
+        WHERE t.oid = to_regclass('${TABLE}') AND t.relrowsecurity
+          AND EXISTS (SELECT 1 FROM pg_index WHERE indrelid = t.oid AND indexrelid = to_regclass('installation_experience_pending') AND indisvalid)
+          AND NOT EXISTS (SELECT 1 FROM aclexplode(coalesce(t.relacl, acldefault('r',t.relowner))) a
+            WHERE a.grantee = 0 OR a.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon','authenticated')))
+      ) THEN RETURN; END IF;
+      ${SCHEMA};
+      ${index};
+      ALTER TABLE ${TABLE} ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON TABLE ${TABLE} FROM PUBLIC;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN REVOKE ALL ON TABLE ${TABLE} FROM anon; END IF;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN REVOKE ALL ON TABLE ${TABLE} FROM authenticated; END IF;
+    END $$`)
   }
   return {ensure,query,
     async enqueue(previous,next,now=new Date().toISOString()) {

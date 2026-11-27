@@ -711,7 +711,7 @@ test('el alta de agenda espera la escritura doble y reintenta una indisponibilid
   const fetcher = async (_url, receivedOptions) => {
     requests.push(receivedOptions.body)
     if (requests.length === 1) return { ok: false, status: 503, json: async () => ({ code: 'DATABASE_BUSY', error: 'Base ocupada' }) }
-    return { ok: true, status: 200, json: async () => ({ ok: true, revision: 8 }) }
+    return { ok: true, status: 200, json: async () => ({ ok: true, revision: 8, state: { revision: 8, history: [] } }) }
   }
 
   const payload = await writeState(options, 'No se pudo guardar el servicio.', { fetcher, retryDelay: 0, requestTimeout: 100 })
@@ -952,10 +952,18 @@ test('la agenda semanal reasigna un servicio por equipo o fecha con guardado pun
   assert.match(help, /otro equipo del mismo día o una fecha diferente/)
 })
 
-test('el sábado conserva el identificador del equipo después de guardar', () => {
-  const source = frontendSource()
-  assert.match(source, /const storedSaturday = sourceWeekly\?\.\[day\]\?\.teams\?\.\[0\]/)
-  assert.match(source, /createTeam\(0, storedSaturday \? \{ teamId: storedSaturday\.teamId \} : null, day\)/)
+test('el sábado comparte el mismo equipo entre sesiones y conserva el identificador previamente guardado', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/features/agenda/presentation/WeeklyPlanner.jsx'), 'utf8')
+  const body = source.slice(source.indexOf('  const createTeam ='), source.indexOf('  const days = useMemo'))
+  const makePlan = () => require('node:vm').runInNewContext(body + '\ncreateDay', {
+    weekly: {}, activeTechs: [], isSaturday: () => true,
+    createTeamId: () => require('node:crypto').randomUUID(),
+    defaultServiceTasksForDate: () => [], assignGuardToEmptySaturday: teams => teams
+  })
+  const saturday = '2026-11-28'
+  assert.equal(makePlan()(saturday).teams[0].teamId, makePlan()(saturday).teams[0].teamId)
+  assert.notEqual(makePlan()(saturday).teams[0].teamId, makePlan()('2026-12-05').teams[0].teamId)
+  assert.equal(makePlan()(saturday, { [saturday]: { teams: [{ teamId: 'guardia-previa' }] } }).teams[0].teamId, 'guardia-previa')
 })
 
 test('el escritorio aprovecha el ancho y el servicio del historial no ocupa dos líneas', () => {

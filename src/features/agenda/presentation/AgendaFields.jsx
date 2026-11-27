@@ -16,7 +16,7 @@ import { normalizeServiceEstimatedMinutes, MAX_SERVICE_ESTIMATED_MINUTES } from 
 import { FrozenMonthsFields } from "../../../components/FrozenMonths.jsx";
 import { canChangeServiceConfirmation } from "../../../domain/agenda/service-confirmation.mjs";
 import { currentLocalDate, prettyDate } from "../../../presentation/formatting.mjs";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { Confirm } from "../../../presentation/components/Confirm.jsx";
 import { holidayDecisionLabel } from "../../../domain/agenda/holidays.mjs";
 
@@ -60,17 +60,21 @@ export function CustomerAutocomplete({ value = '', customerId = '', customers = 
   useEffect(() => setQuery(value || ''), [value])
 
   const normalizedQuery = normalizeSearchText(query)
-  const selectedCustomer = customers.find(customer => String(customer.customerId || '') === String(customerId || ''))
+  const selectedCustomer = useMemo(() => customerId
+    ? customers.find(customer => String(customer.customerId || '') === String(customerId))
+    : null, [customerId, customers])
   const selectedLabel = selectedCustomer ? `${selectedCustomer.account} ${selectedCustomer.name}` : ''
   const selectionIsIntact = Boolean(selectedCustomer) && normalizeSearchText(selectedLabel) === normalizedQuery
+  const searching = normalizedQuery.length >= 2 && !selectionIsIntact
+  const searchEntries = useMemo(() => searching ? customers
+    .filter(customer => customer.softguardPresence?.status !== 'inactive' && (!subscriberReservation || customerKind(customer) === 'subscriber'))
+    .map(customer => ({
+      customer, account: normalizeSearchText(customer.account), name: normalizeSearchText(customer.name),
+      searchable: normalizeSearchText(`${customer.account} ${customer.name} ${customer.phone || ''}`)
+    })) : [], [searching, customers, subscriberReservation])
   const suggestions = useMemo(() => {
-    if (normalizedQuery.length < 2 || selectionIsIntact) return []
-    const availableCustomers = customers.filter(customer => customer.softguardPresence?.status !== 'inactive' && (!subscriberReservation || customerKind(customer) === 'subscriber'))
-    return availableCustomers
-      .map(customer => {
-        const searchable = normalizeSearchText(`${customer.account} ${customer.name} ${customer.phone || ''}`)
-        const account = normalizeSearchText(customer.account)
-        const name = normalizeSearchText(customer.name)
+    return searchEntries
+      .map(({ customer, account, name, searchable }) => {
         const priority = account.startsWith(normalizedQuery) ? 0 : name.startsWith(normalizedQuery) ? 1 : searchable.includes(normalizedQuery) ? 2 : 3
         return { customer, priority }
       })
@@ -78,7 +82,7 @@ export function CustomerAutocomplete({ value = '', customerId = '', customers = 
       .sort((left, right) => left.priority - right.priority || String(left.customer.name).localeCompare(String(right.customer.name), 'es'))
       .slice(0, 12)
       .map(item => item.customer)
-  }, [customers, normalizedQuery, selectionIsIntact, subscriberReservation])
+  }, [searchEntries, normalizedQuery])
 
   useEffect(() => setActiveIndex(-1), [normalizedQuery])
 
@@ -306,6 +310,10 @@ export function CurrencyInput({ value, onCommit, buffered = false, delay = 500, 
     {...inputProps}
     type="text"
     value={focused ? draft : formatCurrencyAmount(draft)}
+    onKeyDown={event => {
+      inputProps.onKeyDown?.(event)
+      if (buffered) commitBeforeEnter(event, value => commit(normalizeCurrencyAmount(value)))
+    }}
     onFocus={event => {
       setFocused(true)
       window.requestAnimationFrame(() => event.target.select())
@@ -322,6 +330,15 @@ export function CurrencyInput({ value, onCommit, buffered = false, delay = 500, 
       commit(draft)
     }}
   />
+}
+
+// Enter activates the dialog's save button without blurring the field.
+// Publish the current value before the dialog reads its service draft.
+function commitBeforeEnter(event, commit) {
+  if (event.key !== 'Enter' || event.defaultPrevented || event.nativeEvent.isComposing || event.repeat ||
+      event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return
+  const value = event.currentTarget.value
+  flushSync(() => commit(value))
 }
 
 export function BufferedInput({ value, onCommit, delay = 500, ...inputProps }) {
@@ -350,6 +367,10 @@ export function BufferedInput({ value, onCommit, delay = 500, ...inputProps }) {
   return <input
     {...inputProps}
     value={draft}
+    onKeyDown={event => {
+      inputProps.onKeyDown?.(event)
+      commitBeforeEnter(event, commit)
+    }}
     onFocus={() => { focused.current = true }}
     onChange={event => {
       const nextValue = event.target.value

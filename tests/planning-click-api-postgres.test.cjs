@@ -22,10 +22,11 @@ test('planning clicks retain transactional guards, deltas, audit and both models
     await pg.exec('create role anon; create role authenticated;')
     await pg.exec(fs.readFileSync(path.join(root, 'supabase/migrations/202608250001_pignus_schema.sql'), 'utf8'))
     const sql = pgliteAdapter(pg, statements)
-    const initial = fixture()
-    initial.agenda.weekly._monthlyTeams = { '2099-01': { teams: [], defaultTimes: ['09:00'] } }
-    await replaceCollections(sql, initial)
+    const seed = fixture()
+    seed.agenda.weekly._monthlyTeams = { '2099-01': { teams: [], defaultTimes: ['09:00'] } }
+    await replaceCollections(sql, seed)
     await pg.query("insert into pignus_preferences(key,value) values('state_revision','1') on conflict(key) do update set value='1'")
+    const initial = await readState(sql)
     const filename = path.join(root, 'api/index.js'), compiled = new Module(filename, module)
     compiled.filename = filename; compiled.paths = Module._nodeModulePaths(path.dirname(filename))
     compiled._compile(fs.readFileSync(filename, 'utf8') + '\nmodule.exports.testSave = handleSaveState;', filename)
@@ -58,7 +59,8 @@ test('planning clicks retain transactional guards, deltas, audit and both models
       return weeklyTeamMemberOperations(state, { day, teamId: 'team', teamIndex: 0, baseMemberIds: team.memberIds, baseMembers: team.members, memberIds: ['two'], members: ['two Técnico'] })
     }
     const membership = members(legacy)
-    const planner = { id: 'planner', name: 'Planificador', roleCode: 'user', permissions: { weekly: true, history: true, weeklyHours: true } }
+    const planner = { id: 'planner', name: 'Planificador', roleCode: 'user', permissions: { weekly: true, agenda: true, history: true, weeklyHours: true } }
+    planner.permissions = require('../api/_lib/permission-catalog.cjs').toGranularPermissions(planner)
     const assigned = await call(legacy, membership, planner)
     assert.equal(assigned.status, 200, JSON.stringify(assigned.body))
     const saved = await readState(sql)
@@ -124,13 +126,13 @@ test('a revision change during preparation retries from fresh state and preserve
     const begin = sql.begin
     let attempts = 0, interleaved = false
     sql.begin = async callback => {
-      attempts++
       try {
         return await begin(transaction => {
           const wrapped = (strings, ...values) => {
             const result = transaction(strings, ...values)
-            if (attempts === 1 && strings?.raw && /state_revision.*for update/s.test(strings.join(''))) {
-              return result.then(rows => rows.map(row => ({ ...row, value: String(Number(row.value) + 1) })))
+            if (strings?.raw && /select value from pignus_preferences where key = 'state_revision' for update/i.test(strings.join(''))) {
+              attempts++
+              if (attempts === 1) return result.then(rows => rows.map(row => ({ ...row, value: String(Number(row.value) + 1) })))
             }
             return result
           }

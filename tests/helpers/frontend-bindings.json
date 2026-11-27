@@ -157,7 +157,7 @@
   {
     "name": "guardForDateWithDefaults",
     "order": 27594,
-    "file": "src/features/agenda/application/agenda-model.mjs"
+    "file": "src/domain/agenda/annual-guards.mjs"
   },
   {
     "name": "assignGuardToEmptySaturday",

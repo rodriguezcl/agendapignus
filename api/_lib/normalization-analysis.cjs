@@ -4,6 +4,7 @@ const { isDeepStrictEqual } = require('node:util')
 const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value
 const fingerprint = value => crypto.createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex')
+const stateFingerprint = state => fingerprint({ ...state, employees: (state.employees || []).map(({ password, passwordHash, ...safe }) => safe) })
 const key = value => String(value ?? '')
 const sortedIds = values => (values || []).map(key).sort()
 const same = (a, b) => isDeepStrictEqual(a ?? null, b ?? null) || fingerprint(a ?? null) === fingerprint(b ?? null)
@@ -49,7 +50,9 @@ function analyzeNormalization(state) {
     if (!record.vehicleControl) {
       const group = JSON.stringify([record.date, record.teamId])
       const memberSets = memberships.get(group) || new Map()
-      memberSets.set(JSON.stringify(sortedIds(record.technicianIds)), [...(memberSets.get(JSON.stringify(sortedIds(record.technicianIds))) || []), id])
+      const memberKey = JSON.stringify(sortedIds(record.technicianIds))
+      if (!memberSets.has(memberKey)) memberSets.set(memberKey, [])
+      memberSets.get(memberKey).push(id)
       memberships.set(group, memberSets)
     }
     const visit = JSON.stringify([record.date, record.time, record.customerId, record.serviceId, sortedIds(record.technicianIds)])
@@ -96,11 +99,11 @@ function analyzeNormalization(state) {
   const statuses = {}, completedByMonth = {}
   for (const record of history) { statuses[record.status] = (statuses[record.status] || 0) + 1; if (record.status === 'Completado') completedByMonth[record.date.slice(0, 7)] = (completedByMonth[record.date.slice(0, 7)] || 0) + 1 }
   return {
-    sourceFingerprint: fingerprint({ ...state, employees: (state.employees || []).map(({ password, passwordHash, ...safe }) => safe) }),
+    sourceFingerprint: stateFingerprint(state),
     revision: state.revision ?? null,
     summary: { history: history.length, customers: (state.customers || []).length, occurrences: occurrences.length, affectedRecords: affected.size, byType, bySeverity, statuses, completedByMonth,
       readyForCutover: false, requiresReconciliation: Boolean(bySeverity.error || bySeverity.review) },
     issues: issues.sort((a, b) => a.id.localeCompare(b.id)), occurrences
   }
 }
-module.exports = { analyzeNormalization, fingerprint, sortedIds }
+module.exports = { analyzeNormalization, fingerprint, sortedIds, stateFingerprint }

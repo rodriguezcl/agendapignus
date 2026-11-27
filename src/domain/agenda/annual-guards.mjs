@@ -66,3 +66,18 @@ export const suggestedAnnualGuardRotation = (year, weekly = {}, technicians = []
 }
 
 export const annualGuardForDate = (date, weekly = {}) => guardRotation.guardForDate(date, weekly?._annualGuards?.[String(date).slice(0,4)])
+
+export function guardForDateWithDefaults(date, weekly, activeTechs, today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })) {
+  const year = String(date || '').slice(0, 4)
+  if (Object.hasOwn(weekly?._annualGuards || {}, year)) return annualGuardForDate(date, weekly)
+  let rotation
+  if (date < today) {
+    if (year !== '2026') return null
+    const historical = DEFAULT_2026_GUARD_ROTATION.map(tokens => activeTechs.find(tech => tokens.every(token => normalize(tech.name).includes(token))))
+    if (!historical.every(Boolean)) return null
+    rotation = historical.map(tech => ({ technicianId: tech.id, name: tech.name }))
+  } else {
+    rotation = suggestedAnnualGuardRotation(year, weekly, activeTechs)
+  }
+  return guardRotation.guardForDate(date, { startDate: firstSaturdayOfYear(year), rotation })
+}

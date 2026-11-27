@@ -14,7 +14,7 @@ function rememberNormalizedCredentials(state) {
 }
 
 function normalizedCredentialsUnchanged(previous, next) {
-  return previous.employees === next.employees && snapshots.has(previous) &&
+  return snapshots.has(previous) &&
     snapshots.get(previous) === signature(next.employees)
 }
 

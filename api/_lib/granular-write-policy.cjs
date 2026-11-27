@@ -327,7 +327,10 @@ function assertAgendaChange(before = {}, after = {}, user, state, derived = { te
   const inspectTeams = (oldTeams = [], newTeams = [], day) => {
     let templates = state.agenda?.weekly?._monthlyTeams?.[String(day).slice(0, 7)]?.teams || []
     if (new Date(`${day}T12:00:00Z`).getUTCDay() === 6) {
-      const guard = require('./annual-guard-rotation.cjs').guardForDate(day, state.agenda?.weekly?._annualGuards?.[String(day).slice(0,4)])
+      const configured = state.agenda?.weekly?._annualGuards?.[String(day).slice(0, 4)]
+      const guard = configured
+        ? require('./annual-guard-rotation.cjs').guardForDate(day, configured)
+        : require('./planning-guard.cjs').guardForPlanningDate(state, day)
       templates = !oldTeams.length && newTeams.length === 1 && guard ? [{ teamId: newTeams[0].teamId, label: 'Equipo 1', memberIds: [guard.technicianId], members: [guard.name] }] : []
     }
     const generatedControls = catalog.can(user, 'weekly.controls.schedule') && newTeams.some(team => (team.tasks || []).some(task => validScheduledControl(task, state, day)))

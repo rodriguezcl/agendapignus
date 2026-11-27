@@ -4,6 +4,10 @@ import workday from '../../../api/_lib/workday.cjs'
 
 // Las disponibilidades visibles requieren 45 minutos continuos, aunque un servicio pueda durar menos.
 const MINIMUM_AVAILABILITY_MINUTES = 45
+const localClock = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+})
 
 export function planningHoursForDay(day, weekly = {}, teamId = '') {
   const row = workday.workdayForDate(day, weekly, teamId)
@@ -23,10 +27,7 @@ export function serviceGaps(tasks, { min, max, bookable, breakStart = '13:00', b
   if (day) {
     const instant = new Date(now)
     if (Number.isNaN(instant.getTime())) return []
-    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
-    }).formatToParts(instant).map(part => [part.type, part.value]))
+    const parts = Object.fromEntries(localClock.formatToParts(instant).map(part => [part.type, part.value]))
     const today = `${parts.year}-${parts.month}-${parts.day}`
     if (day < today) return []
     if (day === today) {

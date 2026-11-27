@@ -100,6 +100,9 @@ test('PostgreSQL: cola atómica, RLS, deduplicación y resultado persistido',asy
   const sql={unsafe:async(text,params=[])=> (await pg.query(text,params)).rows}
   try {
     const store=createExperienceStore({sql});await store.ensure()
+    await pg.exec('CREATE ROLE authenticated; GRANT SELECT ON pignus_installation_experience_mail TO authenticated; ALTER TABLE pignus_installation_experience_mail DISABLE ROW LEVEL SECURITY')
+    await store.ensure()
+    assert.equal((await pg.query("SELECT has_table_privilege('authenticated','pignus_installation_experience_mail','SELECT') AS readable")).rows[0].readable,false)
     await pg.exec('BEGIN');await store.enqueue(before,after);await pg.exec('ROLLBACK');assert.equal((await store.list()).length,0)
     await store.enqueue(before,after);await store.enqueue(before,after);assert.equal((await store.list()).length,1)
     const row=await store.claim();assert(row);assert.equal(await store.claim(),null)

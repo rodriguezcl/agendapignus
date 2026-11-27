@@ -30,6 +30,25 @@ async function harness() {
 }
 const command = id => () => [{ path: ['history', { key: 'id', id }], before: { id }, after: { id, detail: 'saved' }, existed: true, exists: true }]
 
+test('el reintento manual del alta usa exactamente las operaciones originales aunque cambie la revisión', async () => {
+  const { run, requests, context, snapshot } = await harness()
+  const options = { combinePendingState: true, independentService: true, creationAttempt: {} }
+  const first = run(command('a'), options)
+  await tick()
+  requests[0].reject(Object.assign(new Error('Confirmación perdida'), { code: 'STATE_WRITE_UNCONFIRMED' }))
+  await assert.rejects(first, { code: 'STATE_WRITE_UNCONFIRMED' })
+  context.stateRevisionRef.current = 2
+  const retry = run(() => assert.fail('No corresponde reconstruir un alta incierta'), options)
+  await tick()
+  assert.equal(requests[1].ops, requests[0].ops)
+  assert.equal(requests[1].revision, requests[0].revision)
+  requests[1].resolve({ state: { ...snapshot, revision: 2 } })
+  await retry
+  context.saveSessionEpochRef.current++
+  await assert.rejects(run(command('a'), options), /sesión cambió/)
+  assert.equal(requests.length, 2)
+})
+
 test('guardar un servicio independiente excluye borradores ajenos y respeta su eliminación remota', async () => {
   const { applyStateOperations } = require('../api/_lib/state-operations.cjs')
   const { preserveLocalDraft } = await import('../src/features/state/application/save-activity.mjs')
@@ -134,6 +153,20 @@ test('quick commands reuse the immutable display and parsed baseline without sub
   assert.notEqual(context.quickCommandBaseRef.current.value, cached)
   requests[2].resolve({ state: { ...snapshot, revision: 4 } })
   await third
+})
+
+test('un alta con la agenda al día usa la versión visible como base y conserva un borrador posterior', async () => {
+  const { run, requests, context, applied, snapshot } = await harness()
+  const pending = run(command('a'), { combinePendingState: true, independentService: true, quickAction: true })
+  await tick()
+  assert.equal(context.quickCommandBaseRef.current.value, snapshot)
+  const draft = { ...snapshot, history: [snapshot.history[0], { ...snapshot.history[1], detail: 'nota local' }] }
+  context.currentSnapshotRef.current = JSON.stringify(draft)
+  context.currentDisplaySnapshotRef.current = draft
+  requests[0].resolve({ state: { ...snapshot, revision: 2 } })
+  await pending
+  assert.equal(applied[0].options.preserveFrom, snapshot)
+  assert.equal(context.quickCommandBaseRef.current.value.history[1].detail, undefined)
 })
 
 test('un guardado concilia solo los borradores editados durante la espera', async () => {

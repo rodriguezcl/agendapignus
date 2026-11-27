@@ -4,6 +4,7 @@ const { preparePlanningClick } = require('../api/_lib/planning-click-operation.c
 const { normalizeStateForSave, authorizeIncomingState, visibleStateForUser, validateState } = require('../api/_lib/core.cjs')
 const { applyStateOperations } = require('../api/_lib/state-operations.cjs')
 const { fixture, admin, day } = require('./helpers/planning-click-fixture.cjs')
+const { toGranularPermissions } = require('../api/_lib/permission-catalog.cjs')
 
 async function builders() {
   return {
@@ -44,7 +45,8 @@ test('ready click matches general policy and keeps unrelated collections by refe
 
 test('existing weekly and daily membership matches general policies, with idempotent replay and conflicts', async () => {
   const { weeklyTeamMemberOperations } = await builders()
-  for (const user of [admin, { id: 'planner', roleCode: 'user', permissions: { weekly: true, history: true } }]) {
+  const planner = { id: 'planner', roleCode: 'user', permissions: { weekly: true, history: true, agenda: true } }
+  for (const user of [admin, planner, ...[admin, planner].map(actor => ({ ...actor, permissions: toGranularPermissions(actor) }))]) {
     const current = fixture(), saved = structuredClone(current)
     const team = current.agenda.weekly[day].teams[0]
     const ops = weeklyTeamMemberOperations(current, { day, teamId: 'team', teamIndex: 0, baseMemberIds: team.memberIds, baseMembers: team.members, memberIds: ['two'], members: ['two Técnico'] })
@@ -58,7 +60,9 @@ test('existing weekly and daily membership matches general policies, with idempo
     assert.equal(replay.state.agenda, fast.state.agenda)
     const concurrent = structuredClone(current); concurrent.agenda.weekly[day].teams[0].memberIds = []
     assert.throws(() => preparePlanningClick(concurrent, ops, user), { code: 'RECORD_WRITE_CONFLICT' })
-    assert.throws(() => preparePlanningClick(current, ops, { ...user, roleCode: 'technician' }), /Ruta de guardado|registro cambió/)
+    const technician = { ...user, roleCode: 'technician' }
+    if (user.permissions?.__catalogV2) assert.equal(preparePlanningClick(current, ops, technician), null)
+    else assert.throws(() => preparePlanningClick(current, ops, technician), /Ruta de guardado|registro cambió/)
   }
 })
 
@@ -83,6 +87,73 @@ test('mixed, structural and legacy-duration requests keep the general save pipel
   const incompleteTask = structuredClone(current)
   delete incompleteTask.agenda.weekly[day].teams[0].tasks[0].estimatedMinutes
   assert.equal(preparePlanningClick(incompleteTask, membership, admin), null)
+})
+
+test('granular membership delta is identical to the complete authorized response, with private fields and other weeks', async () => {
+  const { weeklyTeamMemberOperations } = await builders()
+  const { stateDelta, applyStateDelta } = await import('../src/domain/shared/state-delta.mjs')
+  const current = fixture()
+  const second = '2099-01-06'
+  current.agenda.weekly[second] = { teams: [] }
+  current.customers.push({ customerId: 'customer', account: 'CLI-1', name: 'OBJETIVO', kind: 'client', cctvService: true })
+  Object.assign(current.history[0], { customerId: 'customer', technicalObservation: 'informe privado', amount: 150, paymentMethod: 'Efectivo', collection: { receipts: ['comprobante privado'] } })
+  current.history.push({ ...current.history[0], id: 'other', sourceTaskId: 'other-task', date: second },
+    { ...fixture().history[0], id: 'pending', sourceTaskId: 'pending-task' })
+  for (const team of [current.agenda.teams[0], current.agenda.weekly[day].teams[0]]) Object.assign(team.tasks[0], current.history[0])
+  const operations = weeklyTeamMemberOperations(current, { day, teamId: 'team', teamIndex: 0, baseMemberIds: ['one'], baseMembers: ['one Técnico'], memberIds: [], members: [] })
+  const planner = { id: 'planner', roleCode: 'user', permissions: { weekly: true, history: true, agenda: true } }
+  planner.permissions = { ...toGranularPermissions(planner), 'service.documents.read': false, 'records.financial': false }
+  const fast = preparePlanningClick(current, operations, planner)
+  const expected = general(current, operations, planner)
+  assert.deepEqual(fast.state, expected)
+  const delta = stateDelta(...fast.deltaInputs(2))
+  assert.deepEqual(delta, stateDelta(visibleStateForUser(current, planner), visibleStateForUser({ ...expected, revision: 2 }, planner)))
+  assert.deepEqual(applyStateDelta(visibleStateForUser(current, planner), delta), visibleStateForUser({ ...expected, revision: 2 }, planner))
+  assert.doesNotMatch(JSON.stringify(delta), /informe privado|comprobante privado|other-task/)
+  assert.deepEqual(fast.state.agenda.weekly[day].teams[0].memberIds, [])
+  assert.deepEqual(fast.state.history[0].technicianIds, ['one'], 'the existing technician report keeps its crew')
+  assert.deepEqual(fast.state.history[2].technicianIds, [])
+  const restricted = { ...planner, permissions: { ...planner.permissions, 'scope.services.read.assigned': true } }
+  assert.equal(preparePlanningClick(current, operations, restricted), null)
+  const denied = { ...planner, permissions: { ...planner.permissions, 'planning.technicians': false } }
+  assert.throws(() => preparePlanningClick(current, operations, denied), { code: 'PERMISSION_DENIED' })
+})
+
+test('first staffing selection materializes an empty team with canonical day and team creation permissions', async () => {
+  const { weeklyTeamMemberOperations } = await builders()
+  const actor = { ...admin, permissions: toGranularPermissions(admin) }
+  for (const addDay of [true, false]) {
+    const current = fixture()
+    const fallback = structuredClone(current.agenda.weekly[day])
+    fallback.teams[0].tasks = []
+    current.agenda.teams = []; current.history = []
+    current.agenda.weekly[day].teams = []
+    if (addDay) delete current.agenda.weekly[day]
+    const operations = weeklyTeamMemberOperations(current, { day, teamId: 'team', teamIndex: 0, materializeTeam: true,
+      fallbackPlan: fallback, baseMemberIds: ['one'], baseMembers: ['one Técnico'], memberIds: ['two'], members: ['two Técnico'] })
+    const fast = preparePlanningClick(current, operations, actor)
+    assert.deepEqual(fast.state, general(current, operations, actor))
+    assert.deepEqual(fast.state.agenda.weekly[day].teams[0].memberIds, ['two'])
+    assert.equal(preparePlanningClick(fast.state, operations, actor), null, 'materialized concurrent additions are merged by the general path')
+    const denied = { id: 'u', roleCode: 'user', permissions: { ...actor.permissions, 'planning.teams.create': false } }
+    assert.throws(() => preparePlanningClick(current, operations, denied), { code: 'PERMISSION_DENIED' })
+  }
+})
+
+test('changes involving inactive technicians or a cross-day journey use the full cleanup or response', async () => {
+  const { weeklyTeamMemberOperations } = await builders()
+  const current = fixture()
+  const operations = weeklyTeamMemberOperations(current, { day, teamId: 'team', teamIndex: 0, baseMemberIds: ['one'], baseMembers: ['one Técnico'], memberIds: ['two'], members: ['two Técnico'] })
+  current.employees.find(employee => employee.id === 'two').status = 'Inactivo'
+  assert.equal(preparePlanningClick(current, operations, admin), null)
+  current.employees.find(employee => employee.id === 'two').status = 'Activo'
+  current.history[0].serviceJourney = { groupId: 'g', day: 1, total: 2 }
+  const actor = { ...admin, permissions: toGranularPermissions(admin) }
+  assert.equal(preparePlanningClick(current, operations, actor).deltaInputs, undefined)
+  const empty = fixture()
+  empty.agenda.teams[0].tasks = []; empty.agenda.weekly[day].teams[0].tasks = []; empty.history = []
+  const invalid = weeklyTeamMemberOperations(empty, { day, teamId: 'team', teamIndex: 0, baseMemberIds: ['one'], baseMembers: ['one Técnico'], memberIds: ['missing'], members: ['Desconocido'] })
+  assert.throws(() => preparePlanningClick(empty, invalid, actor), /técnico inexistente/)
 })
 
 test('membership rejects technician overlap and nonexistent assignments exactly as ordinary validation', async () => {
@@ -147,4 +218,14 @@ test('legacy cards linked to resolved history on another date keep complete sche
     assert.doesNotThrow(() => general(current, operations), `closed service resolves the ${alias} copy`)
     assert.equal(preparePlanningClick(current, operations, admin), null, `${alias} requires full history`)
   }
+})
+
+test('a prior agenda copy containing the technician report protects the original crew', async () => {
+  const { weeklyTeamMemberOperations } = await builders()
+  const current = fixture()
+  current.agenda.weekly['2099-01-04'] = structuredClone(current.agenda.weekly[day])
+  current.agenda.weekly['2099-01-04'].teams[0].tasks[0].technicalObservation = 'Informe de la visita anterior'
+  const operations = weeklyTeamMemberOperations(current, { day, teamId: 'team', teamIndex: 0, baseMemberIds: ['one'], baseMembers: ['one Técnico'], memberIds: [], members: [] })
+  assert.equal(preparePlanningClick(current, operations, admin), null)
+  assert.deepEqual(general(current, operations).history[0].technicianIds, ['one'])
 })

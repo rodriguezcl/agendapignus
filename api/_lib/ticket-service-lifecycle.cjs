@@ -85,7 +85,6 @@ async function synchronizeTicketServices({ q, pg, previous, next, user, now, rep
   const current = new Map((next.history || []).map(record => [id(record.id), record]))
   const changes = [...new Set([...old.keys(), ...current.keys()])].filter(key => !isDeepStrictEqual(old.get(key), current.get(key)))
   if (!changes.length) return
-  const configuration = await store.settings(q), config = configuration.config
   const linked = new Set(changes.flatMap(key => [old.get(key)?.sourceTicketId, current.get(key)?.sourceTicketId].filter(Boolean).map(id)))
   // Indexed JSON membership keeps unrelated tickets out of this transaction.
   for (const key of changes) {
@@ -96,6 +95,8 @@ async function synchronizeTicketServices({ q, pg, previous, next, user, now, rep
   // historical number on a service; it still identifies the same principal.
   const reportedIds = current.get(id(reportRecordId))?.ticketResolution?.ticketIds || []
   const candidates = [...new Set([...linked, ...reportedIds.map(id)])].sort()
+  if (!candidates.length) return
+  const { config } = await store.settings(q)
   const pathFor = async identifier => {
     const chain = [], seen = new Set()
     let item = await store.ticket(q, identifier)

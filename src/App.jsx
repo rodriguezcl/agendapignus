@@ -51,6 +51,7 @@ import { normalizeRoleName, resolvedRolePermissions, roleCode, isGranular, canPe
 import { PermissionsProvider, usePermissions } from "./presentation/contexts/permissions-context.jsx";
 import { currentSessionRole, reconcileSessionUser } from "./features/auth/application/session-user.mjs";
 import { stateRepository } from "./infrastructure/repositories/state-repository.mjs";
+import { createServerSnapshotCopier, sameCatalogs, sameDisplaySections } from './features/state/application/display-snapshot.mjs'
 import { agendaRescheduleRepairCandidates } from "./domain/agenda/reschedule-repair.mjs";
 import { SESSION_IDLE_TIMEOUT_MS, SESSION_STATUS_INTERVAL_MS, TECHNICIAN_SESSION_IDLE_TIMEOUT_MS, TECHNICIAN_SESSION_STATUS_INTERVAL_MS, useSessionLifecycle } from "./features/auth/application/useSessionLifecycle.js";
 import { serviceAdvanceRepository } from "./infrastructure/repositories/service-advance-repository.mjs";
@@ -105,6 +106,30 @@ const OperationalPlanning = lazy(() => import('./features/planning/presentation/
 const ServiceTypes = lazy(() => import('./features/services/presentation/ServiceTypes.jsx'))
 
 const HelpCenter = lazy(() => import('./HelpCenter.jsx').then(module => ({ default: module.HelpCenter })))
+
+function normalizeDisplayCatalogs(data) {
+  const roles = (Array.isArray(data.roles) ? data.roles : []).map(role => {
+    const code = roleCode(role)
+    if (isGranular(role)) return { ...role, code }
+    const defaults = { dashboard: true, weekly: ['administrator', 'user', 'coordinator'].includes(code) }
+    return { ...role, code, permissions: resolvedRolePermissions({ ...role, code, permissions: { ...defaults, ...role.permissions } }) }
+  })
+  const employees = (Array.isArray(data.employees) ? data.employees : []).map(employee => {
+    const assignedRole = roles.find(role => String(role.id) === String(employee.roleId))
+      || roles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role))
+    return assignedRole ? { ...employee, roleId: assignedRole.id, role: assignedRole.name } : employee
+  })
+  const services = (Array.isArray(data.services) ? data.services : []).map(service => ({
+    ...service,
+    code: serviceCode(service),
+    category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'),
+    estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes)
+  }))
+  const customers = (Array.isArray(data.customers) ? data.customers : []).map(customer => ({
+    ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer), name: normalizeCustomerName(customer.name)
+  }))
+  return { roles, employees, customers, services: addressChange.ensureAddressChangeService(ensureVehicleControlService(services)) }
+}
 
 const noticeTone = message => {
   const normalized = String(message || '').trim().toLocaleLowerCase('es')
@@ -211,6 +236,8 @@ export default function App() {
   const hydrationTimerRef = useRef(null)
   const lastPersistedSnapshotRef = useRef(null)
   const lastServerSnapshotRef = useRef(null)
+  const serverSnapshotCopierRef = useRef(null)
+  const displayCatalogsRef = useRef(null)
   const currentSnapshotRef = useRef(null)
   const currentDisplaySnapshotRef = useRef(null)
   const quickCommandBaseRef = useRef({ serialized: null, value: null })
@@ -255,8 +282,9 @@ export default function App() {
   const [profileOpen, setProfileOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const stateSnapshot = useMemo(() => ({ roles, employees, services, vehicles, history, customers, agenda: { date, teams, weekly } }), [roles, employees, services, vehicles, history, customers, date, teams, weekly])
+  const serializedStateSnapshot = useMemo(() => sameDisplaySections(currentDisplaySnapshotRef.current, stateSnapshot)
+    ? currentSnapshotRef.current : JSON.stringify(stateSnapshot), [stateSnapshot])
   currentDisplaySnapshotRef.current = stateSnapshot
-  const serializedStateSnapshot = useMemo(() => JSON.stringify(stateSnapshot), [stateSnapshot])
   currentSnapshotRef.current = serializedStateSnapshot
   useEffect(() => {
     if (!notice) return undefined
@@ -707,19 +735,22 @@ export default function App() {
     data = migrateLegacyEstimatedMinutes(data, { repairUnidentifiedAgenda: true }).state
     // Keep the server's projections before display effects reconcile daily and
     // weekly cards. Those effects are not persisted writes or CAS baselines.
-    lastServerSnapshotRef.current = structuredClone(data)
+    serverSnapshotCopierRef.current ??= createServerSnapshotCopier()
+    lastServerSnapshotRef.current = serverSnapshotCopierRef.current(data)
     hydratingStateRef.current = true
     serviceDefaultsRef.current = new Map()
     remoteConflictRevisionRef.current = null
     stateRevisionRef.current = Number(data.revision || 0)
     setStateRevision(stateRevisionRef.current)
-    const loadedRoles = Array.isArray(data.roles) ? data.roles.map(role => { const code = roleCode(role); if (isGranular(role)) return { ...role, code }; const permissions = resolvedRolePermissions({ ...role, code, permissions: { dashboard: true, weekly: role.permissions?.weekly ?? ['administrator', 'user', 'coordinator'].includes(code), ...role.permissions } }); return { ...role, code, permissions } }) : []
-
-    const loaded_employees = Array.isArray(data.employees) ? data.employees.map(employee => { const assignedRole = loadedRoles.find(role => String(role.id) === String(employee.roleId)) || loadedRoles.find(role => normalizeRoleName(role.name) === normalizeRoleName(employee.role)); return assignedRole ? { ...employee, roleId: assignedRole.id, role: assignedRole.name } : employee }) : []
-    const loaded_services = addressChange.ensureAddressChangeService(ensureVehicleControlService(Array.isArray(data.services) ? data.services.map(service => ({ ...service, code: serviceCode(service), category: service.category || (normalizeServiceName(service.name).startsWith('instalacion') ? 'installation' : 'service'), estimatedMinutes: normalizeServiceEstimatedMinutes(service.estimatedMinutes) })) : []))
+    // Legacy profiles also reconcile services, customers and staff in effects
+    // keyed by these arrays. Keep that hydration path for incoming legacy rows.
+    if (!granularAccess || !sameCatalogs(displayCatalogsRef.current?.source, data)) {
+      const { roles, employees, services, customers } = data
+      displayCatalogsRef.current = { source: { roles, employees, services, customers }, normalized: normalizeDisplayCatalogs(data) }
+    }
+    const { roles: loadedRoles, employees: loaded_employees, services: loaded_services, customers: loaded_customers } = displayCatalogsRef.current.normalized
     const loaded_vehicles = Array.isArray(data.vehicles) ? data.vehicles : []
     const loaded_history = Array.isArray(data.history) ? data.history : []
-    const loaded_customers = Array.isArray(data.customers) ? data.customers.map(customer => ({ ...customer, customerId: customer.customerId || createCustomerId(), kind: customerKind(customer), name: normalizeCustomerName(customer.name) })) : []
     // La fecha y las tarjetas de Agenda del día forman una única instantánea.
     // Si al hidratar forzamos "hoy" pero conservamos equipos de otra fecha, el
     // servidor interpreta esas tarjetas como servicios del día actual.
@@ -755,7 +786,7 @@ export default function App() {
   const refreshRemoteState = async () => {
     applyRemoteState(await stateRepository.load())
   }
-  const persistStateCommand = async (buildOperations, { combinePendingState = false, rebaseOnRecordConflict = false, isolatedMove = false, alignDisplayBaselines = false, independentService = false, quickAction = false } = {}) => {
+  const persistStateCommand = async (buildOperations, { combinePendingState = false, rebaseOnRecordConflict = false, isolatedMove = false, alignDisplayBaselines = false, independentService = false, quickAction = false, creationAttempt = null } = {}) => {
     const saveEpoch = saveSessionEpochRef.current
     let release = !combinePendingState || isolatedMove ? saveActivityRef.current.acquire() : null
     if (!pendingConfirmedSavesRef.current) saveBatchRef.current = { baseline: quickAction ? currentDisplaySnapshotRef.current : JSON.parse(currentSnapshotRef.current), baselineSerialized: currentSnapshotRef.current, latest: null }
@@ -784,7 +815,8 @@ export default function App() {
         saveBatchRef.current.baselineSerialized = serialized
       }
       if (quickAction && quickCommandBaseRef.current.serialized !== lastPersistedSnapshotRef.current) {
-        quickCommandBaseRef.current = { serialized: lastPersistedSnapshotRef.current, value: JSON.parse(lastPersistedSnapshotRef.current || 'null') }
+        const persisted = lastPersistedSnapshotRef.current
+        quickCommandBaseRef.current = { serialized: persisted, value: serialized === persisted ? local : JSON.parse(persisted || 'null') }
       }
       const base = quickAction ? quickCommandBaseRef.current.value : JSON.parse(lastPersistedSnapshotRef.current || 'null')
       if (!base) throw new Error('Esperá a que termine de cargar la agenda.')
@@ -803,14 +835,23 @@ export default function App() {
       let snapshot = local
       if (combinePendingState) {
         const pendingOperations = !independentService && serialized !== lastPersistedSnapshotRef.current ? stateOperations(base, local) : []
-        const commandOperations = await buildOperations(local)
-        const operations = alignDisplayBaselines && Number(lastServerSnapshotRef.current?.revision) === Number(stateRevisionRef.current)
-          ? alignOperationBaselines([...pendingOperations, ...commandOperations], base, lastServerSnapshotRef.current)
-          : [...pendingOperations, ...commandOperations]
+        // Keep the exact first create, including its original checks, when a
+        // manual retry follows a lost acknowledgement and a state refresh.
+        let batch = creationAttempt?.batch
+        if (batch && batch.session !== saveEpoch) throw new Error('La sesión cambió antes del guardado.')
+        if (!batch) {
+          const commandOperations = await buildOperations(local)
+          const operations = alignDisplayBaselines && Number(lastServerSnapshotRef.current?.revision) === Number(stateRevisionRef.current)
+            ? alignOperationBaselines([...pendingOperations, ...commandOperations], base, lastServerSnapshotRef.current)
+            : [...pendingOperations, ...commandOperations]
+          batch = { operations, revision: stateRevisionRef.current, session: saveEpoch }
+          if (creationAttempt) creationAttempt.batch = batch
+        }
+        const { operations } = batch
         release = saveActivityRef.current.acquire(operationScopes(operations))
         let payload
         try {
-          payload = await stateRepository.commit(operations, stateRevisionRef.current)
+          payload = await stateRepository.commit(operations, batch.revision)
         } catch (error) {
           const recordConflict = error?.status === 409 && error?.payload?.code === 'RECORD_WRITE_CONFLICT'
           if (!rebaseOnRecordConflict || !recordConflict || pendingOperations.length) throw error
@@ -869,10 +910,10 @@ export default function App() {
           ? weeklyTaskRemovalOperations(snapshot, command)
       : command.dailyDraft
         ? dailyServiceOperations(lastServerSnapshotRef.current, stateRevisionRef.current, command)
-        : !command.baseRecord && !command.baseTask && !command.sourceDay
+        : !command.baseRecord && !command.sourceDay
           ? weeklyServiceCreationOperations(lastServerSnapshotRef.current, stateRevisionRef.current, command)
           : weeklyServiceOperations(snapshot, command)
-  ), { combinePendingState: true, alignDisplayBaselines: true, independentService: !command.sourceDay && (!command.operation || ['service-preparation', 'team-members'].includes(command.operation)), quickAction: true, isolatedMove: Boolean(command.sourceDay && (command.task?.vehicleControl || command.advanceToFriday)) })
+  ), { combinePendingState: true, alignDisplayBaselines: true, independentService: !command.sourceDay && (!command.operation || ['service-preparation', 'team-members'].includes(command.operation)), quickAction: true, creationAttempt: command.creationAttempt, isolatedMove: Boolean(command.sourceDay && (command.task?.vehicleControl || command.advanceToFriday)) })
   const persistWeeklyConfiguration = buildNext => persistStateCommand(snapshot => stateOperations(snapshot, buildNext(snapshot)), { combinePendingState: true, rebaseOnRecordConflict: true })
   const roleBaseline = id => structuredClone(lastServerSnapshotRef.current?.roles?.find(role => String(role.id) === String(id)))
   const persistRole = (before, after) => persistStateCommand(() => [{ path: ['roles', { key: 'id', id: String(after.id) }], before: before || null, after, existed: Boolean(before), exists: true }], { combinePendingState: true, independentService: true })
@@ -981,6 +1022,9 @@ export default function App() {
     saveBatchRef.current = null
     saveActivityRef.current = createSaveActivity()
     lastServerSnapshotRef.current = null
+    serverSnapshotCopierRef.current = null
+    displayCatalogsRef.current = null
+    quickCommandBaseRef.current = { serialized: null, value: null }
     stateRepository.prime(null)
     hydrationBaselineRef.current = null
     saveDraftConflictRef.current = false

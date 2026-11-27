@@ -129,8 +129,10 @@ const positionBucketKey = (row, keys) => rowKey(row, keys)
 function changedPositionBuckets(beforeRows, nextRows, bucketKeys, identityKeys) {
   const byPosition = rows => new Map(rows.map(row => [JSON.stringify([positionBucketKey(row, bucketKeys), Number(row.position)]), rowKey(row, identityKeys)]))
   const before = byPosition(beforeRows), next = byPosition(nextRows), changed = new Set()
-  for (const position of new Set([...before.keys(), ...next.keys()])) {
-    if (before.get(position) !== next.get(position)) changed.add(JSON.parse(position)[0])
+  // Vacate a bucket only when an incoming identity needs a position that
+  // another row still owns. Appending or removing the last slot is conflict-free.
+  for (const [position, identity] of next) {
+    if (before.has(position) && before.get(position) !== identity) changed.add(JSON.parse(position)[0])
   }
   return changed
 }
@@ -259,10 +261,14 @@ function prepareTableChanges(previous, next) {
   })
 }
 
-function prepareNormalizedStateWrite(previousState, nextState) {
+function prepareNormalizedStateWrite(previousState, nextState, previousCandidate = null) {
   // Lazy import avoids a module cycle during isolated rehearsal startup.
   const { buildShadowCandidate } = require('./normalization-rehearsal.cjs')
-  const previous = buildShadowCandidate(previousState), next = buildShadowCandidate(nextState)
+  // A revision alone is insufficient after a rollback or a concurrent write.
+  const reusePrevious = previousCandidate && previousCandidate.analysis.revision === previousState.revision &&
+    previousCandidate.analysis.sourceFingerprint === require('./normalization-analysis.cjs').stateFingerprint(previousState)
+  const previous = reusePrevious ? previousCandidate : buildShadowCandidate(previousState)
+  const next = buildShadowCandidate(nextState)
   // Compute dependency-ordered differences before the caller acquires the
   // revision lock. Fingerprints and the database conflict checks remain exact.
   return { previous, next, changes: prepareTableChanges(previous, next) }

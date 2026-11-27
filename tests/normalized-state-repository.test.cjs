@@ -44,6 +44,17 @@ test('prepared projections preserve fingerprints and isolate mutable callers and
   assert.notEqual(third.previous.analysis.sourceFingerprint, second.previous.analysis.sourceFingerprint)
 })
 
+test('a consecutive write reuses only the projection of the exact earlier snapshot', () => {
+  const initial = fixture()
+  const saved = { ...initial, revision: 2 }
+  const previousCandidate = prepareNormalizedStateWrite(initial, saved).next
+  const next = { ...saved, revision: 3 }
+  assert.equal(prepareNormalizedStateWrite(saved, next, previousCandidate).previous, previousCandidate)
+  const otherSession = structuredClone(saved)
+  otherSession.history[0].detail = 'Otro servicio editado'
+  assert.deepEqual(prepareNormalizedStateWrite(otherSession, next, previousCandidate).previous, buildShadowCandidate(otherSession))
+})
+
 test('planning writes avoid credential rereads only for an unchanged observed credential snapshot', async () => {
   const { PGlite } = await import('@electric-sql/pglite'), pg = await PGlite.create()
   try {
@@ -51,7 +62,7 @@ test('planning writes avoid credential rereads only for an unchanged observed cr
     await insertShadowCandidate(pg, buildShadowCandidate(fixture()))
     await pg.query("insert into normalized_shadow.employee_credentials (employee_id, password_hash) values ('e', 'INITIAL')")
     const current = await readNormalizedState(pg, { includeCredentials: true })
-    const next = { ...current, revision: current.revision + 1, history: current.history.map(row => ({ ...row, servicePreparation: { materialsReady: true } })) }
+    const next = { ...current, revision: current.revision + 1, employees: current.employees.map(employee => ({ ...employee })), history: current.history.map(row => ({ ...row, servicePreparation: { materialsReady: true } })) }
     // A concurrent password change must survive a planning-only write.
     await pg.query("update normalized_shadow.employee_credentials set password_hash = 'CONCURRENT'")
     const statements = []

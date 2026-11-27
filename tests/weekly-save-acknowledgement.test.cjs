@@ -47,3 +47,31 @@ test('fallo de adjuntos conserva confirmación e identidad: reintentar actualiza
   assert.equal(h.calls[1].baseRecord, h.record)
   assert.equal(h.calls[0].record.id, h.calls[1].record.id)
 })
+
+test('el reintento manual de un alta incierta conserva el mismo cliente rápido, fecha y servicio', async () => {
+  const { context, errors, save } = harness()
+  let generated = 0
+  context.taskEditor.draft.newCustomer = true
+  context.requirePermission = () => true
+  context.customers = []
+  context.createQuickClient = draft => {
+    const customer = { customerId: 'cli-' + (++generated) }
+    return { customer, task: { ...draft, newCustomer: false, customerId: customer.customerId } }
+  }
+  const acknowledge = context.persistWeeklyService
+  const sent = []
+  context.persistWeeklyService = async command => {
+    sent.push(command)
+    if (sent.length === 1) throw Object.assign(new Error(), { code: 'STATE_WRITE_UNCONFIRMED' })
+    return acknowledge(command)
+  }
+  await save()
+  assert.match(errors.at(-1), /Falta la confirmación/)
+  assert.equal(context.taskEditor.pendingCreation, sent[0])
+  // A later shift or a background refresh must not reconstruct the first create.
+  context.dayHasFinished = () => true
+  assert.equal(await save(), true)
+  assert.equal(sent[1], sent[0])
+  assert.equal(generated, 1)
+  assert.equal(context.taskEditor.pendingCreation, null)
+})

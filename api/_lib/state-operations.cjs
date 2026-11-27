@@ -15,6 +15,7 @@ function applyStateOperations(current, operations) {
   if (!Array.isArray(operations) || operations.length > 20000) throw new Error('Operaciones de guardado inválidas.')
   for (const op of operations) {
     if (op.path?.[0] === 'history' && op.path.length === 2 && op.exists) {
+      if (!op.existed && op.inheritedCrew) assertInheritedCreationCrew(current, op)
       const record = current.history?.find(item => String(item.id) === String(op.path[1]?.id))
       require('./completed-service-policy.cjs').assertCompletedServiceChange(record, op.after)
     }
@@ -100,5 +101,26 @@ function applyStateOperations(current, operations) {
     if ((plan.teams || []).some(team => !previousIds.has(String(team.teamId)) && removed.has(String(team.teamId)))) conflict(['agenda', 'weekly', day, 'teams'])
   }
   return next
+}
+
+function assertInheritedCreationCrew(state, { after: record, inheritedCrew }) {
+  const day = record?.date, teamId = record?.teamId, weekly = state.agenda?.weekly
+  if (typeof day !== 'string' || !teamId) throw new Error('Falta el equipo de la jornada para verificar su asignación.')
+  const findTeam = teams => teams?.find(team => String(team.teamId) === String(teamId))
+  let actual = findTeam(weekly?.[day]?.teams)
+  if (inheritedCrew.source === 'monthly') {
+    const template = findTeam(weekly?._monthlyTeams?.[day.slice(0, 7)]?.teams)
+    if (template) actual = { ...template, ...actual }
+  } else if (inheritedCrew.source === 'guard') {
+    if (!actual && weekly?.[day]?.teams?.length) conflict(['agenda', 'weekly', day, 'teams'])
+    if (!actual?.memberIds?.length && !actual?.members?.length) {
+      const guard = require('./planning-guard.cjs').guardForPlanningDate(state, day)
+      actual = guard && { memberIds: [guard.technicianId], members: [guard.name] }
+    }
+  } else throw new Error('Origen del equipo de la jornada inválido.')
+  const field = Array.isArray(inheritedCrew.memberIds) ? 'memberIds' : 'members'
+  if (!actual || !Array.isArray(inheritedCrew[field]) || !equal((actual[field] || []).map(String), inheritedCrew[field].map(String))) {
+    conflict(['agenda', 'weekly', day, 'teams', { key: 'teamId', id: String(teamId) }])
+  }
 }
 module.exports = { applyStateOperations }

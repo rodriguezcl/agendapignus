@@ -19,6 +19,10 @@ test('rechaza el borrador pendiente si el servidor ya recibió la finalización 
 })
 
 test('permite actualizar un pendiente conservando el completado del mismo día', () => {
-  const previous = { history: [record, { ...record, id: 'pending', status: 'Pendiente' }] }
-  assert.doesNotThrow(() => assertCompletedServices({ history: [record, { ...previous.history[1], detail: 'Nueva visita' }] }, previous))
+  let customerReads = 0
+  const snapshot = history => ({ history, get customers() { customerReads++; return [] } })
+  const previous = snapshot([record, { ...record, id: 'pending', status: 'Pendiente' }])
+  const next = snapshot([record, { ...previous.history[1], detail: 'Nueva visita' }])
+  assert.doesNotThrow(() => assertCompletedServices(next, previous))
+  assert.equal(customerReads, 0, 'un cambio ajeno a la cuenta no requiere buscar conversiones de abonados')
 })

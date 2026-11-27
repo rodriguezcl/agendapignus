@@ -1,7 +1,7 @@
 import { rescheduleVehicleControlRecords } from "../../../domain/vehicles/vehicle-controls.mjs";
 import { prettyDate, currentLocalDate } from "../../../presentation/formatting.mjs";
 import { createTaskId, createTeamId } from "../../../infrastructure/browser/identity.mjs";
-import { DEFAULT_2026_GUARD_ROTATION, annualGuardForDate, firstSaturdayOfYear, defaultAnnualGuardRotation, suggestedAnnualGuardRotation } from "../../../domain/agenda/annual-guards.mjs";
+import { defaultAnnualGuardRotation, guardForDateWithDefaults } from "../../../domain/agenda/annual-guards.mjs";
 import { normalizeServiceName, normalizeSearchText } from "../../../domain/shared/normalization.mjs";
 import { findAdvancedSaturdayGuard } from "../../../domain/agenda/weekend-guard.mjs";
 import { normalizeInternalChecklist, resolveServiceForTask, applicableServiceExtras, technicianVisibleServiceExtras, formatCurrencyAmount } from "../../services/application/service-fields.mjs";
@@ -82,30 +82,8 @@ export const isSaturday = date => Boolean(date) && new Date(`${date}T12:00:00`).
 
 export const isSunday = date => Boolean(date) && new Date(`${date}T12:00:00`).getDay() === 0
 
-const legacy2026GuardRotationFor = activeTechs => {
-  const rotation = DEFAULT_2026_GUARD_ROTATION.map(tokens => activeTechs.find(tech => {
-    const normalized = normalizeServiceName(tech.name)
-    return tokens.every(token => normalized.includes(token))
-  })).filter(Boolean)
-  return rotation.length === DEFAULT_2026_GUARD_ROTATION.length
-    ? rotation.map(tech => ({ technicianId: tech.id, name: tech.name }))
-    : []
-}
-
 export const default2026GuardRotationFor = defaultAnnualGuardRotation
-
-export const guardForDateWithDefaults = (date, weekly, activeTechs, today = currentLocalDate()) => {
-  const year = String(date || '').slice(0, 4)
-  const configured = annualGuardForDate(date, weekly)
-  if (Object.hasOwn(weekly?._annualGuards || {}, year)) return configured
-  // New staffing must not rewrite the implicit historical rotation.
-  const historical = date < today
-  if (historical && year !== '2026') return null
-  const rotation = historical ? legacy2026GuardRotationFor(activeTechs) : suggestedAnnualGuardRotation(year, weekly, activeTechs)
-  // The calendar anchor stays fixed when a future year has not been saved yet.
-  const config = { startDate: firstSaturdayOfYear(year), rotation }
-  return rotation.length ? annualGuardForDate(date, { _annualGuards: { [year]: config } }) : null
-}
+export { guardForDateWithDefaults }
 
 export const assignGuardToEmptySaturday = (teams, date, weekly, activeTechs) => {
   if (!isSaturday(date) || !teams?.length || teams.some(team => team?.members?.length || team?.memberIds?.length)) return teams

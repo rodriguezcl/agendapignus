@@ -4,6 +4,7 @@ const { userCan, assertVehicleControlOmissionAuthorized } = require('./access-po
 const { publicEmployee, auditSafe, hashPassword, verifyPassword } = require('./employee-credentials.cjs')
 const { reportDate, compareReportRecords, professionalExcelHtml } = require('./report-formatting.cjs')
 const crypto = require('node:crypto')
+const { isDeepStrictEqual } = require('node:util')
 const { isOperator, operatorState } = require('./operator-access.cjs')
 const { validateChangedAgendaSchedules } = require('./scheduling-validation.cjs')
 const { migrateLegacyEstimatedMinutes } = require('./legacy-estimated-minutes.cjs')
@@ -12,6 +13,10 @@ const { synchronizeVehicleControlAssignments } = require('./vehicle-control-assi
 const { assertNoPastWeeklyServiceAdditions } = require('./past-agenda.cjs')
 const { projectLegacyCollectionReceipts, restoreLegacyCollectionReceipts } = require('./legacy-collection-receipts.cjs')
 const { sanitizeTechnicianFollowup } = require('./technician-followup-access.cjs')
+const { validateCctvRequirementDetail } = require('./cctv-requirement.cjs')
+const { validateAddressChange } = require('./address-change.cjs')
+const { assertActiveService, assertPresenceUnchanged } = require('./softguard-presence.cjs')
+const { assertServiceConfirmationChange } = require('./service-confirmation.cjs')
 
 const normalizedText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 const normalizedRoleName = normalizedText
@@ -376,7 +381,7 @@ function normalizeStateForSave(state, current, { allowEarlyCompletion = false } 
   // save and generates thousands of audit writes inside the same transaction.
   for (const customer of state.customers || []) {
     if (customer.cctvRequirement != null && customer.cctvRequirement !== '' && !cctvRequirements.includes(customer.cctvRequirement)) throw new Error('Requerimiento de CCTV inválido.')
-    require('./cctv-requirement.cjs').validateCctvRequirementDetail(customer)
+    validateCctvRequirementDetail(customer)
   }
   const customers = (state.customers || []).map(customer => ({ ...customer, kind: customerKind(customer), ...(Object.hasOwn(customer, 'cctvService') ? { cctvService: Boolean(customer.cctvService) } : {}), name: String(customer.name || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('es-AR') }))
   const history = normalizeHistoryCompletionTimes(
@@ -410,6 +415,7 @@ function deduplicateScheduledTasks(teams = []) {
 }
 
 function statePersistenceChanged(current, next) {
+  if ((current.history || []).length !== (next.history || []).length) return true
   const canonical = value => {
     if (Array.isArray(value)) return value.map(canonical)
     if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]))
@@ -503,10 +509,10 @@ function secureEmployees(employees, previousEmployees) {
 }
 
 function validateState(state, previousState = null) {
-  for (const record of state?.history || []) require('./address-change.cjs').validateAddressChange(record)
-  if(previousState) require('./softguard-presence.cjs').assertPresenceUnchanged(previousState.customers,state?.customers)
+  for (const record of state?.history || []) validateAddressChange(record)
+  if(previousState) assertPresenceUnchanged(previousState.customers,state?.customers)
   const priorRecords=new Map((previousState?.history||[]).map(r=>[String(r.id),r]))
-  for(const record of state?.history||[]) require('./softguard-presence.cjs').assertActiveService(priorRecords.get(String(record.id)),record,previousState?.customers||state.customers)
+  for(const record of state?.history||[]) assertActiveService(priorRecords.get(String(record.id)),record,previousState?.customers||state.customers)
   require('./granular-write-policy.cjs').validateGranularRoles(state || {}, previousState)
   require('./workday.cjs').validateWorkday(state?.agenda?.weekly?._workday)
   require('./frozen-months.cjs').validateFrozenMonths(state, previousState)
@@ -514,8 +520,7 @@ function validateState(state, previousState = null) {
   require('./completed-service-policy.cjs').assertCompletedServices(state, previousState)
   require('./journey-identity.cjs').synchronizeJourneyIdentity(state, previousState)
   require('./service-journeys.cjs').validateServiceJourneys(state, previousState)
-  const previousConfirmationRecords = new Map((previousState?.history || []).map(record => [String(record.id), record]))
-  for (const record of state?.history || []) require('./service-confirmation.cjs').assertServiceConfirmationChange(previousConfirmationRecords.get(String(record.id)), record)
+  for (const record of state?.history || []) assertServiceConfirmationChange(priorRecords.get(String(record.id)), record)
   if (!state || typeof state !== 'object') throw new Error('El estado recibido no es válido.')
   for (const name of ['roles', 'employees', 'services', 'vehicles', 'customers', 'history']) if (!Array.isArray(state[name])) throw new Error(`La colección ${name} no es válida.`)
   const unique = (items, key, label) => {
@@ -538,7 +543,6 @@ function validateState(state, previousState = null) {
   const serviceById = new Map(state.services.map(item => [String(item.id), item]))
   const customerIds = new Set(state.customers.map(item => String(item.customerId)))
   const employeeIds = new Set(state.employees.map(item => String(item.id)))
-  const previousHistoryById = new Map((previousState?.history || []).map(item => [String(item.id), item]))
   const reservationUsesAlarmInstallation = record => {
     const service = serviceById.get(String(record.serviceId || ''))
     return service?.code === 'alarm-installation' || normalizedServiceName(service?.name || record.service) === 'instalacion de alarma'
@@ -568,7 +572,7 @@ function validateState(state, previousState = null) {
     if (record.customerId != null && String(record.customerId).trim() && !customerIds.has(String(record.customerId))) throw new Error(`Historial ${index + 1}: el cliente no existe.`)
     if (record.subscriberReservation && String(record.customerId || '').trim()) throw new Error(`Historial ${index + 1}: una reserva PIG pendiente no puede estar vinculada a un cliente.`)
     if (record.subscriberReservation && !reservationUsesAlarmInstallation(record)) {
-      const previous = previousHistoryById.get(String(record.id))
+      const previous = priorRecords.get(String(record.id))
       const legacyUnchangedReservation = previous?.subscriberReservation && String(previous.serviceId || previous.service || '') === String(record.serviceId || record.service || '')
       if (!legacyUnchangedReservation) throw new Error(`Historial ${index + 1}: Reserva PIG sólo está disponible para Instalación de alarma.`)
     }
@@ -594,7 +598,7 @@ function auditChanges(previousRecords, nextRecords, key, entity, user) {
   for (const [id, record] of incoming) {
     const old = previous.get(id)
     if (!old) entries.push(create('Creó', id, null, record))
-    else if (JSON.stringify(auditSafe(old)) !== JSON.stringify(auditSafe(record))) entries.push(create('Modificó', id, old, record))
+    else if (!isDeepStrictEqual(old, record) && JSON.stringify(auditSafe(old)) !== JSON.stringify(auditSafe(record))) entries.push(create('Modificó', id, old, record))
   }
   for (const [id, record] of previous) if (!incoming.has(id)) entries.push(create('Eliminó', id, record, null))
   return entries

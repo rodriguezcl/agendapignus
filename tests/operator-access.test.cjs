@@ -50,7 +50,9 @@ test('la Agenda semanal del Operador no ofrece acciones de modificación y permi
   compiled._compile(bundle.outputFiles[0].text, path.join(root, 'operator-render.cjs'))
   const noop = () => {}
   const html = renderToString(React.createElement(compiled.exports.WeeklyPlanner, { weekly: {}, customers: [], services: [], activeTechs: [], history: [], vehicles: [], permissions: { weeklyTeams: true, weeklyHours: true, weeklyVehicles: true, weeklyGuards: true }, authUser: { roleCode: 'operator', role: 'Operador' }, setWeekly: noop, setHistory: noop, setNotice: noop, openDaily: noop, onOpenPlanning: noop }))
-  assert.match(html, /Consulta de solo lectura/)
+  // The read-only description lives in the browser shell's header portal.
+  // The board itself must disable each day's team controls even before hydration.
+  assert.match(html, /<fieldset class="week-teams weekly-day-fields" disabled=""/)
   assert.match(html, /week-team-header/)
   assert.doesNotMatch(html, /Agregar servicio|Agregar otro equipo|Abrir día|Ver día|Agregar técnicos|Quitar Equipo|Guardar servicio|Equipos del mes/)
   assert.doesNotMatch(html, /weekly-planning-link|Planificación<\/button>/)

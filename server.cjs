@@ -793,8 +793,7 @@ function readTechnicianState(user) {
   }
 }
 
-function readStateForUser(user) {
-  const state = readState()
+function readStateForUser(user, state = readState()) {
   const sessionUser = require('./api/_lib/core.cjs').stateSessionUser(state, user)
   return { ...localStateProjection(state, sessionUser), sessionUser }
 }
@@ -889,8 +888,7 @@ function planningHistoryForAgenda(incomingHistory = [], currentHistory = [], age
 
 // La interfaz conserva un estado amplio, pero el servidor nunca acepta cambios
 // sobre colecciones para las que el rol autenticado no tiene permiso.
-function authorizedIncomingState(state, user) {
-  const current = readState()
+function authorizedIncomingState(state, user, current = readState()) {
   const retirementPolicy = require('./api/_lib/softguard-retirement-policy.cjs')
   state = retirementPolicy.protectSoftguardRetirementInput(state, current)
   if (require('./api/_lib/permission-catalog.cjs').isGranular(user)) return retirementPolicy.assertSoftguardRetirementDeletion(current, require('./api/_lib/granular-write-policy.cjs').authorizeGranularState(state, current, user))
@@ -1187,6 +1185,8 @@ function managedHistoryRecord(current, proposed, user, now = new Date().toISOStr
 }
 
 async function saveState(state, user) {
+  const { assertSaveActor, serviceCreationReceipt, assertCreationReplay } = require('./api/_lib/service-creation-receipt.cjs')
+  assertSaveActor(state, user)
   const ticketStore = require('./api/_lib/tickets-http.cjs').storeFor(db, 'db')
   await ticketStore.ensure()
   const { employeeOnly, applyEmployeeOperation } = require('./api/_lib/employee-operation.cjs')
@@ -1211,13 +1211,23 @@ async function saveState(state, user) {
       return { revision, merged: false }
     } catch (error) { db.exec('ROLLBACK'); throw error }
   }
-  if (Object.hasOwn(state, 'operations')) state = { ...applyStateOperations(stateForOperationComparison(readStateForUser(user)), state.operations), revision: currentStateRevision() }
-  const expectedRevision = Number(state.revision)
-  const actualRevision = currentStateRevision()
-  const base = state.base && typeof state.base === 'object' ? state.base : null
   const previousState = readState()
+  const receipt = serviceCreationReceipt(state.operations, user)
+  if (receipt) {
+    const stored = db.prepare('SELECT value FROM preferences WHERE key = ?').get(receipt.key)
+    if (stored) {
+      assertCreationReplay(receipt, stored.value, previousState.history)
+      return { revision: previousState.revision, merged: false }
+    }
+  }
+  const operations = state.operations
+  if (Object.hasOwn(state, 'operations')) state = { ...applyStateOperations(stateForOperationComparison(readStateForUser(user, previousState)), operations), revision: previousState.revision }
+  const expectedRevision = Number(state.revision)
+  const actualRevision = previousState.revision
+  const base = state.base && typeof state.base === 'object' ? state.base : null
   const merged = Boolean(base && concurrentStateChanged(base, previousState))
-  state = authorizedIncomingState(state, user)
+  state = authorizedIncomingState(state, user, previousState)
+  state = require('./api/_lib/weekly-service-creation-mirror.cjs').mirrorWeeklyServiceCreations(state, previousState, operations)
   if (base) state = mergeConcurrentState(base, previousState, state)
   else if (!Number.isInteger(expectedRevision) || expectedRevision !== actualRevision) {
     const error = new Error('Los datos cambiaron en otra sesión. Recargá la página antes de volver a guardar.')
@@ -1293,11 +1303,17 @@ async function saveState(state, user) {
     if (customer.convertedFromAccount) customerByAccount.set(String(customer.convertedFromAccount).trim().toUpperCase(), customer)
   })
   const customerByName = new Map()
-  normalizedCustomers.forEach(customer => { const key = normalizedCustomerValue(customer.name); customerByName.set(key, customerByName.has(key) ? null : customer) })
+  const customerByLabel = new Map()
+  normalizedCustomers.forEach(customer => {
+    const key = normalizedCustomerValue(customer.name)
+    customerByName.set(key, customerByName.has(key) ? null : customer)
+    const label = normalizedCustomerValue(`${customer.account} ${customer.name}`)
+    if (!customerByLabel.has(label)) customerByLabel.set(label, customer)
+  })
   const normalizeCustomerReference = item => {
     const clientText = normalizedCustomerValue(item.client)
     const matched = item.subscriberReservation ? null : customerById.get(String(item.customerId || '')) || customerByAccount.get(String(item.clientAccount || item.account || customerCodeFromText(item.client)).trim().toUpperCase()) ||
-      normalizedCustomers.find(customer => normalizedCustomerValue(`${customer.account} ${customer.name}`) === clientText) || customerByName.get(clientText)
+      customerByLabel.get(clientText) || customerByName.get(clientText)
     return matched ? { ...item, customerId: matched.customerId, clientAccount: matched.account, clientNameAtService: matched.name, client: `${matched.account} ${matched.name}` } : item
   }
   const normalizeReference = item => normalizeCustomerReference(normalizeServiceReference(item))
@@ -1377,6 +1393,7 @@ async function saveState(state, user) {
     if (JSON.stringify(previousState.preferences) !== JSON.stringify(state.preferences)) db.prepare('INSERT INTO preferences (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run('theme', state.preferences?.theme || 'light')
     if (JSON.stringify(previousState.vehicles) !== JSON.stringify(state.vehicles)) db.prepare('INSERT INTO preferences (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run('vehicles', JSON.stringify(state.vehicles || []))
     const nextRevision = actualRevision + 1
+    if (receipt) db.prepare('INSERT INTO preferences (key, value) VALUES (?, ?)').run(receipt.key, receipt.digest)
     db.prepare('INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)').run('state_revision', String(nextRevision))
     db.exec('COMMIT')
     return { revision: nextRevision, merged }

@@ -100,11 +100,11 @@ async function deleteServicePhoto(sql, recordId) {
   await queryRows(sql, 'delete from normalized_shadow.service_photos where job_id = $1', [String(recordId)])
 }
 
-async function setAuxiliaryPreference(sql, key, value) {
+async function setAuxiliaryPreference(sql, key, value, { shadowPrepared } = {}) {
   if (value == null) await queryRows(sql, 'delete from pignus_preferences where key = $1', [key])
   else await queryRows(sql, `insert into pignus_preferences (key, value, updated_at) values ($1,$2,now())
     on conflict (key) do update set value=excluded.value, updated_at=now()`, [key, value])
-  if (!(await normalizedShadowIsPrepared(sql))) return
+  if (!(shadowPrepared ?? await normalizedShadowIsPrepared(sql))) return
   if (value == null) await queryRows(sql, 'delete from normalized_shadow.legacy_preference_evidence where preference_key = $1', [key])
   else await queryRows(sql, `insert into normalized_shadow.legacy_preference_evidence (preference_key, preference_value, updated_at)
     values ($1,$2,now()) on conflict (preference_key) do update set preference_value=excluded.preference_value, updated_at=now()`, [key, value])

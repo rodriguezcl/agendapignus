@@ -35,6 +35,40 @@ for (const name of ['BufferedInput', 'BufferedTextarea']) {
   })
 }
 
+test('Enter publica el último valor de hora, contacto e importe antes de guardar el servicio', async () => {
+  const fields = fs.readFileSync(require.resolve('../src/features/agenda/presentation/AgendaFields.jsx'), 'utf8')
+  const functions = ['BufferedInput', 'CurrencyInput', 'commitBeforeEnter'].map(name => {
+    const start = fields.indexOf(`function ${name}(`)
+    return fields.slice(start, fields.indexOf('\n}', start) + 2)
+  })
+  const code = transformSync(functions.join('\n'), { loader: 'jsx' }).code
+  const { normalizeCurrencyAmount, formatCurrencyAmount } = await import('../src/features/services/application/service-fields.mjs')
+  let synchronous = false
+  const components = vm.runInNewContext(code + '\n;({ BufferedInput, CurrencyInput })', {
+    React: { createElement: (type, props) => ({ props }) },
+    useState: value => [value, () => {}], useRef: value => ({ current: value }), useEffect() {},
+    window: { setTimeout() {}, clearTimeout() {} },
+    normalizeCurrencyAmount, formatCurrencyAmount,
+    flushSync(commit) { synchronous = true; commit(); synchronous = false }
+  })
+  for (const [field, original, typed, expected] of [
+    ['BufferedInput', '14:45', '15:45', '15:45'],
+    ['BufferedInput', '111', '222', '222'],
+    ['CurrencyInput', '100', '45,25', '45.25']
+  ]) {
+    const commits = []
+    const { props } = components[field]({ value: original, buffered: true, onCommit: value => commits.push([value, synchronous]) })
+    props.onChange({ target: { value: typed } })
+    const event = { key: 'Enter', currentTarget: { value: typed }, nativeEvent: {} }
+    props.onKeyDown({ ...event, nativeEvent: { isComposing: true } })
+    props.onKeyDown({ ...event, defaultPrevented: true })
+    assert.deepEqual(commits, [])
+    props.onKeyDown(event)
+    props.onKeyDown(event)
+    assert.deepEqual(commits, [[expected, true]])
+  }
+})
+
 test('weekly manual fields use local buffering, including internal notes and amounts', () => {
   const start = source.lastIndexOf('return <div className="modal-backdrop weekly-editor-backdrop"')
   assert.ok(start >= 0, 'weekly service editor exists')

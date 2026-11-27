@@ -97,7 +97,7 @@ function singleServiceMoveOperations(snapshot, command) {
 
 // One logical command: create/update the history record and both projections.
 // The modal's original record is kept as the compare-and-swap baseline.
-export function weeklyServiceOperations(snapshot, { day, team, task, record, baseRecord, baseTask, customer, sourceDay = '', sourceTeamId = '' }) {
+export function weeklyServiceOperations(snapshot, { day, team, task, record, baseRecord, baseTask, customer, sourceDay = '', sourceTeamId = '' }, { mirrorDaily = true } = {}) {
   if (baseRecord && sourceDay && sourceDay !== day && !record.vehicleControl) {
     const fields = rescheduledServiceFields(baseRecord, record.reprogrammedAt || new Date().toISOString())
     record = { ...record, ...fields }
@@ -108,7 +108,7 @@ export function weeklyServiceOperations(snapshot, { day, team, task, record, bas
   const agenda = snapshot.agenda || {}
   const scopedAgenda = {}
   for (const section of Object.keys(agenda)) {
-    if (section === 'teams' && (agenda.date === day || (sourceDay && agenda.date === sourceDay))) scopedAgenda.teams = agenda.teams
+    if (section === 'teams' && mirrorDaily && (agenda.date === day || (sourceDay && agenda.date === sourceDay))) scopedAgenda.teams = agenda.teams
     if (section === 'weekly' && agenda.weekly == null) scopedAgenda.weekly = agenda.weekly
     else if (section === 'weekly') {
       const days = Object.keys(agenda.weekly).filter(key => key === day || key === sourceDay)
@@ -145,11 +145,11 @@ export function weeklyServiceOperations(snapshot, { day, team, task, record, bas
   if (sourceDay) {
     const sourcePlan = next.agenda.weekly[sourceDay] || {}
     next.agenda.weekly[sourceDay] = { ...sourcePlan, teams: removeFromTeams(sourcePlan.teams || []) }
-    if (agenda.date === sourceDay) next.agenda.teams = removeFromTeams(next.agenda.teams || [])
+    if (mirrorDaily && agenda.date === sourceDay) next.agenda.teams = removeFromTeams(next.agenda.teams || [])
   }
   const plan = next.agenda.weekly[day] || {}
   next.agenda.weekly[day] = { ...plan, teams: updateTeams(plan.teams || []) }
-  if (agenda.date === day) next.agenda.teams = updateTeams(next.agenda.teams || [])
+  if (mirrorDaily && agenda.date === day) next.agenda.teams = updateTeams(next.agenda.teams || [])
   const operations = stateOperations(base, next)
   // Always check the record, including a retry whose local view already matches.
   const historyIds = new Set()
