@@ -399,7 +399,7 @@ export function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, 
   const validateAgenda = (agendaTeams = teams, onlyTaskId = null) => {
     const missing = []
     agendaTeams.forEach((team, teamIndex) => team.tasks.forEach((task, taskIndex) => {
-      if (task.vehicleControl || !taskHasContent(task) || taskIsResolvedForPlanning(task, date, history)) return
+      if (controlPause.isVehicleControl(task) || !taskHasContent(task) || taskIsResolvedForPlanning(task, date, history)) return
       if (onlyTaskId && task.taskId !== onlyTaskId) return
       const existingService = Boolean(historyRecordForTask(task, date, history))
       if (existingService && !canEditTask(task)) return
@@ -464,14 +464,14 @@ export function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, 
       : 'No se pudo acceder al portapapeles. Revisá los permisos del navegador e intentá nuevamente.')
   }
   const registerHistory = async (agendaTeams = teams, onlyTaskId = null) => {
-    const changed = agendaTeams.flatMap(team => team.tasks).filter(task => (!onlyTaskId || task.taskId === onlyTaskId) && taskHasContent(task) && !dailyCompleted(task) && (!isGranular(authUser) || dailyServiceHasChanges(task)))
+    agendaTeams = agendaTeamsWithRealServices(agendaTeams)
+    const changed = agendaTeams.flatMap(team => team.tasks).filter(task => !controlPause.isVehicleControl(task) && (!onlyTaskId || task.taskId === onlyTaskId) && !dailyCompleted(task) && (!isGranular(authUser) || dailyServiceHasChanges(task)))
     if (changed.some(task => !canSaveTask(task))) { setDailySaveError({ taskId: onlyTaskId, message: 'No tenés permiso para guardar uno de estos servicios.' }); return false }
     setDailySaveError(null)
     if (onlyTaskId && teams.some(team => team.tasks.some(task => task.taskId === onlyTaskId && dailyCompleted(task)))) {
       setDailySaveError({ taskId: onlyTaskId, message: 'Este servicio ya fue completado. Los cambios no se guardaron. Actualizá la agenda para consultar su información.' })
       return false
     }
-    agendaTeams = agendaTeamsWithRealServices(agendaTeams)
     if (pastDayBlocked) {
       setNotice(`La jornada del ${prettyDate(date)} ya finalizó. Consultá o corregí sus servicios desde Historial.`)
       return false
@@ -493,7 +493,7 @@ export function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, 
     try {
       // Automatic vehicle controls already have their own persisted record and assignee.
       // Saving/copying the daily agenda must not rebuild them with the team's members.
-      const records = agendaTeams.flatMap((team, teamIndex) => team.tasks.filter(task => !task.vehicleControl && !dailyCompleted(task) && (!onlyTaskId || task.taskId === onlyTaskId) && (!isGranular(authUser) || changed.includes(task))).map((task, taskIndex) => ({
+      const records = agendaTeams.flatMap((team, teamIndex) => team.tasks.filter(task => changed.includes(task)).map((task, taskIndex) => ({
         // historyId se conserva al recuperar o editar una agenda ya registrada.
         // Para un servicio nuevo se usa el taskId, que permanece aunque cambien sus datos.
         id: task.historyId || `work-${task.taskId || `${date}-${teamIndex}-${taskIndex}`}`,
@@ -562,7 +562,7 @@ export function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, 
     return serviceHasChanges(editable(task), saved ? editable(saved) : null)
   }
   const pendingDailyServices = teams.flatMap((team, teamIndex) => team.tasks.map((task, taskIndex) => ({ task, teamIndex, taskIndex })))
-    .filter(({ task }) => canSaveTask(task) && !task.vehicleControl && !dailyCompleted(task) && taskHasContent(task) && dailyServiceHasChanges(task))
+    .filter(({ task }) => !controlPause.isVehicleControl(task) && canSaveTask(task) && !dailyCompleted(task) && taskHasContent(task) && dailyServiceHasChanges(task))
   const saveDailyService = async taskId => {
     if (singleSaveRef.current) return false
     singleSaveRef.current = true

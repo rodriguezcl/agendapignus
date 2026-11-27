@@ -26,11 +26,19 @@ export function createCatalogStore(request = requestJson) {
     })
     return pendingRead
   }
-  async function saveProduct(command) {
-    let result
+  async function write(command, bulk) {
+    let saved
     try {
-      result = await request('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(command) }, 'No se pudo guardar el producto.')
-      if (!result.product?.id) throw new Error('No se recibió la confirmación del producto.')
+      const result = await request('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(command) }, 'No se pudieron guardar los cambios en Productos.')
+      if (bulk) {
+        saved = result.products
+        const confirmed = Array.isArray(saved) && saved.length === command.items.length &&
+          command.items.every(({ id }, i) => saved[i]?.id === id && saved[i].active === command.active)
+        if (!confirmed) throw new Error('No se recibió la confirmación de todos los productos.')
+      } else {
+        if (!result.product?.id) throw new Error('No se recibió la confirmación del producto.')
+        saved = [result.product]
+      }
     } catch (error) {
       if ([401, 403, 409].includes(error.status)) {
         generation++
@@ -42,11 +50,19 @@ export function createCatalogStore(request = requestJson) {
     // A read started before the write may still return the preceding version.
     generation++
     pendingRead = undefined
-    const saved = result.product
-    if ((overrides.get(saved.id)?.version ?? 0) <= saved.version) overrides.set(saved.id, saved)
+    for (const product of saved) {
+      if ((overrides.get(product.id)?.version ?? 0) <= product.version) overrides.set(product.id, product)
+    }
     update({ products: catalog.mergeCatalog([...overrides.values()]), error: '' })
     void refresh()
     return saved
+  }
+  async function saveProduct(command) {
+    const [saved] = await write(command, false)
+    return saved
+  }
+  function setProductsActive(items, active) {
+    return write({ action: 'setActive', items, active }, true)
   }
   function subscribe(listener) {
     listeners.add(listener)
@@ -59,5 +75,5 @@ export function createCatalogStore(request = requestJson) {
       if (!listeners.size) window.removeEventListener('focus', refresh)
     }
   }
-  return { getSnapshot: () => snapshot, subscribe, refresh, saveProduct }
+  return { getSnapshot: () => snapshot, subscribe, refresh, saveProduct, setProductsActive }
 }

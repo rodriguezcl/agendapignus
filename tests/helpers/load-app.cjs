@@ -4,6 +4,7 @@ const { buildSync } = require('esbuild')
 const { bindings } = require('./frontend-source.cjs')
 
 const components = {
+  PermissionsProvider: ['src/presentation/contexts/permissions-context.jsx', 'PermissionsProvider'],
   AttachmentDraftField: ['src/components/Attachments.jsx', 'AttachmentDraftField'],
   TechnicianReportModal: ['src/components/TechnicianReportModal.jsx', 'default'],
   ServicePreparationButton: ['src/components/ServicePreparationButton.jsx', 'default'],

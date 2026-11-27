@@ -10,7 +10,7 @@ const loadApp = require('./helpers/load-app.cjs')
 
 test('daily and weekly components render through their actual prop forwarding chain', () => {
   const source = frontendSource()
-  const compiled = { exports: loadApp(['Agenda', 'WeeklyPlanner', 'ServiceConfirmationButton', 'ServiceJourneys', 'ServiceJourneysContext', 'JourneyHistory', 'TechnicianPortal']) }
+  const compiled = { exports: loadApp(['Agenda', 'WeeklyPlanner', 'ServiceConfirmationButton', 'ServiceJourneys', 'ServiceJourneysContext', 'JourneyHistory', 'PermissionsProvider', 'TechnicianPortal']) }
   const noop = () => {}
   const props = { date: '2026-01-05', teams: [], weekly: {}, customers: [], services: [], activeTechs: [], history: [], vehicles: [], permissions: {}, databaseReady: true, authUser: null,
     setDate: noop, setTeams: noop, setWeekly: noop, setHistory: noop, setCustomers: noop, setNotice: noop, updateTask: noop, openDaily: noop, persistAgendaRecords: async () => {}, persistWeeklyService: async () => {} }
@@ -28,7 +28,7 @@ test('daily and weekly components render through their actual prop forwarding ch
   assert.equal(renderToString(React.createElement(compiled.exports.ServiceConfirmationButton, {
     task: { client: 'Vehículo', vehicleControl: true }, day: '2099-01-05', onDraftChange: noop
   })), '')
-  const { ServiceJourneys, ServiceJourneysContext, JourneyHistory, TechnicianPortal } = compiled.exports
+  const { ServiceJourneys, ServiceJourneysContext, JourneyHistory, PermissionsProvider, TechnicianPortal } = compiled.exports
   const record = { id:'journey-first',date:'2099-01-05',time:'09:00',service:'Instalación de alarma',status:'Pendiente',client:'Cliente',team:'Equipo 1',technicians:['Técnico'],estimatedMinutes:120 }
   const provider = (enabled, content, history = [record]) => React.createElement(ServiceJourneysContext.Provider, {value:{enabled,today:'2026-09-21',history}}, content)
   assert.match(renderToString(provider(true,React.createElement(ServiceJourneys,{record}))),/Planificar varias jornadas/)
@@ -54,10 +54,16 @@ test('daily and weekly components render through their actual prop forwarding ch
   assert.match(detail,/Informe de prueba/)
   const today=new Date().toLocaleDateString('sv-SE',{timeZone:'America/Argentina/Buenos_Aires'})
   const tomorrow=new Date(`${today}T12:00:00Z`);tomorrow.setUTCDate(tomorrow.getUTCDate()+1)
-  const technical=renderToString(React.createElement(TechnicianPortal,{user:{id:'tech',name:'Técnico'},history:[{...first,date:today,time:'00:00',startedAt:'2020-01-01T12:00:00Z'},{...last,date:tomorrow.toISOString().slice(0,10)}],setHistory:noop,logout:noop}))
+  const technician = { id: 'tech', name: 'Técnico', roleCode: 'technician', permissions: {
+    __catalogV2: true, 'technical.view': true, 'records.read': true, 'scope.services.read.assigned': true, 'scope.services.write.assigned': true,
+    'technical.progress': true, 'technical.complete': true
+  } }
+  const renderAgenda = history => renderToString(React.createElement(PermissionsProvider, { user: technician },
+    React.createElement(TechnicianPortal, { user: technician, history, setHistory: noop, logout: noop })))
+  const technical=renderAgenda([{...first,date:today,time:'00:00',startedAt:'2020-01-01T12:00:00Z'},{...last,date:tomorrow.toISOString().slice(0,10)}])
   assert.match(technical,/Registrar avance/)
   assert.doesNotMatch(technical,/Completar servicio/)
-  const finalVisit=renderToString(React.createElement(TechnicianPortal,{user:{id:'tech',name:'Técnico'},history:[{...first,date:today,status:'Avance registrado'},{...last,date:tomorrow.toISOString().slice(0,10)}],setHistory:noop,logout:noop}))
+  const finalVisit=renderAgenda([{...first,date:today,status:'Avance registrado'},{...last,date:tomorrow.toISOString().slice(0,10)}])
   assert.match(finalVisit,/Completar servicio/)
   assert.doesNotMatch(finalVisit,/Registrar avance/)
   assert.doesNotMatch(technical,/>Marcar completado</)

@@ -12,7 +12,10 @@ async function productRequest({ connection, kind, method, route, user, query = {
   if (!stores.has(connection)) stores.set(connection, createProductStore({ [kind]: connection }))
   const store = stores.get(connection)
   if (route === '/products' && method === 'GET') return { body: { overrides: await store.list(), canManage } }
-  if (route === '/products' && method === 'POST') return { body: { product: await store.update(input, user.id) } }
+  if (route === '/products' && method === 'POST') {
+    if (input?.action === 'setActive') return { body: { products: await store.setActive(input, user.id) } }
+    return { body: { product: await store.update(input, user.id) } }
+  }
   if (route === '/products/photo' && method === 'GET') return { file: await store.photo(query.id) }
   throw Object.assign(new Error('El método solicitado no está disponible en Productos.'), { statusCode: 405 })
 }

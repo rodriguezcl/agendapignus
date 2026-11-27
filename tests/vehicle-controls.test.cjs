@@ -1,4 +1,4 @@
-const { frontendSource } = require('./helpers/frontend-source.cjs')
+const { frontendSource, functionSource } = require('./helpers/frontend-source.cjs')
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
@@ -90,6 +90,7 @@ test('permite reemplazar al responsable de un viernes sin cambiar la asignación
   assert.equal(records.find(record => record.vehicleControlScheduledFriday === '2026-09-18').technicianIds[0], 'mariano')
   assert.equal(records.find(record => record.vehicleControlScheduledFriday === '2026-09-25').technicianIds[0], 'leonardo')
   assert.equal(assignments[0].technicianId, 'leonardo')
+  assert.match(functionSource('OperationalPlanning'), /Reemplazos por contingencia/)
 })
 
 test('el catálogo siempre contiene el control vehicular como servicio de sistema de 15 minutos', async () => {
@@ -233,23 +234,39 @@ test('el portal técnico deshabilita el control anticipado y muestra cuándo se 
 })
 
 test('el control vehicular es autónomo y no muestra dirección, contacto ni avisos de desbloqueo', () => {
-  const fs = require('node:fs')
-  const path = require('node:path')
-  const source = frontendSource()
-  assert.match(source, /const unlocked = record\.vehicleControl \|\| view === 'history'/)
-  assert.match(source, /\{record\.vehicleControl \? null : unlocked \? <>/)
-  assert.match(source, /\{unlocked && !done && canWriteRecord\(record, permissionSubject\) && <>/)
-  assert.match(source, /Los controles vehiculares son tareas autónomas/)
   const React = require('react')
   const { renderToStaticMarkup } = require('react-dom/server')
-  const { TechnicianReportModal } = require('./helpers/load-app.cjs')(['TechnicianReportModal'])
-  const report = renderToStaticMarkup(React.createElement(TechnicianReportModal, {
-    record: { id: 'control', vehicleControl: true }, type: 'Completado', serviceLabel: 'Control vehicular',
+  const { parseDocument, DomUtils } = require('htmlparser2')
+  const { PermissionsProvider, TechnicianPortal, TechnicianReportModal } = require('./helpers/load-app.cjs')(['PermissionsProvider', 'TechnicianPortal', 'TechnicianReportModal'])
+  const user = { id: 'tech', name: 'Técnico', roleCode: 'technician', permissions: {
+    __catalogV2: true, 'records.read': true, 'records.contact': true, 'scope.services.read.assigned': true, 'scope.services.write.assigned': true,
+    'technical.view': true, 'vehicle.controls.read': true, 'technical.vehicleControl': true
+  } }
+  const common = { date: '2020-01-03', technicianIds: [user.id], status: 'Pendiente' }
+  const ordinary = { ...common, id: 'visita', time: '09:00', client: 'Abonado', service: 'Service de alarma' }
+  const control = { ...common, id: 'control', vehicleControl: true, time: '15:45', client: 'Unidad de prueba', service: 'Control semanal de vehículo',
+    address: 'Domicilio de prueba', phone: '3510000000' }
+  const asTechnician = component => renderToStaticMarkup(React.createElement(PermissionsProvider, { user }, component))
+  const portal = asTechnician(React.createElement(TechnicianPortal, {
+    user, history: [ordinary, control], setHistory() {}, logout() {}
+  }))
+  const cards = DomUtils.findAll(element => element.name === 'article' && element.attribs.class?.includes('technician-service'), parseDocument(portal).children)
+  assert.equal(cards.length, 2)
+  const vehicleCard = cards[1]
+  const cardText = DomUtils.textContent(vehicleCard)
+  assert.match(cardText, /Unidad de prueba/)
+  assert.doesNotMatch(cardText, /Domicilio de prueba|3510000000|Solicitar reprogramación|Informar cancelación/)
+  assert.doesNotMatch(vehicleCard.attribs.class, /\blocked\b/)
+  assert.equal(DomUtils.findOne(element => element.attribs.class === 'locked-info', vehicleCard.children), null)
+  const completeButton = DomUtils.findOne(element => element.name === 'button' && DomUtils.textContent(element).includes('Marcar completado'), vehicleCard.children)
+  assert.ok(completeButton)
+  assert.equal(completeButton.attribs.disabled, undefined)
+  const report = asTechnician(React.createElement(TechnicianReportModal, {
+    record: control, type: 'Completado', serviceLabel: 'Control vehicular',
     onPendingAttachmentsChange() {}, onClose() {}, onSubmit() {}
   }))
   assert.match(report, /Kilometraje actualizado/)
   assert.doesNotMatch(report, /<textarea/)
-  assert.match(source, /Reemplazos por contingencia/)
 })
 
 test('el administrador puede omitir un control semanal sin que se regenere ni llegue al técnico', () => {

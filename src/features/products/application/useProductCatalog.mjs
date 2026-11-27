@@ -16,5 +16,5 @@ export function useProductCatalog() {
     return currentStore
   }, [session])
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
-  return { ...snapshot, refresh: store.refresh, saveProduct: store.saveProduct }
+  return { ...snapshot, refresh: store.refresh, saveProduct: store.saveProduct, setProductsActive: store.setProductsActive }
 }

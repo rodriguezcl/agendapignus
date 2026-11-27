@@ -20,7 +20,8 @@ async function postgresProductOverrides(transaction) {
   const [result] = await transaction.unsafe('SELECT to_regclass($1) IS NOT NULL AS present', [table])
   return result.present ? parseMetadata(await transaction.unsafe(allMetadata)) : []
 }
-const save = 'INSERT INTO ' + table + ' (id,data,last_request,photo_type,photo_bytes) VALUES (?,?,?,?,?) ' +
+const upsert = count => 'INSERT INTO ' + table + ' (id,data,last_request,photo_type,photo_bytes) VALUES ' +
+  Array(count).fill('(?,?,?,?,?)').join(',') + ' ' +
   'ON CONFLICT (id) DO UPDATE SET data=excluded.data, last_request=excluded.last_request, ' +
   'photo_type=COALESCE(excluded.photo_type,' + table + '.photo_type), photo_bytes=COALESCE(excluded.photo_bytes,' + table + '.photo_bytes)'
 const customId = /^custom:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -33,10 +34,16 @@ function field(value, label, max) {
   if (typeof value !== 'string' || value.trim().length > max) fail('Revisá el campo ' + label + ' (hasta ' + max + ' caracteres).')
   return value.trim()
 }
-function prepare(input, actorId) {
-  const { id, expectedVersion, product } = input || {}
+function validateReference(id, expectedVersion) {
   if (typeof id !== 'string' || id.length > 1500 || (!id.startsWith('base:') && !customId.test(id))) fail('Identificador de producto inválido.')
   if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) fail('La versión del producto no es válida.')
+}
+function assertVersion(product, expectedVersion) {
+  if (expectedVersion !== (product?.version ?? 0)) fail('El producto cambió desde otra sesión. Actualizá el catálogo para revisar los cambios.', 409, 'PRODUCT_VERSION_CONFLICT')
+}
+function prepare(input, actorId) {
+  const { id, expectedVersion, product } = input || {}
+  validateReference(id, expectedVersion)
   if (!product || typeof product !== 'object' || Array.isArray(product)) fail('Faltan los datos del producto.')
   const { category, kind, active } = product
   if (typeof category !== 'string' || typeof kind !== 'string' || !Object.hasOwn(EQUIPMENT_KINDS, category) || !Object.hasOwn(EQUIPMENT_KINDS[category], kind)) fail('Elegí una categoría y un tipo de equipo compatibles.')
@@ -69,7 +76,7 @@ function nextProduct(command, rows) {
   if (!current && !customId.test(id)) fail('El producto de referencia no existe.', 404, 'PRODUCT_NOT_FOUND')
   if (current && rows.find(row => row.id === id)?.last_request === hash) return { product: current }
   const version = current?.version ?? 0
-  if (expectedVersion !== version) fail('El producto cambió desde otra sesión. Actualizá el catálogo para revisar los cambios.', 409, 'PRODUCT_VERSION_CONFLICT')
+  assertVersion(current, expectedVersion)
   if (!fields.brand && current?.brand !== '') fail('Ingresá la marca del producto.')
   if (!current && !photo) fail('Adjuntá una imagen de referencia para el nuevo producto.')
   const key = productKey(fields)
@@ -79,6 +86,34 @@ function nextProduct(command, rows) {
   const image = photo ? '/api/products/photo?id=' + encodeURIComponent(id) + '&v=' + photo.digest : current.image
   const product = { id, ...fields, image, caption: photo ? '' : current.caption, version: version + 1 }
   return { product, values: [id, JSON.stringify(product), hash, photo?.mimeType ?? null, photo?.data ?? null] }
+}
+
+function prepareStatusChange({ active, items }, actorId) {
+  if (typeof active !== 'boolean') fail('El estado del producto no es válido.')
+  if (!Array.isArray(items) || !items.length) fail('Seleccioná al menos un producto.')
+  const ids = new Set()
+  return items.map(item => {
+    const { id, expectedVersion } = item || {}
+    validateReference(id, expectedVersion)
+    if (ids.has(id)) fail('Un producto figura más de una vez en la selección.')
+    ids.add(id)
+    const hash = createHash('sha256').update(JSON.stringify(['setActive', actorId, id, expectedVersion, active])).digest('hex')
+    return { id, active, expectedVersion, hash }
+  })
+}
+
+function nextStatuses(commands, rows) {
+  const catalog = new Map(mergeCatalog(parseMetadata(rows)).map(product => [product.id, product]))
+  const lastRequests = new Map(rows.map(row => [row.id, row.last_request]))
+  return commands.map(({ id, active, expectedVersion, hash }) => {
+    const current = catalog.get(id)
+    if (!current) fail('Un producto de la selección ya no está en el catálogo. Actualizá el listado.', 404, 'PRODUCT_NOT_FOUND')
+    if (lastRequests.get(id) === hash) return { product: current }
+    assertVersion(current, expectedVersion)
+    if (current.active === active) return { product: current }
+    const product = { ...current, active, version: expectedVersion + 1 }
+    return { product, values: [id, JSON.stringify(product), hash, null, null] }
+  })
 }
 
 function createProductStore({ db, sql }) {
@@ -106,26 +141,40 @@ function createProductStore({ db, sql }) {
     if (!record) fail('Imagen no encontrada.', 404, 'PRODUCT_PHOTO_NOT_FOUND')
     return { mimeType: record.photo_type, data: Buffer.from(record.photo_bytes) }
   }
-  async function update(input, actorId) {
-    const command = prepare(input, actorId)
+  async function write(plan) {
     await ensure()
     const metadata = 'SELECT id,data,last_request FROM pignus_product_overrides'
     if (sql) return sql.begin(async tx => {
       // Two distinct IDs can compete for the same brand and model, including a seed.
       await tx.unsafe('LOCK TABLE pignus_product_overrides IN SHARE ROW EXCLUSIVE MODE')
-      const result = nextProduct(command, await tx.unsafe(metadata))
-      if (result.values) await tx.unsafe(sqlParameters(save), result.values)
-      return result.product
+      const results = plan(await tx.unsafe(metadata))
+      const writes = results.filter(result => result.values)
+      // Keep large selections in one transaction with bounded round trips and parameter counts.
+      for (let offset = 0; offset < writes.length; offset += 200) {
+        const batch = writes.slice(offset, offset + 200)
+        await tx.unsafe(sqlParameters(upsert(batch.length)), batch.flatMap(result => result.values))
+      }
+      return results.map(result => result.product)
     })
     db.exec('BEGIN IMMEDIATE')
     try {
-      const result = nextProduct(command, db.prepare(metadata).all())
-      if (result.values) db.prepare(save).run(...result.values)
+      const results = plan(db.prepare(metadata).all())
+      const statement = db.prepare(upsert(1))
+      for (const result of results) if (result.values) statement.run(...result.values)
       db.exec('COMMIT')
-      return result.product
+      return results.map(result => result.product)
     } catch (error) { db.exec('ROLLBACK'); throw error }
   }
-  return { list, photo, update }
+  async function update(input, actorId) {
+    const command = prepare(input, actorId)
+    const [product] = await write(rows => [nextProduct(command, rows)])
+    return product
+  }
+  async function setActive(input, actorId) {
+    const commands = prepareStatusChange(input, actorId)
+    return write(rows => nextStatuses(commands, rows))
+  }
+  return { list, photo, update, setActive }
 }
 
 module.exports = { createProductStore, sqliteProductOverrides, postgresProductOverrides }

@@ -81,6 +81,32 @@ test('a delayed catalog read cannot undo a saved change or replace its newer ver
   assert.equal(snapshot.canManage, true)
 })
 
+test('la selección cambia de estado en una sola solicitud y el catálogo comparte todos los cambios', async () => {
+  const { createCatalogStore } = await import('../src/features/products/application/catalog-store.mjs')
+  const originals = baseProducts.slice(0, 2)
+  const items = originals.map(({ id, version }) => ({ id, expectedVersion: version }))
+  const saved = originals.map(product => ({ ...product, active: false, version: product.version + 1 }))
+  const writes = [], reads = []
+  const store = createCatalogStore(async (url, options) => {
+    assert.equal(url, '/api/products')
+    if (options.method === 'POST') {
+      writes.push(JSON.parse(options.body))
+      return { products: saved }
+    }
+    return new Promise(resolve => reads.push(resolve))
+  })
+  const oldRead = store.refresh()
+  await store.setProductsActive(items, false)
+  assert.deepEqual(writes, [{ action: 'setActive', items, active: false }])
+  reads[0]({ overrides: [], canManage: true })
+  await oldRead
+  const effective = store.getSnapshot().products
+  for (const product of saved) assert.deepEqual(effective.find(entry => entry.id === product.id), product)
+  assert.ok(effective.find(entry => entry.id === baseProducts[2].id).active)
+  reads[1]({ overrides: saved, canManage: true })
+  await store.refresh()
+})
+
 for (const [family, items] of [
   ['cámaras', require('../src/features/cctv/domain/ir-camera-models.json')],
   ['grabadores', require('../src/features/cctv/domain/ir-recorder-models.json')]

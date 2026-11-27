@@ -6,7 +6,7 @@ import Icon from '../../../components/ui/Icon.jsx'
 import { useProductCatalog } from '../application/useProductCatalog.mjs'
 import { productName, productType } from '../domain/product-name.mjs'
 import { indexProducts, productBrands, productSearchWords } from '../domain/product-search.mjs'
-import ProductForm, { editableFields, ReferencePhoto } from './ProductForm.jsx'
+import ProductForm, { ReferencePhoto } from './ProductForm.jsx'
 import './products.css'
 
 const { EQUIPMENT_CATEGORIES, EQUIPMENT_KINDS } = schema
@@ -35,32 +35,35 @@ function ProductDetails({ product, onClose }) {
   </EditorModal>
 }
 
-function StatusDialog({ product, onSave, onClose }) {
+function StatusDialog({ products, active, onSave, onClose }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const action = product.active ? 'Dar de baja' : 'Reactivar'
+  const action = active ? 'Reactivar' : 'Dar de baja'
+  const quantity = products.length === 1 ? 'producto' : `${products.length} productos`
   async function changeStatus() {
     if (busy) return
     setBusy(true)
     setError('')
     try {
-      await onSave({ id: product.id, expectedVersion: product.version, product: { ...editableFields(product), active: !product.active } })
+      await onSave(products, active)
     } catch (cause) {
-      setError(cause.message || 'No se pudo actualizar el estado del producto.')
+      setError(cause.message || 'No se pudo actualizar el estado de los productos.')
     } finally {
       setBusy(false)
     }
   }
-  return <EditorModal active title={`${action} producto`} eyebrow="PRODUCTOS" onClose={onClose} busy={busy}>
+  return <EditorModal active title={`${action} ${quantity}`} eyebrow="PRODUCTOS" onClose={onClose} busy={busy}>
     <div className="products-status-dialog">
-      <p><strong>{product.model}</strong><br />{productName(product)}</p>
-      <p>{product.active
-        ? 'El modelo dejará de ofrecerse para nuevas cargas. Las fichas técnicas y los planos donde ya se utilizó conservan el equipo.'
-        : 'El modelo volverá a estar disponible para cargar equipos en las fichas técnicas y los planos.'}</p>
+      <ul className="products-status-list" aria-label="Productos que cambiarán de estado">
+        {products.map(product => <li key={product.id}><strong>{product.model}</strong> · {productName(product)}</li>)}
+      </ul>
+      <p>{active
+        ? 'Los productos volverán a estar disponibles para nuevas cargas.'
+        : 'Los productos dejarán de ofrecerse para nuevas cargas. Los equipos y materiales ya registrados se conservan.'}</p>
       {error && <p className="products-error" role="alert">{error}</p>}
       <div className="products-form-actions">
         <button type="button" className="secondary" disabled={busy} onClick={onClose}>Cancelar</button>
-        <button type="button" className={product.active ? 'danger-button' : 'primary'} disabled={busy} onClick={changeStatus}>
+        <button type="button" className={active ? 'primary' : 'danger-button'} disabled={busy} onClick={changeStatus}>
           {busy ? 'Guardando…' : action}
         </button>
       </div>
@@ -84,10 +87,11 @@ function ProductsPagination({ total, page, size, onPage, onSize }) {
 }
 
 export default function Products() {
-  const { products, loading, error, refresh, canManage, saveProduct } = useProductCatalog()
+  const { products, loading, error, refresh, canManage, saveProduct, setProductsActive } = useProductCatalog()
   const [filters, setFilters] = useState(defaultFilters)
   const [page, setPage] = useState(1), [size, setSize] = useState(20)
-  const [dialog, setDialog] = useState(null), [notice, setNotice] = useState('')
+  const [dialog, setDialog] = useState(null), [notice, setNotice] = useState(null)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
   const brands = useMemo(() => productBrands(products, filters.category), [products, filters.category])
   const index = useMemo(() => indexProducts(products), [products])
   const matches = useMemo(() => {
@@ -99,6 +103,10 @@ export default function Products() {
   const current = Math.min(page, Math.max(1, Math.ceil(matches.length / size)))
   const visible = matches.slice((current - 1) * size, current * size)
   const authorized = canManage && !error
+  const selected = useMemo(() => products.filter(product => selectedIds.has(product.id)), [products, selectedIds])
+  const toDeactivate = selected.filter(product => product.active)
+  const toReactivate = selected.filter(product => !product.active)
+  const pageSelected = visible.filter(({ product }) => selectedIds.has(product.id)).length
 
   // A category change or a catalog edit can remove the selected brand.
   if (filters.brand && !brands.includes(filters.brand)) {
@@ -111,8 +119,40 @@ export default function Products() {
     setPage(1)
   }
   function openDialog(action, product) {
-    setNotice('')
+    setNotice(null)
     setDialog({ action, product })
+  }
+  function select(ids, checked) {
+    setSelectedIds(previous => {
+      const next = new Set(previous)
+      for (const id of ids) {
+        if (checked) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+  }
+  function openStatus(targets, active) {
+    setNotice(null)
+    setDialog({ action: 'status', targets, active })
+  }
+  async function saveStatus(targets, active) {
+    const items = targets.map(product => ({ id: product.id, expectedVersion: product.version }))
+    try {
+      await setProductsActive(items, active)
+    } catch (cause) {
+      if (cause.status !== 404 && cause.status !== 409) throw cause
+      await refresh()
+      setDialog(null)
+      setNotice({ error: true, text: 'El catálogo cambió desde que abriste la confirmación. Revisá los productos seleccionados y volvé a confirmar.' })
+      return
+    }
+    select(targets.map(product => product.id), false)
+    const count = targets.length
+    setNotice({ text: active
+      ? (count === 1 ? 'Producto reactivado.' : `${count} productos reactivados.`)
+      : (count === 1 ? 'Producto dado de baja.' : `${count} productos dados de baja.`) })
+    setDialog(null)
   }
   function newProduct() {
     const category = filters.category || 'cctv'
@@ -125,8 +165,7 @@ export default function Products() {
       setFilters({ ...defaultFilters, search: command.product.model })
       setPage(1)
     }
-    const message = dialog.action === 'status' ? (command.product.active ? 'Producto reactivado.' : 'Producto dado de baja.') : 'Producto guardado.'
-    setNotice(message)
+    setNotice({ text: 'Producto guardado.' })
     setDialog(null)
   }
   const close = () => setDialog(null)
@@ -149,14 +188,31 @@ export default function Products() {
     {error ? <div className="products-feedback"><p role="alert" className="products-error">{error.message || String(error)}</p>
       <button type="button" className="secondary" onClick={() => refresh()} disabled={loading}>Volver a intentar</button>
     </div> : loading ? <p role="status">Cargando productos…</p> : <>
-      {notice && <p className="products-notice" role="status">{notice}</p>}
+      {notice && <p className={notice.error ? 'products-error' : 'products-notice'} role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
+      {authorized && selected.length > 0 && <div className="products-selection" role="group" aria-label="Acciones para los productos seleccionados">
+        <strong aria-live="polite">{selected.length === 1 ? '1 producto seleccionado' : `${selected.length} productos seleccionados`}</strong>
+        {toDeactivate.length > 0 && <button type="button" className="secondary" onClick={() => openStatus(toDeactivate, false)}>
+          <Icon name="pause" size={16} />Dar de baja ({toDeactivate.length})
+        </button>}
+        {toReactivate.length > 0 && <button type="button" className="secondary" onClick={() => openStatus(toReactivate, true)}>
+          <Icon name="play" size={16} />Reactivar ({toReactivate.length})
+        </button>}
+        <button type="button" className="secondary" onClick={() => setSelectedIds(new Set())}>Limpiar selección</button>
+      </div>}
       <div className="products-table-wrap" tabIndex={0} role="region" aria-label="Listado de productos">
         <table className="products-table">
-          <thead><tr><th scope="col">Código</th><th scope="col">Nombre</th><th scope="col">Categoría</th><th scope="col">Estado</th>
+          <thead><tr>{authorized && <th scope="col" className="products-select-cell">
+            <input type="checkbox" aria-label="Seleccionar esta página" title="Seleccionar esta página" disabled={!visible.length}
+              checked={visible.length > 0 && pageSelected === visible.length}
+              ref={input => { if (input) input.indeterminate = pageSelected > 0 && pageSelected < visible.length }}
+              onChange={event => select(visible.map(({ product }) => product.id), event.target.checked)} />
+          </th>}<th scope="col">Código</th><th scope="col">Nombre</th><th scope="col">Categoría</th><th scope="col">Estado</th>
             {authorized && <th scope="col">Acciones</th>}</tr></thead>
           <tbody>{visible.map(({ product, name }) => <tr key={product.id}>
+            {authorized && <td className="products-select-cell"><input type="checkbox" aria-label={`Seleccionar ${product.brand} ${product.model}`}
+              checked={selectedIds.has(product.id)} onChange={event => select([product.id], event.target.checked)} /></td>}
             <td className="products-code">{product.model}</td>
-            <td><button type="button" className="products-row-detail" onClick={() => openDialog('view', product)} aria-label={`Ver ficha de ${name} (${product.model})`}>
+            <td className="products-name"><button type="button" className="products-row-detail" onClick={() => openDialog('view', product)} aria-label={`Ver ficha de ${name} (${product.model})`}>
               <ReferencePhoto image={product.image} model={product.model} caption={product.caption} />
               <strong>{name}</strong>
             </button></td>
@@ -165,7 +221,7 @@ export default function Products() {
             {authorized && <td><div className="row-actions products-row-actions">
               <button type="button" title="Editar producto" aria-label={`Editar ${product.model}`} onClick={() => openDialog('edit', product)}><Icon name="edit" size={16} /></button>
               <button type="button" title={product.active ? 'Dar de baja' : 'Reactivar'} aria-label={`${product.active ? 'Dar de baja' : 'Reactivar'} ${product.model}`}
-                onClick={() => openDialog('status', product)}><Icon name={product.active ? 'pause' : 'play'} size={16} /></button>
+                onClick={() => openStatus([product], !product.active)}><Icon name={product.active ? 'pause' : 'play'} size={16} /></button>
             </div></td>}
           </tr>)}</tbody>
         </table>
@@ -177,6 +233,6 @@ export default function Products() {
     {dialog?.action === 'view' && <ProductDetails product={dialog.product} onClose={close} />}
     {canManage && (dialog?.action === 'edit' || dialog?.action === 'create') &&
       <ProductForm key={dialog.product.id} initial={dialog.product} isNew={dialog.action === 'create'} brands={productBrands(products)} onClose={close} onSave={save} />}
-    {canManage && dialog?.action === 'status' && <StatusDialog product={dialog.product} onSave={save} onClose={close} />}
+    {canManage && dialog?.action === 'status' && <StatusDialog products={dialog.targets} active={dialog.active} onSave={saveStatus} onClose={close} />}
   </section>
 }

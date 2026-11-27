@@ -42,7 +42,11 @@
 .products-table th { background: var(--ap-surface-alt); color: var(--ap-muted); font-size: 12px; }
 .products-table td { border-top: 1px solid var(--ap-border); overflow-wrap: anywhere; }
 .products-table .products-code { width: 22%; font-weight: 600; }
-.products-table td:nth-child(2) { width: 45%; }
+.products-table .products-name { width: 45%; }
+.products-table .products-select-cell { width: 1%; text-align: center; }
+.products-select-cell input { width: 18px; height: 18px; margin: 0; vertical-align: middle; cursor: pointer; }
+.products-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.products-selection > strong { margin-right: 6px; font-size: 13px; }
 .products-table th:last-child, .products-table td:last-child { width: 1%; white-space: nowrap; }
 .products-form small, .products-details small {
   display: block;
@@ -132,6 +136,8 @@
 .products-form-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; width: 100%; gap: 10px; }
 .products-status-dialog { padding-top: 12px; }
 .products-status-dialog p { margin: 0; line-height: 1.55; }
+.products-status-list { display: grid; gap: 6px; width: 100%; max-height: 35vh; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.products-status-list li { overflow-wrap: anywhere; }
 .products-status-dialog .products-form-actions { margin-top: 8px; }
 .products-details {
   display: grid;
