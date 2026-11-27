@@ -148,6 +148,9 @@ async function settle(page, revision) {
       const checkbox = (index, name) => teams.nth(index).locator(`.tech-list label[title="${name}"] input`)
       await page.evaluate(() => { window.__delays = [1500, 1000] })
       await teams.nth(0).locator('.weekly-add-tech-button').click()
+      const technicianNames = teams.nth(0).locator('.tech-list label > span')
+      const alphabeticalNames = ['Mariano Ejemplo', 'Pascual Ejemplo', 'Rodrigo Ejemplo']
+      assert.deepEqual(await technicianNames.allTextContents(), alphabeticalNames)
       const nameFits = await teams.nth(0).locator('.tech-list label > span').first().evaluate(name =>
         name.scrollWidth <= name.clientWidth + 1 && name.scrollHeight <= name.clientHeight + 1 &&
         getComputedStyle(name).fontSize === getComputedStyle(name.parentElement).fontSize)
@@ -156,6 +159,7 @@ async function settle(page, revision) {
       assert.equal(await checkbox(0, 'Mariano Ejemplo').isDisabled(), false)
       await measureFeedback(checkbox(0, 'Pascual Ejemplo'), `queued-assign-${width}`, 'checked', true)
       await measureFeedback(checkbox(0, 'Rodrigo Ejemplo'), `queued-unassign-${width}`, 'checked', false)
+      assert.deepEqual(await technicianNames.allTextContents(), alphabeticalNames)
       assert.deepEqual(await page.evaluate(() => window.__confirmed.weekly['2026-10-14'].teams[0].memberIds), ['tech-1', 'tech-2'])
       await page.evaluate(() => window.__tryLeave())
       assert.equal(await page.evaluate(() => Boolean(window.__left)), false, 'Queued selection must guard navigation')
