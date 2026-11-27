@@ -19,14 +19,17 @@ test('una desconexión, un error de pasarela o una respuesta cortada reintentan 
     () => Response.json({ ok: true, revision: 3 })
   ]) {
     const bodies = []
+    let retries = 0
     const result = await writeState(options, 'No se pudo guardar.', {
       retryDelay: 0,
+      onRetry: () => { retries++ },
       fetcher: async (_url, request) => {
         bodies.push(request.body)
         return bodies.length === 1 ? fail() : goodResponse()
       }
     })
     assert.deepEqual(result, saved)
+    assert.equal(retries, 1)
     assert.deepEqual(bodies, [options.body, options.body])
   }
 })

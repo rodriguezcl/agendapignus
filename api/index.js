@@ -1415,6 +1415,18 @@ module.exports = async function handler(req, res) {
     }
     try { endpointPolicy.assertEndpointPermission(session.user, req.method, route) } catch (error) { return send(res, error.statusCode || 403, { error: error.message, code: error.code, permission: error.permission }) }
     if (isOperator(session.user) && !operatorRouteAllowed(req.method, route)) return send(res, 403, { error: 'Operador sólo puede consultar la Agenda semanal.' })
+    if (route === '/metrics/weekly-service-save') {
+      res.setHeader('Cache-Control', 'private, no-store')
+      // Preview deployments can share a database with production.
+      if (['preview', 'development'].includes(process.env.VERCEL_ENV)) return send(res, 404, { error: 'Medición deshabilitada en esta vista.' })
+      const { weeklyServiceSaveMetrics } = require('./_lib/weekly-service-save-metrics.cjs')
+      try {
+        const result = await weeklyServiceSaveMetrics({ connection: sql, kind: 'sql', user: session.user, method: req.method, input: requestBody(req) })
+        return send(res, 200, result)
+      } catch (error) {
+        return send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo procesar la medición.' })
+      }
+    }
     if(route === '/sales/bookings')return handleNativeRegistration(req,res,sql,session.user,true)
     if(route === '/registration/forms')return handleNativeRegistration(req,res,sql,session.user)
     if (route === '/products' || route === '/products/photo') {

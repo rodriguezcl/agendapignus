@@ -5,6 +5,7 @@ const { projectLegacyCollectionReceipts, restoreLegacyCollectionReceipts } = req
 const id = value => String(value ?? '')
 
 function assertEndpointPermission(user, method, route) {
+  if (route === '/metrics/weekly-service-save') return require('./weekly-service-save-metrics.cjs').assertMetricsPermission(user, method)
   if (!catalog.isGranular(user)) return
   const require = permission => write.requirePermission(user, permission)
   if (route.startsWith('/auth/') && !route.includes('password-reset-requests')) return

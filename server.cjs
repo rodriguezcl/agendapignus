@@ -1863,6 +1863,16 @@ const server = http.createServer((req, res) => {
       return send(res, 200, { ok: true })
     }).catch(error => send(res, 400, { error: error.message || 'No se pudo resolver la solicitud.' }))
   }
+  if (url.pathname === '/api/metrics/weekly-service-save') {
+    const user = requireSession(req, res)
+    if (!user) return
+    res.setHeader('Cache-Control', 'private, no-store')
+    const { weeklyServiceSaveMetrics } = require('./api/_lib/weekly-service-save-metrics.cjs')
+    const body = req.method === 'POST' ? readJson(req, 1024) : Promise.resolve()
+    return body.then(input => weeklyServiceSaveMetrics({ connection: db, kind: 'db', user, method: req.method, input }))
+      .then(result => send(res, 200, result))
+      .catch(error => send(res, error.statusCode || 500, { error: error.statusCode ? error.message : 'No se pudo procesar la medición.' }))
+  }
   if (req.method === 'GET' && url.pathname === '/api/history/export') {
     const user = requireSession(req, res)
     if (!user) return

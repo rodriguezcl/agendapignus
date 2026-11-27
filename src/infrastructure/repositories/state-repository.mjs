@@ -31,6 +31,7 @@ export async function writeState(options, fallbackMessage, {
   fetcher = globalThis.fetch,
   retryDelay = TRANSIENT_RETRY_DELAY_MS,
   requestTimeout = STATE_WRITE_TIMEOUT_MS,
+  onRetry,
   isSessionCurrent = () => true
 } = {}) {
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -44,6 +45,7 @@ export async function writeState(options, fallbackMessage, {
     } catch (error) {
       if (options.signal?.aborted || !transientWriteFailure(error)) throw error
       if (attempt === 1) throw unconfirmedWrite(error)
+      onRetry?.()
       // Reuse both the actor and the exact operation batch, even if the first
       // request committed and only its response was lost.
       if (retryDelay > 0) await new Promise(resolve => setTimeout(resolve, retryDelay))
@@ -68,10 +70,12 @@ async function commit(operations, revision) {
   const body = { revision, operations }
   if (expectedActorId != null) body.expectedActorId = String(expectedActorId)
   if (base) body.responseMode = 'delta-v1'
+  let retried = false
   const payload = await writeState({
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   }, 'No se pudo guardar el servicio.', {
+    onRetry: () => { retried = true },
     isSessionCurrent: () => startedSession === sessionEpoch && expectedActorId === confirmedSnapshot?.sessionUser?.id
   })
   if (payload.delta) {
@@ -79,7 +83,7 @@ async function commit(operations, revision) {
     catch (error) { throw unconfirmedWrite(error) }
   }
   remember(payload.state, epoch)
-  return payload
+  return retried ? { ...payload, retried: true } : payload
 }
 
 export const stateRepository = {

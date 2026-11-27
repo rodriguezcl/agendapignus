@@ -12,6 +12,7 @@ import { vehicleLabel } from '../../../domain/vehicles/vehicle-controls.mjs'
 import { canReadRecord, canWriteRecord } from '../../../domain/access/record-scope.mjs'
 import { usePermissions } from '../../../presentation/contexts/permissions-context.jsx'
 import { permittedPlanningPatch, canEditPlanningFields, canSavePlanningFields, serviceCopyRecord } from '../application/planning-permissions.mjs'
+import { beginWeeklyServiceSaveTiming } from '../application/weekly-service-save-timing.mjs'
 import { serviceScheduleConflicts, taskOccupiedInterval } from "../../../domain/agenda/service-scheduling.mjs";
 import { taskHasContent, defaultServiceTasksForDate, isSaturday, assignGuardToEmptySaturday, defaultServiceTimesForDate, alignDefaultServiceTimes, fallbackDefaultServiceTimesForDate, mergeStoredTeamsWithDefaults, renumberVisibleWeeklyTeams, applyRemovedWeeklyTeams, applyRemovedWeeklySlots, applyRemovedWeeklyTasks, normalizeSaturdayTeams, removeUnavailableDefaultSlots, sortPlanTasksByTime, taskStatus, historyRecordForTask, createTaskHistoryIndex, traceLines, blankTask, serviceTimeInMinutes, nextLiveScheduleMinute, taskForScheduleOccupancy as baseTaskForScheduleOccupancy, planningConflictMessage, stampServiceRecord, taskIsResolvedForPlanning, taskMoveScheduleState, teamLabelNumber, removedWeeklyTeamMatches, technicianTimeConflicts, serviceTrace, scheduleConflictMessage, taskOccupiedTimeLabel, scheduleConflictForTaskMessage, dayAgendaPreview, recordHolidayDecision } from "../application/agenda-model.mjs";
 import React, { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from "react";
@@ -154,6 +155,11 @@ export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, o
   const [leaveRequest, setLeaveRequest] = useState(null)
   const [resumeNavigation, setResumeNavigation] = useState(null)
   const taskEditorSaveGuardRef = useRef(false)
+  const saveTimingRef = useRef(null)
+  useBoardActionEffect(() => {
+    if (!taskEditorSaving) saveTimingRef.current?.afterCommit()
+  }, [taskEditor, taskEditorSaving])
+  useBoardActionEffect(() => () => saveTimingRef.current?.cancel(), [])
   const [taskMove, setTaskMove] = useState(null)
   const [taskMoveSaving, setTaskMoveSaving] = useState(false)
   const taskMoveSaveGuardRef = useRef(false)
@@ -311,7 +317,7 @@ export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, o
   const selectDraftCustomer = customer => updateTaskDraft(customerLinkPatch(taskEditor?.draft, customer, authUser), taskEditor?.draft?.subscriberReservation ? 'planning.reservation.link' : 'planning.linkAccount')
   const beginDraftNewCustomer = value => updateTaskDraft({ newCustomer: true, subscriberReservation: false, customerId: '', client: value, clientAccount: '', clientNameAtService: normalizeCustomerName(value), address: '', phone: '' }, 'customers.create')
   const beginDraftSubscriberReservation = value => updateTaskDraft(subscriberReservationPatch(value, authUser), 'planning.reservation.create')
-  const saveTaskEditor = async () => {
+  const saveTaskEditor = async click => {
     if (taskEditor?.photoPreparing) { setTaskEditorError('Esperá a que termine la preparación de los archivos.'); return false }
     if (!taskEditor || taskEditorSaveGuardRef.current) return
     if (!(taskEditor.pendingCreation ? can('planning.create') : canSaveTask(taskEditor.draft, taskEditor.day))) { setTaskEditorError('No tenés permiso para guardar este servicio.'); return false }
@@ -325,7 +331,7 @@ export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, o
     setTaskEditorError('')
     // An unacknowledged create may already exist. Confirm its original request
     // before evaluating today's availability or generating another quick client.
-    if (taskEditor.pendingCreation) return submitTaskEditorCommand(taskEditor.pendingCreation)
+    if (taskEditor.pendingCreation) return submitTaskEditorCommand(taskEditor.pendingCreation, click)
     const { day, teamIndex, taskIndex, teamId, teamSnapshot, taskId } = taskEditor
     if (taskStatus(taskEditor.draft, day, operationalHistory) === 'Completado') { rejectSave('Este servicio ya fue completado. Los cambios no se guardaron. Actualizá la agenda para consultar su información.'); return false }
     if (dayHasFinished(day)) { rejectSave(finishedDayMessage(day)); return }
@@ -389,16 +395,24 @@ export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, o
     const record = { ...previousRecord, ...weeklyHistoryRecord(day, savedTeam, teamIndex, { ...tracedDraft, ...photoPatch }, taskIndex), ...photoPatch, status: previousRecord?.status || 'Pendiente' }
     if (previousRecord) record.id = previousRecord.id
     const savedTask = { ...tracedDraft, ...photoPatch, historyId: record.id, status: record.status }
-    return submitTaskEditorCommand({ day, team: savedTeam, task: savedTask, record, baseRecord: previousRecord, baseTask: taskEditor.baseTask, customer: newCustomer, creationAttempt: previousRecord ? null : {} })
+    return submitTaskEditorCommand({ day, team: savedTeam, task: savedTask, record, baseRecord: previousRecord, baseTask: taskEditor.baseTask, customer: newCustomer, creationAttempt: previousRecord ? null : {} }, click)
   }
-  const submitTaskEditorCommand = async command => {
+  const submitTaskEditorCommand = async (command, click) => {
     const { day, task: savedTask, record, baseRecord: previousRecord } = command
+    const withAttachments = Array.isArray(taskEditor.photoData) ? taskEditor.photoData.length > 0 : Boolean(taskEditor.photoData)
+    const timing = !previousRecord && click?.type === 'click' ? beginWeeklyServiceSaveTiming(click.timeStamp, withAttachments) : null
+    if (timing) {
+      saveTimingRef.current?.cancel()
+      saveTimingRef.current = timing
+    }
+    const manualRetry = Boolean(taskEditor.pendingCreation)
     let serviceSaved = false
     try {
       const payload = await persistWeeklyService(command)
       serviceSaved = true
       const currentRecord = payload?.state?.history?.find(item => String(item.id) === String(record.id))
       if (taskEditor.pendingCreation && payload?.state && !currentRecord) {
+        timing?.cancel()
         setTaskEditor(null)
         setNotice('El alta se había guardado. El servicio ya no figura en el historial disponible.')
         return true
@@ -417,8 +431,10 @@ export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, o
         window.dispatchEvent(new CustomEvent('tickets-changed'))
         setNotice(`Servicio guardado y vinculado a Ticket#${record.ticketNumber}.`)
       }
+      timing?.confirm(manualRetry || payload?.retried === true)
       return true
     } catch (error) {
+      timing?.cancel()
       if (!serviceSaved && error.code === 'STATE_WRITE_UNCONFIRMED') {
         if (command.creationAttempt) setTaskEditor(previous => previous && { ...previous, pendingCreation: command })
         setTaskEditorError('Falta la confirmación del servidor. Conservamos los datos del servicio para que puedas reintentar el guardado.')
