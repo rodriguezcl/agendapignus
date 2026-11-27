@@ -157,8 +157,9 @@ function validateChangedAgendaSchedules(state, previousState = null) {
     return { ...source, history: (source.history || []).filter(record => !pausedVehicleControl(record, weekly)), agenda: { ...source.agenda, teams: cleanTeams(source.agenda.teams, source.agenda.date), weekly: Object.fromEntries(Object.entries(weekly).map(([day, plan]) => [day, day.startsWith('_') ? plan : { ...plan, teams: cleanTeams(plan?.teams, day) }])) } }
   }
   state = withoutPausedOccupancy(state)
-  previousState = withoutPausedOccupancy(previousState)
   if (previousState) {
+    // A paused control still has a recorded date. Closing it on resume does not
+    // schedule a new service on a day that became non-operational during the pause.
     const oldRecords = new Map((previousState.history || []).map(r => [String(r.id), r]))
     for (const record of state.history || []) {
       const old = oldRecords.get(String(record.id))
@@ -168,15 +169,17 @@ function validateChangedAgendaSchedules(state, previousState = null) {
       }
     }
   }
+  const previousOccupancy = withoutPausedOccupancy(previousState)
   const serviceMap = serviceMapFor(state?.services)
   const nextPlans = agendaPlans(state?.agenda)
-  const previousPlans = agendaPlans(previousState?.agenda)
+  const previousPlans = agendaPlans(previousOccupancy?.agenda)
+  const recordedPlans = previousOccupancy === previousState ? previousPlans : agendaPlans(previousState?.agenda)
   nextPlans.forEach((plan, key) => {
     const previous = previousPlans.get(key)
     // Removing unchanged scheduled tasks cannot introduce a new overlap.
     // Compare a multiset so duplicate tasks cannot hide an added occurrence.
     if (previous) {
-      const before = JSON.parse(scheduleSignature(previous.teams, serviceMapFor(previousState?.services), previous.date, previousState?.history))
+      const before = JSON.parse(scheduleSignature(previous.teams, serviceMapFor(previousState?.services), previous.date, previousOccupancy?.history))
       const after = JSON.parse(scheduleSignature(plan.teams, serviceMap, plan.date, state?.history))
       const rows = teams => teams.flatMap(({ tasks, ...team }) => tasks.map(task => JSON.stringify({ team, task })))
       const remaining = rows(before)
@@ -193,7 +196,7 @@ function validateChangedAgendaSchedules(state, previousState = null) {
       const oldTeam = team.teamId
         ? previous?.teams?.find(item => String(item.teamId) === String(team.teamId))
         : previous?.teams?.[index]
-      const unchanged = oldTeam && scheduleSignature([oldTeam], previousServiceMap, plan.date, previousState?.history) === scheduleSignature([team], serviceMap, plan.date, state?.history)
+      const unchanged = oldTeam && scheduleSignature([oldTeam], previousServiceMap, plan.date, previousOccupancy?.history) === scheduleSignature([team], serviceMap, plan.date, state?.history)
       return unchanged ? [] : [index]
     }))
     if (!changedTeams.size) return
@@ -208,7 +211,7 @@ function validateChangedAgendaSchedules(state, previousState = null) {
         }
         const startMatch = String(task.time || '').match(/^(\d{1,2}):(\d{2})$/)
         const start = startMatch ? Number(startMatch[1]) * 60 + Number(startMatch[2]) : null
-        if (plan.date === argentinaToday() && start !== null && !agendaTaskWasAlreadyScheduled(task, plan.date, previous, previousState?.history) && start < nextArgentinaQuarterMinute()) {
+        if (plan.date === argentinaToday() && start !== null && !agendaTaskWasAlreadyScheduled(task, plan.date, recordedPlans.get(key), previousState?.history) && start < nextArgentinaQuarterMinute()) {
           throw new Error(`${teamDescription(team, teamIndex)} del ${longDate(plan.date)} no puede agregar el ${taskDescription(task, taskIndex)} a las ${task.time} porque ese horario ya pasó. Elegí un horario futuro desde el próximo cuarto de hora disponible.`)
         }
       })

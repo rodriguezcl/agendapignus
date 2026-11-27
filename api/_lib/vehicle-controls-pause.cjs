@@ -8,4 +8,7 @@ function pausedVehicleControl(record, weekly = {}) {
     !record.completedAt && !record.technicalStatus && !record.technicalReportedAt &&
     !['Completado', 'Cancelado', 'Reprogramado', 'Avance registrado'].includes(record.status)
 }
-module.exports = { vehicleControlsPaused, pausedVehicleControl }
+function hiddenAgendaControl(record, weekly) {
+  return (record?.vehicleControlSkippedDuringPause === true && record.status === 'Cancelado') || pausedVehicleControl(record, weekly)
+}
+module.exports = { vehicleControlsPaused, pausedVehicleControl, hiddenAgendaControl }

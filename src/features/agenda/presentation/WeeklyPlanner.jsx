@@ -59,7 +59,7 @@ import { suggestedServiceForTicket, ticketLinkFields, ticketReferenceDetail, tic
 import TicketServiceSchedule from './TicketServiceSchedule.jsx';
 
 export function WeeklyPlanner({ onOpenPlanning, initialAnchor, onAnchorChange, openRequest, onOpenRequestHandled, navigationGuardRef, persistWeeklyService, persistWeeklyConfiguration, weekly, setWeekly, customers, setCustomers, services, activeTechs, history, setHistory, setNotice, openDaily, authUser, vehicles, permissions = {}, confirmedRevision }) {
-  const pausedControl = (task, day, records) => controlPause.pausedVehicleControl(historyRecordForTask(task, day, records) || task, weekly)
+  const pausedControl = (task, day, records) => controlPause.hiddenAgendaControl(historyRecordForTask(task, day, records) || task, weekly)
   const taskForScheduleOccupancy = (task, day, records) => pausedControl(task, day, records) ? null : baseTaskForScheduleOccupancy(task, day, records)
 
   const { can, user: permissionUser } = usePermissions()

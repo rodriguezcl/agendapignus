@@ -161,7 +161,7 @@ export function DailyCustomerField({ task, customers, teamIndex, taskIndex, onTe
 }
 
 export function AgendaWorkspaceForm({ navigationGuardRef, persistWeeklyService, persistAgendaRecords, date, setDate, teams, setTeams, activeTechs, customers, setCustomers, services, history, setHistory, updateTask, setNotice, weekly, setWeekly, databaseReady }) {
-  const pausedControl = (task, day, records) => controlPause.pausedVehicleControl(historyRecordForTask(task, day, records) || task, weekly)
+  const pausedControl = (task, day, records) => controlPause.hiddenAgendaControl(historyRecordForTask(task, day, records) || task, weekly)
   const taskForScheduleOccupancy = (task, day, records) => pausedControl(task, day, records) ? null : baseTaskForScheduleOccupancy(task, day, records)
 
   const { can, user: permissionUser } = usePermissions()

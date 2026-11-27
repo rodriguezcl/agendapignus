@@ -86,6 +86,9 @@ function assertServiceAccess(user, record, state, { write: writing = false, perm
 }
 
 function assertTechnicalAction(user, record, state, type) {
+  if (record?.vehicleControlSkippedDuringPause === true && record.status === 'Cancelado') {
+    throw Object.assign(new Error('Este control quedó omitido durante la pausa de Flota.'), { statusCode: 409, code: 'VEHICLE_CONTROL_SKIPPED' })
+  }
   if (require('./vehicle-controls-pause.cjs').pausedVehicleControl(record, state?.agenda?.weekly)) {
     throw Object.assign(new Error('Los controles vehiculares están pausados desde Flota.'), { statusCode: 409, code: 'VEHICLE_CONTROLS_PAUSED' })
   }

@@ -50,7 +50,9 @@ export function Vehicles({ history = [], weekly = {}, persistWeeklyConfiguration
           _vehicleControls: { paused }
         } }
       }))
-      setNotice(paused ? 'Controles vehiculares pausados. Los controles pendientes quedan ocultos en la agenda y en Historial.' : 'Controles vehiculares habilitados. Los controles pendientes vuelven a aparecer en la agenda y en Historial.')
+      setNotice(paused
+        ? 'Controles vehiculares pausados. Los pendientes quedan ocultos en la agenda y en Historial.'
+        : 'Controles vehiculares reanudados. Los viernes que pasaron durante la pausa quedan fuera de los pendientes.')
     } catch (error) { setNotice({ message: `No se pudo cambiar la configuración de los controles. ${error.message || 'Intentá nuevamente.'}`, tone: 'error' }) }
     finally { setControlsSaving(false) }
   }
@@ -116,7 +118,7 @@ export function Vehicles({ history = [], weekly = {}, persistWeeklyConfiguration
   return <>
     <div className="module-intro"><ModuleIntroduction><p className="eyebrow">FLOTA DE LA EMPRESA</p><h1>Flota</h1><p>Administrá la flota y mantené disponible la documentación vigente.</p></ModuleIntroduction>{can('vehicles.create') && <button title="Abrí el formulario para registrar un vehículo de la empresa." className="primary" onClick={startCreate}><Icon name="plus" />Nuevo vehículo</button>}</div>
     <section className="vehicle-controls-settings" aria-label="Controles vehiculares" aria-busy={controlsSaving}>
-      <div><strong>Controles vehiculares {controlsPaused ? 'pausados' : 'habilitados'}</strong><p>{controlsPaused ? 'Los controles pendientes están ocultos en la agenda y en Historial hasta que vuelvas a habilitarlos.' : 'Los controles semanales aparecen en la agenda de los responsables y en Historial.'} Los controles realizados y sus fotos se conservan.</p></div>
+      <div><strong>Controles vehiculares {controlsPaused ? 'pausados' : 'habilitados'}</strong><p>{controlsPaused ? 'Los pendientes están ocultos en la agenda y en Historial. Al reanudar, los controles vencidos quedan como cancelados en Historial.' : 'Los controles semanales aparecen en la agenda de los responsables y en Historial.'} Los controles realizados y sus fotos se conservan.</p></div>
       {canManageControls && <button type="button" className={controlsPaused ? 'primary' : 'secondary'} disabled={controlsSaving} onClick={toggleControls}><Icon name={controlsPaused ? 'play' : 'pause'} size={16} />{controlsSaving ? 'Guardando…' : controlsPaused ? 'Reanudar controles' : 'Pausar controles'}</button>}
     </section>
     {open && <EditorModal active={Boolean(editing)} title="Editar vehículo" onClose={() => setOpen(false)} busy={saving || attachmentsPreparing} dirty={JSON.stringify(form) !== JSON.stringify(initialForm) || Boolean(insuranceFile) || vehicleAttachments.length > 0}>{({ requestClose }) => <form className="vehicle-form" onSubmit={save} aria-busy={saving || attachmentsPreparing}>
